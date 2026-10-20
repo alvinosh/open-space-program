@@ -1,0 +1,26 @@
+[package]
+name = "osp_game"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "osp"
+path = "src/main.rs"
+
+[dependencies]
+bevy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+osp_sim = { workspace = true }
+osp_mods = { workspace = true }
+osp_ui = { workspace = true }
+osp_terrain = { workspace = true }
+half = "2"
+
+[features]
+# Faster incremental builds during development: `cargo run --features dev`
+dev = ["bevy/dynamic_linking"]
+
+[lints]
+workspace = true

@@ -1,4 +1,4 @@
-// Engines. Masses in kg, thrust in N, Isp in s.
+// Engines. Masses in kg, thrust in N, Isp in s, gimbal_range in degrees.
 // `propellants` maps resource -> mass ratio (normalised at load), so patches can change one entry.
 [
   {
@@ -10,6 +10,7 @@
     min_throttle: 0.4,
     ignitions: 3,
     requires_ullage: true,
+    gimbal_range: 5,
     propellants: { Kerosene: 1.0, LqdOxygen: 2.36 },
   },
   {
@@ -21,6 +22,7 @@
     min_throttle: 0.39,
     ignitions: 4,
     requires_ullage: true,
+    gimbal_range: 5,
     propellants: { Kerosene: 1.0, LqdOxygen: 2.36 },
   },
   {
@@ -32,6 +34,7 @@
     min_throttle: 1.0,
     ignitions: 15,
     requires_ullage: true,
+    gimbal_range: 4,
     propellants: { LqdHydrogen: 1.0, LqdOxygen: 5.5 },
   },
   {
@@ -43,6 +46,7 @@
     min_throttle: 1.0,
     ignitions: 50,
     requires_ullage: false,
+    gimbal_range: 6,
     propellants: { Aerozine50: 1.0, NTO: 1.9 },
   },
 ]

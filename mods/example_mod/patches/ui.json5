@@ -3,7 +3,7 @@
   {
     op: "insert",
     collection: "layouts",
-    target: "flight_hud",
+    target: "flight_info",
     path: "#flight.children",
     value: {
       widget: "row",
@@ -19,7 +19,13 @@
     target: "toolbar",
     path: "#toolbar.children",
     index: 0,
-    value: { widget: "button", text: "Clock", action: "ui.toggle:example_clock" },
+    value: {
+      widget: "button",
+      class: "launcher_button",
+      text: "Clock",
+      action: "ui.toggle:example_clock",
+      active: "ui.shown.example_clock",
+    },
   },
   // Restyle: a different fuel/throttle bar colour.
   {

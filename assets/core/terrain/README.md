@@ -4,7 +4,7 @@ Bodies name a dataset directory here with `terrain: "terrain/<name>"` (see
 `bodies/solar_system.json5`). The data is generated, not checked in. Bake Earth with:
 
 ```sh
-cargo run -p phymi_bake --release
+cargo run -p osp_bake --release
 ```
 
 The first run downloads about 900 MB of public datasets into `.bake-cache/` (kept for later
@@ -14,7 +14,7 @@ F2).
 
 ## What is in a dataset
 
-Four layers on a cube-sphere quadtree (`crates/phymi_terrain`), each a pack of 129×129
+Four layers on a cube-sphere quadtree (`crates/osp_terrain`), each a pack of 129×129
 tiles: elevation (bathymetry included), colour, land cover with a water fraction, and night
 lights, plus `terrain.meta` (JSON). Globally they go to level 5 (~2.4 km per texel); around
 Cape Canaveral elevation goes to level 12 (~19 m) and land cover to level 13 (~10 m).

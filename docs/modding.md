@@ -1,8 +1,8 @@
-# Modding Phymi
+# Modding Open Space Program
 
-Phymi is data-driven: the base game is itself a mod (`assets/core`), and everything it
-contains (planets, engines, tanks, craft, scenarios, the UI, the theme, keybindings) can be
-added to, replaced or patched by other mods without touching code.
+Open Space Program is data-driven: the base game is itself a mod (`assets/core`), and
+everything it contains (planets, engines, tanks, craft, scenarios, the UI, the theme,
+keybindings) can be added to, replaced or patched by other mods without touching code.
 
 Mods are data-only for now. A scripting layer will plug into the same records and actions
 later.
@@ -68,16 +68,32 @@ parts of it instead.
 | Collection | Contents | Notes |
 | --- | --- | --- |
 | `bodies` | Planets, moons, stars | Keplerian `orbit` (J2000 ecliptic, degrees), IAU `rotation`, optional `atmosphere`, `terrain` dataset and `max_terrain_height` (m) |
-| `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `ignitions`, `requires_ullage`, `propellants: { Name: mass ratio }` |
+| `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }` |
 | `tanks` | Tanks | `dry_mass`, `contents: { Name: kg }` |
-| `craft` | Vessels | `stages` in firing order: `engines`, `tanks`, `structure_mass`, `diameter`, `length` |
+| `reaction_wheels` | Reaction wheels | `mass` (kg), `torque` (N·m about each axis) |
+| `craft` | Vessels | `stages` in firing order: `engines`, `tanks`, `reaction_wheels`, `structure_mass`, `diameter`, `length` |
 | `launch_sites` | Launch sites | Position, `heading`, optional `pad` and `roads`; see [Launch sites](#launch-sites) |
-| `scenarios` | New-game setups | `start: { type: "LaunchSite", site: "<id>" }` or `{ type: "Orbit", ... }`; pick with `PHYMI_SCENARIO=<id>` |
+| `scenarios` | New-game setups | `start: { type: "LaunchSite", site: "<id>" }` or `{ type: "Orbit", ... }`; pick with `OSP_SCENARIO=<id>` |
 | `layouts` | UI windows and panels | See [User interface](#user-interface) |
 | `themes` | Style classes | All theme records merge in load order |
 | `keybindings` | Key → action | All keybinding records combine |
 
 See the files in `assets/core` for complete, commented examples of each.
+
+### Craft mass and control
+
+A stage's `diameter` and `length` shape its rotation as well as its looks. Each stage is
+modelled as a cylinder: tank dry mass as a thin shell along it, `structure_mass` (and
+reaction wheels) as a uniform solid, engines as point masses on its base, and propellant as
+a solid column settled at the aft end. That gives the centre of mass and the moments of
+inertia, which change as tanks drain and stages drop.
+
+Control torque comes from the bottom stage's burning engines swivelling up to
+`gimbal_range`, and from reaction wheels anywhere in the stack. A single engine sits on the
+axis and cannot roll the vessel; two to six engines sit on a ring at half the stage
+radius, and seven or more on a ring at 65% around a central engine, so clusters roll by
+gimballing sideways. With the engines off, only reaction wheels can turn the vessel, so
+give upper stages and payloads some.
 
 ### Launch sites
 
@@ -110,7 +126,7 @@ Start a scenario there with `start: { type: "LaunchSite", site: "my_site" }`.
 A body with `terrain: "terrain/<name>"` uses the baked dataset in that directory (from the
 highest-priority mod that has it): elevation, colour, land cover and night lights on a
 cube-sphere tile pyramid. Without one the body is a smooth sphere in its `color`. The Earth
-dataset is built by `cargo run -p phymi_bake --release`; see
+dataset is built by `cargo run -p osp_bake --release`; see
 `assets/core/terrain/README.md` for the format and the data sources. Set
 `max_terrain_height` to the highest elevation so the simulation integrates vessels before
 they can reach the ground.
@@ -164,6 +180,7 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 {
   id: "my_window",          // toggle with the action ui.toggle:my_window
   visible: true,            // shown at startup
+  group: "flight",          // hidden with the flight UI (F3); optional
   root: {
     widget: "window", title: "Orbit", style: { left: 20, top: 300, width: 260 },
     children: [
@@ -182,19 +199,27 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 
 | Field | Meaning |
 | --- | --- |
-| `widget` | `column` (default), `row`, `panel`, `spacer`, `label`, `button`, `bar`, `window`. Unknown names act as containers. |
+| `widget` | `column` (default), `row`, `panel`, `spacer`, `label`, `button`, `bar`, `window`, `navball`. Unknown names act as containers. |
 | `id` | Optional; lets patches address the node with `#id`. |
 | `class` | Space-separated theme classes. |
 | `style` | Inline style (overrides classes). |
 | `text` | Text template (`label`, `button`). |
 | `title` | Window title template. |
 | `action` | Action fired on click (`button`); may contain `{bindings}`. |
-| `value` | Data key with a 0..1 value (`bar`). |
-| `visible` | Data key; the node shows when it is truthy. Prefix with `!` to invert. |
+| `value` | Data key for the fill (`bar`), 0..1 unless `min` / `max` say otherwise. |
+| `min`, `max`, `vertical` | `bar` only: the value range (with `min` below zero the bar fills either way from zero, for −1..1 inputs) and filling upwards instead of across. |
+| `visible` | Condition (below); the node shows while it holds. |
+| `active` | Condition for the node's active look (`active_background`, `active_color`, `active_border_color`): a selected mode, a toggle that is on, an open window. |
 | `repeat` | List key; the children are created once per item, and `item.` refers to the current item. |
 | `children` | Child nodes. |
 
 Windows have a title bar that can be dragged to move the window, and a close button.
+`navball` shows the attitude indicator; give it a `width` and `height`.
+
+A layout's `group` lets the player hide and show several layouts at once without losing
+which of them were open: `ui.toggle_group:flight` (F3) does that for the flight UI. Every
+layout publishes `ui.shown.<id>`, so a button can light up while its window is open:
+`{ widget: "button", text: "Orbit", action: "ui.toggle:orbit_info", active: "ui.shown.orbit_info" }`.
 
 ### Templates and formatters
 
@@ -210,13 +235,18 @@ produce literal braces.
 | `speed` | `216.9 m/s`, `11.20 km/s` |
 | `mass` | `431.14 t` |
 | `force` | `7.7 MN` |
+| `torque` | `17.6 MN m` |
 | `pressure` | `20.18 kPa` |
 | `duration` | `1d 01:01:01` |
 | `degrees[:N]` | `28.61 deg` |
 | `date`, `clock` | `2000-01-01 18:00:39`, `18:00:39` (from `time.ut`) |
+| `heading` | `090` |
 | `sci[:N]`, `upper`, `lower`, `yesno` | |
 
-Truthiness (for `visible`): `false`, `0`, an empty string, an empty list and missing keys are false.
+**Conditions** (for `visible` and `active`): a key holds when its value is truthy, and `!key`
+inverts it. `false`, `0`, an empty string, an empty list and missing keys are false.
+`key == value` and `key != value` compare the value as text: `vessel.sas_mode == prograde`,
+`time.warp == 1`.
 
 ### Styles and themes
 
@@ -237,11 +267,28 @@ classes; all of them merge in load order, so a mod can restyle anything with a p
 | `grow` `shrink` `wrap` `clip` | flex grow/shrink, wrapping, clip overflow |
 | `radius` | corner radius, px |
 | `background` `hover_background` `border_color` `color` | `"#rgb"`, `"#rrggbb"`, `"#rrggbbaa"`, `[r, g, b]`, `[r, g, b, a]` |
+| `active_background` `active_border_color` `active_color` | colours while the node's `active` condition holds |
 | `font_size` | px |
 | `z_index` | stacking order of layout roots |
 
-Base-game node ids you can patch into: `flight_hud` has `#hud`, `#header`, `#flight`,
-`#orbit`, `#events`, `#propulsion`, `#stages`, `#log`; `toolbar` has `#toolbar`.
+The flight UI is a set of modules, each its own layout in the `flight` group:
+
+| Layout | Contents | Node ids |
+| --- | --- | --- |
+| `toolbar` | App launcher (top right) | `#toolbar` |
+| `time` | Warp buttons, UT and mission time (top left) | `#time` |
+| `altimeter` | Altitude, vessel and situation (top centre) | `#altimeter` |
+| `messages` | Latest event and warp notices | `#messages` |
+| `navball` | Navball, speed, throttle, SAS modes, control inputs (bottom centre) | `#navball`, `#throttle`, `#ball`, `#sas`, `#inputs` |
+| `staging` | Stage stack (bottom left) | `#staging`, `#stages` |
+| `flight_info` | Speeds, Mach, pressures | `#flight` |
+| `orbit_info` | Apsides, inclination, period, predicted events | `#orbit`, `#events` |
+| `vessel_info` | Thrust, TWR, mass, delta-v | `#propulsion` |
+| `attitude_info` | Centre of mass, inertia, control authority, rates | `#attitude` |
+| `log` | Flight log | `#log` |
+
+To add a window to the launcher, insert a button into `#toolbar.children` (see
+`mods/example_mod/patches/ui.json5`).
 
 ### Keybindings
 
@@ -272,6 +319,17 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.mach`, `vessel.dynamic_pressure`, `vessel.static_pressure` | Pa |
 | `vessel.throttle`, `vessel.thrust`, `vessel.twr`, `vessel.mass`, `vessel.accel_g` | 0..1, N, -, kg, g |
 | `vessel.delta_v`, `vessel.stage_count`, `vessel.landed`, `vessel.engines_running` | |
+| `vessel.sas`, `vessel.sas_mode`, `vessel.sas_mode_label` | SAS on; mode (`off`, `stability`, `prograde`, `retrograde`, `normal`, `anti_normal`, `radial_out`, `radial_in`) |
+| `nav.frame`, `nav.speed` | `"Surface"` or `"Orbit"`; speed in that frame, m/s |
+| `nav.heading`, `nav.pitch`, `nav.roll` | Attitude against the local horizon, degrees (roll is empty pointing straight up or down) |
+| `control.pitch`, `control.yaw`, `control.roll` | Rotation command applied (pilot or SAS), −1..1 |
+| `attitude.com`, `attitude.moi_pitch`, `attitude.moi_roll` | Centre of mass above the base (m); moments of inertia (kg·m²) |
+| `attitude.torque_pitch`, `attitude.torque_roll`, `attitude.accel_pitch`, `attitude.accel_roll` | Torque available (N·m) and the angular acceleration it gives (deg/s²) |
+| `attitude.rate_pitch`, `attitude.rate_yaw`, `attitude.rate_roll` | Angular velocity, deg/s |
+| `attitude.gimbal`, `attitude.gimbal_range`, `attitude.wheels` | Current and maximum gimbal angle (deg); reaction wheel torque (N·m) |
+| `time.met`, `time.launched` | Seconds since liftoff |
+| `screen.message` | The latest log message, for a few seconds |
+| `ui.shown.<layout>` | Whether a layout is showing |
 | `vessel.stages[]` | `name`, `active`, `delta_v`, `burn_time`, `fuel` (0..1), `has_fuel`, `ignitions`, `engines` |
 | `vessel.log[]` | `time`, `message` (newest first) |
 | `orbit.apoapsis`, `orbit.periapsis` | Altitudes, m (apoapsis empty when escaping) |
@@ -288,9 +346,12 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.stage`, `vessel.throttle_full`, `vessel.throttle_cut` | press |
 | `vessel.throttle_up`, `vessel.throttle_down` | hold |
 | `vessel.pitch_up`, `vessel.pitch_down`, `vessel.yaw_left`, `vessel.yaw_right`, `vessel.roll_left`, `vessel.roll_right` | hold |
+| `vessel.sas_toggle`, `vessel.sas_mode:<mode>` | SAS on/off; select a mode (switches SAS on) |
+| `nav.toggle_frame` | Switch prograde and speed between surface and orbit |
 | `warp.increase`, `warp.decrease`, `warp.stop` | |
 | `view.toggle_map` | |
 | `ui.toggle:<layout>`, `ui.show:<layout>`, `ui.hide:<layout>` | |
+| `ui.toggle_group:<group>`, `ui.show_group:<group>`, `ui.hide_group:<group>` | Every layout in a group |
 | `game.reload` | Reload all mods and rebuild the UI |
 
 ## Troubleshooting
@@ -303,4 +364,4 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 - **Physics data (bodies, parts, craft, launch sites) is read when a game starts.** F5
   reloads the UI immediately; restart to fly with changed parts or planets.
 - **Earth is a smooth blue sphere?** Its terrain data has not been baked; F2 shows a warning.
-  Run `cargo run -p phymi_bake --release`.
+  Run `cargo run -p osp_bake --release`.

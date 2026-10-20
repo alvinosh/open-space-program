@@ -1,0 +1,27 @@
+// Time warp and clocks (top left).
+{
+  id: "time",
+  group: "flight",
+  root: {
+    id: "time",
+    widget: "panel",
+    class: "module",
+    style: { left: 12, top: 12, width: 270 },
+    children: [
+      {
+        widget: "row",
+        style: { gap: 4 },
+        children: [
+          { widget: "button", text: "<<", action: "warp.decrease" },
+          { widget: "button", text: "1x", action: "warp.stop", active: "time.warp == 1" },
+          { widget: "button", text: ">>", action: "warp.increase" },
+          { widget: "label", class: "title", style: { margin: [0, 0, 0, 6] }, text: "{time.warp}x" },
+          { widget: "label", class: "dim", text: "{time.warp_mode}" },
+        ],
+      },
+      { widget: "label", text: "UT  {time.ut|date}", style: { margin: [4, 0, 0, 0] } },
+      { widget: "label", text: "MET {time.met|duration}", visible: "time.launched" },
+      { widget: "label", class: "warning", text: "Simulation is lagging behind the requested warp", visible: "time.lagging" },
+    ],
+  },
+}

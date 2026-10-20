@@ -1,0 +1,16 @@
+// Screen messages under the altimeter: the latest event (ignition, staging, SOI change)
+// and warp notices, for a few seconds each.
+{
+  id: "messages",
+  group: "flight",
+  root: {
+    id: "messages",
+    widget: "column",
+    class: "module",
+    style: { left: "50%", margin: [0, 0, 0, -300], top: 110, width: 600, align_items: "center", gap: 4 },
+    children: [
+      { widget: "label", class: "warning", style: { font_size: 16 }, text: "{screen.message}", visible: "screen.message" },
+      { widget: "label", class: "warning", text: "{time.notice}", visible: "time.notice" },
+    ],
+  },
+}

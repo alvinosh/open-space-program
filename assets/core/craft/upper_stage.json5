@@ -6,7 +6,9 @@
     {
       name: "Upper Stage",
       engines: ["K-1 Vacuum"],
-      tanks: ["Kerolox Tank 3.7m x 12m"],
+      tanks: ["Kerolox Tank 3.7m x 12m", "Nitrogen Bottle"],
+      reaction_wheels: ["Attitude Control Unit"],
+      rcs: ["Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad"],
       structure_mass: 1000,
       diameter: 3.7,
       length: 14,

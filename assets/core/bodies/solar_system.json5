@@ -74,7 +74,7 @@
     gm: 3.986004418e+14,
     radius: 6371000.0,
     // Elevation, colour, land cover and night lights baked from public datasets by
-    // `cargo run -p phymi_bake --release` (see assets/core/terrain/README.md).
+    // `cargo run -p osp_bake --release` (see assets/core/terrain/README.md).
     terrain: "terrain/earth",
     max_terrain_height: 8900,
     rotation: {

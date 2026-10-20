@@ -1,0 +1,30 @@
+// Orbit window. Node ids (#orbit, #events) are stable for mods to insert rows.
+{
+  id: "orbit_info",
+  group: "flight",
+  root: {
+    widget: "window",
+    title: "Orbit - {vessel.body}",
+    style: { right: 12, top: 52, width: 290 },
+    children: [
+      {
+        id: "orbit",
+        widget: "column",
+        children: [
+          { widget: "row", visible: "!orbit.escape", children: [{ widget: "label", class: "key", text: "Apoapsis" }, { widget: "label", text: "{orbit.apoapsis|distance}" }] },
+          { widget: "row", visible: "orbit.escape", children: [{ widget: "label", class: "key", text: "Apoapsis" }, { widget: "label", text: "escape trajectory" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Periapsis" }, { widget: "label", text: "{orbit.periapsis|distance}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Inclination" }, { widget: "label", text: "{orbit.inclination|degrees}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Eccentricity" }, { widget: "label", text: "{orbit.eccentricity|fixed:4}" }] },
+          { widget: "row", visible: "orbit.period", children: [{ widget: "label", class: "key", text: "Period" }, { widget: "label", text: "{orbit.period|duration}" }] },
+          {
+            id: "events",
+            widget: "column",
+            repeat: "orbit.events",
+            children: [{ widget: "label", class: "warning", text: "{item.label} in {item.time_to|duration}" }],
+          },
+        ],
+      },
+    ],
+  },
+}

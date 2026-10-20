@@ -2,6 +2,8 @@
 // `class` string, then its inline `style`. Mods restyle the game by patching these classes
 // or adding another theme record (all themes are merged in load order).
 // Colours: "#rgb", "#rrggbb", "#rrggbbaa" or [r, g, b(, a)] in 0..1.
+// `active_*` colours apply while a node's `active` condition holds (selected modes, open
+// windows, the current stage).
 {
   id: "default",
   classes: {
@@ -14,6 +16,8 @@
       padding: [4, 10],
       background: "#26384a",
       hover_background: "#3a5672",
+      active_background: "#2f7a55",
+      active_color: "#ffffff",
       radius: 4,
       color: "#eef6ff",
       font_size: 14,
@@ -25,7 +29,7 @@
     panel: {
       padding: 10,
       gap: 2,
-      background: [0.03, 0.05, 0.07, 0.8],
+      background: [0.03, 0.05, 0.07, 0.82],
       radius: 6,
       border: 1,
       border_color: [1, 1, 1, 0.08],
@@ -49,9 +53,57 @@
     window_content: { padding: 10, gap: 3 },
     window_close: { padding: [0, 6], background: [0, 0, 0, 0], hover_background: "#9a2f2f", font_size: 13 },
 
+    // --- flight modules ---
+    // Panels anchored to the screen edges; centred ones set `left: "50%"` and a negative
+    // left margin of half their width.
+    module: { position: "absolute" },
+    launcher: { position: "absolute", right: 12, top: 12, direction: "row", gap: 4 },
+    launcher_button: {
+      padding: [4, 9],
+      font_size: 13,
+      background: [0.08, 0.12, 0.16, 0.88],
+      active_background: "#2d5f80",
+    },
+    readout: { color: "#ffffff", font_size: 26 },
+    caption: { color: [1, 1, 1, 0.5], font_size: 11 },
+    housing: {
+      padding: [8, 12],
+      background: [0.02, 0.03, 0.04, 0.88],
+      radius: 10,
+      border: 1,
+      border_color: [1, 1, 1, 0.1],
+    },
+    navball_bezel: {
+      width: 214,
+      height: 214,
+      radius: 107,
+      border: 3,
+      border_color: "#2e3e4c",
+      background: "#0a0f14",
+      align_items: "center",
+      justify_content: "center",
+    },
+    speed_display: {
+      padding: [3, 10],
+      background: [0, 0, 0, 0.55],
+      hover_background: [1, 1, 1, 0.12],
+      color: "#7dff9a",
+      font_size: 15,
+      radius: 3,
+    },
+    sas_button: { min_width: 62, padding: [3, 4], font_size: 12 },
+    vbar: { width: 10, min_width: 10, height: 150, grow: 0 },
+    ibar: { width: 84, min_width: 84, grow: 0, height: 5 },
+    stage_row: {
+      padding: [3, 6],
+      radius: 4,
+      border: 1,
+      border_color: [0, 0, 0, 0],
+      active_background: [0.37, 0.83, 0.54, 0.14],
+      active_border_color: [0.37, 0.83, 0.54, 0.55],
+    },
+
     // --- named classes ---
-    hud: { position: "absolute", left: 12, top: 12, width: 380 },
-    toolbar: { position: "absolute", right: 12, bottom: 12, direction: "row", gap: 6 },
     title: { color: "#ffffff", font_size: 17 },
     section: { color: "#7fb8e0", font_size: 12, margin: [8, 0, 2, 0] },
     dim: { color: [1, 1, 1, 0.55], font_size: 12 },

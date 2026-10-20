@@ -1,0 +1,26 @@
+// Flight data window. Node ids (#flight) are stable for mods to insert rows.
+{
+  id: "flight_info",
+  group: "flight",
+  root: {
+    widget: "window",
+    title: "Flight",
+    style: { left: 12, top: 140, width: 300 },
+    children: [
+      {
+        id: "flight",
+        widget: "column",
+        children: [
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Vertical speed" }, { widget: "label", text: "{vessel.vertical_speed|speed}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Surface speed" }, { widget: "label", text: "{vessel.surface_speed|speed}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Orbital speed" }, { widget: "label", text: "{vessel.orbital_speed|speed}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Mach" }, { widget: "label", text: "{vessel.mach|fixed:2}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Dynamic Q" }, { widget: "label", text: "{vessel.dynamic_pressure|pressure}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Air pressure" }, { widget: "label", text: "{vessel.static_pressure|pressure}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Acceleration" }, { widget: "label", text: "{vessel.accel_g|fixed:2} g" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Motion" }, { widget: "label", text: "{vessel.motion}" }] },
+        ],
+      },
+    ],
+  },
+}

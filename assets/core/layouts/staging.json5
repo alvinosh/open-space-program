@@ -1,0 +1,60 @@
+// The stage stack (bottom left): the next stage to fire at the bottom, like KSP.
+{
+  id: "staging",
+  group: "flight",
+  root: {
+    id: "staging",
+    widget: "panel",
+    class: "module",
+    style: { left: 12, bottom: 12, width: 330 },
+    children: [
+      {
+        widget: "row",
+        children: [
+          { widget: "label", class: "section", style: { margin: 0 }, text: "STAGES" },
+          { widget: "spacer" },
+          { widget: "button", text: "Stage (Space)", action: "vessel.stage" },
+        ],
+      },
+      {
+        id: "stages",
+        widget: "column",
+        repeat: "vessel.stages",
+        style: { direction: "column_reverse", gap: 3, margin: [6, 0, 0, 0] },
+        children: [
+          {
+            widget: "column",
+            class: "stage_row",
+            active: "item.active",
+            children: [
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "narrow", text: "{item.name}" },
+                  { widget: "label", class: "dim narrow", text: "{item.delta_v|speed}" },
+                  { widget: "label", class: "dim nowrap", text: "{item.burn_time|duration}", visible: "item.engines" },
+                ],
+              },
+              {
+                widget: "row",
+                visible: "item.has_fuel",
+                children: [
+                  { widget: "bar", value: "item.fuel" },
+                  { widget: "label", class: "dim nowrap", text: "{item.engines} eng, {item.ignitions} ign", visible: "item.ignitions" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        widget: "row",
+        style: { margin: [6, 0, 0, 0] },
+        children: [
+          { widget: "label", class: "key", text: "Delta-v (vac)" },
+          { widget: "label", text: "{vessel.delta_v|speed}" },
+        ],
+      },
+    ],
+  },
+}

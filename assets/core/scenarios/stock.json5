@@ -1,5 +1,5 @@
 // New-game setups. start_time is seconds since J2000 (2000-01-01 12:00 TDB);
-// 21600 s = 18:00 UT, around midday at the Cape. Select with PHYMI_SCENARIO=<id>.
+// 21600 s = 18:00 UT, around midday at the Cape. Select with OSP_SCENARIO=<id>.
 [
   {
     id: "pad",

@@ -1,0 +1,27 @@
+// Propulsion and mass.
+{
+  id: "vessel_info",
+  visible: false,
+  group: "flight",
+  root: {
+    widget: "window",
+    title: "Vessel - {vessel.name}",
+    style: { left: 330, top: 340, width: 300 },
+    children: [
+      {
+        id: "propulsion",
+        widget: "column",
+        children: [
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Throttle" }, { widget: "label", text: "{vessel.throttle|percent}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Thrust" }, { widget: "label", text: "{vessel.thrust|force}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "TWR" }, { widget: "label", text: "{vessel.twr|fixed:2}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Mass" }, { widget: "label", text: "{vessel.mass|mass}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Delta-v (vac)" }, { widget: "label", text: "{vessel.delta_v|speed}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Stages" }, { widget: "label", text: "{vessel.stage_count}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Engines" }, { widget: "label", text: "running", visible: "vessel.engines_running" }, { widget: "label", class: "dim", text: "off", visible: "!vessel.engines_running" }] },
+          { widget: "row", visible: "vessel.has_rcs", children: [{ widget: "label", class: "key", text: "RCS" }, { widget: "label", text: "on", visible: "vessel.rcs" }, { widget: "label", class: "dim", text: "off", visible: "!vessel.rcs" }, { widget: "label", class: "dim", text: "{vessel.rcs_fuel|percent} propellant" }] },
+        ],
+      },
+    ],
+  },
+}

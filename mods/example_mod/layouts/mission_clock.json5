@@ -1,11 +1,13 @@
-// A new window. Toggle with F6 (see keybindings/) or the toolbar button added in patches/.
+// A new window. Toggle with F6 (see keybindings/) or the launcher button added in patches/.
+// In the "flight" group, so F3 hides it with the rest of the flight UI.
 {
   id: "example_clock",
   visible: true,
+  group: "flight",
   root: {
     widget: "window",
     title: "Mission clock",
-    style: { left: 12, bottom: 12, width: 260 },
+    style: { right: 12, bottom: 12, width: 260 },
     children: [
       { widget: "label", class: "title", text: "{time.ut|clock}" },
       { widget: "label", class: "dim", text: "{time.ut|date}" },

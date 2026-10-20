@@ -1,22 +1,24 @@
-# Phymi
+# Open Space Program
 
 A realism-focused spaceflight game in Rust + [Bevy](https://bevyengine.org) 0.20, in the spirit of
 KSP with Realism Overhaul / Real Solar System: real-scale planets, real engine performance,
-limited ignitions and ullage. Built to be modded.
+limited ignitions and ullage, rigid-body attitude with engine gimbal and SAS. Built to be
+modded.
 
 ```sh
-cargo run -p phymi_bake --release           # once: download and bake Earth's terrain (see below)
+cargo run -p osp_bake --release             # once: download and bake Earth's terrain (see below)
 cargo run                                   # launch from the Cape
-PHYMI_SCENARIO=leo cargo run                # start in low Earth orbit
+OSP_SCENARIO=leo cargo run                  # start in low Earth orbit
 cargo run --features dev                    # faster incremental builds (Bevy dynamic linking)
 cargo test --workspace                      # physics, mod loader and UI tests (no GPU needed)
-PHYMI_CAPTURE=/tmp/shots cargo run          # scripted run that saves screenshots, then exits
+OSP_CAPTURE=/tmp/shots cargo run            # scripted run that saves screenshots, then exits
 ```
 
-For debugging the view: `PHYMI_CAMERA=<yaw°>,<pitch°>,<distance m>` sets the starting
-camera, `PHYMI_START_TIME=<s since J2000>` the time of day, and `PHYMI_FPS=1` logs frame
-times. With `PHYMI_CAPTURE`, `PHYMI_CAPTURE_QUICK=1` takes a single still, and
-`PHYMI_CAPTURE_AT=20,30` launches and takes stills at those times.
+For debugging the view: `OSP_CAMERA=<yaw°>,<pitch°>,<distance m>` sets the starting
+camera, `OSP_START_TIME=<s since J2000>` the time of day, and `OSP_FPS=1` logs frame
+times. With `OSP_CAPTURE`, `OSP_CAPTURE_QUICK=1` takes a single still, and
+`OSP_CAPTURE_AT=20,30` launches (SAS on, a small pitch kick at 10 s, the Vessel and
+Attitude windows open) and takes stills at those times.
 
 The toolchain is pinned in `rust-toolchain.toml` (Bevy 0.20 needs Rust 1.97.1+).
 
@@ -29,24 +31,36 @@ Default bindings (all rebindable in `assets/core/keybindings/default.json5`):
 | Shift / Ctrl | Throttle up / down |
 | Z / X | Full throttle / cut |
 | W S / A D / Q E | Pitch / yaw / roll |
+| T | SAS on / off (modes are next to the navball) |
+| R | RCS on / off |
+| H N / J L / I K | RCS translate forward, back / left, right / up, down |
 | Space | Stage (first press arms the booster) |
 | `,` `.` `/` | Time warp down / up / stop |
 | M | Map view with predicted trajectory |
 | Right-drag, wheel | Orbit / zoom camera |
-| F1 / F2 / F3 | Help / mods & diagnostics / flight HUD |
+| F1 / F2 / F3 | Help / mods & diagnostics / hide the flight UI |
 | F5 | Reload mods and UI |
 | F12 | Data inspector (every value the UI can bind to) |
+
+## Flight UI
+
+The flight screen is split into modules, as in KSP: time warp and clocks (top left),
+altimeter (top centre), the app launcher (top right), the stage stack (bottom left), and the
+navball with throttle, SAS modes and control inputs (bottom centre). The launcher opens and
+closes the Flight, Orbit, Vessel, Attitude and Log windows; each button lights up while its
+window is open. F3 hides the whole flight UI and brings it back as it was. Every module is
+an ordinary layout record, so mods can move, restyle, replace or add to any of them.
 
 ## Layout
 
 ```
 crates/
-  phymi_sim/     Simulation core: f64, SI units, no Bevy. Tested headless.
-  phymi_mods/    Mod loader: manifests, load order, layered records, patches. No Bevy.
-  phymi_terrain/ Planet surface data: cube-sphere tiles, land-cover classes, tile packs. No Bevy.
-  phymi_bake/    Tool that downloads public Earth datasets and bakes them into tiles.
-  phymi_ui/      Data-driven UI on bevy_ui: layouts, themes, bindings, actions.
-  phymi_game/    The Bevy app wiring it all together (rendering, camera, input, publishing).
+  osp_sim/       Simulation core: f64, SI units, no Bevy. Tested headless.
+  osp_mods/      Mod loader: manifests, load order, layered records, patches. No Bevy.
+  osp_terrain/   Planet surface data: cube-sphere tiles, land-cover classes, tile packs. No Bevy.
+  osp_bake/      Tool that downloads public Earth datasets and bakes them into tiles.
+  osp_ui/        Data-driven UI on bevy_ui: layouts, themes, bindings, actions.
+  osp_game/      The Bevy app wiring it all together (rendering, camera, input, publishing).
 assets/core/     The base game, itself a mod: bodies, parts, craft, launch sites, scenarios, UI.
 mods/           Installed mods (example_mod shows every mechanism).
 docs/modding.md Modding guide and reference.
@@ -56,7 +70,7 @@ docs/modding.md Modding guide and reference.
 
 Earth is built from real data: NASA Blue Marble imagery, NOAA ETOPO 2022 elevation and
 bathymetry, ESA land cover and NASA Black Marble night lights, with 30 m elevation and 10 m
-land cover around Cape Canaveral. `cargo run -p phymi_bake --release` downloads the sources
+land cover around Cape Canaveral. `cargo run -p osp_bake --release` downloads the sources
 (about 900 MB, cached in `.bake-cache/`) and bakes them into `assets/core/terrain/earth/`
 (about 190 MB, not checked in); without it Earth is a smooth sphere.
 
@@ -106,11 +120,26 @@ the same result at any time warp.
 - **Real orientations.** IAU pole and prime-meridian models for every body, so launch
   sites are at their true latitude and longitude.
 - **RO-style engines.** Pressure-dependent Isp, limited ignitions, ullage, throttle limits.
+  An engine that needs ullage only lights while something pushes the vessel forward, so
+  after a coast the upper stage settles its propellant with RCS (R, then hold H while
+  throttling up).
+- **RCS.** Blocks of four cold-gas nozzles around a stage's rim, burning that stage's
+  propellant. They translate the vessel and, while on, add their couples to every rotation.
+  Pure rotation pushes nothing, so a coasting vessel stays on its exact conic.
+- **Rigid-body attitude.** Each stage is a cylinder with its tank shells, structure, engines
+  and a propellant column settled aft, so the centre of mass and moments of inertia change
+  as the tanks drain and stages drop. The vessel rotates about its centre of mass under
+  torque from engine gimbal (clusters can roll by gimballing sideways), reaction wheels and
+  RCS, integrated with Euler's equations. Torque-free spin is solved exactly (a free symmetric
+  top), so like a coasting orbit it is the same at any warp. SAS holds attitude or points at
+  prograde, retrograde, normal or radial in the surface or orbital frame, and holds exactly
+  on rails.
 
 The test suite checks these properties directly: bit-identical results between physics
-ticks and rails, Moon transfers identical across warp rates, a century of warp without orbit
-drift, exact atmosphere-entry ticks, near-parabolic and radial Kepler cases, and frame
-round-trips to well under a millimetre.
+ticks and rails (for trajectories and free rotation), Moon transfers identical across warp
+rates, a century of warp without orbit drift, exact atmosphere-entry ticks, near-parabolic
+and radial Kepler cases, frame round-trips to well under a millimetre, and the exact spin
+solution against numerical integration.
 
 ## Modding
 
@@ -124,7 +153,7 @@ Problems are reported in game (F2) instead of crashing. See [docs/modding.md](do
 
 - Scripting layer for mods (actions, part modules, autopilots) on top of the record and action system
 - Debris vessels from jettisoned stages; vessel switching
-- Torque / moment-of-inertia attitude, engine gimbal, SAS
+- Aerodynamic normal force and moments (angle of attack, centre of pressure)
 - Maneuver nodes on the patched-conic predictor
 - Terrain data for the Moon and planets; more high-resolution regions on Earth
 - Clouds, multiple scattering, aero heating

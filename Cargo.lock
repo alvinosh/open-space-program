@@ -4360,6 +4360,77 @@ dependencies = [
 ]
 
 [[package]]
+name = "osp_bake"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "glam",
+ "image",
+ "osp_terrain",
+ "rayon",
+ "serde_json",
+ "tiff",
+ "weezl",
+]
+
+[[package]]
+name = "osp_game"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "half",
+ "osp_mods",
+ "osp_sim",
+ "osp_terrain",
+ "osp_ui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "osp_mods"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "json5",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "osp_sim"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "json5",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "osp_terrain"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "glam",
+ "image",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "osp_ui"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "osp_mods",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "owned_ttf_parser"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4447,77 +4518,6 @@ dependencies = [
  "indexmap",
  "serde",
  "serde_derive",
-]
-
-[[package]]
-name = "phymi_bake"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "glam",
- "image",
- "phymi_terrain",
- "rayon",
- "serde_json",
- "tiff",
- "weezl",
-]
-
-[[package]]
-name = "phymi_game"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "half",
- "phymi_mods",
- "phymi_sim",
- "phymi_terrain",
- "phymi_ui",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "phymi_mods"
-version = "0.1.0"
-dependencies = [
- "indexmap",
- "json5",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "phymi_sim"
-version = "0.1.0"
-dependencies = [
- "glam",
- "json5",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "phymi_terrain"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "glam",
- "image",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "phymi_ui"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "phymi_mods",
- "serde",
- "serde_json",
 ]
 
 [[package]]

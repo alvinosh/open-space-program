@@ -1,0 +1,16 @@
+// Altitude above sea level (top centre).
+{
+  id: "altimeter",
+  group: "flight",
+  root: {
+    id: "altimeter",
+    widget: "panel",
+    class: "module",
+    style: { left: "50%", margin: [0, 0, 0, -170], top: 8, width: 340, align_items: "center" },
+    children: [
+      { widget: "label", class: "caption", text: "ALTITUDE" },
+      { widget: "label", class: "readout", text: "{vessel.altitude|distance}" },
+      { widget: "label", class: "dim", text: "{vessel.name} - {vessel.situation}, {vessel.body}" },
+    ],
+  },
+}

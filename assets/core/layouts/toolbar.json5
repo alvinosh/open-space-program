@@ -1,46 +1,22 @@
-// Bottom-right action buttons. Any action name works here, including mod-defined ones.
+// The app launcher (top right): toggles the flight modules, KSP style. Each button lights
+// up while its window is open (`ui.shown.<layout>`). Mods add their own windows here with
+// an `insert` patch on `#toolbar.children`.
 {
   id: "toolbar",
+  group: "flight",
   root: {
     id: "toolbar",
     widget: "row",
-    class: "toolbar",
+    class: "launcher",
     children: [
-      {
-        widget: "button",
-        text: "Stage",
-        action: "vessel.stage",
-      },
-      {
-        widget: "button",
-        text: "Map",
-        action: "view.toggle_map",
-      },
-      {
-        widget: "button",
-        text: "<<",
-        action: "warp.decrease",
-      },
-      {
-        widget: "button",
-        text: "1x",
-        action: "warp.stop",
-      },
-      {
-        widget: "button",
-        text: ">>",
-        action: "warp.increase",
-      },
-      {
-        widget: "button",
-        text: "Mods",
-        action: "ui.toggle:mods",
-      },
-      {
-        widget: "button",
-        text: "Help",
-        action: "ui.toggle:help",
-      },
+      { widget: "button", class: "launcher_button", text: "Flight", action: "ui.toggle:flight_info", active: "ui.shown.flight_info" },
+      { widget: "button", class: "launcher_button", text: "Orbit", action: "ui.toggle:orbit_info", active: "ui.shown.orbit_info" },
+      { widget: "button", class: "launcher_button", text: "Vessel", action: "ui.toggle:vessel_info", active: "ui.shown.vessel_info" },
+      { widget: "button", class: "launcher_button", text: "Attitude", action: "ui.toggle:attitude_info", active: "ui.shown.attitude_info" },
+      { widget: "button", class: "launcher_button", text: "Log", action: "ui.toggle:log", active: "ui.shown.log" },
+      { widget: "button", class: "launcher_button", text: "Map", action: "view.toggle_map", active: "view.map" },
+      { widget: "button", class: "launcher_button", text: "Mods", action: "ui.toggle:mods", active: "ui.shown.mods" },
+      { widget: "button", class: "launcher_button", text: "Help", action: "ui.toggle:help", active: "ui.shown.help" },
     ],
   },
 }
