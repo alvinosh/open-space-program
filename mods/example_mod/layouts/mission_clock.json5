@@ -1,0 +1,15 @@
+// A new window. Toggle with F6 (see keybindings/) or the toolbar button added in patches/.
+{
+  id: "example_clock",
+  visible: true,
+  root: {
+    widget: "window",
+    title: "Mission clock",
+    style: { left: 12, bottom: 12, width: 260 },
+    children: [
+      { widget: "label", class: "title", text: "{time.ut|clock}" },
+      { widget: "label", class: "dim", text: "{time.ut|date}" },
+      { widget: "label", class: "warning", visible: "sim.last_event", text: "Last: {sim.last_event}" },
+    ],
+  },
+}

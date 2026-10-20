@@ -1,0 +1,48 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/phymi_sim",
+  "crates/phymi_mods",
+  "crates/phymi_ui",
+  "crates/phymi_terrain",
+  "crates/phymi_bake",
+  "crates/phymi_game",
+]
+default-members = ["crates/phymi_game"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+bevy = { version = "0.20", features = ["serialize"] }
+serde = { version = "1", features = ["derive"] }
+json5 = "1.3"
+serde_json = { version = "1", features = ["preserve_order"] }
+indexmap = "2"
+thiserror = "2"
+phymi_sim = { path = "crates/phymi_sim" }
+phymi_mods = { path = "crates/phymi_mods" }
+phymi_ui = { path = "crates/phymi_ui" }
+phymi_terrain = { path = "crates/phymi_terrain" }
+
+# Bevy is very slow in debug without optimisation; optimise deps fully and our code a little.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# Terrain sampling runs for every vertex and texel of every chunk, through the simulation's
+# terrain; keep both fast in dev (neither depends on Bevy, so this costs little build time).
+[profile.dev.package.phymi_terrain]
+opt-level = 3
+
+[profile.dev.package.phymi_sim]
+opt-level = 3
+
+# Bevy systems routinely take many parameters and complex query types.
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"

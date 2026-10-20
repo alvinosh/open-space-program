@@ -1,0 +1,18 @@
+// Tanks. `contents` maps resource -> mass in kg.
+[
+  {
+    id: "Kerolox Tank 3.7m x 40m",
+    dry_mass: 18000,
+    contents: { Kerosene: 117800, LqdOxygen: 277900 },
+  },
+  {
+    id: "Kerolox Tank 3.7m x 12m",
+    dry_mass: 2500,
+    contents: { Kerosene: 27580, LqdOxygen: 65090 },
+  },
+  {
+    id: "Hypergolic Tank 2.4m",
+    dry_mass: 300,
+    contents: { Aerozine50: 2400, NTO: 4560 },
+  },
+]

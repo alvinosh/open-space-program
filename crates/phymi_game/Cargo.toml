@@ -1,0 +1,26 @@
+[package]
+name = "phymi_game"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "phymi"
+path = "src/main.rs"
+
+[dependencies]
+bevy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+phymi_sim = { workspace = true }
+phymi_mods = { workspace = true }
+phymi_ui = { workspace = true }
+phymi_terrain = { workspace = true }
+half = "2"
+
+[features]
+# Faster incremental builds during development: `cargo run --features dev`
+dev = ["bevy/dynamic_linking"]
+
+[lints]
+workspace = true

@@ -1,0 +1,10 @@
+// A small mod showing every mechanism: new records, new UI, a keybinding, and patches to
+// the base game's data and UI. Delete this folder (or set enabled: false) to remove it.
+{
+  id: "example_mod",
+  name: "Example Mod",
+  version: "1.0.0",
+  authors: ["Phymi"],
+  description: "Adds a mission clock window, a HUD line and a hotter RL10 variant.",
+  dependencies: ["core"],
+}

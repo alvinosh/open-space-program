@@ -1,0 +1,10 @@
+// Data patches: derive a new engine from a stock one without touching the original.
+[
+  {
+    op: "copy",
+    collection: "engines",
+    target: "H-10",
+    new_id: "H-10B",
+    value: { thrust_vac: 130000, isp_vac: 462 },
+  },
+]

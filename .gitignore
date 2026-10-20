@@ -1,0 +1,6 @@
+/target
+.DS_Store
+# Downloads for the terrain bake (cargo run -p phymi_bake --release).
+/.bake-cache/
+# Baked terrain is generated, and large: keep only the README.
+/assets/core/terrain/*/

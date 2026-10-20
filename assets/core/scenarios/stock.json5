@@ -1,0 +1,26 @@
+// New-game setups. start_time is seconds since J2000 (2000-01-01 12:00 TDB);
+// 21600 s = 18:00 UT, around midday at the Cape. Select with PHYMI_SCENARIO=<id>.
+[
+  {
+    id: "pad",
+    name: "Launch from the Cape",
+    start_time: 21600,
+    craft: "pathfinder",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
+    // Parked in a 300 km circular orbit: good for testing time warp and transfers.
+    // A ~3.1 km/s prograde burn from here reaches the Moon.
+    id: "leo",
+    name: "Low Earth orbit",
+    start_time: 21600,
+    craft: "upper_stage",
+    start: {
+      type: "Orbit",
+      body: "Earth",
+      periapsis_altitude: 300000,
+      apoapsis_altitude: 300000,
+      inclination: 28.6,
+    },
+  },
+]

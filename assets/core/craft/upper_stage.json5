@@ -1,0 +1,21 @@
+// The Pathfinder upper stage and payload on their own, for in-orbit scenarios.
+{
+  id: "upper_stage",
+  name: "Pathfinder Upper",
+  stages: [
+    {
+      name: "Upper Stage",
+      engines: ["K-1 Vacuum"],
+      tanks: ["Kerolox Tank 3.7m x 12m"],
+      structure_mass: 1000,
+      diameter: 3.7,
+      length: 14,
+    },
+    {
+      name: "Payload",
+      structure_mass: 15000,
+      diameter: 3.7,
+      length: 11,
+    },
+  ],
+}

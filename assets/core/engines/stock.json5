@@ -1,0 +1,48 @@
+// Engines. Masses in kg, thrust in N, Isp in s.
+// `propellants` maps resource -> mass ratio (normalised at load), so patches can change one entry.
+[
+  {
+    id: "K-1 Booster", // Merlin 1D-class gas-generator kerolox
+    mass: 470,
+    thrust_vac: 914000,
+    isp_vac: 311,
+    isp_sl: 282,
+    min_throttle: 0.4,
+    ignitions: 3,
+    requires_ullage: true,
+    propellants: { Kerosene: 1.0, LqdOxygen: 2.36 },
+  },
+  {
+    id: "K-1 Vacuum", // vacuum-optimised kerolox upper stage engine
+    mass: 490,
+    thrust_vac: 981000,
+    isp_vac: 348,
+    isp_sl: 100,
+    min_throttle: 0.39,
+    ignitions: 4,
+    requires_ullage: true,
+    propellants: { Kerosene: 1.0, LqdOxygen: 2.36 },
+  },
+  {
+    id: "H-10", // RL10-class expander-cycle hydrolox
+    mass: 301,
+    thrust_vac: 110000,
+    isp_vac: 465,
+    isp_sl: 180,
+    min_throttle: 1.0,
+    ignitions: 15,
+    requires_ullage: true,
+    propellants: { LqdHydrogen: 1.0, LqdOxygen: 5.5 },
+  },
+  {
+    id: "A-10", // AJ10-class pressure-fed hypergolic
+    mass: 90,
+    thrust_vac: 43700,
+    isp_vac: 319,
+    isp_sl: 150,
+    min_throttle: 1.0,
+    ignitions: 50,
+    requires_ullage: false,
+    propellants: { Aerozine50: 1.0, NTO: 1.9 },
+  },
+]

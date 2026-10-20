@@ -1,0 +1,32 @@
+// Patches to the base game's UI, addressed by node id (`#id`) inside layout records.
+[
+  {
+    op: "insert",
+    collection: "layouts",
+    target: "flight_hud",
+    path: "#flight.children",
+    value: {
+      widget: "row",
+      children: [
+        { widget: "label", class: "key", text: "Lat / Lon" },
+        { widget: "label", text: "{vessel.latitude|fixed:3} / {vessel.longitude|fixed:3}" },
+      ],
+    },
+  },
+  {
+    op: "insert",
+    collection: "layouts",
+    target: "toolbar",
+    path: "#toolbar.children",
+    index: 0,
+    value: { widget: "button", text: "Clock", action: "ui.toggle:example_clock" },
+  },
+  // Restyle: a different fuel/throttle bar colour.
+  {
+    op: "set",
+    collection: "themes",
+    target: "default",
+    path: "classes.bar_fill.background",
+    value: "#4fb3ff",
+  },
+]

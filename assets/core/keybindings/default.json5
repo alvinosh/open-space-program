@@ -1,0 +1,30 @@
+// Key -> action bindings. `hold: true` actions are active while the key is down.
+// Key names are Bevy KeyCodes: "KeyA".."KeyZ", "Digit0".., "F1".., "Space", "ShiftLeft",
+// "ControlLeft", "Comma", "Period", "Slash", "ArrowUp", ...
+// Mods can add another keybindings record or patch this one (e.g. op "set" on
+// path "bindings[action=vessel.stage].key").
+{
+  id: "default",
+  bindings: [
+    { key: "Space", action: "vessel.stage" },
+    { key: "ShiftLeft", action: "vessel.throttle_up", hold: true },
+    { key: "ControlLeft", action: "vessel.throttle_down", hold: true },
+    { key: "KeyZ", action: "vessel.throttle_full" },
+    { key: "KeyX", action: "vessel.throttle_cut" },
+    { key: "KeyW", action: "vessel.pitch_down", hold: true },
+    { key: "KeyS", action: "vessel.pitch_up", hold: true },
+    { key: "KeyA", action: "vessel.yaw_left", hold: true },
+    { key: "KeyD", action: "vessel.yaw_right", hold: true },
+    { key: "KeyQ", action: "vessel.roll_left", hold: true },
+    { key: "KeyE", action: "vessel.roll_right", hold: true },
+    { key: "Period", action: "warp.increase" },
+    { key: "Comma", action: "warp.decrease" },
+    { key: "Slash", action: "warp.stop" },
+    { key: "KeyM", action: "view.toggle_map" },
+    { key: "F1", action: "ui.toggle:help" },
+    { key: "F2", action: "ui.toggle:mods" },
+    { key: "F3", action: "ui.toggle:flight_hud" },
+    { key: "F5", action: "game.reload" },
+    { key: "F12", action: "ui.toggle:data_inspector" },
+  ],
+}

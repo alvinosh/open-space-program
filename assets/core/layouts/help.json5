@@ -1,0 +1,184 @@
+// Controls reference (F1).
+{
+  id: "help",
+  visible: false,
+  root: {
+    widget: "window",
+    title: "Controls",
+    style: {
+      left: "40%",
+      top: 120,
+      width: 360,
+    },
+    children: [
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: "Shift / Ctrl",
+          },
+          {
+            widget: "label",
+            text: "throttle up / down",
+          },
+        ],
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: "Z / X",
+          },
+          {
+            widget: "label",
+            text: "full / cut throttle",
+          },
+        ],
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: "W S / A D / Q E",
+          },
+          {
+            widget: "label",
+            text: "pitch / yaw / roll",
+          },
+        ],
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: "Space",
+          },
+          {
+            widget: "label",
+            text: "stage",
+          },
+        ],
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: ", . /",
+          },
+          {
+            widget: "label",
+            text: "warp down / up / stop",
+          },
+        ],
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: "M",
+          },
+          {
+            widget: "label",
+            text: "map view",
+          },
+        ],
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: "Right drag, wheel",
+          },
+          {
+            widget: "label",
+            text: "orbit / zoom camera",
+          },
+        ],
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: "F1",
+          },
+          {
+            widget: "label",
+            text: "this help",
+          },
+        ],
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: "F2",
+          },
+          {
+            widget: "label",
+            text: "mods & diagnostics",
+          },
+        ],
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: "F3",
+          },
+          {
+            widget: "label",
+            text: "toggle flight HUD",
+          },
+        ],
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: "F5",
+          },
+          {
+            widget: "label",
+            text: "reload mods & UI",
+          },
+        ],
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "label",
+            class: "key",
+            text: "F12",
+          },
+          {
+            widget: "label",
+            text: "data inspector (for modders)",
+          },
+        ],
+      },
+    ],
+  },
+}

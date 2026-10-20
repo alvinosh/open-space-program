@@ -1,0 +1,384 @@
+// The main flight readout. Node ids (#header, #flight, #orbit, #propulsion, #stages, #log)
+// are stable so mods can insert into or restyle sections with `#id` patch paths.
+{
+  id: "flight_hud",
+  root: {
+    id: "hud",
+    widget: "panel",
+    class: "hud",
+    children: [
+      {
+        id: "header",
+        widget: "column",
+        children: [
+          {
+            widget: "label",
+            text: "{vessel.name}",
+            class: "title",
+          },
+          {
+            widget: "label",
+            text: "{vessel.situation} - {vessel.body} - {vessel.motion}",
+            class: "dim",
+          },
+          {
+            widget: "label",
+            text: "{time.ut|date}   warp {time.warp}x ({time.warp_mode})",
+            class: "dim",
+          },
+          {
+            widget: "label",
+            text: "Simulation is lagging behind the requested warp",
+            class: "warning",
+            visible: "time.lagging",
+          },
+          {
+            widget: "label",
+            text: "{time.notice}",
+            class: "warning",
+            visible: "time.notice",
+          },
+        ],
+      },
+      {
+        widget: "label",
+        text: "FLIGHT",
+        class: "section",
+      },
+      {
+        id: "flight",
+        widget: "column",
+        children: [
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Altitude",
+              },
+              {
+                widget: "label",
+                text: "{vessel.altitude|distance}",
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Vertical speed",
+              },
+              {
+                widget: "label",
+                text: "{vessel.vertical_speed|speed}",
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Surface speed",
+              },
+              {
+                widget: "label",
+                text: "{vessel.surface_speed|speed}",
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Orbital speed",
+              },
+              {
+                widget: "label",
+                text: "{vessel.orbital_speed|speed}",
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Mach / Q",
+              },
+              {
+                widget: "label",
+                text: "{vessel.mach|fixed:2}  /  {vessel.dynamic_pressure|pressure}",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        widget: "label",
+        text: "ORBIT",
+        class: "section",
+      },
+      {
+        id: "orbit",
+        widget: "column",
+        children: [
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Apoapsis",
+              },
+              {
+                widget: "label",
+                text: "{orbit.apoapsis|distance}",
+              },
+            ],
+            visible: "!orbit.escape",
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Apoapsis",
+              },
+              {
+                widget: "label",
+                text: "escape trajectory",
+              },
+            ],
+            visible: "orbit.escape",
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Periapsis",
+              },
+              {
+                widget: "label",
+                text: "{orbit.periapsis|distance}",
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Inclination",
+              },
+              {
+                widget: "label",
+                text: "{orbit.inclination|degrees}",
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Eccentricity",
+              },
+              {
+                widget: "label",
+                text: "{orbit.eccentricity|fixed:4}",
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Period",
+              },
+              {
+                widget: "label",
+                text: "{orbit.period|duration}",
+              },
+            ],
+            visible: "orbit.period",
+          },
+          {
+            id: "events",
+            widget: "column",
+            repeat: "orbit.events",
+            children: [
+              {
+                widget: "label",
+                text: "{item.label} in {item.time_to|duration}",
+                class: "warning",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        widget: "label",
+        text: "PROPULSION",
+        class: "section",
+      },
+      {
+        id: "propulsion",
+        widget: "column",
+        children: [
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Throttle {vessel.throttle|percent}",
+              },
+              {
+                widget: "bar",
+                value: "vessel.throttle",
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Thrust / TWR",
+              },
+              {
+                widget: "label",
+                text: "{vessel.thrust|force}  /  {vessel.twr|fixed:2}",
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Mass",
+              },
+              {
+                widget: "label",
+                text: "{vessel.mass|mass}",
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Acceleration",
+              },
+              {
+                widget: "label",
+                text: "{vessel.accel_g|fixed:2} g",
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "key",
+                text: "Delta-v (vac)",
+              },
+              {
+                widget: "label",
+                text: "{vessel.delta_v|speed}",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        widget: "label",
+        text: "STAGES",
+        class: "section",
+      },
+      {
+        id: "stages",
+        widget: "column",
+        repeat: "vessel.stages",
+        children: [
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "marker",
+                text: ">",
+                visible: "item.active",
+              },
+              {
+                widget: "label",
+                class: "marker",
+                text: " ",
+                visible: "!item.active",
+              },
+              {
+                widget: "label",
+                class: "narrow",
+                text: "{item.name}",
+              },
+              {
+                widget: "label",
+                class: "dim narrow",
+                text: "{item.delta_v|speed}",
+              },
+              {
+                widget: "label",
+                class: "dim nowrap",
+                text: "ign {item.ignitions}",
+                visible: "item.ignitions",
+              },
+              {
+                widget: "bar",
+                value: "item.fuel",
+                visible: "item.has_fuel",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        widget: "label",
+        text: "LOG",
+        class: "section",
+      },
+      {
+        id: "log",
+        widget: "column",
+        repeat: "vessel.log",
+        children: [
+          {
+            widget: "label",
+            text: "[{item.time|clock}] {item.message}",
+            class: "dim",
+          },
+        ],
+      },
+    ],
+  },
+}

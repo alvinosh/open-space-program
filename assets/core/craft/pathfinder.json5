@@ -1,0 +1,32 @@
+// Two-stage kerolox launcher with a 15 t payload. Stages are listed in firing order.
+{
+  id: "pathfinder",
+  name: "Pathfinder",
+  stages: [
+    {
+      name: "Booster",
+      engines: [
+        "K-1 Booster", "K-1 Booster", "K-1 Booster",
+        "K-1 Booster", "K-1 Booster", "K-1 Booster",
+        "K-1 Booster", "K-1 Booster", "K-1 Booster",
+      ],
+      tanks: ["Kerolox Tank 3.7m x 40m"],
+      diameter: 3.7,
+      length: 42,
+    },
+    {
+      name: "Upper Stage",
+      engines: ["K-1 Vacuum"],
+      tanks: ["Kerolox Tank 3.7m x 12m"],
+      structure_mass: 1000,
+      diameter: 3.7,
+      length: 14,
+    },
+    {
+      name: "Payload",
+      structure_mass: 15000,
+      diameter: 3.7,
+      length: 11,
+    },
+  ],
+}

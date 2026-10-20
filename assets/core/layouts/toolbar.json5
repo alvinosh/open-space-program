@@ -1,0 +1,46 @@
+// Bottom-right action buttons. Any action name works here, including mod-defined ones.
+{
+  id: "toolbar",
+  root: {
+    id: "toolbar",
+    widget: "row",
+    class: "toolbar",
+    children: [
+      {
+        widget: "button",
+        text: "Stage",
+        action: "vessel.stage",
+      },
+      {
+        widget: "button",
+        text: "Map",
+        action: "view.toggle_map",
+      },
+      {
+        widget: "button",
+        text: "<<",
+        action: "warp.decrease",
+      },
+      {
+        widget: "button",
+        text: "1x",
+        action: "warp.stop",
+      },
+      {
+        widget: "button",
+        text: ">>",
+        action: "warp.increase",
+      },
+      {
+        widget: "button",
+        text: "Mods",
+        action: "ui.toggle:mods",
+      },
+      {
+        widget: "button",
+        text: "Help",
+        action: "ui.toggle:help",
+      },
+    ],
+  },
+}

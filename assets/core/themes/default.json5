@@ -1,0 +1,65 @@
+// Default theme. Every node gets the class named after its widget, then the classes in its
+// `class` string, then its inline `style`. Mods restyle the game by patching these classes
+// or adding another theme record (all themes are merged in load order).
+// Colours: "#rgb", "#rrggbb", "#rrggbbaa" or [r, g, b(, a)] in 0..1.
+{
+  id: "default",
+  classes: {
+    // --- widget defaults ---
+    column: { gap: 2 },
+    row: { gap: 8, align_items: "center" },
+    spacer: { grow: 1 },
+    label: { color: "#d8eedb", font_size: 14 },
+    button: {
+      padding: [4, 10],
+      background: "#26384a",
+      hover_background: "#3a5672",
+      radius: 4,
+      color: "#eef6ff",
+      font_size: 14,
+      align_items: "center",
+      justify_content: "center",
+    },
+    bar: { height: 6, min_width: 60, grow: 1, background: "#18222c", radius: 3, clip: true },
+    bar_fill: { background: "#5fd38a" },
+    panel: {
+      padding: 10,
+      gap: 2,
+      background: [0.03, 0.05, 0.07, 0.8],
+      radius: 6,
+      border: 1,
+      border_color: [1, 1, 1, 0.08],
+    },
+    window: {
+      position: "absolute",
+      min_width: 240,
+      background: [0.04, 0.06, 0.09, 0.94],
+      radius: 6,
+      border: 1,
+      border_color: [1, 1, 1, 0.14],
+    },
+    window_title: {
+      direction: "row",
+      gap: 6,
+      padding: [6, 8],
+      align_items: "center",
+      background: [1, 1, 1, 0.06],
+    },
+    window_title_text: { color: "#ffffff", font_size: 14 },
+    window_content: { padding: 10, gap: 3 },
+    window_close: { padding: [0, 6], background: [0, 0, 0, 0], hover_background: "#9a2f2f", font_size: 13 },
+
+    // --- named classes ---
+    hud: { position: "absolute", left: 12, top: 12, width: 380 },
+    toolbar: { position: "absolute", right: 12, bottom: 12, direction: "row", gap: 6 },
+    title: { color: "#ffffff", font_size: 17 },
+    section: { color: "#7fb8e0", font_size: 12, margin: [8, 0, 2, 0] },
+    dim: { color: [1, 1, 1, 0.55], font_size: 12 },
+    key: { color: [1, 1, 1, 0.6], min_width: 120 },
+    narrow: { min_width: 104, shrink: 0 },
+    nowrap: { shrink: 0 },
+    warning: { color: "#ffcc44" },
+    error: { color: "#ff6b6b" },
+    marker: { color: "#5fd38a", min_width: 10 },
+  },
+}
