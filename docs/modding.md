@@ -68,10 +68,14 @@ parts of it instead.
 | Collection | Contents | Notes |
 | --- | --- | --- |
 | `bodies` | Planets, moons, stars | Keplerian `orbit` (J2000 ecliptic, degrees), IAU `rotation`, optional `atmosphere`, `terrain` dataset and `max_terrain_height` (m) |
-| `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }` |
-| `tanks` | Tanks | `dry_mass`, `contents: { Name: kg }` |
+| `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }`, `length` and `exit_diameter` (m), `model` |
+| `resources` | Propellants and gases | `density` (kg/m³ as stored), storage `temperature` (K) and `pressure` (Pa) |
+| `materials` | Structural materials | `density` (kg/m³), `yield_strength` and `elastic_modulus` (Pa) |
+| `tank_types` | How procedural tanks are built | `material`, operating `pressure` (Pa), `min_gauge` (m), `stiffening`, `buckling_factor`, `insulation` (kg/m²), `min_temperature` (K), `utilization`, `safety_factor`, `design_load` (g), optional `propellants` allowlist; see [Procedural tanks and fins](#procedural-tanks-and-fins) |
 | `reaction_wheels` | Reaction wheels | `mass` (kg), `torque` (N·m about each axis) |
-| `craft` | Vessels | `stages` in firing order: `engines`, `tanks`, `reaction_wheels`, `structure_mass`, `diameter`, `length` |
+| `rcs` | RCS blocks (four nozzles each) | `mass` (kg), `thrust` (N per nozzle, vacuum), `isp_vac`/`isp_sl` (s), `propellants: { Name: mass ratio }`, `model` |
+| `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), `model` |
+| `craft` | Vessels | `stages` in firing order: `engines`, procedural `tanks` and `fins`, `reaction_wheels`, `rcs`, `pod`, `structure_mass`, `diameter`, `length` |
 | `launch_sites` | Launch sites | Position, `heading`, optional `pad` and `roads`; see [Launch sites](#launch-sites) |
 | `scenarios` | New-game setups | `start: { type: "LaunchSite", site: "<id>" }` or `{ type: "Orbit", ... }`; pick with `OSP_SCENARIO=<id>` |
 | `layouts` | UI windows and panels | See [User interface](#user-interface) |
@@ -84,16 +88,87 @@ See the files in `assets/core` for complete, commented examples of each.
 
 A stage's `diameter` and `length` shape its rotation as well as its looks. Each stage is
 modelled as a cylinder: tank dry mass as a thin shell along it, `structure_mass` (and
-reaction wheels) as a uniform solid, engines as point masses on its base, and propellant as
-a solid column settled at the aft end. That gives the centre of mass and the moments of
-inertia, which change as tanks drain and stages drop.
+reaction wheels, RCS blocks and the crew pod) as a uniform solid, engines as point masses on
+its base, fins as rings of mass at their centroid, and propellant as a solid column settled
+at the aft end. That gives the centre of mass and the moments of inertia, which change as
+tanks drain and stages drop.
 
 Control torque comes from the bottom stage's burning engines swivelling up to
 `gimbal_range`, and from reaction wheels anywhere in the stack. A single engine sits on the
 axis and cannot roll the vessel; two to six engines sit on a ring at half the stage
 radius, and seven or more on a ring at 65% around a central engine, so clusters roll by
-gimballing sideways. With the engines off, only reaction wheels can turn the vessel, so
-give upper stages and payloads some.
+gimballing sideways. With the engines off, only reaction wheels and RCS can turn the
+vessel, so give upper stages and payloads some.
+
+A stage's `rcs` blocks sit evenly around its forward rim (list four for full control). Each
+has four nozzles: forward and back ones pitch, yaw and push along the axis, sideways ones
+roll and push sideways. They burn the propellants they name from tanks on the same stage,
+so give the stage a tank of it. RCS only fires while the player has it on (R). Engines with
+`requires_ullage` only light while the vessel is being pushed forward, and after a coast
+the RCS forward translation (H) is what does that.
+
+### Procedural tanks and fins
+
+Tanks and fins are not catalogue parts: a stage describes them, and the game sizes them
+from their material and what they must withstand.
+
+```json5
+tanks: [
+  // Cylinders stack up the stage from its base, in order, at the stage's diameter
+  // unless `diameter` is given. Length includes the √2:1 domes.
+  { type: "Isogrid Al-Li", length: 9.6, design_load: 6.5,
+    propellants: { Kerosene: 1, LqdOxygen: 2.36 } },          // mass ratio
+  // Spheres (pressurant bottles) sit inside the stage, off the load path.
+  { type: "COPV", shape: "sphere", diameter: 1.35, propellants: { Nitrogen: 1 } },
+],
+fins: { count: 4, root_chord: 2.4, tip_chord: 1.0, span: 1.1, sweep: 1.2,
+        thickness: 0.02, material: "Al 2219-T87" },
+```
+
+A **tank** is filled to `utilization` of its internal volume in the given mass ratio, using
+each resource's density. It can only hold a resource if its type is insulated down to the
+resource's storage temperature (bare metal is good to 77 K: liquid oxygen yes, liquid
+hydrogen no), is rated for its storage pressure (compressed gases need a COPV), and allows
+it (`propellants`, if listed). Its wall is as thin as the material allows: the design
+pressure is the type's operating `pressure` plus the hydrostatic head of the full tank at
+`design_load` g, and the wall must keep the material `safety_factor` below yield at that,
+but is never thinner than `min_gauge`. Mass is that wall times `stiffening` (isogrid ribs,
+stringers, liners) plus `insulation`. That gives two strengths:
+
+- **Burst:** the internal pressure at which the wall yields. In flight the tank sees its
+  operating pressure plus the hydrostatic head of what is left in it at the current
+  acceleration, so an upper stage that rides a 6 g booster with full tanks needs a higher
+  `design_load` than a first stage, which is only full at liftoff.
+- **Buckling:** the axial load at which the cylinder collapses: thin-shell buckling with
+  the NASA SP-8007 knockdown factor, times `buckling_factor` for grid stiffening, plus the
+  load the tank's own pressure carries (which is all that holds up a balloon tank). In
+  flight a tank carries everything stacked above it at the current acceleration, plus the
+  drag on the nose; on the pad, the stack's weight.
+
+A **fin** is a solid plate of its `material`. The air pushes on it at the vessel's angle of
+attack (lift slope from DATCOM below Mach 0.8, Ackeret above Mach 1.2, plus crossflow drag
+at large angles) and its root bends; it fails when the root reaches yield. Fins add mass
+and drag. They do not turn the vessel yet, because the game has no aerodynamic moment
+model.
+
+When any part goes past 100% of its strength it fails: fins tear off; a tank failure breaks
+the vessel up (engines, RCS and controls stop, and warp halts). The Structure window shows
+every part's make-up, strength and current load.
+
+### Models
+
+Engines, RCS blocks and crew pods can have a glTF model (`model`, a path relative to the mod
+root, e.g. `"models/engines/my_engine.glb"`); the highest-priority mod's copy of the file
+wins. Real scale in metres, +Y up (Blender's default glTF export from Z-up):
+
+| Part | Origin | Orientation |
+| --- | --- | --- |
+| Engine | Gimbal pivot, top centre | Nozzle down −Y; exit at `−length` |
+| RCS block | Centre of the face against the hull | +X out from the hull, +Y towards the nose |
+| Pod | Centre of the base | Nose up +Y; `height` tall |
+
+Without a model the game draws a stand-in of the right size. The stock models are built by
+scripts in `tools/blender/`.
 
 ### Launch sites
 
@@ -285,6 +360,7 @@ The flight UI is a set of modules, each its own layout in the `flight` group:
 | `orbit_info` | Apsides, inclination, period, predicted events | `#orbit`, `#events` |
 | `vessel_info` | Thrust, TWR, mass, delta-v | `#propulsion` |
 | `attitude_info` | Centre of mass, inertia, control authority, rates | `#attitude` |
+| `structure_info` | Every tank and fin set: make-up, strength, current load | `#parts` |
 | `log` | Flight log | `#log` |
 
 To add a window to the launcher, insert a button into `#toolbar.children` (see
@@ -294,7 +370,7 @@ To add a window to the launcher, insert a button into `#toolbar.children` (see
 
 ```json5
 { id: "my_keys", bindings: [ { key: "F6", action: "ui.toggle:my_window" },
-                             { key: "KeyR", action: "vessel.throttle_up", hold: true } ] }
+                             { key: "KeyU", action: "vessel.throttle_up", hold: true } ] }
 ```
 
 `key` is a Bevy `KeyCode` name (`KeyA`, `Digit1`, `F1`, `Space`, `ShiftLeft`, `Comma`, ...).
@@ -320,17 +396,20 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.throttle`, `vessel.thrust`, `vessel.twr`, `vessel.mass`, `vessel.accel_g` | 0..1, N, -, kg, g |
 | `vessel.delta_v`, `vessel.stage_count`, `vessel.landed`, `vessel.engines_running` | |
 | `vessel.sas`, `vessel.sas_mode`, `vessel.sas_mode_label` | SAS on; mode (`off`, `stability`, `prograde`, `retrograde`, `normal`, `anti_normal`, `radial_out`, `radial_in`) |
+| `vessel.rcs`, `vessel.has_rcs`, `vessel.rcs_fuel` | RCS on; any RCS with a propellant supply in the stack; scarcest RCS propellant left (0..1) |
+| `vessel.structure_load`, `vessel.destroyed` | The most loaded part's load over its strength (1 = failing); broke up |
 | `nav.frame`, `nav.speed` | `"Surface"` or `"Orbit"`; speed in that frame, m/s |
 | `nav.heading`, `nav.pitch`, `nav.roll` | Attitude against the local horizon, degrees (roll is empty pointing straight up or down) |
 | `control.pitch`, `control.yaw`, `control.roll` | Rotation command applied (pilot or SAS), −1..1 |
 | `attitude.com`, `attitude.moi_pitch`, `attitude.moi_roll` | Centre of mass above the base (m); moments of inertia (kg·m²) |
 | `attitude.torque_pitch`, `attitude.torque_roll`, `attitude.accel_pitch`, `attitude.accel_roll` | Torque available (N·m) and the angular acceleration it gives (deg/s²) |
 | `attitude.rate_pitch`, `attitude.rate_yaw`, `attitude.rate_roll` | Angular velocity, deg/s |
-| `attitude.gimbal`, `attitude.gimbal_range`, `attitude.wheels` | Current and maximum gimbal angle (deg); reaction wheel torque (N·m) |
+| `attitude.gimbal`, `attitude.gimbal_range`, `attitude.wheels`, `attitude.rcs` | Current and maximum gimbal angle (deg); reaction wheel and RCS pitch torque (N·m) |
 | `time.met`, `time.launched` | Seconds since liftoff |
 | `screen.message` | The latest log message, for a few seconds |
 | `ui.shown.<layout>` | Whether a layout is showing |
 | `vessel.stages[]` | `name`, `active`, `delta_v`, `burn_time`, `fuel` (0..1), `has_fuel`, `ignitions`, `engines` |
+| `vessel.parts[]` | Tanks and fin sets: `stage`, `name`, `tank` (bool), `size`, `material`, `mass` (kg, empty), `load` (0..1+), `mode` (`buckling`, `pressure`, `bending`); tanks also `volume` (m³), `utilization`, `contents`, `wall` (mm), `max_pressure` (bar), `max_axial_load` (N, cylinders); fins `max_fin_force` (N per fin) |
 | `vessel.log[]` | `time`, `message` (newest first) |
 | `orbit.apoapsis`, `orbit.periapsis` | Altitudes, m (apoapsis empty when escaping) |
 | `orbit.escape`, `orbit.inclination`, `orbit.eccentricity`, `orbit.semi_major_axis`, `orbit.period` | |
@@ -347,6 +426,8 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.throttle_up`, `vessel.throttle_down` | hold |
 | `vessel.pitch_up`, `vessel.pitch_down`, `vessel.yaw_left`, `vessel.yaw_right`, `vessel.roll_left`, `vessel.roll_right` | hold |
 | `vessel.sas_toggle`, `vessel.sas_mode:<mode>` | SAS on/off; select a mode (switches SAS on) |
+| `vessel.rcs_toggle` | RCS on/off |
+| `vessel.translate_forward`, `vessel.translate_back`, `vessel.translate_left`, `vessel.translate_right`, `vessel.translate_up`, `vessel.translate_down` | hold; RCS translation |
 | `nav.toggle_frame` | Switch prograde and speed between surface and orbit |
 | `warp.increase`, `warp.decrease`, `warp.stop` | |
 | `view.toggle_map` | |

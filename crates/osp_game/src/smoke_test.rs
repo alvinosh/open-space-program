@@ -39,12 +39,13 @@ impl Plugin for SmokeTestPlugin {
                 .split(',')
                 .filter_map(|t| t.trim().parse().ok())
                 .collect();
-            let actions = if let Some(last) = times.last() {
+            let mut actions = if let Some(last) = times.last() {
                 // Launch, then stills at the given times (debugging the ascent).
                 let mut actions = vec![
                     (0.5, Action::MapView(false)),
                     (1.0, Action::Ui("ui.show:attitude_info")),
                     (1.0, Action::Ui("ui.show:vessel_info")),
+                    (1.0, Action::Ui("ui.show:structure_info")),
                     (3.5, Action::Launch),
                 ];
                 actions.extend_from_slice(PITCH_KICK);
@@ -62,6 +63,10 @@ impl Plugin for SmokeTestPlugin {
             } else {
                 PAD_SCRIPT.to_vec()
             };
+            // `OSP_CAPTURE_HIDE_UI=1`: the vehicle and world only (checking part models).
+            if std::env::var_os("OSP_CAPTURE_HIDE_UI").is_some() {
+                actions.insert(0, (0.6, Action::Ui("ui.hide_group:flight")));
+            }
             app.insert_resource(Script {
                 dir: PathBuf::from(dir),
                 step: 0,
@@ -110,6 +115,8 @@ enum Action {
     /// Pilot rotation input (pitch up, yaw right, roll right).
     Steer(DVec3),
     Sas(SasMode),
+    /// RCS on and translating (right, down, forward), or off.
+    Rcs(Option<DVec3>),
     /// Fire a UI action, e.g. to open a window.
     Ui(&'static str),
     MapView(bool),
@@ -122,6 +129,9 @@ enum Action {
 const ORBIT_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (3.0, Action::Capture("orbit.png")),
+    (3.1, Action::Rcs(Some(DVec3::Z))),
+    (3.4, Action::Capture("orbit_rcs.png")),
+    (3.5, Action::Rcs(None)),
     (3.5, Action::MapView(true)),
     (5.0, Action::Capture("orbit_map.png")),
     // On rails SAS snaps onto its target and follows it around the orbit.
@@ -199,6 +209,11 @@ fn run_script(
             let ut = sim.universe.time();
             let (vessel, system) = sim.active_vessel_in_system();
             vessel.set_sas_mode(system, ut, mode);
+        }
+        Action::Rcs(translation) => {
+            let vessel = sim.active_vessel_mut();
+            vessel.set_rcs(translation.is_some());
+            vessel.translation_input = translation.unwrap_or(DVec3::ZERO);
         }
         Action::Ui(action) => {
             ui.write(UiAction(action.into()));

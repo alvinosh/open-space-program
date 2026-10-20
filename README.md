@@ -9,6 +9,8 @@ modded.
 cargo run -p osp_bake --release             # once: download and bake Earth's terrain (see below)
 cargo run                                   # launch from the Cape
 OSP_SCENARIO=leo cargo run                  # start in low Earth orbit
+OSP_SCENARIO=crew cargo run                 # Pathfinder with a four-person capsule
+OSP_SCENARIO=sounder cargo run              # finned suborbital hop with a one-person capsule
 cargo run --features dev                    # faster incremental builds (Bevy dynamic linking)
 cargo test --workspace                      # physics, mod loader and UI tests (no GPU needed)
 OSP_CAPTURE=/tmp/shots cargo run            # scripted run that saves screenshots, then exits
@@ -17,8 +19,9 @@ OSP_CAPTURE=/tmp/shots cargo run            # scripted run that saves screenshot
 For debugging the view: `OSP_CAMERA=<yaw°>,<pitch°>,<distance m>` sets the starting
 camera, `OSP_START_TIME=<s since J2000>` the time of day, and `OSP_FPS=1` logs frame
 times. With `OSP_CAPTURE`, `OSP_CAPTURE_QUICK=1` takes a single still, and
-`OSP_CAPTURE_AT=20,30` launches (SAS on, a small pitch kick at 10 s, the Vessel and
-Attitude windows open) and takes stills at those times.
+`OSP_CAPTURE_AT=20,30` launches (SAS on, a small pitch kick at 10 s, the Vessel,
+Attitude and Structure windows open) and takes stills at those times. `OSP_CAPTURE_HIDE_UI=1` leaves the flight UI out
+of the stills.
 
 The toolchain is pinned in `rust-toolchain.toml` (Bevy 0.20 needs Rust 1.97.1+).
 
@@ -47,7 +50,7 @@ Default bindings (all rebindable in `assets/core/keybindings/default.json5`):
 The flight screen is split into modules, as in KSP: time warp and clocks (top left),
 altimeter (top centre), the app launcher (top right), the stage stack (bottom left), and the
 navball with throttle, SAS modes and control inputs (bottom centre). The launcher opens and
-closes the Flight, Orbit, Vessel, Attitude and Log windows; each button lights up while its
+closes the Flight, Orbit, Vessel, Attitude, Structure and Log windows; each button lights up while its
 window is open. F3 hides the whole flight UI and brings it back as it was. Every module is
 an ordinary layout record, so mods can move, restyle, replace or add to any of them.
 
@@ -62,6 +65,7 @@ crates/
   osp_ui/        Data-driven UI on bevy_ui: layouts, themes, bindings, actions.
   osp_game/      The Bevy app wiring it all together (rendering, camera, input, publishing).
 assets/core/     The base game, itself a mod: bodies, parts, craft, launch sites, scenarios, UI.
+tools/blender/   Scripts that build the stock part models in Blender.
 mods/           Installed mods (example_mod shows every mechanism).
 docs/modding.md Modding guide and reference.
 ```
@@ -126,6 +130,17 @@ the same result at any time warp.
 - **RCS.** Blocks of four cold-gas nozzles around a stage's rim, burning that stage's
   propellant. They translate the vessel and, while on, add their couples to every rotation.
   Pure rotation pushes nothing, so a coasting vessel stays on its exact conic.
+- **Procedural tanks and fins with real strength.** Tanks are sized from their material
+  (Al-Li, Al 2219, stainless, carbon composite, COPV overwrap) and build: the wall is just
+  thick enough for the operating pressure plus the hydrostatic head at the design g-load,
+  which sets the mass, and from it the burst pressure and the thin-shell buckling load
+  (NASA SP-8007 knockdown, with pressure stabilisation). Volume utilization, insulation and
+  pressure rating decide what a tank can hold. Fins are plates whose root bends under the
+  air load at angle of attack. Every tick each tank carries the stack above it at the
+  current acceleration and the hydrostatic pressure of what is left in it; past 100% of its
+  strength a fin tears off and a tank failure breaks the vessel up.
+- **Part models.** Engines, crew pods and RCS blocks are real-scale glTF models (built by
+  scripts in `tools/blender/`); mods can ship their own.
 - **Rigid-body attitude.** Each stage is a cylinder with its tank shells, structure, engines
   and a propellant column settled aft, so the centre of mass and moments of inertia change
   as the tanks drain and stages drop. The vessel rotates about its centre of mass under

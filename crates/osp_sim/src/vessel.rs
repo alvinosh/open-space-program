@@ -33,6 +33,7 @@ use crate::{
     orbit::{Elements, Orbit, StateVector},
     propulsion::{CraftError, Propulsion},
     rcs,
+    structure::{self, Conditions, Part, PartLoad},
     system::SolarSystem,
     time::SimTime,
 };
@@ -93,6 +94,8 @@ pub enum VesselEventKind {
     Crashed {
         speed: f64,
     },
+    /// A tank buckled or burst: the vessel broke up.
+    Destroyed,
 }
 
 impl VesselEventKind {
@@ -128,6 +131,8 @@ pub struct FlightData {
     pub control: DVec3,
     /// Largest torque available about each vessel axis, N·m.
     pub torque_authority: DVec3,
+    /// The most loaded part's load over its strength (1 = at its limit).
+    pub structure_load: f64,
 }
 
 /// The vessel's rotation: exact at `epoch`, and how it continues from there until a
@@ -171,7 +176,11 @@ pub struct Vessel {
     pub propulsion: Propulsion,
     mass: MassProperties,
     propellant_settled: bool,
+    /// Broke up: nothing works any more and it falls as wreckage.
+    destroyed: bool,
     pub flight: FlightData,
+    /// Load on every tank and fin set as of the last physics step.
+    pub structure: Vec<PartLoad>,
     pub log: Vec<LogEntry>,
 }
 
@@ -216,6 +225,8 @@ impl Vessel {
             mass,
             propulsion,
             propellant_settled: false,
+            destroyed: false,
+            structure: Vec::new(),
             log: Vec::new(),
         })
     }
@@ -340,6 +351,11 @@ impl Vessel {
         matches!(self.motion, Motion::Coasting(_))
     }
 
+    /// Broke up when a tank failed; it no longer responds to anything.
+    pub fn is_destroyed(&self) -> bool {
+        self.destroyed
+    }
+
     /// Whether the next step needs numerical integration (rails warp is impossible).
     pub fn needs_physics(&self) -> bool {
         matches!(self.motion, Motion::Integrated(_))
@@ -446,7 +462,7 @@ impl Vessel {
     }
 
     pub fn set_rcs(&mut self, enabled: bool) {
-        self.rcs = enabled;
+        self.rcs = enabled && !self.destroyed;
     }
 
     /// Reference frame for prograde, SAS and speed. Switches to surface when entering the
@@ -473,6 +489,7 @@ impl Vessel {
     pub fn enter_rails(&mut self, system: &SolarSystem, time: SimTime) {
         // Nothing steers on rails.
         self.flight.control = DVec3::ZERO;
+        rcs::idle(&mut self.propulsion);
         if self.is_landed() || !self.sas.enabled() || self.attitude.hold != Hold::Free {
             return;
         }
@@ -532,12 +549,17 @@ impl Vessel {
     }
 
     pub fn set_throttle(&mut self, throttle: f64) {
-        self.propulsion.set_throttle(throttle);
+        if !self.destroyed {
+            self.propulsion.set_throttle(throttle);
+        }
     }
 
     /// Arm the bottom stage, or jettison it and arm the next. The rest of the stack keeps
     /// moving as it was, so its centre of mass (the vessel's position) moves up the stack.
     pub fn activate_next_stage(&mut self, system: &SolarSystem, time: SimTime) {
+        if self.destroyed {
+            return;
+        }
         let stages = self.propulsion.stages.len();
         let dropped = self.propulsion.stages.first().map_or(0.0, |s| s.length);
         let Some(message) = self.propulsion.activate_next_stage() else {
@@ -667,7 +689,7 @@ impl Vessel {
         if rcs {
             authority += rcs::torque_authority(&self.propulsion, com, air.pressure);
         }
-        let command = if self.is_landed() {
+        let command = if self.is_landed() || self.destroyed {
             DVec3::ZERO
         } else {
             self.rotation_command(body, &state, start, authority)
@@ -685,6 +707,8 @@ impl Vessel {
             );
             force += f;
             torque += t;
+        } else {
+            rcs::idle(&mut self.propulsion);
         }
         let track = &self.attitude;
         if !self.is_landed()
@@ -708,9 +732,12 @@ impl Vessel {
 
         let thrust = force.length();
         let thrust_accel = start.orientation * force / mass;
-        let drag_accel = drag(body, &air, self.propulsion.reference_area(), mass);
-        let proper = thrust_accel + drag_accel(state.position, state.velocity);
-        let air_speed = (state.velocity - body.surface_velocity(state.position)).length();
+        let drag_accel = drag(body, &air, &self.propulsion, mass);
+        let drag_now = drag_accel(state.position, state.velocity);
+        let proper = thrust_accel + drag_now;
+        let air_velocity = state.velocity - body.surface_velocity(state.position);
+        let air_speed = air_velocity.length();
+        let structure_load = self.flight.structure_load;
         self.flight = FlightData {
             mass,
             thrust,
@@ -724,9 +751,28 @@ impl Vessel {
             proper_acceleration: proper.length(),
             control: command,
             torque_authority: authority,
+            structure_load,
         };
-        self.propellant_settled =
-            self.is_landed() || proper.dot(start.nose()) > ULLAGE_ACCELERATION;
+        let nose = start.nose();
+        self.propellant_settled = self.is_landed() || proper.dot(nose) > ULLAGE_ACCELERATION;
+
+        let conditions = Conditions {
+            // On the ground, the ground holds the stack up.
+            acceleration: if self.is_landed() {
+                body.gm / state.position.length_squared() * state.position.normalize().dot(nose)
+            } else {
+                proper.dot(nose)
+            },
+            drag: (-drag_now.dot(nose) * mass).max(0.0),
+            dynamic_pressure: self.flight.dynamic_pressure,
+            mach: self.flight.mach,
+            angle_of_attack: if air_speed > 1.0 {
+                nose.angle_between(air_velocity)
+            } else {
+                0.0
+            },
+        };
+        self.check_structure(&conditions, t0, out);
 
         match self.motion {
             Motion::Landed { .. } => {
@@ -769,6 +815,66 @@ impl Vessel {
         }
     }
 
+    /// Check every tank and fin set against its strength. Overloaded fins tear off; an
+    /// overloaded tank breaks the vessel up.
+    fn check_structure(
+        &mut self,
+        conditions: &Conditions,
+        time: SimTime,
+        out: &mut Vec<VesselEvent>,
+    ) {
+        if self.destroyed {
+            return;
+        }
+        self.structure = structure::loads(&self.propulsion.stages, conditions);
+        self.flight.structure_load = self
+            .structure
+            .iter()
+            .map(|l| l.fraction)
+            .fold(0.0, f64::max);
+        let failed: Vec<PartLoad> = self
+            .structure
+            .iter()
+            .filter(|l| l.fraction > 1.0)
+            .copied()
+            .collect();
+        for load in failed {
+            let stage = &mut self.propulsion.stages[load.stage];
+            let name = stage.name.clone();
+            let percent = load.fraction * 100.0;
+            match load.part {
+                Part::Fins => {
+                    stage.fins = None;
+                    self.record(
+                        time,
+                        format!("{name}: fins torn off at {percent:.0}% of their strength"),
+                    );
+                }
+                Part::Tank(_) if !self.destroyed => {
+                    let what = match load.mode {
+                        structure::Mode::Burst => "burst",
+                        _ => "buckled",
+                    };
+                    self.destroyed = true;
+                    self.propulsion.shut_down();
+                    self.rcs = false;
+                    self.sas.set_enabled(false);
+                    self.record(
+                        time,
+                        format!(
+                            "{name}: tank {what} at {percent:.0}% of its strength. Vessel destroyed"
+                        ),
+                    );
+                    out.push(VesselEvent {
+                        time,
+                        kind: VesselEventKind::Destroyed,
+                    });
+                }
+                Part::Tank(_) => {}
+            }
+        }
+    }
+
     /// The pilot's input if any, otherwise what SAS wants.
     fn rotation_command(
         &mut self,
@@ -803,12 +909,7 @@ impl Vessel {
         };
         let body = system.body(self.parent);
         let air = air_at(body, &encke.state());
-        let drag_accel = drag(
-            body,
-            &air,
-            self.propulsion.reference_area(),
-            self.propulsion.mass(),
-        );
+        let drag_accel = drag(body, &air, &self.propulsion, self.propulsion.mass());
         encke.step(end, |r, v| thrust_accel + drag_accel(r, v));
         let state = encke.state();
 
@@ -897,22 +998,25 @@ fn air_at(body: &Body, state: &StateVector) -> AtmosphereSample {
         .map_or(AtmosphereSample::VACUUM, |a| a.sample(altitude))
 }
 
-/// Drag acceleration with air co-rotating with the body; density held for the step.
+/// Drag acceleration with air co-rotating with the body; density held for the step. The
+/// body's drag scales with its frontal area, the fins' with their own drag area.
 fn drag(
     body: &Body,
     air: &AtmosphereSample,
-    area: f64,
+    propulsion: &Propulsion,
     mass: f64,
-) -> impl Fn(DVec3, DVec3) -> DVec3 {
+) -> impl Fn(DVec3, DVec3) -> DVec3 + use<> {
     let omega = body.angular_velocity();
     let (density, speed_of_sound) = (air.density, air.speed_of_sound);
+    let (area, fins) = (propulsion.reference_area(), propulsion.fin_drag_area());
     move |r, v| {
         if density == 0.0 {
             return DVec3::ZERO;
         }
         let v_air = v - omega.cross(r);
         let speed = v_air.length();
-        -0.5 * density * speed * v_air * drag_coefficient(speed / speed_of_sound) * area / mass
+        let drag_area = drag_coefficient(speed / speed_of_sound) * area + fins;
+        -0.5 * density * speed * v_air * drag_area / mass
     }
 }
 
@@ -934,11 +1038,14 @@ pub(crate) mod tests {
     pub fn catalog() -> PartCatalog {
         PartCatalog {
             engines: records(include_str!("../../../assets/core/engines/stock.json5")),
-            tanks: records(include_str!("../../../assets/core/tanks/stock.json5")),
+            resources: records(include_str!("../../../assets/core/resources/stock.json5")),
+            materials: records(include_str!("../../../assets/core/materials/stock.json5")),
+            tank_types: records(include_str!("../../../assets/core/tank_types/stock.json5")),
             reaction_wheels: records(include_str!(
                 "../../../assets/core/reaction_wheels/stock.json5"
             )),
             rcs: records(include_str!("../../../assets/core/rcs/stock.json5")),
+            pods: records(include_str!("../../../assets/core/pods/stock.json5")),
         }
     }
 
@@ -1217,6 +1324,97 @@ pub(crate) mod tests {
         assert!(v.attitude_state(&system, t).angular_velocity.x > 0.0);
         assert!(v.is_coasting());
         assert_eq!(v.state_at(&system, t).position, orbit.state_at(t).position);
+    }
+
+    #[test]
+    fn an_ascent_stays_within_the_tanks_strength() {
+        let system = rss();
+        let (mut v, mut t) = launch(&system);
+        v.set_sas(&system, t, true);
+        let mut peak: f64 = 0.0;
+        let mut fly = |v: &mut Vessel, t: &mut SimTime, seconds: f64| {
+            for _ in 0..(seconds * 50.0) as usize {
+                run(v, &system, t, 0.02);
+                peak = peak.max(v.flight.structure_load);
+            }
+        };
+        fly(&mut v, &mut t, 10.0);
+        v.rotation_input = DVec3::new(-0.3, 0.0, 0.0);
+        fly(&mut v, &mut t, 2.0);
+        v.rotation_input = DVec3::ZERO;
+        // To just before the booster runs dry, then hot-stage onto the upper stage.
+        fly(&mut v, &mut t, 130.0);
+        assert_eq!(v.propulsion.stages.len(), 3);
+        v.activate_next_stage(&system, t);
+        fly(&mut v, &mut t, 60.0);
+        let log: Vec<_> = v.log.iter().map(|e| &e.message).collect();
+        assert!(v.propulsion.any_engine_running(), "{log:?}");
+        assert!(!v.is_destroyed());
+        // The tanks work hard (full tanks at liftoff, high g near burnout) but hold.
+        assert!(peak > 0.3 && peak < 1.0, "{peak}");
+    }
+
+    #[test]
+    fn an_overloaded_stack_collapses_on_the_pad() {
+        let system = rss();
+        let mut craft = pathfinder();
+        craft.stages[2].structure_mass *= 100.0;
+        let site = &launch_sites()[0];
+        let t = SimTime::J2000;
+        let mut v = Vessel::on_launch_site(&craft, &catalog(), &system, site, t).unwrap();
+        let mut events = Vec::new();
+        v.step(&system, t, t + DT, &mut events);
+        assert!(v.is_destroyed());
+        assert!(events.iter().any(|e| e.kind == VesselEventKind::Destroyed));
+        // The upper stage's tank, right under the payload, gives first.
+        assert!(
+            v.log
+                .iter()
+                .any(|e| e.message.contains("Upper Stage: tank buckled"))
+        );
+        // Wreckage does not fly.
+        v.set_throttle(1.0);
+        v.activate_next_stage(&system, t);
+        assert_eq!(v.propulsion.throttle(), 0.0);
+        assert!(!v.propulsion.stages[0].active);
+    }
+
+    #[test]
+    fn fins_tear_off_in_a_hard_turn_at_speed() {
+        let system = rss();
+        let craft: CraftDef =
+            records(include_str!("../../../assets/core/craft/sounder.json5")).remove(0);
+        let start = OrbitStartDef {
+            body: "Earth".into(),
+            periapsis_altitude: 300e3,
+            apoapsis_altitude: 300e3,
+            inclination: 0.0,
+            longitude_of_ascending_node: 0.0,
+            argument_of_periapsis: 0.0,
+            mean_anomaly: 0.0,
+        };
+        let t = SimTime::J2000;
+        let mut v = Vessel::in_orbit(&craft, &catalog(), &system, &start, t).unwrap();
+        let fly_at = |v: &mut Vessel, speed: f64, angle_of_attack: f64| {
+            let earth = system.body(v.parent());
+            let nose = nose(v, &system, t);
+            let up = nose.any_orthonormal_vector();
+            let position = up * (earth.radius + 8_000.0);
+            let air = (nose * angle_of_attack.cos() + up * angle_of_attack.sin()) * speed;
+            let state = StateVector::new(position, earth.surface_velocity(position) + air);
+            v.set_free_state(&system, v.parent(), state, t);
+            let mut events = Vec::new();
+            v.step(&system, t, t + DT, &mut events);
+        };
+        // Mach 2 at 8 km, nose into the wind: fine.
+        fly_at(&mut v, 600.0, 0.0);
+        assert!(v.propulsion.stages[0].fins.is_some());
+        assert!(v.flight.structure_load < 1.0);
+        // Thirty degrees off: the fins go, the rest of the rocket holds.
+        fly_at(&mut v, 600.0, 30f64.to_radians());
+        assert!(v.propulsion.stages[0].fins.is_none());
+        assert!(v.log.iter().any(|e| e.message.contains("fins torn off")));
+        assert!(!v.is_destroyed());
     }
 
     #[test]

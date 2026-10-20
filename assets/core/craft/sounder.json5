@@ -1,0 +1,34 @@
+// Single-stage suborbital hop with a one-person capsule, Mercury-Redstone style. Its fins
+// are procedural: they add mass and drag, and tear off if the rocket turns hard at high
+// dynamic pressure.
+{
+  id: "sounder",
+  name: "Sounder",
+  stages: [
+    {
+      name: "Sounder",
+      engines: ["K-1 Booster"],
+      tanks: [
+        { type: "Stiffened Al 2219", length: 10, propellants: { Kerosene: 1, LqdOxygen: 2.36 } },
+      ],
+      fins: {
+        count: 4,
+        root_chord: 2.4,
+        tip_chord: 1.0,
+        span: 1.1,
+        sweep: 1.2,
+        thickness: 0.02,
+        material: "Al 2219-T87",
+      },
+      structure_mass: 600,
+      diameter: 1.8,
+      length: 12,
+    },
+    {
+      name: "Capsule",
+      pod: "C-1 Capsule",
+      diameter: 1.9,
+      length: 2.9,
+    },
+  ],
+}

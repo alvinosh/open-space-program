@@ -5,7 +5,7 @@
 //! only: they are singular for circular, equatorial, parabolic or radial orbits, but the
 //! propagation never touches them.
 
-use std::f64::consts::{PI, TAU};
+use std::f64::consts::TAU;
 use std::ops::{Add, Sub};
 
 use glam::{DQuat, DVec3};
@@ -380,14 +380,21 @@ impl Orbit {
         first_crossing(g, start, until, bound)
     }
 
-    /// Points along the orbit between two times, spaced evenly in true anomaly (smooth near
-    /// periapsis, unlike even time spacing). Relative to the orbited body.
-    pub fn sample_between(&self, from: SimTime, to: SimTime, count: usize) -> Vec<DVec3> {
+    /// Points along the orbit between two times, relative to the orbited body, for drawing
+    /// it as a line: the first and last are exactly where the orbit is at those times, and no
+    /// chord between neighbours strays from the curve by more than `tolerance` at that point
+    /// (see [`Self::sample_true_anomaly`]).
+    pub fn sample_between(
+        &self,
+        from: SimTime,
+        to: SimTime,
+        tolerance: impl Fn(DVec3) -> f64,
+    ) -> Vec<DVec3> {
         if self.semi_latus_rectum < 1e-6 * self.state.position.length() {
             // Radial: a straight line; sample in time instead.
-            return (0..=count)
+            return (0..=MIN_SEGMENTS)
                 .map(|i| {
-                    let f = i as f64 / count as f64;
+                    let f = i as f64 / MIN_SEGMENTS as f64;
                     let dt = to.seconds_since(from) * f;
                     self.state_at(from.add_seconds(dt)).position
                 })
@@ -401,13 +408,22 @@ impl Orbit {
         } else if nu1 < nu0 {
             nu1 += TAU;
         }
-        self.sample_true_anomaly(nu0, nu1, count)
+        self.sample_true_anomaly(nu0, nu1, &tolerance)
     }
 
-    /// The whole closed orbit, or an open one clipped to `max_radius`.
-    pub fn sample_full(&self, count: usize, max_radius: f64) -> Vec<DVec3> {
+    /// The whole closed orbit, starting and ending where it is at `through`, so that a line
+    /// drawn through the points passes exactly through the orbiting object. An open orbit is
+    /// clipped to `max_radius`, with a point at `through` if that lies within the clip.
+    /// `tolerance` as for [`Self::sample_between`].
+    pub fn sample_full(
+        &self,
+        through: SimTime,
+        max_radius: f64,
+        tolerance: impl Fn(DVec3) -> f64,
+    ) -> Vec<DVec3> {
+        let now = self.true_anomaly_of(self.state_at(through).position);
         if self.is_bound() {
-            return self.sample_true_anomaly(-PI, PI, count);
+            return self.sample_true_anomaly(now, now + TAU, &tolerance);
         }
         let e = self.eccentricity;
         let asymptote = (-1.0 / e).clamp(-1.0, 1.0).acos() - 1e-3;
@@ -415,20 +431,76 @@ impl Orbit {
             .clamp(-1.0, 1.0)
             .acos();
         let limit = asymptote.min(clip);
-        self.sample_true_anomaly(-limit, limit, count)
+        let now = now.clamp(-limit, limit);
+        let mut points = self.sample_true_anomaly(-limit, now, &tolerance);
+        points.pop();
+        points.extend(self.sample_true_anomaly(now, limit, &tolerance));
+        points
     }
 
-    fn sample_true_anomaly(&self, from: f64, to: f64, count: usize) -> Vec<DVec3> {
+    /// Position on the orbit at true anomaly `nu`, relative to the orbited body.
+    fn point_at_true_anomaly(&self, nu: f64) -> DVec3 {
         let [p, q, _] = self.basis;
-        (0..=count)
-            .map(|i| {
-                let nu = from + (to - from) * i as f64 / count as f64;
-                let r = self.semi_latus_rectum / (1.0 + self.eccentricity * nu.cos());
-                r * (nu.cos() * p + nu.sin() * q)
-            })
-            .collect()
+        let r = self.semi_latus_rectum / (1.0 + self.eccentricity * nu.cos());
+        r * (nu.cos() * p + nu.sin() * q)
+    }
+
+    /// Points from true anomaly `from` to `to`, both included. Starts from even steps and
+    /// halves each one while the curve at its middle is further from the chord than the
+    /// smallest `tolerance(point)` at its ends and middle, so the line is only as dense as it
+    /// needs to be where it is seen: a tolerance proportional to the distance from the camera
+    /// keeps every chord within a fixed angle, whether the camera is next to a planet or
+    /// across its orbit.
+    fn sample_true_anomaly(
+        &self,
+        from: f64,
+        to: f64,
+        tolerance: &impl Fn(DVec3) -> f64,
+    ) -> Vec<DVec3> {
+        let sample = |nu: f64| {
+            let position = self.point_at_true_anomaly(nu);
+            Sample {
+                nu,
+                position,
+                tolerance: tolerance(position),
+            }
+        };
+        let mut a = sample(from);
+        let mut points = vec![a.position];
+        for i in 1..=MIN_SEGMENTS {
+            let b = sample(from + (to - from) * i as f64 / MIN_SEGMENTS as f64);
+            refine(&sample, a, b, MAX_SUBDIVISIONS, &mut points);
+            a = b;
+        }
+        points
     }
 }
+
+#[derive(Clone, Copy)]
+struct Sample {
+    nu: f64,
+    position: DVec3,
+    tolerance: f64,
+}
+
+/// Append the points after `a` up to and including `b`.
+fn refine(sample: &impl Fn(f64) -> Sample, a: Sample, b: Sample, depth: u32, out: &mut Vec<DVec3>) {
+    let mid = sample(0.5 * (a.nu + b.nu));
+    let tolerance = mid.tolerance.min(a.tolerance).min(b.tolerance);
+    if depth > 0 && mid.position.distance(0.5 * (a.position + b.position)) > tolerance {
+        refine(sample, a, mid, depth - 1, out);
+        refine(sample, mid, b, depth - 1, out);
+    } else {
+        out.push(b.position);
+    }
+}
+
+/// Even steps in true anomaly that sampling starts from. Each covers at most 1/64 of a turn,
+/// over which a conic bends one way, so its middle shows how far the chord strays.
+const MIN_SEGMENTS: usize = 64;
+/// Halvings allowed per starting step, which bounds the work where the camera sits on a line:
+/// down to 1/4 194 304 of a turn, chords that stray 4 cm from Earth's orbit.
+const MAX_SUBDIVISIONS: u32 = 16;
 
 fn any_perpendicular(v: DVec3) -> DVec3 {
     v.any_orthonormal_vector()
@@ -608,5 +680,74 @@ mod tests {
             .unwrap();
         let r = o.state_at(t).position.length();
         assert!(r <= R_EARTH && R_EARTH - r < 0.01, "{}", R_EARTH - r);
+    }
+
+    /// Earth's orbit around the Sun, Earth at its position at J2000 + 6 h.
+    fn heliocentric_earth() -> (Orbit, SimTime) {
+        let elements = Elements {
+            semi_major_axis: 1.495_98e11,
+            eccentricity: 0.0167,
+            inclination: 0.0,
+            longitude_of_ascending_node: 0.0,
+            argument_of_periapsis: 1.79,
+            true_anomaly: 0.0,
+        };
+        let orbit = Orbit::from_elements(1.327_124_4e20, &elements, -0.04, SimTime::J2000);
+        (orbit, SimTime::from_seconds(21_600.0))
+    }
+
+    fn distance_to_line(points: &[DVec3], p: DVec3) -> f64 {
+        points
+            .windows(2)
+            .map(|w| {
+                let ab = w[1] - w[0];
+                let s = ((p - w[0]).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
+                (w[0] + ab * s).distance(p)
+            })
+            .fold(f64::INFINITY, f64::min)
+    }
+
+    #[test]
+    fn drawn_orbit_passes_through_the_body() {
+        let (orbit, now) = heliocentric_earth();
+        // Seen from a camera 25 000 km from Earth, half a pixel is ~12 km there.
+        let here = orbit.state_at(now).position;
+        let camera = here + DVec3::new(0.0, 0.0, 2.5e7);
+        let points = orbit.sample_full(now, f64::INFINITY, |p| p.distance(camera) * 4.8e-4);
+        assert!(
+            points[0].distance(here) < 1e-3,
+            "{}",
+            points[0].distance(here)
+        );
+        assert!(points.last().unwrap().distance(here) < 1e-3);
+        // Smooth near the camera: the curve a quarter of a degree either side of Earth
+        // is on the line to within the tolerance there (the chord's middle is tested, and
+        // over so short an arc the curve bends evenly, so that is where it strays most).
+        let nu = orbit.true_anomaly_of(here);
+        for k in -10..=10 {
+            let p = orbit.point_at_true_anomaly(nu + k as f64 * 4e-4);
+            let miss = distance_to_line(&points, p);
+            assert!(miss < 1.01 * p.distance(camera) * 4.8e-4, "{k}: {miss}");
+        }
+        // Dense only where it is seen: a few hundred points, where 256 even ones missed
+        // Earth by ~6000 km.
+        assert!(points.len() < 600, "{}", points.len());
+    }
+
+    #[test]
+    fn sampling_follows_the_tolerance() {
+        let o = leo_ellipse();
+        let t0 = SimTime::J2000;
+        let t1 = t0.add_seconds(o.period().unwrap() * 0.7);
+        let points = o.sample_between(t0, t1, |_| 10.0);
+        assert!(points[0].distance(o.state_at(t0).position) < 1e-6);
+        assert!(points.last().unwrap().distance(o.state_at(t1).position) < 1e-3);
+        for i in 0..=1_000 {
+            let t = t0.add_seconds(t1.seconds_since(t0) * i as f64 / 1_000.0);
+            let miss = distance_to_line(&points, o.state_at(t).position);
+            assert!(miss < 10.1, "{miss}");
+        }
+        let coarse = o.sample_between(t0, t1, |_| 1e3).len();
+        assert!(coarse < points.len(), "{coarse} {}", points.len());
     }
 }

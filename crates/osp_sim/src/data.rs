@@ -1,7 +1,7 @@
 //! Serializable record definitions (the moddable data formats).
 //!
-//! The game loads these from mod collections (`bodies`, `engines`, `tanks`, `craft`,
-//! `scenarios`); every record has a string `id`. They are turned into runtime types
+//! The game loads these from mod collections (`bodies`, `engines`, `tank_types`, `craft`,
+//! `scenarios`, ...); every record has a string `id`. They are turned into runtime types
 //! (`SolarSystem`, `Vessel`) which precompute derived values.
 
 use std::collections::BTreeMap;
@@ -76,11 +76,151 @@ pub struct OrbitDef {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartCatalog {
     pub engines: Vec<EngineDef>,
-    pub tanks: Vec<TankDef>,
+    #[serde(default)]
+    pub resources: Vec<ResourceDef>,
+    #[serde(default)]
+    pub materials: Vec<MaterialDef>,
+    #[serde(default)]
+    pub tank_types: Vec<TankTypeDef>,
     #[serde(default)]
     pub reaction_wheels: Vec<ReactionWheelDef>,
     #[serde(default)]
     pub rcs: Vec<RcsDef>,
+    #[serde(default)]
+    pub pods: Vec<PodDef>,
+}
+
+/// A propellant or other stored fluid.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceDef {
+    pub id: String,
+    /// Density as stored, kg/m³.
+    pub density: f64,
+    /// Storage temperature, K. Only tanks insulated down to it can hold it.
+    #[serde(default = "room_temperature")]
+    pub temperature: f64,
+    /// Storage pressure, Pa (compressed gases). Only tanks rated for it can hold it.
+    #[serde(default)]
+    pub pressure: f64,
+}
+
+/// A structural material for tanks and fins.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaterialDef {
+    pub id: String,
+    /// kg/m³.
+    pub density: f64,
+    /// Stress at which it yields, Pa.
+    pub yield_strength: f64,
+    /// Young's modulus, Pa.
+    pub elastic_modulus: f64,
+}
+
+/// How a procedural tank is built. Its wall is sized from these (see [`crate::structure`]).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TankTypeDef {
+    pub id: String,
+    /// Id of a `materials` record.
+    pub material: String,
+    /// Operating (ullage) pressure, Pa.
+    pub pressure: f64,
+    /// Thinnest wall that can be built, m.
+    pub min_gauge: f64,
+    /// Mass of the stiffening (isogrid ribs, stringers, liner) as a multiple of the bare wall.
+    #[serde(default = "one")]
+    pub stiffening: f64,
+    /// How much more axial load the stiffened wall carries before buckling than a bare
+    /// wall of the same thickness.
+    #[serde(default = "one")]
+    pub buckling_factor: f64,
+    /// Insulation, kg per m² of tank surface.
+    #[serde(default)]
+    pub insulation: f64,
+    /// Coldest propellant it can hold, K.
+    #[serde(default = "uninsulated")]
+    pub min_temperature: f64,
+    /// Share of the internal volume that holds propellant; the rest is ullage, baffles and
+    /// plumbing.
+    #[serde(default = "default_utilization")]
+    pub utilization: f64,
+    /// Yield strength over the design stress.
+    #[serde(default = "default_safety_factor")]
+    pub safety_factor: f64,
+    /// Acceleration, in g, at which a full tank's hydrostatic pressure is designed for.
+    #[serde(default = "default_design_load")]
+    pub design_load: f64,
+    /// If given, only these resources (on top of the temperature and pressure limits).
+    #[serde(default)]
+    pub propellants: Option<Vec<String>>,
+}
+
+/// A procedural tank in a stage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TankDef {
+    /// Id of a `tank_types` record.
+    #[serde(rename = "type")]
+    pub tank_type: String,
+    #[serde(default)]
+    pub shape: TankShape,
+    /// Cylinder length including its domes, m. Cylinders stack up the stage from its base
+    /// in the order listed.
+    #[serde(default)]
+    pub length: f64,
+    /// Outer diameter, m. Cylinders default to the stage diameter; spheres need it.
+    #[serde(default)]
+    pub diameter: Option<f64>,
+    /// Acceleration, in g, at which the full tank's hydrostatic pressure is designed for;
+    /// defaults to the tank type's. An upper stage rides its booster's peak acceleration
+    /// with full tanks, so it needs more than a first stage, which is only full at liftoff.
+    #[serde(default)]
+    pub design_load: Option<f64>,
+    /// What it holds: resource -> mass ratio (normalised). It is filled to its usable
+    /// volume in this ratio.
+    pub propellants: BTreeMap<String, f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TankShape {
+    /// A cylinder with elliptical (√2:1) domes, carrying the stack's load in its wall.
+    #[default]
+    Cylinder,
+    /// A sphere mounted inside the stage (e.g. a pressurant bottle), off the load path.
+    Sphere,
+}
+
+/// A set of identical procedural fins around the base of a stage: flat, solid, trapezoidal
+/// plates with their trailing edge at the stage base.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FinDef {
+    #[serde(default = "default_fin_count")]
+    pub count: u32,
+    /// Chord along the hull and at the tip, m.
+    pub root_chord: f64,
+    pub tip_chord: f64,
+    /// How far the fin sticks out from the hull, m.
+    pub span: f64,
+    /// How far the tip's leading edge sits behind the root's, m.
+    #[serde(default)]
+    pub sweep: f64,
+    pub thickness: f64,
+    /// Id of a `materials` record.
+    pub material: String,
+}
+
+/// A crew cabin (capsule or cockpit). It sits at the top of its stage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PodDef {
+    pub id: String,
+    /// Mass with crew and consumables, kg.
+    pub mass: f64,
+    pub crew: u32,
+    /// Base diameter and height, m.
+    pub diameter: f64,
+    pub height: f64,
+    /// glTF model, relative to the mod root.
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,14 +247,15 @@ pub struct EngineDef {
     pub gimbal_range: f64,
     /// Propellants consumed: resource -> mass ratio (normalised at load).
     pub propellants: BTreeMap<String, f64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TankDef {
-    pub id: String,
-    pub dry_mass: f64,
-    /// Resource -> mass in kg.
-    pub contents: BTreeMap<String, f64>,
+    /// From the gimbal pivot to the nozzle exit, m.
+    #[serde(default)]
+    pub length: f64,
+    /// Nozzle exit diameter, m.
+    #[serde(default)]
+    pub exit_diameter: f64,
+    /// glTF model, relative to the mod root: origin at the gimbal pivot, nozzle down −Y.
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 /// Torque without propellant, for turning while the engines are off.
@@ -141,6 +282,9 @@ pub struct RcsDef {
     pub isp_sl: f64,
     /// Propellants consumed: resource -> mass ratio (normalised at load).
     pub propellants: BTreeMap<String, f64>,
+    /// glTF model, relative to the mod root: origin on the hull, +X outward, +Y forward.
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,15 +303,22 @@ pub struct StageDef {
     /// Engine part names; repeat a name for clusters.
     #[serde(default)]
     pub engines: Vec<String>,
+    /// Procedural tanks.
     #[serde(default)]
-    pub tanks: Vec<String>,
+    pub tanks: Vec<TankDef>,
+    #[serde(default)]
+    pub fins: Option<FinDef>,
     /// Reaction wheel part names.
     #[serde(default)]
     pub reaction_wheels: Vec<String>,
     /// RCS block part names; the blocks sit evenly around the stage's forward rim.
     #[serde(default)]
     pub rcs: Vec<String>,
-    /// Extra structural mass (interstage, fairings, avionics, payload), kg.
+    /// Crew pod part name, at the top of the stage.
+    #[serde(default)]
+    pub pod: Option<String>,
+    /// Extra structural mass (interstage, thrust structure, fairings, avionics, payload),
+    /// kg.
     #[serde(default)]
     pub structure_mass: f64,
     /// Outer diameter, m. Used for drag reference area, inertia and rendering.
@@ -280,4 +431,29 @@ fn one() -> f64 {
 
 fn default_slope() -> f64 {
     0.4
+}
+
+fn room_temperature() -> f64 {
+    293.0
+}
+
+/// Bare metal holds liquid oxygen for a launch (it frosts over) but not liquid hydrogen.
+fn uninsulated() -> f64 {
+    77.0
+}
+
+fn default_utilization() -> f64 {
+    0.97
+}
+
+fn default_safety_factor() -> f64 {
+    1.25
+}
+
+fn default_design_load() -> f64 {
+    2.5
+}
+
+fn default_fin_count() -> u32 {
+    4
 }

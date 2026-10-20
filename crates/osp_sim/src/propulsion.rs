@@ -1,25 +1,44 @@
-//! Stages, tanks and RO-style engines: pressure-dependent Isp, limited ignitions, ullage
-//! requirements and throttle limits. RCS blocks are part of their stage too; firing them is
-//! in [`crate::rcs`].
+//! Stages and RO-style engines: pressure-dependent Isp, limited ignitions, ullage
+//! requirements and throttle limits. Tanks, fins and RCS blocks are part of their stage too;
+//! sizing tanks and fins is in [`crate::structure`], firing RCS in [`crate::rcs`].
 
 use glam::DVec2;
 use thiserror::Error;
 
 use crate::{
     constants::{ATM, G0},
-    data::{CraftDef, EngineDef, PartCatalog, RcsDef},
+    data::{CraftDef, EngineDef, PartCatalog, PodDef, RcsDef, TankShape},
+    structure::{FinSet, Tank},
 };
 
 #[derive(Debug, Error)]
 pub enum CraftError {
     #[error("unknown engine `{0}`")]
     UnknownEngine(String),
-    #[error("unknown tank `{0}`")]
-    UnknownTank(String),
+    #[error("unknown tank type `{0}`")]
+    UnknownTankType(String),
+    #[error("unknown material `{0}`")]
+    UnknownMaterial(String),
+    #[error("unknown resource `{0}`")]
+    UnknownResource(String),
     #[error("unknown reaction wheel `{0}`")]
     UnknownReactionWheel(String),
     #[error("unknown RCS block `{0}`")]
     UnknownRcs(String),
+    #[error("unknown pod `{0}`")]
+    UnknownPod(String),
+    #[error("a `{tank_type}` tank cannot hold {resource}: {reason}")]
+    CannotHold {
+        tank_type: String,
+        resource: String,
+        reason: String,
+    },
+    #[error("`{tank_type}` tank: {problem}")]
+    BadTank { tank_type: String, problem: String },
+    #[error("fins: {0}")]
+    BadFins(String),
+    #[error("stage `{stage}`: {problem}")]
+    BadStage { stage: String, problem: String },
     #[error("craft has no stages")]
     NoStages,
 }
@@ -68,6 +87,9 @@ pub struct RcsBlock {
     /// Where the block sits on the stage's forward rim, seen from behind: offset from the
     /// vessel axis in vessel X/Y, m.
     pub mount: DVec2,
+    /// How hard each nozzle fired on the last physics tick, 0..1: the ones pushing forward,
+    /// back, around the axis towards positive roll, and the other way.
+    pub firing: [f64; 4],
 }
 
 impl RcsBlock {
@@ -95,13 +117,19 @@ pub struct Stage {
     /// Staged (engines armed). Only the bottom stage can be active.
     pub active: bool,
     pub engines: Vec<Engine>,
+    pub tanks: Vec<Tank>,
     /// Empty tanks, kg: thin shells along the stage.
     pub tank_mass: f64,
-    /// Structure, avionics, payload, reaction wheels and RCS, kg: spread through the stage.
+    pub fins: Option<FinSet>,
+    /// Structure, avionics, payload, crew pod, reaction wheels and RCS, kg: spread through
+    /// the stage.
     pub structure_mass: f64,
     /// Reaction wheel torque about each axis, N·m.
     pub wheel_torque: f64,
     pub rcs: Vec<RcsBlock>,
+    pub pod: Option<PodDef>,
+    /// What the tanks hold, pooled: engines and RCS draw from here and the tanks drain
+    /// together.
     pub propellants: Vec<Propellant>,
     pub diameter: f64,
     pub length: f64,
@@ -120,9 +148,13 @@ impl Stage {
         self.engines.iter().map(|e| e.def.mass).sum()
     }
 
+    pub fn fin_mass(&self) -> f64 {
+        self.fins.as_ref().map_or(0.0, |f| f.mass)
+    }
+
     /// Everything except propellant, kg.
     pub fn dry_mass(&self) -> f64 {
-        self.engine_mass() + self.tank_mass + self.structure_mass
+        self.engine_mass() + self.tank_mass + self.fin_mass() + self.structure_mass
     }
 
     pub fn mass(&self) -> f64 {
@@ -170,14 +202,21 @@ impl Stage {
     pub fn fuel_fraction(&self) -> Option<f64> {
         self.fraction_of(|name| {
             self.engines.is_empty()
-                || self.engines.iter().any(|e| e.def.propellants.contains_key(name))
+                || self
+                    .engines
+                    .iter()
+                    .any(|e| e.def.propellants.contains_key(name))
         })
     }
 
     /// Fraction of the scarcest RCS propellant remaining, if the stage has RCS and carries
     /// any of it.
     pub fn rcs_fraction(&self) -> Option<f64> {
-        self.fraction_of(|name| self.rcs.iter().any(|b| b.def.propellants.contains_key(name)))
+        self.fraction_of(|name| {
+            self.rcs
+                .iter()
+                .any(|b| b.def.propellants.contains_key(name))
+        })
     }
 
     fn fraction_of(&self, counts: impl Fn(&str) -> bool) -> Option<f64> {
@@ -270,38 +309,90 @@ impl Propulsion {
                     rcs.push(RcsBlock {
                         def: block_def,
                         mount: DVec2::from_angle(angle) * def.diameter / 2.0,
+                        firing: [0.0; 4],
                     });
                 }
-                let mut propellants: Vec<Propellant> = Vec::new();
-                for name in &def.tanks {
-                    let tank = catalog
-                        .tanks
-                        .iter()
-                        .find(|t| &t.id == name)
-                        .ok_or_else(|| CraftError::UnknownTank(name.clone()))?;
+                let bad = |problem: String| CraftError::BadStage {
+                    stage: def.name.clone(),
+                    problem,
+                };
+                let pod = def
+                    .pod
+                    .as_ref()
+                    .map(|name| {
+                        catalog
+                            .pods
+                            .iter()
+                            .find(|p| &p.id == name)
+                            .cloned()
+                            .ok_or_else(|| CraftError::UnknownPod(name.clone()))
+                    })
+                    .transpose()?;
+                if let Some(pod) = &pod {
+                    if pod.height > def.length {
+                        return Err(bad(format!(
+                            "the {} pod is {} m tall, the stage only {} m",
+                            pod.id, pod.height, def.length
+                        )));
+                    }
+                    structure_mass += pod.mass;
+                }
+                let fins = def
+                    .fins
+                    .as_ref()
+                    .map(|f| FinSet::new(f, catalog))
+                    .transpose()?;
+                // Cylinders stack up from the stage base; spheres sit inside, at the base.
+                let mut tanks = Vec::new();
+                let mut stacked = 0.0;
+                for tank_def in &def.tanks {
+                    let cylinder = tank_def.shape == TankShape::Cylinder;
+                    let base = if cylinder { stacked } else { 0.0 };
+                    let tank = Tank::new(tank_def, def.diameter, base, catalog)?;
+                    if 2.0 * tank.radius > def.diameter + 1e-9 {
+                        return Err(bad(format!(
+                            "a {} m tank does not fit its {} m diameter",
+                            2.0 * tank.radius,
+                            def.diameter
+                        )));
+                    }
+                    if cylinder {
+                        stacked += tank.length;
+                    }
                     tank_mass += tank.dry_mass;
-                    for (resource, amount) in &tank.contents {
-                        match propellants.iter_mut().find(|p| &p.name == resource) {
-                            Some(p) => {
-                                p.amount += *amount;
-                                p.capacity += *amount;
-                            }
-                            None => propellants.push(Propellant {
-                                name: resource.clone(),
-                                amount: *amount,
-                                capacity: *amount,
-                            }),
+                    tanks.push(tank);
+                }
+                if stacked > def.length + 1e-9 {
+                    return Err(bad(format!(
+                        "its tanks are {stacked} m long, the stage only {} m",
+                        def.length
+                    )));
+                }
+                let mut propellants: Vec<Propellant> = Vec::new();
+                for content in tanks.iter().flat_map(|t| &t.contents) {
+                    match propellants.iter_mut().find(|p| p.name == content.resource) {
+                        Some(p) => {
+                            p.amount += content.capacity;
+                            p.capacity += content.capacity;
                         }
+                        None => propellants.push(Propellant {
+                            name: content.resource.clone(),
+                            amount: content.capacity,
+                            capacity: content.capacity,
+                        }),
                     }
                 }
                 Ok(Stage {
                     name: def.name.clone(),
                     active: false,
                     engines,
+                    tanks,
                     tank_mass,
+                    fins,
                     structure_mass,
                     wheel_torque,
                     rcs,
+                    pod,
                     propellants,
                     diameter: def.diameter,
                     length: def.length,
@@ -459,8 +550,27 @@ impl Propulsion {
         std::f64::consts::PI * d * d / 4.0
     }
 
+    /// Drag area (C_D · A) of the fins, m², on top of the body's.
+    pub fn fin_drag_area(&self) -> f64 {
+        self.stages
+            .iter()
+            .filter_map(|s| s.fins.as_ref())
+            .map(FinSet::drag_area)
+            .sum()
+    }
+
     pub fn length(&self) -> f64 {
         self.stages.iter().map(|s| s.length).sum()
+    }
+
+    /// Cut the throttle and stop every engine for good (the vessel broke up).
+    pub fn shut_down(&mut self) {
+        self.throttle = 0.0;
+        self.ignition_pending = false;
+        for engine in self.stages.iter_mut().flat_map(|s| &mut s.engines) {
+            engine.running = false;
+            engine.thrust = 0.0;
+        }
     }
 }
 

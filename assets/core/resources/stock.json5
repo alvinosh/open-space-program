@@ -1,0 +1,15 @@
+// Propellants and other stored fluids. `density` is as stored (kg/m³). Tanks can only hold
+// a resource if they are insulated down to its storage `temperature` (K, default 293) and
+// rated for its storage `pressure` (Pa, for compressed gases).
+[
+  { id: "Kerosene", density: 820 }, // RP-1
+  { id: "LqdOxygen", density: 1141, temperature: 90 },
+  { id: "LqdHydrogen", density: 70.85, temperature: 20 },
+  { id: "LqdMethane", density: 422, temperature: 112 },
+  { id: "Aerozine50", density: 903 },
+  { id: "NTO", density: 1443 }, // nitrogen tetroxide
+  { id: "Hydrazine", density: 1004 },
+  // Compressed gas at 300 bar (real-gas density).
+  { id: "Nitrogen", density: 313, pressure: 3.0e7 },
+  { id: "Helium", density: 44, pressure: 3.0e7 },
+]

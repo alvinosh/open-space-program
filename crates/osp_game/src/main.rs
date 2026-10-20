@@ -25,6 +25,7 @@ mod vessel_render;
 
 use bevy::{
     app::{TaskPoolOptions, TaskPoolThreadAssignmentPolicy},
+    asset::io::AssetSourceBuilder,
     prelude::*,
 };
 use osp_ui::{UiPlugin, UiSet};
@@ -41,6 +42,12 @@ pub enum FrameSet {
 
 fn main() -> AppExit {
     App::new()
+        // Models and other files that mods ship (`mods://<mod>/...`); must exist before the
+        // asset plugin.
+        .register_asset_source(
+            "mods",
+            AssetSourceBuilder::platform_default(&content::mods_root().to_string_lossy(), None),
+        )
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {

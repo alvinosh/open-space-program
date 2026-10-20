@@ -10,8 +10,8 @@ use bevy::{math::DVec3, prelude::*};
 use osp_mods::{Content, Diagnostic, Severity};
 use osp_sim::{
     data::{
-        BodyDef, CraftDef, EngineDef, LaunchSiteDef, PartCatalog, RcsDef, ReactionWheelDef,
-        ScenarioDef, SystemDef, TankDef,
+        BodyDef, CraftDef, EngineDef, LaunchSiteDef, MaterialDef, PartCatalog, PodDef, RcsDef,
+        ReactionWheelDef, ResourceDef, ScenarioDef, SystemDef, TankTypeDef,
     },
     terrain::HeightSource,
     universe::Universe,
@@ -52,10 +52,13 @@ impl Plugin for ContentPlugin {
 pub struct GameContent(pub Content);
 
 /// Root containing `assets/` and `mods/`: the working directory for shipped builds, the
-/// workspace when run through cargo.
+/// workspace when run through cargo. Absolute, because Bevy resolves a relative asset root
+/// against the crate directory when run through cargo.
 pub fn game_root() -> PathBuf {
-    if Path::new("assets/core").is_dir() {
-        return PathBuf::from(".");
+    if Path::new("assets/core").is_dir()
+        && let Ok(dir) = std::env::current_dir()
+    {
+        return dir;
     }
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
@@ -64,9 +67,25 @@ pub fn asset_root() -> PathBuf {
     game_root().join("assets")
 }
 
+/// Where mods live; Bevy loads their files through the `mods://` asset source.
+pub fn mods_root() -> PathBuf {
+    game_root().join("mods")
+}
+
 fn load_content() -> Content {
-    let root = game_root();
-    osp_mods::load(&root.join("assets/core"), Some(&root.join("mods")))
+    osp_mods::load(&asset_root().join("core"), Some(&mods_root()))
+}
+
+/// Bevy asset path of a file that a mod ships (a model, say), from its path relative to the
+/// mod root. The highest-priority mod's copy wins, as for records.
+pub fn mod_asset_path(content: &Content, relative: &str) -> Option<String> {
+    let file = content.resolve_file(relative)?;
+    let slashes = |p: &Path| p.to_string_lossy().replace('\\', "/");
+    if let Ok(rest) = file.strip_prefix(asset_root()) {
+        return Some(slashes(rest));
+    }
+    let rest = file.strip_prefix(mods_root()).ok()?;
+    Some(format!("mods://{}", slashes(rest)))
 }
 
 /// A new game: the universe plus what rendering needs beyond it.
@@ -134,9 +153,12 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
     };
     let catalog = PartCatalog {
         engines: registry.all::<EngineDef>("engines", &mut diagnostics),
-        tanks: registry.all::<TankDef>("tanks", &mut diagnostics),
+        resources: registry.all::<ResourceDef>("resources", &mut diagnostics),
+        materials: registry.all::<MaterialDef>("materials", &mut diagnostics),
+        tank_types: registry.all::<TankTypeDef>("tank_types", &mut diagnostics),
         reaction_wheels: registry.all::<ReactionWheelDef>("reaction_wheels", &mut diagnostics),
         rcs: registry.all::<RcsDef>("rcs", &mut diagnostics),
+        pods: registry.all::<PodDef>("pods", &mut diagnostics),
     };
     let sites = registry.all::<LaunchSiteDef>("launch_sites", &mut diagnostics);
     let mut scenario: ScenarioDef = registry

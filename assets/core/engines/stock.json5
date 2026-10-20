@@ -1,5 +1,8 @@
 // Engines. Masses in kg, thrust in N, Isp in s, gimbal_range in degrees.
 // `propellants` maps resource -> mass ratio (normalised at load), so patches can change one entry.
+// `length` (gimbal pivot to nozzle exit) and `exit_diameter` in m size the engine on the
+// rocket; `model` is a glTF file relative to the mod root with its origin at the gimbal
+// pivot and the nozzle pointing down. Without a model a plain bell of that size is drawn.
 [
   {
     id: "K-1 Booster", // Merlin 1D-class gas-generator kerolox
@@ -12,6 +15,9 @@
     requires_ullage: true,
     gimbal_range: 5,
     propellants: { Kerosene: 1.0, LqdOxygen: 2.36 },
+    length: 2.5,
+    exit_diameter: 0.9,
+    model: "models/engines/k1_booster.glb",
   },
   {
     id: "K-1 Vacuum", // vacuum-optimised kerolox upper stage engine
@@ -24,6 +30,9 @@
     requires_ullage: true,
     gimbal_range: 5,
     propellants: { Kerosene: 1.0, LqdOxygen: 2.36 },
+    length: 4.0,
+    exit_diameter: 3.0,
+    model: "models/engines/k1_vacuum.glb",
   },
   {
     id: "H-10", // RL10-class expander-cycle hydrolox
@@ -36,6 +45,9 @@
     requires_ullage: true,
     gimbal_range: 4,
     propellants: { LqdHydrogen: 1.0, LqdOxygen: 5.5 },
+    length: 2.3,
+    exit_diameter: 1.17,
+    model: "models/engines/h10.glb",
   },
   {
     id: "A-10", // AJ10-class pressure-fed hypergolic
@@ -48,5 +60,8 @@
     requires_ullage: false,
     gimbal_range: 6,
     propellants: { Aerozine50: 1.0, NTO: 1.9 },
+    length: 2.7,
+    exit_diameter: 1.5,
+    model: "models/engines/a10.glb",
   },
 ]

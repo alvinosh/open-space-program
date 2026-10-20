@@ -2,7 +2,8 @@
 // A stage's blocks sit evenly around its forward rim. They turn the vessel (with RCS on) and
 // translate it, e.g. forward to settle propellant before lighting an engine that needs
 // ullage. `thrust` is per nozzle in vacuum (N), `mass` in kg, Isp in s. `propellants` maps
-// resource -> mass ratio like engines, drawn from tanks on the same stage.
+// resource -> mass ratio like engines, drawn from tanks on the same stage. `model` is a glTF
+// file: origin on the hull, +X out from it, +Y towards the nose.
 [
   {
     id: "Cold Gas Quad", // nitrogen cold-gas thrusters, as on kerolox upper stages
@@ -11,5 +12,6 @@
     isp_vac: 70,
     isp_sl: 45,
     propellants: { Nitrogen: 1.0 },
+    model: "models/rcs/cold_gas_quad.glb",
   },
 ]

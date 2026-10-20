@@ -36,13 +36,15 @@ pub fn fire(
     for stage in &mut propulsion.stages {
         let height = base + stage.length - center_of_mass;
         base += stage.length;
-        for block in &stage.rcs {
+        for block in &mut stage.rcs {
             let throttles = throttles(block.mount, rotation, translation);
             let throttle: f64 = throttles.iter().sum();
             let mass = block.nozzle_mass_flow() * throttle * dt;
+            block.firing = [0.0; 4];
             if throttle <= 0.0 || !draw(&mut stage.propellants, block, mass) {
                 continue;
             }
+            block.firing = throttles;
             let thrust = block.nozzle_thrust(pressure);
             let (f, t) = push(block.mount, height, throttles);
             force += f * thrust;
@@ -56,6 +58,13 @@ pub fn fire(
     (force, torque)
 }
 
+/// Stop every nozzle: the RCS is off, or the vessel is on rails.
+pub fn idle(propulsion: &mut Propulsion) {
+    for block in propulsion.stages.iter_mut().flat_map(|s| &mut s.rcs) {
+        block.firing = [0.0; 4];
+    }
+}
+
 /// The largest torque the RCS can produce about each vessel axis right now, N·m, from
 /// blocks that have propellant left.
 pub fn torque_authority(propulsion: &Propulsion, center_of_mass: f64, pressure: f64) -> DVec3 {
@@ -66,7 +75,11 @@ pub fn torque_authority(propulsion: &Propulsion, center_of_mass: f64, pressure: 
         base += stage.length;
         for block in stage.rcs.iter().filter(|b| has_propellant(stage, b)) {
             let about = |axis: DVec3| {
-                let (_, torque) = push(block.mount, height, throttles(block.mount, axis, DVec3::ZERO));
+                let (_, torque) = push(
+                    block.mount,
+                    height,
+                    throttles(block.mount, axis, DVec3::ZERO),
+                );
                 torque.dot(axis)
             };
             authority += block.nozzle_thrust(pressure)
@@ -107,11 +120,12 @@ fn push(mount: DVec2, height: f64, throttles: [f64; 4]) -> (DVec3, DVec3) {
 }
 
 fn has_propellant(stage: &Stage, block: &RcsBlock) -> bool {
-    block
-        .def
-        .propellants
-        .keys()
-        .all(|name| stage.propellants.iter().any(|p| &p.name == name && p.amount > 0.0))
+    block.def.propellants.keys().all(|name| {
+        stage
+            .propellants
+            .iter()
+            .any(|p| &p.name == name && p.amount > 0.0)
+    })
 }
 
 /// Take `mass` kg of a block's propellants from its stage, if there is enough of each.
@@ -169,11 +183,20 @@ mod tests {
         // Every block's forward nozzle, at full thrust.
         let blocks = &p.stages[0].rcs;
         let thrust = blocks.len() as f64 * blocks[0].def.thrust;
-        assert!((force - DVec3::Z * thrust).length() < 1e-9 * thrust, "{force}");
+        assert!(
+            (force - DVec3::Z * thrust).length() < 1e-9 * thrust,
+            "{force}"
+        );
         assert!(torque.length() < 1e-9 * thrust, "{torque}");
+        assert!(blocks.iter().all(|b| b.firing == [1.0, 0.0, 0.0, 0.0]));
         let used = before - p.stages[0].propellant_mass();
         let expected = blocks.len() as f64 * blocks[0].nozzle_mass_flow();
-        assert!((used - expected).abs() < 1e-9 * expected, "{used} {expected}");
+        assert!(
+            (used - expected).abs() < 1e-9 * expected,
+            "{used} {expected}"
+        );
+        idle(&mut p);
+        assert!(p.stages[0].rcs.iter().all(|b| b.firing == [0.0; 4]));
     }
 
     #[test]

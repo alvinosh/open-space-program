@@ -46,9 +46,9 @@ pub struct MassProperties {
 
 /// Mass distribution of a stack of stages, bottom first. Each stage is a cylinder of its
 /// diameter and length: tanks are thin shells along it, structure (and payload) a uniform
-/// solid, engines point masses at their mounts on the stage's base, and propellant a solid
-/// column settled at the aft end, where thrust pushes it. The centre of mass therefore
-/// moves as the tanks drain.
+/// solid, engines point masses at their mounts on the stage's base, fins rings of mass at
+/// their centroid, and propellant a solid column settled at the aft end, where thrust pushes
+/// it. The centre of mass therefore moves as the tanks drain.
 pub fn mass_properties(stages: &[Stage]) -> MassProperties {
     // Sums of m, m·z, m·z² and each element's own moments about its centre.
     let (mut mass, mut first, mut second) = (0.0, 0.0, 0.0);
@@ -76,6 +76,11 @@ pub fn mass_properties(stages: &[Stage]) -> MassProperties {
         for engine in &stage.engines {
             let (m, d2) = (engine.def.mass, engine.mount.length_squared());
             add(m, base, m * d2 / 2.0, m * d2);
+        }
+        if let Some(fins) = &stage.fins {
+            let (out, height) = fins.centroid();
+            let (m, d2) = (fins.mass, (stage.diameter / 2.0 + out).powi(2));
+            add(m, base + height, m * d2 / 2.0, m * d2);
         }
         let m = stage.propellant_mass();
         let fill = (m / stage.propellant_capacity().max(1e-9)).clamp(0.0, 1.0);
@@ -458,17 +463,28 @@ fn attitude_error(orientation: DQuat, target: DQuat) -> DVec3 {
 mod tests {
     use super::*;
     use crate::{
-        data::{CraftDef, StageDef},
+        data::{CraftDef, StageDef, TankDef, TankShape},
         vessel::tests::catalog,
     };
 
-    fn stage(engines: &[&str], tanks: &[&str], structure: f64, d: f64, l: f64) -> StageDef {
+    /// A stage with a kerolox tank `tank` metres long, if non-zero.
+    fn stage(engines: &[&str], tank: f64, structure: f64, d: f64, l: f64) -> StageDef {
+        let tanks = (tank > 0.0).then(|| TankDef {
+            tank_type: "Isogrid Al-Li".into(),
+            shape: TankShape::Cylinder,
+            length: tank,
+            diameter: None,
+            design_load: None,
+            propellants: [("Kerosene".into(), 1.0), ("LqdOxygen".into(), 2.36)].into(),
+        });
         StageDef {
             name: "test".into(),
             engines: engines.iter().map(|s| s.to_string()).collect(),
-            tanks: tanks.iter().map(|s| s.to_string()).collect(),
+            tanks: tanks.into_iter().collect(),
+            fins: None,
             reaction_wheels: Vec::new(),
             rcs: Vec::new(),
+            pod: None,
             structure_mass: structure,
             diameter: d,
             length: l,
@@ -490,7 +506,7 @@ mod tests {
 
     #[test]
     fn solid_cylinder_inertia() {
-        let p = propulsion(vec![stage(&[], &[], 1000.0, 2.0, 10.0)]);
+        let p = propulsion(vec![stage(&[], 0.0, 1000.0, 2.0, 10.0)]);
         let m = mass_properties(&p.stages);
         assert!(close(m.center_of_mass, 5.0, 1e-12));
         assert!(close(m.inertia.axial, 1000.0 * 1.0 / 2.0, 1e-12));
@@ -503,7 +519,7 @@ mod tests {
 
     #[test]
     fn stacking_uses_the_parallel_axis_theorem() {
-        let one = stage(&[], &[], 1000.0, 2.0, 10.0);
+        let one = stage(&[], 0.0, 1000.0, 2.0, 10.0);
         let p = propulsion(vec![one.clone(), one]);
         let m = mass_properties(&p.stages);
         assert!(close(m.center_of_mass, 10.0, 1e-12));
@@ -520,13 +536,7 @@ mod tests {
             }
         };
         // Alone, the propellant left sits at the bottom of the tank.
-        let mut alone = propulsion(vec![stage(
-            &["K-1 Booster"],
-            &["Kerolox Tank 3.7m x 40m"],
-            0.0,
-            3.7,
-            42.0,
-        )]);
+        let mut alone = propulsion(vec![stage(&["K-1 Booster"], 38.0, 0.0, 3.7, 42.0)]);
         let full = mass_properties(&alone.stages);
         drain(&mut alone);
         assert!(mass_properties(&alone.stages).center_of_mass < full.center_of_mass);
@@ -545,7 +555,7 @@ mod tests {
 
     #[test]
     fn gimbal_torque_has_the_right_sign_and_size() {
-        let mut p = propulsion(vec![stage(&["K-1 Vacuum"], &[], 5_000.0, 3.7, 14.0)]);
+        let mut p = propulsion(vec![stage(&["K-1 Vacuum"], 0.0, 5_000.0, 3.7, 14.0)]);
         let engine = &mut p.stages[0].engines[0];
         engine.thrust = 1e6;
         let range = engine.def.gimbal_range.to_radians();
@@ -565,7 +575,7 @@ mod tests {
 
     #[test]
     fn clusters_roll_by_gimballing_sideways() {
-        let mut p = propulsion(vec![stage(&["K-1 Booster"; 9], &[], 5_000.0, 3.7, 40.0)]);
+        let mut p = propulsion(vec![stage(&["K-1 Booster"; 9], 0.0, 5_000.0, 3.7, 40.0)]);
         for e in &mut p.stages[0].engines {
             e.thrust = 8e5;
         }

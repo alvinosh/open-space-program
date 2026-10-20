@@ -19,6 +19,7 @@
           { widget: "row", children: [{ widget: "label", class: "key", text: "Delta-v (vac)" }, { widget: "label", text: "{vessel.delta_v|speed}" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "Stages" }, { widget: "label", text: "{vessel.stage_count}" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "Engines" }, { widget: "label", text: "running", visible: "vessel.engines_running" }, { widget: "label", class: "dim", text: "off", visible: "!vessel.engines_running" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Structure" }, { widget: "label", text: "{vessel.structure_load|percent} of strength", visible: "!vessel.destroyed" }, { widget: "label", class: "error", text: "destroyed", visible: "vessel.destroyed" }] },
           { widget: "row", visible: "vessel.has_rcs", children: [{ widget: "label", class: "key", text: "RCS" }, { widget: "label", text: "on", visible: "vessel.rcs" }, { widget: "label", class: "dim", text: "off", visible: "!vessel.rcs" }, { widget: "label", class: "dim", text: "{vessel.rcs_fuel|percent} propellant" }] },
         ],
       },

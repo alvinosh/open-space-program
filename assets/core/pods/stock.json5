@@ -1,0 +1,21 @@
+// Crew pods. A pod sits at the top of its stage (`pod: "<id>"`); its mass (with crew and
+// consumables, kg) counts as structure. `diameter` is the base, `height` the whole pod (m).
+// Models are glTF, origin at the centre of the base, nose up.
+[
+  {
+    id: "C-1 Capsule", // one person, Mercury/Vostok era
+    mass: 1350,
+    crew: 1,
+    diameter: 1.9,
+    height: 2.9,
+    model: "models/pods/c1.glb",
+  },
+  {
+    id: "C-4 Capsule", // four people, Dragon/Orion class
+    mass: 9500,
+    crew: 4,
+    diameter: 3.7,
+    height: 3.9,
+    model: "models/pods/c4.glb",
+  },
+]

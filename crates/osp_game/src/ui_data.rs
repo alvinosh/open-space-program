@@ -6,7 +6,9 @@ use bevy::{math::DVec3, prelude::*};
 use osp_mods::Severity;
 use osp_sim::{
     constants::G0,
+    data::TankShape,
     events::EventKind,
+    structure::{Mode, Part, PartLoad},
     time::SimTime,
     vessel::{Motion, Situation, VesselEventKind},
 };
@@ -308,6 +310,86 @@ fn publish_flight(
             .sum::<f64>(),
     );
     data.set("vessel.stages", rows);
+
+    // Procedural tanks and fins: what each is made of and how hard it is working.
+    data.set("vessel.destroyed", vessel.is_destroyed());
+    data.set("vessel.structure_load", vessel.flight.structure_load);
+    let load_of = |stage: usize, part: Part| {
+        vessel
+            .structure
+            .iter()
+            .find(|l| l.stage == stage && l.part == part)
+    };
+    let mode = |load: Option<&PartLoad>| {
+        load.map(|l| match l.mode {
+            Mode::Buckling => "buckling",
+            Mode::Burst => "pressure",
+            Mode::Bending => "bending",
+        })
+    };
+    let mut parts = Vec::new();
+    for (s, stage) in stages.iter().enumerate() {
+        for (k, tank) in stage.tanks.iter().enumerate() {
+            let load = load_of(s, Part::Tank(k));
+            let size = match tank.shape {
+                TankShape::Cylinder => format!("{:.2} x {:.2} m", 2.0 * tank.radius, tank.length),
+                TankShape::Sphere => format!("{:.2} m sphere", 2.0 * tank.radius),
+            };
+            let contents: Vec<_> = tank
+                .contents
+                .iter()
+                .map(|c| format!("{} {:.2} t", c.resource, c.capacity / 1e3))
+                .collect();
+            parts.push(record([
+                ("stage", stage.name.as_str().into()),
+                ("name", tank.tank_type.as_str().into()),
+                ("tank", true.into()),
+                ("size", size.into()),
+                ("material", tank.material.as_str().into()),
+                ("mass", tank.dry_mass.into()),
+                ("volume", tank.volume.into()),
+                ("utilization", tank.utilization.into()),
+                ("contents", contents.join(", ").into()),
+                ("wall", (tank.wall * 1e3).into()),
+                ("max_pressure", (tank.max_pressure / 1e5).into()),
+                ("max_axial_load", tank.max_axial_load.into()),
+                ("max_fin_force", UiValue::Null),
+                ("load", load.map(|l| l.fraction).into()),
+                ("mode", mode(load).into()),
+            ]));
+        }
+        if let Some(fins) = &stage.fins {
+            let load = load_of(s, Part::Fins);
+            let d = &fins.def;
+            parts.push(record([
+                ("stage", stage.name.as_str().into()),
+                ("name", format!("{} fins", d.count).into()),
+                ("tank", false.into()),
+                (
+                    "size",
+                    format!(
+                        "{:.2} m2 each, span {:.2} m, {:.0} mm thick",
+                        fins.area,
+                        d.span,
+                        d.thickness * 1e3
+                    )
+                    .into(),
+                ),
+                ("material", d.material.as_str().into()),
+                ("mass", fins.mass.into()),
+                ("volume", UiValue::Null),
+                ("utilization", UiValue::Null),
+                ("contents", UiValue::Null),
+                ("wall", UiValue::Null),
+                ("max_pressure", UiValue::Null),
+                ("max_axial_load", UiValue::Null),
+                ("max_fin_force", fins.max_force.into()),
+                ("load", load.map(|l| l.fraction).into()),
+                ("mode", mode(load).into()),
+            ]));
+        }
+    }
+    data.set("vessel.parts", parts);
 
     let log: Vec<_> = vessel
         .log

@@ -33,6 +33,7 @@ pub mod prediction;
 pub mod propulsion;
 pub mod rcs;
 pub mod search;
+pub mod structure;
 pub mod system;
 pub mod terrain;
 pub mod time;

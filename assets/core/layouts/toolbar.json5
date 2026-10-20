@@ -13,6 +13,7 @@
       { widget: "button", class: "launcher_button", text: "Orbit", action: "ui.toggle:orbit_info", active: "ui.shown.orbit_info" },
       { widget: "button", class: "launcher_button", text: "Vessel", action: "ui.toggle:vessel_info", active: "ui.shown.vessel_info" },
       { widget: "button", class: "launcher_button", text: "Attitude", action: "ui.toggle:attitude_info", active: "ui.shown.attitude_info" },
+      { widget: "button", class: "launcher_button", text: "Structure", action: "ui.toggle:structure_info", active: "ui.shown.structure_info" },
       { widget: "button", class: "launcher_button", text: "Log", action: "ui.toggle:log", active: "ui.shown.log" },
       { widget: "button", class: "launcher_button", text: "Map", action: "view.toggle_map", active: "view.map" },
       { widget: "button", class: "launcher_button", text: "Mods", action: "ui.toggle:mods", active: "ui.shown.mods" },

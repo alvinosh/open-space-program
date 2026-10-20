@@ -4,3 +4,5 @@
 /.bake-cache/
 # Baked terrain is generated, and large: keep only the README.
 /assets/core/terrain/*/
+# Python caches from the Blender model scripts.
+__pycache__/

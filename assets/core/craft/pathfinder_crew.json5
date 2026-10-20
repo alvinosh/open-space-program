@@ -1,0 +1,47 @@
+// Pathfinder with a four-person capsule instead of the payload.
+{
+  id: "pathfinder_crew",
+  name: "Pathfinder Crew",
+  stages: [
+    {
+      name: "Booster",
+      engines: [
+        "K-1 Booster", "K-1 Booster", "K-1 Booster",
+        "K-1 Booster", "K-1 Booster", "K-1 Booster",
+        "K-1 Booster", "K-1 Booster", "K-1 Booster",
+      ],
+      tanks: [
+        { type: "Isogrid Al-Li", length: 38, propellants: { Kerosene: 1, LqdOxygen: 2.36 } },
+      ],
+      structure_mass: 9400, // thrust structure, interstage, avionics
+      diameter: 3.7,
+      length: 42,
+    },
+    {
+      name: "Upper Stage",
+      engines: ["K-1 Vacuum"],
+      tanks: [
+        // Full while the booster pulls 6 g, so built for 6.5 g.
+        {
+          type: "Isogrid Al-Li",
+          length: 9.6,
+          design_load: 6.5,
+          propellants: { Kerosene: 1, LqdOxygen: 2.36 },
+        },
+        // RCS nitrogen in a bottle inside the interstage.
+        { type: "COPV", shape: "sphere", diameter: 1.35, propellants: { Nitrogen: 1 } },
+      ],
+      reaction_wheels: ["Attitude Control Unit"],
+      rcs: ["Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad"],
+      structure_mass: 1830, // interstage, avionics, payload adapter
+      diameter: 3.7,
+      length: 14,
+    },
+    {
+      name: "Capsule",
+      pod: "C-4 Capsule",
+      diameter: 3.7,
+      length: 3.9,
+    },
+  ],
+}

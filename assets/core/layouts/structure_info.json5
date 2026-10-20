@@ -1,0 +1,43 @@
+// Procedural tanks and fins: what each is made of, what it holds, its strength and how hard
+// it is working right now. The list (#parts) repeats over `vessel.parts`.
+{
+  id: "structure_info",
+  visible: false,
+  group: "flight",
+  root: {
+    widget: "window",
+    title: "Structure - {vessel.name}",
+    style: { left: 650, top: 140, width: 440 },
+    children: [
+      { widget: "row", children: [{ widget: "label", class: "key", text: "Most loaded" }, { widget: "label", text: "{vessel.structure_load|percent} of its strength" }] },
+      { widget: "label", class: "error", text: "Structural failure: vessel destroyed", visible: "vessel.destroyed" },
+      {
+        id: "parts",
+        widget: "column",
+        repeat: "vessel.parts",
+        style: { gap: 8, margin: [6, 0, 0, 0] },
+        children: [
+          {
+            widget: "column",
+            children: [
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", text: "{item.stage}: {item.name}" },
+                  { widget: "spacer" },
+                  { widget: "label", class: "dim nowrap", text: "{item.load|percent} ({item.mode})" },
+                ],
+              },
+              { widget: "bar", value: "item.load" },
+              { widget: "label", class: "dim", text: "{item.size}, {item.material}, {item.mass|mass} empty" },
+              { widget: "label", class: "dim", visible: "item.tank", text: "{item.volume|fixed:2} m3, {item.utilization|percent} usable: {item.contents}" },
+              { widget: "label", class: "dim", visible: "item.tank", text: "Wall {item.wall|fixed:2} mm, yields at {item.max_pressure|fixed:1} bar" },
+              { widget: "label", class: "dim", visible: "item.max_axial_load", text: "Buckles under {item.max_axial_load|force} of compression" },
+              { widget: "label", class: "dim", visible: "item.max_fin_force", text: "Each fin bends off at {item.max_fin_force|force} of side load" },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

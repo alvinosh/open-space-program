@@ -2,18 +2,29 @@
 //!
 //! The prediction uses the simulation's own event code, so what is drawn is exactly what
 //! will happen if nothing changes. It is recomputed only when the trajectory changes.
+//!
+//! Lines are sampled for the camera every frame: dense where they pass close by, sparse
+//! across the far side of an orbit, so no chord strays more than half a pixel from the true
+//! curve. A body's orbit starts and ends at the body, so its line always runs through it.
 
-use bevy::prelude::*;
+use bevy::{math::DVec3, prelude::*};
 use osp_sim::{
+    body::BodyId,
     events::EventKind,
     prediction::{Patch, predict},
     time::SimTime,
     vessel::Motion,
 };
 
-use crate::{FrameSet, camera::CameraRig, frame::RenderFrame, sim::Sim};
+use crate::{
+    FrameSet,
+    camera::{CameraRig, MainCamera},
+    frame::RenderFrame,
+    sim::Sim,
+};
 
-const ORBIT_SEGMENTS: usize = 256;
+/// How far a drawn line may stray from the true curve, in pixels.
+const LINE_TOLERANCE_PX: f64 = 0.5;
 const MAX_PATCHES: usize = 6;
 /// How far ahead to predict, seconds.
 const PREDICTION_HORIZON: f64 = 60.0 * 86_400.0;
@@ -78,6 +89,7 @@ fn draw_orbits(
     rig: Res<CameraRig>,
     frame: Res<RenderFrame>,
     prediction: Res<Prediction>,
+    camera: Single<(&Camera, &Projection), With<MainCamera>>,
     mut gizmos: Gizmos,
 ) {
     if !rig.map_view || frame.origin_body.is_none() {
@@ -85,13 +97,24 @@ fn draw_orbits(
     }
     let system = &sim.universe.system;
 
+    // Radians per pixel, so a tolerance at a point is its distance from the camera times this.
+    let (camera, projection) = *camera;
+    let fov = match projection {
+        Projection::Perspective(p) => p.fov,
+        _ => 60f32.to_radians(),
+    };
+    let height = camera.physical_viewport_size().map_or(1080, |s| s.y.max(1));
+    let angle = LINE_TOLERANCE_PX * fov as f64 / height as f64;
+    let (frame, eye) = (&*frame, rig.position);
+    let tolerance = |body: BodyId| move |p: DVec3| frame.relative(body, p).distance(eye) * angle;
+
     for body in system.bodies() {
         let (Some(orbit), Some(parent)) = (&body.orbit, body.parent) else {
             continue;
         };
         let [r, g, b] = body.color;
         let points = orbit
-            .sample_full(ORBIT_SEGMENTS, f64::INFINITY)
+            .sample_full(frame.time, f64::INFINITY, tolerance(parent))
             .into_iter()
             .map(|p| frame.to_render(parent, p));
         gizmos.linestrip(points, Color::linear_rgb(r, g, b).with_alpha(0.5));
@@ -100,7 +123,9 @@ fn draw_orbits(
     for (i, patch) in prediction.patches.iter().enumerate() {
         let color = PATCH_COLORS[i % PATCH_COLORS.len()];
         let start = patch.start.max(frame.time);
-        let points = patch.orbit.sample_between(start, patch.end, ORBIT_SEGMENTS);
+        let points = patch
+            .orbit
+            .sample_between(start, patch.end, tolerance(patch.frame));
         // Drawn relative to the patch body's current position (KSP-style).
         gizmos.linestrip(
             points.into_iter().map(|p| frame.to_render(patch.frame, p)),

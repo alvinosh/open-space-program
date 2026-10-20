@@ -9,6 +9,21 @@
     start: { type: "LaunchSite", site: "cape_canaveral" },
   },
   {
+    id: "crew",
+    name: "Crewed launch from the Cape",
+    start_time: 21600,
+    craft: "pathfinder_crew",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
+    // Finned single stage with a one-person capsule: a suborbital hop.
+    id: "sounder",
+    name: "Suborbital hop",
+    start_time: 21600,
+    craft: "sounder",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
     // Parked in a 300 km circular orbit: good for testing time warp and transfers.
     // A ~3.1 km/s prograde burn from here reaches the Moon.
     id: "leo",

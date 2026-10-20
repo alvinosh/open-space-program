@@ -221,6 +221,7 @@ fn stop_reason(events: &[SimEvent]) -> String {
             }
             VesselEventKind::Landed { .. } => "Warp stopped: landed".into(),
             VesselEventKind::Crashed { .. } => "Warp stopped: crashed".into(),
+            VesselEventKind::Destroyed => "Warp stopped: structural failure".into(),
             _ => "Warp stopped".into(),
         })
 }
