@@ -26,13 +26,16 @@ use thiserror::Error;
 use crate::{
     atmosphere::AtmosphereSample,
     attitude::{self, Attitude, Inertia, MassProperties, NavBasis, NavFrame, Sas, SasMode},
+    autopilot::{self, BurnExecutor, BurnTiming, Capability, Finish},
     body::{Body, BodyId},
     data::{CraftDef, LaunchSiteDef, OrbitStartDef, PartCatalog},
     events::{EventKind, TrajectoryEvent, apply_event, next_event},
     integrator::Encke,
     orbit::{Elements, Orbit, StateVector},
+    plan::{Burn, FlightPlan},
     propulsion::{CraftError, Propulsion},
     rcs,
+    rendezvous::Target,
     structure::{self, Conditions, Part, PartLoad},
     system::SolarSystem,
     time::SimTime,
@@ -67,6 +70,10 @@ pub enum Motion {
     Integrated(Encke),
 }
 
+/// Stable identity of a vessel, unchanged as vessels come and go.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub struct VesselId(pub u64);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Situation {
     Landed,
@@ -96,6 +103,10 @@ pub enum VesselEventKind {
     },
     /// A tank buckled or burst: the vessel broke up.
     Destroyed,
+    /// The burn executor needs physics ticks from here on (time warp hands over).
+    BurnDue,
+    /// The burn executor finished a burn, or gave up on it.
+    BurnEnded,
 }
 
 impl VesselEventKind {
@@ -159,6 +170,8 @@ enum Hold {
 #[derive(Debug, Clone)]
 pub struct Vessel {
     pub name: String,
+    /// Assigned by the universe the vessel is in.
+    id: VesselId,
     parent: BodyId,
     motion: Motion,
     attitude: AttitudeTrack,
@@ -182,6 +195,17 @@ pub struct Vessel {
     /// Load on every tank and fin set as of the last physics step.
     pub structure: Vec<PartLoad>,
     pub log: Vec<LogEntry>,
+    /// Burns the pilot has planned.
+    pub plan: FlightPlan,
+    /// Flies the first planned burn when engaged.
+    executor: BurnExecutor,
+    /// The executor wants the RCS pushing forward this tick (ullage).
+    ullage_push: bool,
+    /// What the pilot navigates towards (navball, SAS target modes, closest approach).
+    pub target: Option<Target>,
+    /// The target's state relative to this vessel's parent, as of the last physics tick
+    /// (set by the universe, which can see other vessels).
+    target_state: Option<StateVector>,
 }
 
 impl Vessel {
@@ -228,7 +252,25 @@ impl Vessel {
             destroyed: false,
             structure: Vec::new(),
             log: Vec::new(),
+            plan: FlightPlan::default(),
+            executor: BurnExecutor::default(),
+            ullage_push: false,
+            id: VesselId::default(),
+            target: None,
+            target_state: None,
         })
+    }
+
+    pub fn id(&self) -> VesselId {
+        self.id
+    }
+
+    pub(crate) fn set_id(&mut self, id: VesselId) {
+        self.id = id;
+    }
+
+    pub(crate) fn set_target_state(&mut self, state: Option<StateVector>) {
+        self.target_state = state;
     }
 
     /// Standing on the surface at a launch site, nose up, its feet (+Y) to the east so
@@ -361,6 +403,8 @@ impl Vessel {
         matches!(self.motion, Motion::Integrated(_))
             || self.propulsion.wants_thrust()
             || (self.rcs && self.translation_input != DVec3::ZERO)
+            || self.executor.burning()
+            || self.ullage_push
     }
 
     /// Mass, centre of mass and inertia as of the last physics step.
@@ -472,7 +516,11 @@ impl Vessel {
         self.nav_frame
     }
 
+    /// Switch the navigation frame (the target frame only with a target).
     pub fn set_nav_frame(&mut self, system: &SolarSystem, time: SimTime, frame: NavFrame) {
+        if frame == NavFrame::Target && self.target.is_none() {
+            return;
+        }
         self.rebase_attitude(system, time);
         self.nav_frame = frame;
     }
@@ -480,7 +528,174 @@ impl Vessel {
     /// Prograde, normal and radial directions in the current navigation frame.
     pub fn nav_basis(&self, system: &SolarSystem, time: SimTime) -> Option<NavBasis> {
         let body = system.body(self.parent);
-        NavBasis::new(self.nav_frame, body, &self.state_at(system, time))
+        self.basis_at(body, &self.state_at(system, time))
+    }
+
+    fn basis_at(&self, body: &Body, state: &StateVector) -> Option<NavBasis> {
+        match self.nav_frame {
+            NavFrame::Target => NavBasis::relative_to(state, &self.target_state?),
+            frame => NavBasis::new(frame, body, state),
+        }
+    }
+
+    /// Unit vector from the vessel to its target, from the last known target state.
+    fn toward_target(&self, state: &StateVector) -> Option<DVec3> {
+        (self.target_state?.position - state.position).try_normalize()
+    }
+
+    /// The target's state relative to this vessel's parent as of the last update.
+    pub fn target_state(&self) -> Option<StateVector> {
+        self.target_state
+    }
+
+    /// The burn executor (flies the first planned burn).
+    pub fn executor(&self) -> &BurnExecutor {
+        &self.executor
+    }
+
+    /// Fly the first planned burn: point along it, light the engines when it starts, cut
+    /// them when it is done.
+    pub fn engage_burn(&mut self, system: &SolarSystem, time: SimTime) {
+        if self.plan.is_empty() || self.destroyed || self.executor.engaged() {
+            return;
+        }
+        // Arm the bottom stage if its engines are not armed yet (never jettisons anything).
+        if let Some(stage) = self.propulsion.stages.first()
+            && !stage.active
+            && !stage.engines.is_empty()
+        {
+            self.activate_next_stage(system, time);
+        }
+        self.executor.engage();
+        self.set_sas_mode(system, time, SasMode::Burn);
+        self.record(time, "Burn executor engaged".into());
+    }
+
+    /// Hand control back to the pilot, cutting the engines if a burn was running.
+    pub fn disengage_burn(&mut self, time: SimTime) {
+        if !self.executor.engaged() {
+            return;
+        }
+        if self.executor.burning() {
+            self.propulsion.set_throttle(0.0);
+        }
+        self.executor.disengage();
+        self.ullage_push = false;
+        self.record(time, "Burn executor off".into());
+    }
+
+    /// The first planned burn's Δv in inertial axes, on the trajectory as it is now; during
+    /// the burn, what is still to give.
+    pub fn burn_vector(&self, system: &SolarSystem, time: SimTime) -> Option<DVec3> {
+        if let Some(remaining) = self.executor.remaining() {
+            return Some(remaining);
+        }
+        let burn = self.plan.burns().first()?;
+        burn.inertial(&self.orbit(system, time).state_at(burn.time))
+    }
+
+    /// When a planned burn would start and how long it would take with the bottom stage
+    /// (armed or not), if it can burn at all.
+    pub fn burn_timing(&self, burn: &Burn, pressure: f64) -> Option<BurnTiming> {
+        let capability = Capability::estimate(&self.propulsion, pressure)?;
+        Some(BurnTiming::of(burn, &capability, self.mass.mass))
+    }
+
+    /// The burns ahead of `time`, for prediction: the plan, with a burn in progress
+    /// replaced by what is left of it, given now.
+    pub fn burns_ahead(&self, system: &SolarSystem, time: SimTime) -> Vec<Burn> {
+        let mut burns = self.plan.burns().to_vec();
+        if let Some(remaining) = self.executor.remaining()
+            && !burns.is_empty()
+        {
+            let soon = time.add_ticks(1);
+            let state = self.orbit(system, time).state_at(soon);
+            match Burn::from_inertial(soon, &state, remaining) {
+                Some(rest) => burns[0] = rest,
+                None => {
+                    burns.remove(0);
+                }
+            }
+        }
+        burns
+    }
+
+    /// The earliest time the vessel needs physics ticks again although it could coast on
+    /// rails until then (the burn executor waiting for its burn).
+    pub fn attention_time(&self) -> Option<SimTime> {
+        if !self.executor.engaged() || self.executor.burning() {
+            return None;
+        }
+        let burn = self.plan.burns().first()?;
+        let start = self.burn_timing(burn, 0.0).map_or(burn.time, |t| t.start);
+        Some(start.add_seconds(-(autopilot::WARP_MARGIN + autopilot::ULLAGE_LEAD)))
+    }
+
+    /// Run the burn executor for the tick starting at `time`; returns where it wants the
+    /// nose.
+    fn fly_burn(
+        &mut self,
+        system: &SolarSystem,
+        time: SimTime,
+        pressure: f64,
+        out: &mut Vec<VesselEvent>,
+    ) -> Option<DVec3> {
+        self.ullage_push = false;
+        if !self.executor.engaged() {
+            return None;
+        }
+        let Some(burn) = self.plan.burns().first().copied() else {
+            self.executor.disengage();
+            return None;
+        };
+        // The executor steers through SAS; the pilot disengages it to take SAS back.
+        if !self.sas.enabled() || self.sas.mode() != SasMode::Burn {
+            self.sas.set_mode(SasMode::Burn);
+        }
+        let delta_v = self.burn_vector(system, time).unwrap_or(DVec3::ZERO);
+        let has_rcs = self
+            .propulsion
+            .stages
+            .iter()
+            .any(|s| s.rcs_fraction().is_some_and(|f| f > 0.0));
+        let situation = autopilot::Situation {
+            time,
+            burn: &burn,
+            delta_v,
+            capability: Capability::of(&self.propulsion, pressure),
+            mass: self.mass.mass,
+            nose: self.attitude_state(system, time).nose(),
+            settled: self.propellant_settled,
+            has_rcs,
+            running: self.propulsion.any_engine_running(),
+        };
+        let command = self.executor.command(&situation);
+        if let Some(throttle) = command.throttle {
+            self.propulsion.set_throttle(throttle);
+        }
+        self.ullage_push = command.ullage && !self.is_landed();
+        if let Some(finish) = command.finished {
+            self.end_burn(time, finish, out);
+        }
+        command.direction
+    }
+
+    fn end_burn(&mut self, time: SimTime, finish: Finish, out: &mut Vec<VesselEvent>) {
+        self.ullage_push = false;
+        self.propulsion.set_throttle(0.0);
+        let message = match finish {
+            Finish::Done { residual } => {
+                self.plan.remove(0);
+                self.sas.set_mode(SasMode::Stability);
+                format!("Burn complete, {residual:.2} m/s left over")
+            }
+            Finish::Aborted(why) => format!("Burn aborted: {why}"),
+        };
+        self.record(time, message);
+        out.push(VesselEvent {
+            time,
+            kind: VesselEventKind::BurnEnded,
+        });
     }
 
     /// Time warp is about to skip physics from `time`. With SAS on, the vessel holds its
@@ -490,21 +705,36 @@ impl Vessel {
         // Nothing steers on rails.
         self.flight.control = DVec3::ZERO;
         rcs::idle(&mut self.propulsion);
+        self.ullage_push = false;
         if self.is_landed() || !self.sas.enabled() || self.attitude.hold != Hold::Free {
             return;
         }
         let state = self.attitude_state(system, time);
         let basis = self.nav_basis(system, time);
-        let target = basis.and_then(|b| self.sas.mode().direction(&b));
-        let (orientation, hold) = match (target, basis) {
-            (Some(direction), Some(basis)) => (
-                (DQuat::from_rotation_arc(state.nose(), direction) * state.orientation).normalize(),
-                Hold::Tracking {
-                    frame: self.nav_frame,
-                    basis: basis.matrix(),
-                },
-            ),
-            _ => (state.orientation, Hold::Inertial),
+        let turn = |direction: DVec3| {
+            (DQuat::from_rotation_arc(state.nose(), direction) * state.orientation).normalize()
+        };
+        let inertial = matches!(
+            self.sas.mode(),
+            SasMode::Burn | SasMode::Target | SasMode::AntiTarget
+        ) || self.nav_frame == NavFrame::Target;
+        let (orientation, hold) = if inertial {
+            // A burn points a fixed inertial way; the target hardly moves across the sky
+            // during a warp, so the attitude is held where it is now.
+            let body = system.body(self.parent);
+            let aim = self.sas_direction(system, body, &self.state_at(system, time), time);
+            (aim.map_or(state.orientation, turn), Hold::Inertial)
+        } else {
+            match (basis.and_then(|b| self.sas.mode().direction(&b)), basis) {
+                (Some(direction), Some(basis)) => (
+                    turn(direction),
+                    Hold::Tracking {
+                        frame: self.nav_frame,
+                        basis: basis.matrix(),
+                    },
+                ),
+                _ => (state.orientation, Hold::Inertial),
+            }
         };
         self.attitude = AttitudeTrack {
             epoch: time,
@@ -662,6 +892,7 @@ impl Vessel {
         let body = system.body(self.parent);
         let state = self.state_at(system, t0);
         let air = air_at(body, &state);
+        let aim = self.fly_burn(system, t0, air.pressure, out);
         let mut messages = Vec::new();
         self.propulsion
             .burn(air.pressure, dt, self.propellant_settled, &mut messages);
@@ -684,7 +915,7 @@ impl Vessel {
         // Rotation over this tick, under the torque commanded at its start.
         let start = self.attitude_state(system, t0);
         let com = self.mass.center_of_mass;
-        let rcs = self.rcs && !self.is_landed();
+        let rcs = (self.rcs || self.ullage_push) && !self.is_landed();
         let mut authority = attitude::torque_authority(&self.propulsion, com);
         if rcs {
             authority += rcs::torque_authority(&self.propulsion, com, air.pressure);
@@ -692,11 +923,17 @@ impl Vessel {
         let command = if self.is_landed() || self.destroyed {
             DVec3::ZERO
         } else {
-            self.rotation_command(body, &state, start, authority)
+            let target = aim.or_else(|| self.sas_direction(system, body, &state, t0));
+            self.rotation_command(start, authority, target)
         };
         let (mut force, mut torque) = attitude::actuate(&mut self.propulsion, com, command);
         if rcs {
-            let translation = self.translation_input.clamp(DVec3::NEG_ONE, DVec3::ONE);
+            let push = if self.ullage_push {
+                DVec3::Z
+            } else {
+                DVec3::ZERO
+            };
+            let translation = (self.translation_input + push).clamp(DVec3::NEG_ONE, DVec3::ONE);
             let (f, t) = rcs::fire(
                 &mut self.propulsion,
                 com,
@@ -732,6 +969,12 @@ impl Vessel {
 
         let thrust = force.length();
         let thrust_accel = start.orientation * force / mass;
+        if let Some(finish) = self
+            .executor
+            .account(thrust_accel * dt, self.propulsion.any_engine_running())
+        {
+            self.end_burn(t0, finish, out);
+        }
         let drag_accel = drag(body, &air, &self.propulsion, mass);
         let drag_now = drag_accel(state.position, state.velocity);
         let proper = thrust_accel + drag_now;
@@ -875,24 +1118,39 @@ impl Vessel {
         }
     }
 
-    /// The pilot's input if any, otherwise what SAS wants.
-    fn rotation_command(
-        &mut self,
+    /// Where the SAS mode wants the nose (inertial), if that is defined right now.
+    fn sas_direction(
+        &self,
+        system: &SolarSystem,
         body: &Body,
         state: &StateVector,
+        time: SimTime,
+    ) -> Option<DVec3> {
+        match self.sas.mode() {
+            SasMode::Burn => self
+                .burn_vector(system, time)
+                .and_then(DVec3::try_normalize),
+            SasMode::Target => self.toward_target(state),
+            SasMode::AntiTarget => self.toward_target(state).map(|d| -d),
+            mode => self.basis_at(body, state).and_then(|b| mode.direction(&b)),
+        }
+    }
+
+    /// The pilot's input if any, otherwise what SAS wants (`target`: where to point).
+    fn rotation_command(
+        &mut self,
         attitude: Attitude,
         authority: DVec3,
+        target: Option<DVec3>,
     ) -> DVec3 {
         if self.rotation_input != DVec3::ZERO {
             self.sas.release();
             return self.rotation_input.clamp(DVec3::NEG_ONE, DVec3::ONE);
         }
-        if !self.sas.enabled() {
+        if !self.sas.enabled() && target.is_none() {
             return DVec3::ZERO;
         }
         let alpha = authority / self.mass.inertia.diagonal().max(DVec3::splat(1e-9));
-        let target = NavBasis::new(self.nav_frame, body, state)
-            .and_then(|basis| self.sas.mode().direction(&basis));
         self.sas.steer(attitude, alpha, target)
     }
 
@@ -1301,6 +1559,117 @@ pub(crate) mod tests {
         v.set_throttle(1.0);
         run(&mut v, &system, &mut t, 1.0);
         assert!(v.propulsion.any_engine_running());
+    }
+
+    #[test]
+    fn executor_flies_a_planned_burn_like_the_impulse() {
+        let system = rss();
+        // The stage starts unarmed: engaging the executor arms it.
+        let (mut v, mut t) = leo_vessel(&system);
+        assert!(!v.propulsion.stages[0].active);
+        let burn = Burn {
+            time: t.add_seconds(120.0),
+            delta_v: DVec3::new(100.0, 0.0, 0.0),
+        };
+        v.plan.add(burn);
+        // What the plan predicts: the impulse at the burn's time.
+        let before = v.orbit(&system, t);
+        let state = before.state_at(burn.time);
+        let impulse = burn.inertial(&state).unwrap();
+        let expected = Orbit::new(
+            before.mu(),
+            burn.time,
+            StateVector::new(state.position, state.velocity + impulse),
+        );
+        let ignitions = v.propulsion.stages[0].engines[0].ignitions_left;
+
+        v.engage_burn(&system, t);
+        assert_eq!(v.sas().mode(), SasMode::Burn);
+        assert!(v.propulsion.stages[0].active);
+        assert_eq!(v.propulsion.stages.len(), 2);
+        run(&mut v, &system, &mut t, 200.0);
+
+        assert!(v.plan.is_empty(), "{:?}", v.log);
+        assert!(!v.executor().engaged());
+        assert!(!v.propulsion.any_engine_running());
+        assert!(v.log.iter().any(|e| e.message.starts_with("Burn complete")));
+        // One ignition, lit settled thanks to the RCS push.
+        let used = ignitions.unwrap() - v.propulsion.stages[0].engines[0].ignitions_left.unwrap();
+        assert_eq!(used, 1, "{:?}", v.log);
+        // A finite burn centred on the impulse lands on nearly the same orbit.
+        let after = v.orbit(&system, t);
+        let ap = |o: &Orbit| o.apoapsis().unwrap();
+        assert!(
+            (ap(&after) - ap(&expected)).abs() < 1e3,
+            "{}",
+            ap(&after) - ap(&expected)
+        );
+        assert!((after.periapsis() - expected.periapsis()).abs() < 1e3);
+        assert!(after.normal().angle_between(expected.normal()) < 1e-4);
+    }
+
+    #[test]
+    fn rails_warp_hands_over_before_an_engaged_burn() {
+        let system = rss();
+        let (mut v, t) = leo_vessel(&system);
+        v.activate_next_stage(&system, t);
+        v.plan.add(Burn {
+            time: t.add_seconds(3_600.0),
+            delta_v: DVec3::new(50.0, 0.0, 0.0),
+        });
+        v.engage_burn(&system, t);
+        let mut universe = crate::universe::Universe::new(system, vec![v], t);
+        assert!(universe.can_use_rails());
+        let outcome = universe.advance_rails(t.add_seconds(7_200.0));
+        assert!(outcome.interrupted);
+        assert!(
+            outcome
+                .events
+                .iter()
+                .any(|e| e.event.kind == VesselEventKind::BurnDue)
+        );
+        let left = t.add_seconds(3_600.0).seconds_since(universe.time());
+        assert!(left > autopilot::WARP_MARGIN && left < 60.0, "{left}");
+        assert!(!universe.can_use_rails());
+    }
+
+    #[test]
+    fn sas_points_at_a_target_vessel() {
+        let system = rss();
+        let (chaser, t) = leo_vessel(&system);
+        let start = OrbitStartDef {
+            body: "Earth".into(),
+            periapsis_altitude: 320e3,
+            apoapsis_altitude: 320e3,
+            inclination: 28.6,
+            longitude_of_ascending_node: 0.0,
+            argument_of_periapsis: 0.0,
+            mean_anomaly: 1.0,
+        };
+        let station = Vessel::in_orbit(&upper_stage(), &catalog(), &system, &start, t).unwrap();
+        let mut universe = crate::universe::Universe::new(system, vec![chaser, station], t);
+        let station = universe.vessels[1].id();
+        universe.vessels[0].target = Some(Target::Vessel(station));
+        let ut = universe.time();
+        let (system, vessels) = (&universe.system, &mut universe.vessels);
+        vessels[0].set_sas_mode(system, ut, SasMode::Target);
+        for _ in 0..(90.0 * 50.0) as usize {
+            universe.step_physics();
+        }
+        let t = universe.time();
+        let v = &universe.vessels[0];
+        let own = v.state_at(&universe.system, t);
+        let target = universe.target_state(0, t).unwrap();
+        let toward = (target.position - own.position).normalize();
+        let nose = v.attitude_at(&universe.system, t) * DVec3::Z;
+        let off = nose.angle_between(toward).to_degrees();
+        assert!(off < 1.0, "{off}");
+        // The target frame's prograde is the velocity relative to the station.
+        let mut v = universe.vessels[0].clone();
+        v.set_nav_frame(&universe.system, t, NavFrame::Target);
+        let basis = v.nav_basis(&universe.system, t).unwrap();
+        let relative = own.velocity - target.velocity;
+        assert!(basis.prograde.angle_between(relative) < 1e-3);
     }
 
     #[test]

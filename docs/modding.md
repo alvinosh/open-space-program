@@ -313,6 +313,7 @@ produce literal braces.
 | `torque` | `17.6 MN m` |
 | `pressure` | `20.18 kPa` |
 | `duration` | `1d 01:01:01` |
+| `countdown` | `T-00:05:00` before, `T+00:00:12` after (from a time-to in seconds) |
 | `degrees[:N]` | `28.61 deg` |
 | `date`, `clock` | `2000-01-01 18:00:39`, `18:00:39` (from `time.ut`) |
 | `heading` | `090` |
@@ -357,7 +358,11 @@ The flight UI is a set of modules, each its own layout in the `flight` group:
 | `navball` | Navball, speed, throttle, SAS modes, control inputs (bottom centre) | `#navball`, `#throttle`, `#ball`, `#sas`, `#inputs` |
 | `staging` | Stage stack (bottom left) | `#staging`, `#stages` |
 | `flight_info` | Speeds, Mach, pressures | `#flight` |
-| `orbit_info` | Apsides, inclination, period, predicted events | `#orbit`, `#events` |
+| `orbit_info` | Apsides, inclination, period, warp-to buttons, predicted events | `#orbit`, `#warp_to`, `#events` |
+| `flight_plan` | Planned burns, the selected burn's editor, the burn executor | `#burns`, `#editor`, `#executor` |
+| `target_info` | Target distance, relative speed, closest approaches, plane crossings | `#target` |
+| `manifest` | Universe Manifest (F11): every body and vessel, with Target and Fly | `#items` |
+| `transfer_planner` | Transfer planner (F4): porkchop plot (`widget: "porkchop"`) and the picked transfer | `#plot` |
 | `vessel_info` | Thrust, TWR, mass, delta-v | `#propulsion` |
 | `attitude_info` | Centre of mass, inertia, control authority, rates | `#attitude` |
 | `structure_info` | Every tank and fin set: make-up, strength, current load | `#parts` |
@@ -395,10 +400,10 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.mach`, `vessel.dynamic_pressure`, `vessel.static_pressure` | Pa |
 | `vessel.throttle`, `vessel.thrust`, `vessel.twr`, `vessel.mass`, `vessel.accel_g` | 0..1, N, -, kg, g |
 | `vessel.delta_v`, `vessel.stage_count`, `vessel.landed`, `vessel.engines_running` | |
-| `vessel.sas`, `vessel.sas_mode`, `vessel.sas_mode_label` | SAS on; mode (`off`, `stability`, `prograde`, `retrograde`, `normal`, `anti_normal`, `radial_out`, `radial_in`) |
+| `vessel.sas`, `vessel.sas_mode`, `vessel.sas_mode_label` | SAS on; mode (`off`, `stability`, `prograde`, `retrograde`, `normal`, `anti_normal`, `radial_out`, `radial_in`, `burn`, `target`, `anti_target`) |
 | `vessel.rcs`, `vessel.has_rcs`, `vessel.rcs_fuel` | RCS on; any RCS with a propellant supply in the stack; scarcest RCS propellant left (0..1) |
 | `vessel.structure_load`, `vessel.destroyed` | The most loaded part's load over its strength (1 = failing); broke up |
-| `nav.frame`, `nav.speed` | `"Surface"` or `"Orbit"`; speed in that frame, m/s |
+| `nav.frame`, `nav.speed` | `"Surface"`, `"Orbit"` or `"Target"`; speed in that frame, m/s |
 | `nav.heading`, `nav.pitch`, `nav.roll` | Attitude against the local horizon, degrees (roll is empty pointing straight up or down) |
 | `control.pitch`, `control.yaw`, `control.roll` | Rotation command applied (pilot or SAS), −1..1 |
 | `attitude.com`, `attitude.moi_pitch`, `attitude.moi_roll` | Centre of mass above the base (m); moments of inertia (kg·m²) |
@@ -414,6 +419,22 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `orbit.apoapsis`, `orbit.periapsis` | Altitudes, m (apoapsis empty when escaping) |
 | `orbit.escape`, `orbit.inclination`, `orbit.eccentricity`, `orbit.semi_major_axis`, `orbit.period` | |
 | `orbit.events[]` | `label`, `time_to` (s): predicted SOI changes and atmosphere entry |
+| `plan.count`, `plan.total_dv`, `plan.dv_step`, `plan.time_step` | Planned burns; their summed delta-v (m/s); editor step sizes (m/s, s) |
+| `plan.burns[]` | `index`, `label` (`B1`...), `time_to` (s), `delta_v` (m/s), `duration` (s, with the bottom stage), `start_in` (s), `selected` |
+| `plan.has_selection`, `plan.selected` | A burn is selected; its index |
+| `burn.label`, `burn.prograde`, `burn.normal`, `burn.radial`, `burn.delta_v` | The selected burn's delta-v by axis, m/s |
+| `burn.time_to`, `burn.duration`, `burn.start_in`, `burn.apoapsis`, `burn.periapsis` | When, how long, and the apsis altitudes (m) after it |
+| `autoburn.engaged`, `autoburn.state`, `autoburn.remaining` | Burn executor on; `Off`, `Waiting` or `Burning`; delta-v still to give (m/s) |
+| `map.hovering`, `map.hover_time_to`, `map.hover_altitude` | Map view: the trajectory point under the mouse (s, m) |
+| `target.has`, `target.name` | A target is set; its name |
+| `target.distance`, `target.speed`, `target.closing_speed` | Now: m, relative m/s, m/s closing (negative when opening) |
+| `target.has_approach`, `target.approach_distance`, `target.approach_time_to`, `target.approach_speed` | First closest approach on the planned trajectory (m, s, m/s); `target.approach2_*` the next |
+| `target.has_plane`, `target.inclination`, `target.an_time_to`, `target.dn_time_to` | Plane crossings when the target orbits the same body (deg, s) |
+| `transfer.has`, `transfer.computing`, `transfer.stale`, `transfer.kind` | A plot exists; being computed; made for another target; what kind |
+| `transfer.window_from`, `transfer.window_to`, `transfer.tof_min`, `transfer.tof_max`, `transfer.best_total` | The plot's departure window (s from now), flight times (s), cheapest total (m/s) |
+| `transfer.picked`, `transfer.departure_in`, `transfer.tof`, `transfer.depart_dv`, `transfer.arrive_dv`, `transfer.total` | The picked transfer |
+| `burn.arrival_periapsis`, `burn.targets_body` | Periapsis altitude at the targeted body after the selected burn (m) |
+| `manifest.items[]` | `name`, `kind` (`body`, `vessel`), `key` (action argument), `parent`, `apoapsis`, `periapsis`, `distance` (from the active vessel), `is_target`, `is_active`, `target_body`, `target_vessel`, `can_fly` |
 | `mods.count`, `mods.errors`, `mods.warnings` | |
 | `mods.list[]` | `id`, `name`, `version`, `authors`, `description` |
 | `mods.problems[]` | `error` (bool), `text` |
@@ -428,8 +449,19 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.sas_toggle`, `vessel.sas_mode:<mode>` | SAS on/off; select a mode (switches SAS on) |
 | `vessel.rcs_toggle` | RCS on/off |
 | `vessel.translate_forward`, `vessel.translate_back`, `vessel.translate_left`, `vessel.translate_right`, `vessel.translate_up`, `vessel.translate_down` | hold; RCS translation |
-| `nav.toggle_frame` | Switch prograde and speed between surface and orbit |
+| `nav.toggle_frame` | Cycle prograde and speed through surface, orbit and (with a target) target |
+| `vessel.next`, `vessel.previous`, `vessel.fly:<index>` | Fly another vessel |
+| `target.body:<id>`, `target.vessel:<index>`, `target.clear` | Choose or drop the target (also Shift+click in map view) |
+| `plan.match_plane` | Plan a burn at the next plane crossing that matches the target's plane |
 | `warp.increase`, `warp.decrease`, `warp.stop` | |
+| `warp.to:<ap|pe|soi|burn|approach>` | Warp to the next apoapsis, periapsis, SOI change, burn start or closest approach, slowing on the way in |
+| `plan.add:<ap|pe>`, `plan.circularize:<ap|pe>` | Plan a burn at the next apsis (after any planned burns); one that circularises there |
+| `plan.select:<index>`, `plan.zero`, `plan.delete`, `plan.clear` | Select a burn; zero, delete it; delete all |
+| `plan.dv:<prograde|normal|radial>:<1|-1>`, `plan.dv_step:<m/s>` | Change the selected burn by one step |
+| `plan.time:<1|-1>`, `plan.orbit:<1|-1>`, `plan.time_step:<s>` | Move it by one time step or one orbit |
+| `plan.aim:<m>` | Adjust the selected burn for a periapsis this high above the targeted body |
+| `plan.execute` | Engage or disengage the burn executor (throttle and SAS commands also disengage it) |
+| `transfer.compute`, `transfer.best`, `transfer.create` | Plot transfers to the target; pick the cheapest; plan its departure burn |
 | `view.toggle_map` | |
 | `ui.toggle:<layout>`, `ui.show:<layout>`, `ui.hide:<layout>` | |
 | `ui.toggle_group:<group>`, `ui.show_group:<group>`, `ui.hide_group:<group>` | Every layout in a group |

@@ -31,6 +31,7 @@ use osp_terrain::{Layer, TILE_CELLS, TILE_SAMPLES, TileKey, cube::east_north};
 
 use crate::{
     FrameSet,
+    atmosphere::TransmittanceLuts,
     camera::CameraRig,
     frame::{RenderFrame, rotation_to_render, to_render},
     sim::{Sim, WorldData},
@@ -202,6 +203,7 @@ fn update_lod(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<TerrainMaterial>>,
+    luts: Res<TransmittanceLuts>,
     mut visibility: Query<&mut Visibility, With<PlanetChunk>>,
 ) {
     if frame.origin_body.is_none() {
@@ -233,6 +235,7 @@ fn update_lod(
             let entity = built.spawn(
                 &mut commands,
                 planet.body,
+                luts.texture(planet.body),
                 &mut meshes,
                 &mut images,
                 &mut materials,
@@ -397,6 +400,7 @@ impl BuiltChunk {
         self,
         commands: &mut Commands,
         body: BodyId,
+        transmittance: Handle<Image>,
         meshes: &mut Assets<Mesh>,
         images: &mut Assets<Image>,
         materials: &mut Assets<TerrainMaterial>,
@@ -414,6 +418,7 @@ impl BuiltChunk {
                 color: images.add(self.color),
                 surface: images.add(self.surface),
                 cover: images.add(self.cover),
+                transmittance,
             },
         });
         commands
@@ -622,9 +627,8 @@ fn build_chunk(surface: &Surface, key: TileKey) -> BuiltChunk {
     // Render axes in f64 (see `frame::to_render`), wrapped before narrowing to f32.
     let detail = DVec3::new(center.x, center.z, -center.y);
     let wrap = |v: f64| v.rem_euclid(DETAIL_PERIOD) as f32;
-    let data_level = |view: &Option<osp_terrain::TileView>| {
-        view.as_ref().map_or(0.0, |v| v.data_level() as f32)
-    };
+    let data_level =
+        |view: &Option<osp_terrain::TileView>| view.as_ref().map_or(0.0, |v| v.data_level() as f32);
     let params = TerrainParams {
         planet: to_render(-center).extend(radius as f32),
         detail_origin: Vec4::new(wrap(detail.x), wrap(detail.y), wrap(detail.z), 0.0),

@@ -1,0 +1,41 @@
+// Target window: where the target is relative to the vessel, the closest approaches along
+// the planned trajectory, and the plane crossings. Choose a target with Shift+click in map
+// view or from the Universe Manifest (F11).
+{
+  id: "target_info",
+  visible: false,
+  group: "flight",
+  root: {
+    widget: "window",
+    title: "Target - {target.name}",
+    style: { left: 12, top: 372, width: 330 },
+    children: [
+      { widget: "label", class: "dim", visible: "!target.has", text: "No target. Shift+click a body or vessel in map view (M), or pick one in the Universe Manifest (F11)." },
+      {
+        id: "target",
+        widget: "column",
+        visible: "target.has",
+        children: [
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Distance" }, { widget: "label", text: "{target.distance|distance}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Relative speed" }, { widget: "label", text: "{target.speed|speed}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Closing at" }, { widget: "label", text: "{target.closing_speed|speed}" }] },
+          { widget: "row", visible: "target.has_approach", children: [{ widget: "label", class: "key", text: "Closest" }, { widget: "label", text: "{target.approach_distance|distance} {target.approach_time_to|countdown}" }] },
+          { widget: "row", visible: "target.has_approach", children: [{ widget: "label", class: "key", text: "  speed there" }, { widget: "label", text: "{target.approach_speed|speed}" }] },
+          { widget: "row", visible: "target.approach2_distance", children: [{ widget: "label", class: "key", text: "Next closest" }, { widget: "label", text: "{target.approach2_distance|distance} {target.approach2_time_to|countdown}" }] },
+          { widget: "row", visible: "target.has_plane", children: [{ widget: "label", class: "key", text: "Inclination" }, { widget: "label", text: "{target.inclination|degrees}" }] },
+          { widget: "row", visible: "target.has_plane", children: [{ widget: "label", class: "key", text: "AN / DN" }, { widget: "label", text: "{target.an_time_to|countdown} / {target.dn_time_to|countdown}" }] },
+          {
+            widget: "row",
+            style: { gap: 4, margin: [6, 0, 0, 0] },
+            children: [
+              { widget: "button", class: "step_button", text: "Match planes", action: "plan.match_plane", visible: "target.has_plane" },
+              { widget: "button", class: "step_button", text: "Warp to CA", action: "warp.to:approach", visible: "target.has_approach" },
+              { widget: "spacer" },
+              { widget: "button", class: "step_button", text: "Clear", action: "target.clear" },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

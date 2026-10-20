@@ -9,8 +9,10 @@ mod atmosphere;
 mod camera;
 mod content;
 mod controls;
+mod flight_plan;
 mod frame;
 mod launch_site;
+mod map_labels;
 mod meshgen;
 mod navball;
 mod orbit_lines;
@@ -18,7 +20,9 @@ mod planet;
 mod sim;
 mod smoke_test;
 mod surface;
+mod targeting;
 mod terrain_material;
+mod transfer_planner;
 mod trees;
 mod ui_data;
 mod vessel_render;
@@ -106,20 +110,37 @@ fn main() -> AppExit {
             launch_site::LaunchSitePlugin,
             vessel_render::VesselRenderPlugin,
             navball::NavballPlugin,
-            orbit_lines::OrbitLinesPlugin,
             ui_data::UiDataPlugin,
             smoke_test::SmokeTestPlugin,
+        ))
+        // Map view and flight planning.
+        .add_plugins((
+            orbit_lines::OrbitLinesPlugin,
+            flight_plan::FlightPlanPlugin,
+            map_labels::MapLabelsPlugin,
+            targeting::TargetingPlugin,
+            transfer_planner::TransferPlannerPlugin,
         ))
         .add_plugins(diagnostics)
         .run()
 }
 
-/// `OSP_FPS=1` logs frame times every second.
+/// `OSP_FPS=1` logs frame times every second. `OSP_UNCAPPED=1` runs as fast as it can, for
+/// measuring: no vsync, and no 60 Hz cap while the window is unfocused.
 fn diagnostics(app: &mut App) {
     if std::env::var_os("OSP_FPS").is_some() {
         app.add_plugins((
             bevy::diagnostic::FrameTimeDiagnosticsPlugin::default(),
             bevy::diagnostic::LogDiagnosticsPlugin::default(),
         ));
+    }
+    if std::env::var_os("OSP_UNCAPPED").is_some() {
+        app.insert_resource(bevy::winit::WinitSettings {
+            focused_mode: bevy::winit::UpdateMode::Continuous,
+            unfocused_mode: bevy::winit::UpdateMode::Continuous,
+        })
+        .add_systems(Startup, |mut window: Single<&mut Window>| {
+            window.present_mode = bevy::window::PresentMode::AutoNoVsync;
+        });
     }
 }

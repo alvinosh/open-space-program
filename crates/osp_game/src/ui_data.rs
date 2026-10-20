@@ -103,7 +103,7 @@ fn publish_flight(
             .unwrap_or_default();
         data.set("sim.last_event", text);
         data.set("sim.last_event_time", event.event.time.as_seconds());
-        if event.vessel == 0 && event.event.kind == VesselEventKind::Liftoff {
+        if event.vessel == sim.active_index() && event.event.kind == VesselEventKind::Liftoff {
             memory.liftoff.get_or_insert(event.event.time);
         }
     }
@@ -202,6 +202,9 @@ fn publish_flight(
             state.velocity - body.surface_velocity(state.position)
         }
         osp_sim::attitude::NavFrame::Orbit => state.velocity,
+        osp_sim::attitude::NavFrame::Target => {
+            state.velocity - vessel.target_state().map_or(DVec3::ZERO, |t| t.velocity)
+        }
     };
     data.set("nav.speed", speed.length());
     let up = state.position.normalize();
@@ -422,7 +425,7 @@ fn publish_flight(
         .patches
         .iter()
         .filter_map(|patch| {
-            let event = patch.ending?;
+            let event = patch.ending?.event()?;
             let label = match event.kind {
                 EventKind::SoiExit => format!("Escape {}", system.body(patch.frame).name),
                 EventKind::SoiEntry(b) => format!("Encounter {}", system.body(b).name),

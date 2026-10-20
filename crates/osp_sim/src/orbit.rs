@@ -235,6 +235,29 @@ impl Orbit {
         kepler::time_from_periapsis(self.mu, self.periapsis, self.eccentricity, nu)
     }
 
+    /// The first time after `after` that the orbit passes true anomaly `nu`; `None` if an
+    /// open orbit has already passed it.
+    pub fn next_time_at_true_anomaly(&self, nu: f64, after: SimTime) -> Option<SimTime> {
+        let now = self.time_since_periapsis(after);
+        let then = kepler::time_from_periapsis(
+            self.mu,
+            self.periapsis,
+            self.eccentricity,
+            kepler::wrap_pi(nu),
+        );
+        let dt = match self.period {
+            Some(period) => (then - now).rem_euclid(period),
+            None if then >= now => then - now,
+            None => return None,
+        };
+        Some(after.add_seconds(dt))
+    }
+
+    /// The first time after `after` that the orbit passes closest to `position`.
+    pub fn next_time_at(&self, position: DVec3, after: SimTime) -> Option<SimTime> {
+        self.next_time_at_true_anomaly(self.true_anomaly_of(position), after)
+    }
+
     /// Upper bound on speed anywhere on the orbit with radius ≥ `r_floor` (vis-viva is
     /// largest at the smallest radius).
     pub fn max_speed(&self, r_floor: f64) -> f64 {
@@ -732,6 +755,38 @@ mod tests {
         // Dense only where it is seen: a few hundred points, where 256 even ones missed
         // Earth by ~6000 km.
         assert!(points.len() < 600, "{}", points.len());
+    }
+
+    #[test]
+    fn time_at_a_point_on_the_orbit() {
+        let o = leo_ellipse();
+        let t0 = SimTime::J2000.add_seconds(1_234.5);
+        let period = o.period().unwrap();
+        for f in [0.1, 0.37, 0.5, 0.93] {
+            let t = t0.add_seconds(period * f);
+            let found = o.next_time_at(o.state_at(t).position, t0).unwrap();
+            assert!(
+                found.seconds_since(t).abs() < 1e-3,
+                "{f}: {}",
+                found.seconds_since(t)
+            );
+        }
+        // Open orbits do not come back to points already passed.
+        let r = R_EARTH + 300e3;
+        let v = (2.0 * MU / r).sqrt() + 500.0;
+        let h = Orbit::new(
+            MU,
+            SimTime::J2000,
+            StateVector::new(DVec3::new(r, 0.0, 0.0), DVec3::new(0.0, v, 0.0)),
+        );
+        let later = SimTime::J2000.add_seconds(3_000.0);
+        let ahead = h.state_at(later.add_seconds(500.0)).position;
+        let found = h.next_time_at(ahead, later).unwrap();
+        assert!(found.seconds_since(later.add_seconds(500.0)).abs() < 1e-3);
+        assert!(
+            h.next_time_at(h.state_at(SimTime::J2000).position, later)
+                .is_none()
+        );
     }
 
     #[test]

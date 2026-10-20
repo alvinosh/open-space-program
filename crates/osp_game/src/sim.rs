@@ -31,6 +31,11 @@ pub const MAX_PHYSICS_WARP: f64 = 4.0;
 const MAX_FRAME_TIME: f64 = 0.1;
 /// Physics ticks per frame before the simulation is allowed to fall behind real time.
 const MAX_TICKS_PER_FRAME: u32 = 64;
+/// Warping to a time, the rate is what would get there in this many real seconds, so the
+/// remaining time shrinks exponentially and the warp slows smoothly on the way in.
+const WARP_TO_LEAD: f64 = 0.6;
+/// Fastest automatic warp, ×.
+const MAX_AUTO_WARP: f64 = 1e8;
 
 pub struct SimPlugin;
 
@@ -62,6 +67,7 @@ impl Plugin for SimPlugin {
         let render_time = universe.time();
         app.insert_resource(Sim {
             universe,
+            active: 0,
             accumulator: 0.0,
             render_time,
             lagging: false,
@@ -83,6 +89,8 @@ pub struct WorldData {
 #[derive(Resource)]
 pub struct Sim {
     pub universe: Universe,
+    /// Index of the vessel the player is flying.
+    active: usize,
     /// Simulated seconds not yet consumed by a physics tick.
     accumulator: f64,
     /// The instant being rendered this frame (between physics ticks at low warp).
@@ -92,19 +100,38 @@ pub struct Sim {
 }
 
 impl Sim {
-    /// The vessel the player is flying. Vessel switching is not implemented yet.
+    /// The vessel the player is flying.
     pub fn active_vessel(&self) -> &Vessel {
-        &self.universe.vessels[0]
+        &self.universe.vessels[self.active]
     }
 
     pub fn active_vessel_mut(&mut self) -> &mut Vessel {
-        &mut self.universe.vessels[0]
+        &mut self.universe.vessels[self.active]
     }
 
     /// The active vessel, mutably, with the solar system it flies in (for commands that
     /// need positions, like staging and SAS).
     pub fn active_vessel_in_system(&mut self) -> (&mut Vessel, &SolarSystem) {
-        (&mut self.universe.vessels[0], &self.universe.system)
+        (
+            &mut self.universe.vessels[self.active],
+            &self.universe.system,
+        )
+    }
+
+    pub fn active_index(&self) -> usize {
+        self.active
+    }
+
+    /// Fly another vessel; `step` +1 / −1 cycles through them. The one left behind lets
+    /// go of the controls (its throttle, SAS and burn executor carry on).
+    pub fn switch_vessel(&mut self, step: isize) {
+        let count = self.universe.vessels.len() as isize;
+        if count > 1 {
+            let left = self.active_vessel_mut();
+            left.rotation_input = bevy::math::DVec3::ZERO;
+            left.translation_input = bevy::math::DVec3::ZERO;
+            self.active = (self.active as isize + step).rem_euclid(count) as usize;
+        }
     }
 }
 
@@ -117,18 +144,60 @@ pub struct TimeWarp {
     index: usize,
     /// Last warp-related notice and the real time it was shown.
     pub notice: Option<(String, f64)>,
+    /// Warping to this time (and what is there), choosing the rate automatically.
+    target: Option<(SimTime, String)>,
+    /// The rate an automatic warp chose, overriding the warp level.
+    auto_rate: Option<f64>,
 }
 
 impl TimeWarp {
     pub fn rate(&self) -> f64 {
-        WARP_RATES[self.index]
+        self.auto_rate.unwrap_or(WARP_RATES[self.index])
     }
 
     pub fn on_rails(&self) -> bool {
         self.rate() > MAX_PHYSICS_WARP
     }
 
+    /// Where an automatic warp is heading, if one is.
+    pub fn target(&self) -> Option<&(SimTime, String)> {
+        self.target.as_ref()
+    }
+
+    /// Warp to `time` (labelled `what` for notices), slowing down on the way in.
+    pub fn warp_to(&mut self, time: SimTime, what: &str, sim: &Sim, now: f64) {
+        if time <= sim.universe.time() {
+            self.notify(&format!("{what} has already passed"), now);
+            return;
+        }
+        self.target = Some((time, what.to_owned()));
+        self.notify(&format!("Warping to {what}"), now);
+    }
+
+    /// Pick the rate for an automatic warp; ends it on arrival.
+    fn steer_to_target(&mut self, sim: &Sim, now: f64) {
+        let Some((time, what)) = self.target.clone() else {
+            return;
+        };
+        let remaining = time.seconds_since(sim.universe.time());
+        if remaining <= 0.0 {
+            self.target = None;
+            self.auto_rate = None;
+            self.index = 0;
+            self.notify(&format!("Arrived: {what}"), now);
+            return;
+        }
+        let limit = if sim.universe.can_use_rails() {
+            MAX_AUTO_WARP
+        } else {
+            MAX_PHYSICS_WARP
+        };
+        self.auto_rate = Some((remaining / WARP_TO_LEAD).clamp(1.0, limit));
+    }
+
     pub fn increase(&mut self, sim: &Sim, now: f64) {
+        self.target = None;
+        self.auto_rate = None;
         let next = (self.index + 1).min(WARP_RATES.len() - 1);
         if WARP_RATES[next] > MAX_PHYSICS_WARP && !sim.universe.can_use_rails() {
             self.notify(
@@ -153,10 +222,14 @@ impl TimeWarp {
     }
 
     pub fn decrease(&mut self) {
+        self.target = None;
+        self.auto_rate = None;
         self.index = self.index.saturating_sub(1);
     }
 
     pub fn stop(&mut self, reason: &str, now: f64) {
+        self.target = None;
+        self.auto_rate = None;
         self.index = 0;
         self.notify(reason, now);
     }
@@ -175,10 +248,14 @@ fn advance_simulation(
     let real_dt = time.delta_secs_f64().min(MAX_FRAME_TIME);
     let now = time.elapsed_secs_f64();
     let sim = &mut *sim;
+    warp.steer_to_target(sim, now);
 
     if warp.on_rails() {
         if sim.universe.can_use_rails() {
-            let target = sim.universe.time().add_seconds(real_dt * warp.rate());
+            let mut target = sim.universe.time().add_seconds(real_dt * warp.rate());
+            if let Some((end, _)) = warp.target() {
+                target = target.min(*end);
+            }
             let outcome = sim.universe.advance_rails(target);
             if outcome.interrupted {
                 warp.stop(&stop_reason(&outcome.events), now);
@@ -222,6 +299,8 @@ fn stop_reason(events: &[SimEvent]) -> String {
             VesselEventKind::Landed { .. } => "Warp stopped: landed".into(),
             VesselEventKind::Crashed { .. } => "Warp stopped: crashed".into(),
             VesselEventKind::Destroyed => "Warp stopped: structural failure".into(),
+            VesselEventKind::BurnDue => "Warp stopped: burn coming up".into(),
+            VesselEventKind::BurnEnded => "Warp stopped: burn ended".into(),
             _ => "Warp stopped".into(),
         })
 }

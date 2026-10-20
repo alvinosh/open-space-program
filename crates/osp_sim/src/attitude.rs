@@ -241,6 +241,8 @@ pub enum NavFrame {
     Surface,
     /// Inertial velocity around the body.
     Orbit,
+    /// Velocity relative to the target (prograde is closing on it when it points at it).
+    Target,
 }
 
 impl NavFrame {
@@ -248,6 +250,7 @@ impl NavFrame {
         match self {
             NavFrame::Surface => "Surface",
             NavFrame::Orbit => "Orbit",
+            NavFrame::Target => "Target",
         }
     }
 }
@@ -264,17 +267,38 @@ impl NavBasis {
     /// Below this speed, m/s, prograde is undefined (on the pad, for instance).
     pub const MIN_SPEED: f64 = 0.1;
 
-    /// From a state relative to `body`.
+    /// From a state relative to `body`. The target frame needs the target's state, so
+    /// here (without it) it is the orbit frame; see `Vessel::nav_basis`.
     pub fn new(frame: NavFrame, body: &Body, state: &StateVector) -> Option<Self> {
         let velocity = match frame {
             NavFrame::Surface => state.velocity - body.surface_velocity(state.position),
-            NavFrame::Orbit => state.velocity,
+            NavFrame::Orbit | NavFrame::Target => state.velocity,
         };
+        Self::from_velocity(state.position, velocity)
+    }
+
+    /// The target frame: prograde along the velocity relative to `target` (both relative
+    /// to the same body); normal and radial stay those of the orbit.
+    pub fn relative_to(state: &StateVector, target: &StateVector) -> Option<Self> {
+        let orbital = Self::orbital(state)?;
+        let relative = state.velocity - target.velocity;
+        (relative.length() >= Self::MIN_SPEED).then(|| Self {
+            prograde: relative.normalize(),
+            ..orbital
+        })
+    }
+
+    /// The orbit frame (inertial velocity), which burns are planned in.
+    pub fn orbital(state: &StateVector) -> Option<Self> {
+        Self::from_velocity(state.position, state.velocity)
+    }
+
+    fn from_velocity(position: DVec3, velocity: DVec3) -> Option<Self> {
         if velocity.length() < Self::MIN_SPEED {
             return None;
         }
         let prograde = velocity.normalize();
-        let normal = state.position.cross(velocity).try_normalize()?;
+        let normal = position.cross(velocity).try_normalize()?;
         Some(Self {
             prograde,
             normal,
@@ -300,10 +324,15 @@ pub enum SasMode {
     AntiNormal,
     RadialOut,
     RadialIn,
+    /// Along the next planned burn (see [`crate::plan`]).
+    Burn,
+    /// Towards the target, and away from it.
+    Target,
+    AntiTarget,
 }
 
 impl SasMode {
-    pub const ALL: [SasMode; 7] = [
+    pub const ALL: [SasMode; 10] = [
         SasMode::Stability,
         SasMode::Prograde,
         SasMode::Retrograde,
@@ -311,6 +340,9 @@ impl SasMode {
         SasMode::AntiNormal,
         SasMode::RadialOut,
         SasMode::RadialIn,
+        SasMode::Burn,
+        SasMode::Target,
+        SasMode::AntiTarget,
     ];
 
     /// Name used in actions and UI data.
@@ -323,6 +355,9 @@ impl SasMode {
             SasMode::AntiNormal => "anti_normal",
             SasMode::RadialOut => "radial_out",
             SasMode::RadialIn => "radial_in",
+            SasMode::Burn => "burn",
+            SasMode::Target => "target",
+            SasMode::AntiTarget => "anti_target",
         }
     }
 
@@ -339,13 +374,18 @@ impl SasMode {
             SasMode::AntiNormal => "Anti-normal",
             SasMode::RadialOut => "Radial out",
             SasMode::RadialIn => "Radial in",
+            SasMode::Burn => "Burn",
+            SasMode::Target => "Target",
+            SasMode::AntiTarget => "Anti-target",
         }
     }
 
-    /// Where the nose should point; `None` for stability, which holds an attitude instead.
+    /// Where the nose should point; `None` for stability, which holds an attitude instead,
+    /// and for burn and target modes, whose direction comes from the flight plan or the
+    /// target rather than the frame.
     pub fn direction(self, basis: &NavBasis) -> Option<DVec3> {
         match self {
-            SasMode::Stability => None,
+            SasMode::Stability | SasMode::Burn | SasMode::Target | SasMode::AntiTarget => None,
             SasMode::Prograde => Some(basis.prograde),
             SasMode::Retrograde => Some(-basis.prograde),
             SasMode::Normal => Some(basis.normal),

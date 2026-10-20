@@ -92,6 +92,9 @@
       radius: 3,
     },
     sas_button: { min_width: 62, padding: [3, 4], font_size: 12 },
+    // Small +/- and step buttons (flight plan).
+    step_button: { min_width: 30, padding: [2, 5], font_size: 12 },
+    value: { min_width: 86, font_size: 13 },
     vbar: { width: 10, min_width: 10, height: 150, grow: 0 },
     ibar: { width: 84, min_width: 84, grow: 0, height: 5 },
     stage_row: {

@@ -4,22 +4,31 @@
 //! scattering). Sunlight is dimmed and reddened for the air between the sun and the
 //! floating origin (the active vessel), so the vessel and everything around it is lit like
 //! the ground it stands on: orange at sunset, dark at night. The terrain shader undoes that
-//! and applies each fragment's own value, using [`sun_transmittance`]'s twin in
-//! `shaders/atmosphere.wesl`.
+//! and applies each fragment's own value.
+//!
+//! How much sunlight gets through depends only on height and the sun's angle, so it is
+//! integrated once per body into a [`TransmittanceLut`] that the shaders sample
+//! (`shaders/atmosphere.wesl`) instead of marching towards the sun from every point of
+//! every view ray. The CPU dims the light from the same table, so the shaders divide the
+//! dimming back out exactly.
 
 use bevy::{
-    asset::embedded_asset,
+    asset::{RenderAssetUsages, embedded_asset},
     camera::{Exposure, visibility::NoFrustumCulling},
+    image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
     light::{NotShadowCaster, NotShadowReceiver, light_consts::lux},
     math::DVec3,
     mesh::MeshVertexBufferLayoutRef,
     pbr::{MaterialPipeline, MaterialPipelineKey},
+    platform::collections::HashMap,
     prelude::*,
     render::render_resource::{
-        AsBindGroup, RenderPipelineDescriptor, SpecializedMeshPipelineError,
+        AsBindGroup, Extent3d, RenderPipelineDescriptor, SpecializedMeshPipelineError,
+        TextureDimension, TextureFormat,
     },
     shader::ShaderRef,
 };
+use half::f16;
 use osp_sim::body::BodyId;
 
 use crate::{
@@ -37,7 +46,15 @@ const RAYLEIGH_HEIGHT: f64 = 8000.0;
 const MIE_EXTINCTION: f64 = 4.44e-6;
 const MIE_HEIGHT: f64 = 1200.0;
 const OZONE: [f64; 3] = [0.650e-6, 1.881e-6, 0.085e-6];
-const SUN_STEPS: usize = 6;
+/// Sun rays grazing deeper than this below the mean surface are in the planet's shadow
+/// (the shadow's soft edge spans `SHADOW_DEPTH` to `SHADOW_EDGE`), so the transmittance
+/// table starts there (`LUT_DEPTH` in the shader).
+const SHADOW_DEPTH: f64 = 6000.0;
+const SHADOW_EDGE: f64 = 1000.0;
+/// Transmittance table size: sun angle across, height down (`LUT_SIZE` in the shader).
+const LUT_SIZE: (usize, usize) = (256, 64);
+/// Integration steps along each ray of the table.
+const LUT_STEPS: usize = 128;
 /// Lower bound of the light's dimming, so the shaders can divide it back out.
 const MIN_TRANSMITTANCE: f64 = 1e-4;
 /// Ambient light in full daylight (and in sunlit space).
@@ -54,7 +71,27 @@ pub struct AtmospherePlugin;
 impl Plugin for AtmospherePlugin {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "shaders/sky.wesl");
-        app.add_plugins(MaterialPlugin::<SkyMaterial>::default())
+        // Built here rather than at startup so terrain and skies can rely on them.
+        let luts: Vec<_> = app
+            .world()
+            .resource::<Sim>()
+            .universe
+            .system
+            .bodies()
+            .iter()
+            .filter(|body| Surface::is_earthlike(body))
+            .map(|body| (body.id, TransmittanceLut::new(body.radius)))
+            .collect();
+        let mut images = app.world_mut().resource_mut::<Assets<Image>>();
+        let luts = luts
+            .into_iter()
+            .map(|(id, lut)| {
+                let image = images.add(lut.image());
+                (id, (lut, image))
+            })
+            .collect();
+        app.insert_resource(TransmittanceLuts(luts))
+            .add_plugins(MaterialPlugin::<SkyMaterial>::default())
             .add_systems(Startup, spawn_skies)
             .add_systems(
                 Update,
@@ -70,6 +107,10 @@ pub struct SkyMaterial {
     /// x: planet mean radius.
     #[uniform(0)]
     params: Vec4,
+    /// The body's [`TransmittanceLut`].
+    #[texture(110)]
+    #[sampler(111)]
+    transmittance: Handle<Image>,
 }
 
 impl Material for SkyMaterial {
@@ -109,6 +150,7 @@ fn spawn_skies(
     sim: Res<Sim>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<SkyMaterial>>,
+    luts: Res<TransmittanceLuts>,
 ) {
     let mesh = meshes.add(Sphere::new(1.0).mesh().ico(5).unwrap());
     for body in sim.universe.system.bodies() {
@@ -120,6 +162,7 @@ fn spawn_skies(
             Mesh3d(mesh.clone()),
             MeshMaterial3d(materials.add(SkyMaterial {
                 params: Vec4::new(body.radius as f32, 0.0, 0.0, 0.0),
+                transmittance: luts.texture(body.id),
             })),
             Transform::default(),
             NotShadowCaster,
@@ -153,30 +196,165 @@ fn smoothstep(e0: f64, e1: f64, x: f64) -> f64 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// Fraction of sunlight (per RGB channel) reaching `p` (relative to the planet centre)
-/// through the atmosphere, including the planet's shadow. Mirrors the shader.
-pub fn sun_transmittance(p: DVec3, sun: DVec3, radius: f64) -> [f64; 3] {
-    let r = p.length();
-    let b = p.dot(sun);
-    let along = (-b).max(0.0);
-    let closest = ((r - along) * (r + along)).max(0.0).sqrt();
-    let shadow = smoothstep(radius - 6000.0, radius - 1000.0, closest);
-    if shadow <= 0.0 {
-        return [0.0; 3];
+/// Sunlight transmittance tables for Earth-like bodies, with their GPU copies.
+#[derive(Resource)]
+pub struct TransmittanceLuts(HashMap<BodyId, (TransmittanceLut, Handle<Image>)>);
+
+impl TransmittanceLuts {
+    /// The body's table for a material; a placeholder for bodies without one (their
+    /// shaders never sample it).
+    pub fn texture(&self, body: BodyId) -> Handle<Image> {
+        self.0
+            .get(&body)
+            .map_or_else(Handle::default, |(_, image)| image.clone())
     }
-    let top = radius + THICKNESS;
-    let c = (r - top) * (r + top);
-    let exit = (-b + (b * b - c).max(0.0).sqrt()).max(0.0);
-    let ds = exit / SUN_STEPS as f64;
-    let mut depth = [0.0; 3];
-    for i in 0..SUN_STEPS {
-        let q = p + sun * (ds * (i as f64 + 0.5));
-        let d = densities(q.length() - radius);
-        for k in 0..3 {
-            depth[k] += (RAYLEIGH[k] * d[0] + MIE_EXTINCTION * d[1] + OZONE[k] * d[2]) * ds;
+
+    pub fn get(&self, body: BodyId) -> Option<&TransmittanceLut> {
+        self.0.get(&body).map(|(lut, _)| lut)
+    }
+}
+
+/// Optical depth (per RGB channel) from a point to the top of the atmosphere, towards the
+/// sun, tabulated by the point's distance from the centre `r` and the cosine `mu` of the
+/// sun's angle from its zenith. Uses Bruneton's parametrisation, which packs texels where
+/// the light changes fastest (near the horizon), with the shadow depth as its floor:
+/// rays that pass deeper are in the planet's shadow anyway. Inside the planet the air is
+/// as dense as at the surface, like the per-point march it replaces.
+pub struct TransmittanceLut {
+    radius: f64,
+    /// Row-major, `LUT_SIZE.0` per row.
+    depths: Vec<[f32; 3]>,
+}
+
+impl TransmittanceLut {
+    pub fn new(radius: f64) -> Self {
+        let (width, height) = LUT_SIZE;
+        let (bottom, top) = (radius - SHADOW_DEPTH, radius + THICKNESS);
+        let horizon = ((top - bottom) * (top + bottom)).sqrt();
+        let mut depths = Vec::with_capacity(width * height);
+        for j in 0..height {
+            let rho = horizon * j as f64 / (height - 1) as f64;
+            let r = (rho * rho + bottom * bottom).sqrt();
+            let (d_min, d_max) = (top - r, rho + horizon);
+            for i in 0..width {
+                let d = d_min + (d_max - d_min) * i as f64 / (width - 1) as f64;
+                let mu = if d <= 0.0 {
+                    1.0
+                } else {
+                    ((horizon * horizon - rho * rho - d * d) / (2.0 * r * d)).clamp(-1.0, 1.0)
+                };
+                // Midpoint rule along the ray, by distance from the point.
+                let ds = d / LUT_STEPS as f64;
+                let mut depth = [0.0; 3];
+                for k in 0..LUT_STEPS {
+                    let t = ds * (k as f64 + 0.5);
+                    let height = (t * t + 2.0 * r * mu * t + r * r).sqrt() - radius;
+                    let density = densities(height);
+                    for (c, depth) in depth.iter_mut().enumerate() {
+                        *depth += (RAYLEIGH[c] * density[0]
+                            + MIE_EXTINCTION * density[1]
+                            + OZONE[c] * density[2])
+                            * ds;
+                    }
+                }
+                depths.push(depth.map(|x| x as f32));
+            }
         }
+        Self { radius, depths }
     }
-    depth.map(|x| (-x).exp() * shadow)
+
+    /// The table as a filterable texture for the shaders.
+    fn image(&self) -> Image {
+        let (width, height) = LUT_SIZE;
+        let data = self
+            .depths
+            .iter()
+            .flat_map(|d| [d[0], d[1], d[2], 0.0])
+            .flat_map(|x| f16::from_f32(x).to_le_bytes())
+            .collect();
+        let mut image = Image::new(
+            Extent3d {
+                width: width as u32,
+                height: height as u32,
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            data,
+            TextureFormat::Rgba16Float,
+            RenderAssetUsages::RENDER_WORLD,
+        );
+        image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+            address_mode_u: ImageAddressMode::ClampToEdge,
+            address_mode_v: ImageAddressMode::ClampToEdge,
+            mag_filter: ImageFilterMode::Linear,
+            min_filter: ImageFilterMode::Linear,
+            ..default()
+        });
+        image
+    }
+
+    /// Texture coordinates of `(r, mu)`, in texels (centres at `k + 0.5`).
+    fn texel(&self, r: f64, mu: f64) -> (f64, f64) {
+        let (width, height) = LUT_SIZE;
+        let (bottom, top) = (self.radius - SHADOW_DEPTH, self.radius + THICKNESS);
+        let r = r.clamp(bottom, top);
+        let horizon = ((top - bottom) * (top + bottom)).sqrt();
+        let rho = ((r - bottom) * (r + bottom)).max(0.0).sqrt();
+        let d = (-r * mu + ((top - r) * (top + r) + r * r * mu * mu).max(0.0).sqrt()).max(0.0);
+        let (d_min, d_max) = (top - r, rho + horizon);
+        let x_mu = (d - d_min) / (d_max - d_min);
+        let x_r = rho / horizon;
+        // Unit range to texel space with the end texel centres on 0 and 1.
+        let texel = |x: f64, n: usize| 0.5 + x * (n - 1) as f64;
+        (texel(x_mu, width), texel(x_r, height))
+    }
+
+    /// Bilinear lookup with clamped edges, as the GPU samples it.
+    fn depth(&self, r: f64, mu: f64) -> [f64; 3] {
+        let (width, height) = LUT_SIZE;
+        let (u, v) = self.texel(r, mu);
+        let split = |x: f64, n: usize| {
+            let x = (x - 0.5).clamp(0.0, (n - 1) as f64);
+            let i = (x.floor() as usize).min(n - 2);
+            (i, x - i as f64)
+        };
+        let ((i, fu), (j, fv)) = (split(u, width), split(v, height));
+        let at = |i: usize, j: usize| self.depths[j * width + i].map(f64::from);
+        let (a, b, c, d) = (at(i, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1));
+        std::array::from_fn(|k| {
+            let top = a[k] + (b[k] - a[k]) * fu;
+            let bottom = c[k] + (d[k] - c[k]) * fu;
+            top + (bottom - top) * fv
+        })
+    }
+
+    /// Fraction of sunlight (per RGB channel) reaching `p` (relative to the planet centre)
+    /// through the atmosphere, including the planet's shadow. Mirrors the shader.
+    pub fn sun_transmittance(&self, p: DVec3, sun: DVec3) -> [f64; 3] {
+        let radius = self.radius;
+        let r = p.length();
+        let b = p.dot(sun);
+        let along = (-b).max(0.0);
+        let closest = ((r - along) * (r + along)).max(0.0).sqrt();
+        let shadow = smoothstep(radius - SHADOW_DEPTH, radius - SHADOW_EDGE, closest);
+        if shadow <= 0.0 {
+            return [0.0; 3];
+        }
+        let top = radius + THICKNESS;
+        let (mut r, mut mu) = (r, b / r.max(1.0));
+        if r > top {
+            // From outside, the light only dims from where the ray enters the atmosphere.
+            let c = (r - top) * (r + top);
+            let disc = b * b - c;
+            if disc < 0.0 || b >= 0.0 {
+                return [shadow; 3];
+            }
+            let entry = p + sun * (-b - disc.sqrt());
+            r = top;
+            mu = entry.dot(sun) / top;
+        }
+        self.depth(r, mu).map(|x| (-x).exp() * shadow)
+    }
 }
 
 /// Dim the sun (and the ambient light) for the air above the floating origin, and adapt
@@ -188,6 +366,7 @@ fn dim_sunlight(
     mut light: Single<&mut DirectionalLight, With<Sunlight>>,
     mut exposure: Single<&mut Exposure, With<MainCamera>>,
     rig: Res<CameraRig>,
+    luts: Res<TransmittanceLuts>,
     mut ambient: ResMut<GlobalAmbientLight>,
 ) {
     let Some(origin_body) = frame.origin_body else {
@@ -197,11 +376,10 @@ fn dim_sunlight(
     let body = system.body(origin_body);
     let to_sun = frame.body_offset(system.root()).normalize();
     let origin = -frame.body_offset(origin_body);
-    let transmittance = if Surface::is_earthlike(body) {
-        sun_transmittance(origin, to_sun, body.radius).map(|t| t.max(MIN_TRANSMITTANCE))
-    } else {
-        [1.0; 3]
-    };
+    let transmittance = luts.get(origin_body).map_or([1.0; 3], |lut| {
+        lut.sun_transmittance(origin, to_sun)
+            .map(|t| t.max(MIN_TRANSMITTANCE))
+    });
     let [r, g, b] = transmittance.map(|t| t as f32);
     light.color = Color::linear_rgb(r, g, b);
     light.illuminance = lux::RAW_SUNLIGHT;
@@ -226,31 +404,85 @@ fn dim_sunlight(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use super::*;
 
     const R: f64 = 6_371_000.0;
+    static LUT: LazyLock<TransmittanceLut> = LazyLock::new(|| TransmittanceLut::new(R));
+
+    fn sun_transmittance(p: DVec3, sun: DVec3) -> [f64; 3] {
+        LUT.sun_transmittance(p, sun)
+    }
+
+    /// Brute-force march towards the sun from `p`, for checking the table.
+    fn reference(p: DVec3, sun: DVec3) -> [f64; 3] {
+        let r = p.length();
+        let b = p.dot(sun);
+        let along = (-b).max(0.0);
+        let closest = ((r - along) * (r + along)).max(0.0).sqrt();
+        let shadow = smoothstep(R - SHADOW_DEPTH, R - SHADOW_EDGE, closest);
+        let top = R + THICKNESS;
+        let exit = (-b + (b * b - (r - top) * (r + top)).max(0.0).sqrt()).max(0.0);
+        let steps = 100_000;
+        let ds = exit / steps as f64;
+        let mut depth = [0.0; 3];
+        for i in 0..steps {
+            let d = densities((p + sun * (ds * (i as f64 + 0.5))).length() - R);
+            for k in 0..3 {
+                depth[k] += (RAYLEIGH[k] * d[0] + MIE_EXTINCTION * d[1] + OZONE[k] * d[2]) * ds;
+            }
+        }
+        depth.map(|x| (-x).exp() * shadow)
+    }
+
+    #[test]
+    fn table_matches_a_fine_march() {
+        // Ground, mountains, flight, the stratosphere and orbit; sun high, low, setting and
+        // just below the horizon (lit through the shadow's soft edge).
+        for height in [0.0, 3_000.0, 12_000.0, 40_000.0, 400_000.0] {
+            for elevation in [80.0f64, 30.0, 10.0, 3.0, 1.0, 0.0, -0.5, -1.5] {
+                let p = DVec3::new(0.0, 0.0, R + height);
+                let e = elevation.to_radians();
+                let sun = DVec3::new(e.cos(), 0.0, e.sin());
+                let (table, exact) = (sun_transmittance(p, sun), reference(p, sun));
+                for k in 0..3 {
+                    // Within 1% of the light, or 2% of what gets through.
+                    let error = (table[k] - exact[k]).abs();
+                    assert!(
+                        error < 0.01 || error < 0.02 * exact[k],
+                        "h {height} m, sun {elevation} deg: {table:?} vs {exact:?}"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn overhead_sun_is_bright_and_slightly_yellow() {
         let p = DVec3::new(0.0, 0.0, R + 10.0);
-        let t = sun_transmittance(p, DVec3::Z, R);
+        let t = sun_transmittance(p, DVec3::Z);
         assert!(t[0] > 0.9 && t[2] > 0.6 && t[0] > t[2], "{t:?}");
     }
 
     #[test]
     fn low_sun_is_red_and_set_sun_is_dark() {
         let p = DVec3::new(0.0, 0.0, R + 10.0);
-        let low = sun_transmittance(p, DVec3::new(1.0, 0.0, 0.03).normalize(), R);
+        let low = sun_transmittance(p, DVec3::new(1.0, 0.0, 0.03).normalize());
         assert!(low[0] > 3.0 * low[2], "{low:?}");
-        let set = sun_transmittance(p, DVec3::new(1.0, 0.0, -0.1).normalize(), R);
+        let set = sun_transmittance(p, DVec3::new(1.0, 0.0, -0.1).normalize());
         assert_eq!(set, [0.0; 3]);
     }
 
     #[test]
     fn space_is_unaffected_unless_in_shadow() {
-        let lit = sun_transmittance(DVec3::new(0.0, 0.0, R + 400e3), DVec3::X, R);
+        let lit = sun_transmittance(DVec3::new(0.0, 0.0, R + 400e3), DVec3::X);
         assert!(lit.iter().all(|&t| t > 0.999), "{lit:?}");
-        let shadow = sun_transmittance(DVec3::new(-(R + 400e3), 0.0, 0.0), DVec3::X, R);
+        let shadow = sun_transmittance(DVec3::new(-(R + 400e3), 0.0, 0.0), DVec3::X);
         assert_eq!(shadow, [0.0; 3]);
+        // Far out, sunlight grazing the atmosphere on its way is reddened.
+        let grazing = DVec3::new(-2.0 * R, 0.0, R + 20e3);
+        let t = sun_transmittance(grazing, DVec3::X);
+        assert!(t[2] < 0.5 && t[0] > t[2], "{t:?}");
     }
 }

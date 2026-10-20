@@ -171,9 +171,6 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
     {
         scenario.start_time = time;
     }
-    let craft: CraftDef = registry
-        .get("craft", &scenario.craft)
-        .map_err(|d| d.to_string())?;
     let datasets = load_datasets(content, &system.bodies, &mut diagnostics);
     let heights = datasets
         .iter()
@@ -184,7 +181,12 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
             )
         })
         .collect();
-    let universe = Universe::new_game(&system, heights, &sites, &catalog, &craft, &scenario)
+    let craft_of = |id: &str| {
+        registry
+            .get::<CraftDef>("craft", id)
+            .map_err(|d| d.to_string())
+    };
+    let universe = Universe::new_game(&system, heights, &sites, &catalog, craft_of, &scenario)
         .map_err(|e| e.to_string())?;
     Ok(NewGame {
         universe,

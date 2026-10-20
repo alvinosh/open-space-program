@@ -1,0 +1,67 @@
+// Transfer planner (F4): delta-v to the target for every departure time (across) and
+// flight time (up). Blue is cheap, red is four times the cheapest, black is impossible
+// (through the planet). Click the plot to pick a transfer, then make its burn.
+{
+  id: "transfer_planner",
+  visible: false,
+  group: "flight",
+  root: {
+    widget: "window",
+    title: "Transfer planner - {target.name}",
+    style: { left: 360, top: 120, width: 420 },
+    children: [
+      {
+        widget: "row",
+        style: { gap: 4 },
+        children: [
+          { widget: "button", class: "step_button", text: "Compute", action: "transfer.compute" },
+          { widget: "button", class: "step_button", text: "Cheapest", action: "transfer.best", visible: "transfer.has" },
+          { widget: "button", class: "step_button", text: "Create burn", action: "transfer.create", visible: "transfer.picked" },
+          { widget: "spacer" },
+          { widget: "label", class: "warning", visible: "transfer.computing", text: "Computing..." },
+          { widget: "label", class: "dim", visible: "transfer.has", text: "{transfer.kind}" },
+        ],
+      },
+      { widget: "label", class: "dim", visible: "!target.has", text: "Choose a target first (Shift+click in map view, or F11)." },
+      { widget: "label", class: "warning", visible: "transfer.stale", text: "Plotted for another target: compute again", style: { margin: [2, 0, 0, 0] } },
+      {
+        id: "plot",
+        widget: "column",
+        visible: "transfer.has",
+        style: { gap: 3, margin: [4, 0, 0, 0] },
+        children: [
+          {
+            widget: "row",
+            style: { gap: 4, align_items: "stretch" },
+            children: [
+              {
+                widget: "column",
+                style: { justify_content: "space_between", min_width: 70 },
+                children: [
+                  { widget: "label", class: "dim", text: "{transfer.tof_max|duration}" },
+                  { widget: "label", class: "dim", text: "flight" },
+                  { widget: "label", class: "dim", text: "{transfer.tof_min|duration}" },
+                ],
+              },
+              { widget: "porkchop", style: { width: 324, height: 243 } },
+            ],
+          },
+          {
+            widget: "row",
+            style: { margin: [0, 0, 0, 74] },
+            children: [
+              { widget: "label", class: "dim", text: "depart {transfer.window_from|countdown}" },
+              { widget: "spacer" },
+              { widget: "label", class: "dim", text: "{transfer.window_to|countdown}" },
+            ],
+          },
+          { widget: "row", visible: "transfer.picked", children: [{ widget: "label", class: "key", text: "Depart" }, { widget: "label", text: "{transfer.departure_in|countdown}" }] },
+          { widget: "row", visible: "transfer.picked", children: [{ widget: "label", class: "key", text: "Flight time" }, { widget: "label", text: "{transfer.tof|duration}" }] },
+          { widget: "row", visible: "transfer.picked", children: [{ widget: "label", class: "key", text: "Departure" }, { widget: "label", text: "{transfer.depart_dv|speed}" }] },
+          { widget: "row", visible: "transfer.picked", children: [{ widget: "label", class: "key", text: "Arrival rel. speed" }, { widget: "label", text: "{transfer.arrive_dv|speed}" }] },
+          { widget: "row", visible: "transfer.picked", children: [{ widget: "label", class: "key", text: "Total" }, { widget: "label", text: "{transfer.total|speed} (cheapest {transfer.best_total|speed})" }] },
+        ],
+      },
+    ],
+  },
+}

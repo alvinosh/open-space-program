@@ -1,8 +1,13 @@
 // Single scattering in an Earth-like atmosphere: exponential Rayleigh and Mie layers plus
 // an ozone band, lit by one sun. Shared by the terrain (aerial perspective) and the sky.
 //
-// Positions are relative to the planet centre, in metres. `crate::atmosphere` mirrors
-// `sun_transmittance` on the CPU; keep the two in sync.
+// Positions are relative to the planet centre, in metres. Sunlight transmittance comes
+// from a table built by `crate::atmosphere::TransmittanceLut`, which every material that
+// imports this module binds at 110 (texture) and 111 (sampler). The CPU mirrors
+// `sun_transmittance`; keep the two in sync.
+
+@group(constants::MATERIAL_BIND_GROUP) @binding(110) var transmittance_lut: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(111) var transmittance_sampler: sampler;
 
 const RAYLEIGH: vec3<f32> = vec3<f32>(5.802e-6, 13.558e-6, 33.1e-6);
 const RAYLEIGH_HEIGHT: f32 = 8000.0;
@@ -20,7 +25,10 @@ const PI: f32 = 3.141592653589793;
 const MULTIPLE_SCATTERING: f32 = 1.6;
 
 const VIEW_STEPS: i32 = 12;
-const SUN_STEPS: i32 = 6;
+/// Transmittance table size (sun angle, height) and how far below the mean surface it
+/// starts: where sun rays are fully in the planet's shadow.
+const LUT_SIZE: vec2<f32> = vec2<f32>(256.0, 64.0);
+const LUT_DEPTH: f32 = 6000.0;
 
 /// Relative densities of air, aerosols and ozone at a height above the surface.
 fn densities(height: f32) -> vec3<f32> {
@@ -47,6 +55,22 @@ fn sphere_hits(origin: vec3<f32>, dir: vec3<f32>, radius: f32) -> vec2<f32> {
     return vec2<f32>(-b - s, -b + s);
 }
 
+/// Where the optical depth from radius `r` towards the sun at `mu` (cosine from the zenith)
+/// is stored in the transmittance table (Bruneton's parametrisation).
+fn transmittance_uv(r_in: f32, mu: f32, radius: f32) -> vec2<f32> {
+    let bottom = radius - LUT_DEPTH;
+    let top = radius + THICKNESS;
+    let r = clamp(r_in, bottom, top);
+    let horizon = sqrt((top - bottom) * (top + bottom));
+    let rho = sqrt(max((r - bottom) * (r + bottom), 0.0));
+    let d = max(-r * mu + sqrt(max((top - r) * (top + r) + r * r * mu * mu, 0.0)), 0.0);
+    let d_min = top - r;
+    let d_max = rho + horizon;
+    let x = vec2<f32>((d - d_min) / (d_max - d_min), rho / horizon);
+    // End texel centres on 0 and 1.
+    return (0.5 + x * (LUT_SIZE - 1.0)) / LUT_SIZE;
+}
+
 /// Fraction of sunlight reaching a point: atmospheric extinction towards the sun, and the
 /// planet's shadow. The shadow edge is softened over sun rays grazing 1 to 6 km below the
 /// mean surface, which stands in for the sun's disc and refraction (and keeps ground-level
@@ -57,18 +81,24 @@ fn sun_transmittance(p: vec3<f32>, sun: vec3<f32>, radius: f32) -> vec3<f32> {
     // Lowest height of the sun ray above the centre, when the sun is below the horizon.
     let along = max(-b, 0.0);
     let closest = sqrt(max((r - along) * (r + along), 0.0));
-    let shadow = smoothstep(radius - 6000.0, radius - 1000.0, closest);
+    let shadow = smoothstep(radius - LUT_DEPTH, radius - 1000.0, closest);
     if shadow <= 0.0 {
         return vec3<f32>(0.0);
     }
     let top = radius + THICKNESS;
-    let exit = max(sphere_hits(p, sun, top).y, 0.0);
-    let ds = exit / f32(SUN_STEPS);
-    var depth = vec3<f32>(0.0);
-    for (var i = 0; i < SUN_STEPS; i++) {
-        let q = p + sun * (ds * (f32(i) + 0.5));
-        depth += extinction(densities(length(q) - radius)) * ds;
+    var height = r;
+    var mu = b / max(r, 1.0);
+    if r > top {
+        // From outside, the light only dims from where the ray enters the atmosphere.
+        let hits = sphere_hits(p, sun, top);
+        if hits.x > hits.y || hits.x <= 0.0 {
+            return vec3<f32>(shadow);
+        }
+        height = top;
+        mu = dot(p + sun * hits.x, sun) / top;
     }
+    let uv = transmittance_uv(height, mu, radius);
+    let depth = textureSampleLevel(transmittance_lut, transmittance_sampler, uv, 0.0).rgb;
     return exp(-depth) * shadow;
 }
 

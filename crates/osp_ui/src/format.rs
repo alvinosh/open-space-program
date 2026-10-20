@@ -5,8 +5,8 @@
 //! registered formatter, and `{{` / `}}` print literal braces.
 //!
 //! Built-in formatters: `fixed:N`, `int`, `percent[:N]`, `distance`, `speed`, `mass`,
-//! `force`, `torque`, `pressure`, `duration`, `degrees[:N]`, `sci[:N]`, `upper`, `lower`,
-//! `yesno`.
+//! `force`, `torque`, `pressure`, `duration`, `countdown`, `degrees[:N]`, `sci[:N]`,
+//! `upper`, `lower`, `yesno`.
 //! The game (or a plugin) can register more with [`Formatters::register`].
 
 use std::{collections::HashMap, fmt::Write};
@@ -143,6 +143,13 @@ impl Default for Formatters {
             number(v, |n| scaled(n, &[(1e3, "kPa"), (1.0, "Pa")], 2))
         });
         f.register("duration", |v, _| number(v, duration));
+        // Time until something: T-00:05:00 before it, T+00:00:12 after.
+        f.register("countdown", |v, _| {
+            number(v, |n| {
+                let sign = if n < 0.0 { "T+" } else { "T-" };
+                format!("{sign}{}", duration(n.abs()))
+            })
+        });
         f.register("degrees", |v, a| {
             let digits = a.and_then(|a| a.parse().ok()).unwrap_or(2);
             number(v, |n| format!("{:.*} deg", digits, n))

@@ -337,6 +337,22 @@ pub struct ScenarioDef {
     pub start_time: f64,
     pub craft: String,
     pub start: StartDef,
+    /// Other vessels in the game from the start (stations, targets).
+    #[serde(default)]
+    pub others: Vec<VesselStartDef>,
+    /// What the player's vessel starts targeting: a body id or another vessel's name.
+    #[serde(default)]
+    pub target: Option<String>,
+}
+
+/// A vessel placed at the start of a game besides the player's.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VesselStartDef {
+    pub craft: String,
+    /// Overrides the craft's name.
+    #[serde(default)]
+    pub name: Option<String>,
+    pub start: StartDef,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

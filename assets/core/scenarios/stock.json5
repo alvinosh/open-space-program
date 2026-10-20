@@ -24,6 +24,36 @@
     start: { type: "LaunchSite", site: "cape_canaveral" },
   },
   {
+    // Rendezvous practice: a station in a slightly higher, slightly tilted orbit a little
+    // ahead. Match planes at a node, then plan a transfer to meet it.
+    id: "rendezvous",
+    name: "Rendezvous in low Earth orbit",
+    start_time: 21600,
+    craft: "upper_stage",
+    start: {
+      type: "Orbit",
+      body: "Earth",
+      periapsis_altitude: 300000,
+      apoapsis_altitude: 300000,
+      inclination: 28.6,
+    },
+    others: [
+      {
+        craft: "upper_stage",
+        name: "Station",
+        start: {
+          type: "Orbit",
+          body: "Earth",
+          periapsis_altitude: 340000,
+          apoapsis_altitude: 340000,
+          inclination: 29.1,
+          mean_anomaly: 25,
+        },
+      },
+    ],
+    target: "Station",
+  },
+  {
     // Parked in a 300 km circular orbit: good for testing time warp and transfers.
     // A ~3.1 km/s prograde burn from here reaches the Moon.
     id: "leo",

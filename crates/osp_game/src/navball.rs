@@ -66,16 +66,24 @@ enum Marker {
     AntiNormal,
     RadialOut,
     RadialIn,
+    /// Along the next planned burn.
+    Burn,
+    /// Towards the target, and away from it.
+    Target,
+    AntiTarget,
 }
 
 impl Marker {
-    const ALL: [Marker; 6] = [
+    const ALL: [Marker; 9] = [
         Marker::Prograde,
         Marker::Retrograde,
         Marker::Normal,
         Marker::AntiNormal,
         Marker::RadialOut,
         Marker::RadialIn,
+        Marker::Burn,
+        Marker::Target,
+        Marker::AntiTarget,
     ];
 }
 
@@ -216,18 +224,31 @@ fn orient_navball(
     ball.rotation = DQuat::from_mat3(&(to_screen * mesh_to_sky)).as_quat();
 
     let basis = vessel.nav_basis(system, now);
+    let burn = vessel
+        .burn_vector(system, now)
+        .and_then(DVec3::try_normalize);
+    let own = vessel.state_at(system, now).position;
+    let toward = vessel
+        .target
+        .and_then(|_| sim.universe.target_state(sim.active_index(), now))
+        .and_then(|t| (t.position - own).try_normalize());
     for (marker, mut transform, mut visibility) in &mut markers {
-        let Some(basis) = basis else {
+        let direction = match marker {
+            Marker::Burn => burn,
+            Marker::Target => toward,
+            Marker::AntiTarget => toward.map(|d| -d),
+            nav => basis.map(|basis| match nav {
+                Marker::Prograde => basis.prograde,
+                Marker::Retrograde => -basis.prograde,
+                Marker::Normal => basis.normal,
+                Marker::AntiNormal => -basis.normal,
+                Marker::RadialOut => basis.radial_out,
+                _ => -basis.radial_out,
+            }),
+        };
+        let Some(direction) = direction else {
             *visibility = Visibility::Hidden;
             continue;
-        };
-        let direction = match marker {
-            Marker::Prograde => basis.prograde,
-            Marker::Retrograde => -basis.prograde,
-            Marker::Normal => basis.normal,
-            Marker::AntiNormal => -basis.normal,
-            Marker::RadialOut => basis.radial_out,
-            Marker::RadialIn => -basis.radial_out,
         };
         let screen = DVec3::new(
             direction.dot(right),
@@ -454,6 +475,8 @@ fn marker_texture(marker: Marker) -> Image {
     ]
     .map(Vec2::normalize);
     let (prograde, normal, radial) = (rgb(0xd7f23c), rgb(0xd65cff), rgb(0x3cd8ff));
+    let burn = rgb(0x4da6ff);
+    let target = rgb(0xf272d9);
     let size = 96;
     match marker {
         Marker::Prograde => paint(size, size, prograde, |p| {
@@ -485,6 +508,20 @@ fn marker_texture(marker: Marker) -> Image {
         }),
         Marker::RadialIn => paint(size, size, radial, |p| {
             ring(p, 0.6).min(spokes(p, &diagonal, 0.18, 0.6))
+        }),
+        Marker::Target => paint(size, size, target, |p| {
+            let ticks = [Vec2::X, Vec2::NEG_X, Vec2::Y, Vec2::NEG_Y];
+            ring(p, 0.55).min(spokes(p, &ticks, 0.22, 0.55))
+        }),
+        Marker::AntiTarget => paint(size, size, target, |p| {
+            ring(p, 0.55).min(spokes(p, &diagonal, 0.0, 0.55))
+        }),
+        // A ring with three fins outwards, like KSP's maneuver marker.
+        Marker::Burn => paint(size, size, burn, |p| {
+            let fins = [90.0f32, 210.0, 330.0].map(|a| Vec2::from_angle(a.to_radians()));
+            ring(p, 0.4)
+                .min(spokes(p, &fins, 0.4, 0.88))
+                .min(p.length() - 0.02)
         }),
     }
 }

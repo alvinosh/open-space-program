@@ -19,9 +19,12 @@
 //! - **Rotation** ([`attitude`]): torque-free spin is exact like coasting, torque from
 //!   gimbal, reaction wheels and RCS ([`rcs`]) is integrated on the tick, and SAS holds
 //!   exactly on rails.
+//! - **Planning**: burns ([`plan`]) are predicted as impulses with the same event code, and
+//!   flown as finite burns by the executor ([`autopilot`]).
 
 pub mod atmosphere;
 pub mod attitude;
+pub mod autopilot;
 pub mod body;
 pub mod constants;
 pub mod data;
@@ -29,14 +32,17 @@ pub mod events;
 pub mod integrator;
 pub mod kepler;
 pub mod orbit;
+pub mod plan;
 pub mod prediction;
 pub mod propulsion;
 pub mod rcs;
+pub mod rendezvous;
 pub mod search;
 pub mod structure;
 pub mod system;
 pub mod terrain;
 pub mod time;
+pub mod transfer;
 pub mod universe;
 pub mod vessel;
 

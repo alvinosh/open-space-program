@@ -18,6 +18,18 @@
           { widget: "row", children: [{ widget: "label", class: "key", text: "Eccentricity" }, { widget: "label", text: "{orbit.eccentricity|fixed:4}" }] },
           { widget: "row", visible: "orbit.period", children: [{ widget: "label", class: "key", text: "Period" }, { widget: "label", text: "{orbit.period|duration}" }] },
           {
+            id: "warp_to",
+            widget: "row",
+            style: { gap: 4, margin: [4, 0, 0, 0] },
+            children: [
+              { widget: "label", class: "dim", text: "Warp to" },
+              { widget: "button", class: "step_button", text: "Ap", action: "warp.to:ap", visible: "!orbit.escape" },
+              { widget: "button", class: "step_button", text: "Pe", action: "warp.to:pe" },
+              { widget: "button", class: "step_button", text: "SOI", action: "warp.to:soi", visible: "orbit.events" },
+              { widget: "button", class: "step_button", text: "Burn", action: "warp.to:burn", visible: "plan.count" },
+            ],
+          },
+          {
             id: "events",
             widget: "column",
             repeat: "orbit.events",

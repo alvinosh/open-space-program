@@ -63,6 +63,7 @@
             children: [
               { widget: "button", class: "sas_button", text: "Norm", action: "vessel.sas_mode:normal", active: "vessel.sas_mode == normal" },
               { widget: "button", class: "sas_button", text: "Anti", action: "vessel.sas_mode:anti_normal", active: "vessel.sas_mode == anti_normal" },
+              { widget: "button", class: "sas_button", text: "Burn", action: "vessel.sas_mode:burn", active: "vessel.sas_mode == burn", visible: "plan.count" },
             ],
           },
           {
@@ -71,6 +72,15 @@
             children: [
               { widget: "button", class: "sas_button", text: "Rad +", action: "vessel.sas_mode:radial_out", active: "vessel.sas_mode == radial_out" },
               { widget: "button", class: "sas_button", text: "Rad -", action: "vessel.sas_mode:radial_in", active: "vessel.sas_mode == radial_in" },
+            ],
+          },
+          {
+            widget: "row",
+            style: { gap: 4 },
+            visible: "target.has",
+            children: [
+              { widget: "button", class: "sas_button", text: "Tgt", action: "vessel.sas_mode:target", active: "vessel.sas_mode == target" },
+              { widget: "button", class: "sas_button", text: "Anti", action: "vessel.sas_mode:anti_target", active: "vessel.sas_mode == anti_target" },
             ],
           },
           { widget: "label", class: "caption", style: { margin: [8, 0, 0, 0] }, text: "CONTROL" },

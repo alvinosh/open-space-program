@@ -1,0 +1,157 @@
+// Flight plan: planned burns, the selected burn's delta-v and time, and the burn executor.
+// In map view, click the trajectory to add a burn and drag its arrows to shape it.
+// Node ids (#burns, #editor, #executor) are stable for mods to insert rows.
+{
+  id: "flight_plan",
+  visible: false,
+  group: "flight",
+  root: {
+    widget: "window",
+    title: "Flight plan - {vessel.name}",
+    style: { right: 12, top: 290, width: 360 },
+    children: [
+      {
+        widget: "row",
+        style: { gap: 4 },
+        children: [
+          { widget: "button", class: "step_button", text: "+ Ap", action: "plan.add:ap" },
+          { widget: "button", class: "step_button", text: "+ Pe", action: "plan.add:pe" },
+          { widget: "button", class: "step_button", text: "Circ Ap", action: "plan.circularize:ap" },
+          { widget: "button", class: "step_button", text: "Circ Pe", action: "plan.circularize:pe" },
+          { widget: "spacer" },
+          { widget: "button", class: "step_button", text: "Clear", action: "plan.clear", visible: "plan.count" },
+        ],
+      },
+      { widget: "label", class: "dim", visible: "!plan.count", text: "No burns. Add one here, or click the trajectory in map view (M)." },
+      {
+        id: "burns",
+        widget: "column",
+        repeat: "plan.burns",
+        style: { gap: 2, margin: [4, 0, 0, 0] },
+        children: [
+          {
+            widget: "button",
+            class: "stage_row",
+            active: "item.selected",
+            action: "plan.select:{item.index}",
+            text: "{item.label}  {item.time_to|countdown}  {item.delta_v|speed}  {item.duration|duration}",
+          },
+        ],
+      },
+      { widget: "row", visible: "plan.count", children: [{ widget: "label", class: "key", text: "Total" }, { widget: "label", text: "{plan.total_dv|speed}" }] },
+      {
+        id: "editor",
+        widget: "column",
+        visible: "plan.has_selection",
+        style: { gap: 3, margin: [6, 0, 0, 0] },
+        children: [
+          { widget: "label", class: "section", text: "{burn.label}  {burn.time_to|countdown}" },
+          {
+            widget: "row",
+            style: { gap: 4 },
+            children: [
+              { widget: "label", class: "key", style: { min_width: 70 }, text: "Prograde" },
+              { widget: "button", class: "step_button", text: "-", action: "plan.dv:prograde:-1" },
+              { widget: "label", class: "value", text: "{burn.prograde|speed}" },
+              { widget: "button", class: "step_button", text: "+", action: "plan.dv:prograde:1" },
+            ],
+          },
+          {
+            widget: "row",
+            style: { gap: 4 },
+            children: [
+              { widget: "label", class: "key", style: { min_width: 70 }, text: "Normal" },
+              { widget: "button", class: "step_button", text: "-", action: "plan.dv:normal:-1" },
+              { widget: "label", class: "value", text: "{burn.normal|speed}" },
+              { widget: "button", class: "step_button", text: "+", action: "plan.dv:normal:1" },
+            ],
+          },
+          {
+            widget: "row",
+            style: { gap: 4 },
+            children: [
+              { widget: "label", class: "key", style: { min_width: 70 }, text: "Radial" },
+              { widget: "button", class: "step_button", text: "-", action: "plan.dv:radial:-1" },
+              { widget: "label", class: "value", text: "{burn.radial|speed}" },
+              { widget: "button", class: "step_button", text: "+", action: "plan.dv:radial:1" },
+            ],
+          },
+          {
+            widget: "row",
+            style: { gap: 3 },
+            children: [
+              { widget: "label", class: "dim", style: { min_width: 70 }, text: "Step" },
+              { widget: "button", class: "step_button", text: "0.1", action: "plan.dv_step:0.1", active: "plan.dv_step == 0.10" },
+              { widget: "button", class: "step_button", text: "1", action: "plan.dv_step:1", active: "plan.dv_step == 1" },
+              { widget: "button", class: "step_button", text: "10", action: "plan.dv_step:10", active: "plan.dv_step == 10" },
+              { widget: "button", class: "step_button", text: "100", action: "plan.dv_step:100", active: "plan.dv_step == 100" },
+              { widget: "label", class: "dim", text: "m/s" },
+            ],
+          },
+          {
+            widget: "row",
+            style: { gap: 3 },
+            children: [
+              { widget: "label", class: "key", style: { min_width: 70 }, text: "Time" },
+              { widget: "button", class: "step_button", text: "-orb", action: "plan.orbit:-1" },
+              { widget: "button", class: "step_button", text: "-", action: "plan.time:-1" },
+              { widget: "button", class: "step_button", text: "+", action: "plan.time:1" },
+              { widget: "button", class: "step_button", text: "+orb", action: "plan.orbit:1" },
+            ],
+          },
+          {
+            widget: "row",
+            style: { gap: 3 },
+            children: [
+              { widget: "label", class: "dim", style: { min_width: 70 }, text: "Step" },
+              { widget: "button", class: "step_button", text: "1s", action: "plan.time_step:1", active: "plan.time_step == 1" },
+              { widget: "button", class: "step_button", text: "10s", action: "plan.time_step:10", active: "plan.time_step == 10" },
+              { widget: "button", class: "step_button", text: "1m", action: "plan.time_step:60", active: "plan.time_step == 60" },
+              { widget: "button", class: "step_button", text: "10m", action: "plan.time_step:600", active: "plan.time_step == 600" },
+            ],
+          },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Delta-v" }, { widget: "label", text: "{burn.delta_v|speed}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Burn time" }, { widget: "label", text: "{burn.duration|duration}, starts {burn.start_in|countdown}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Then Ap / Pe" }, { widget: "label", text: "{burn.apoapsis|distance} / {burn.periapsis|distance}" }] },
+          { widget: "row", visible: "burn.arrival_periapsis", children: [{ widget: "label", class: "key", text: "At {target.name}" }, { widget: "label", text: "Pe {burn.arrival_periapsis|distance}" }] },
+          {
+            widget: "row",
+            visible: "burn.targets_body",
+            style: { gap: 4 },
+            children: [
+              { widget: "label", class: "dim", style: { min_width: 70 }, text: "Aim Pe" },
+              { widget: "button", class: "step_button", text: "100 km", action: "plan.aim:100000" },
+              { widget: "button", class: "step_button", text: "1000 km", action: "plan.aim:1000000" },
+            ],
+          },
+          {
+            widget: "row",
+            style: { gap: 4 },
+            children: [
+              { widget: "button", class: "step_button", text: "Zero", action: "plan.zero" },
+              { widget: "button", class: "step_button", text: "Delete", action: "plan.delete" },
+            ],
+          },
+        ],
+      },
+      {
+        id: "executor",
+        widget: "column",
+        visible: "plan.count",
+        style: { gap: 3, margin: [6, 0, 0, 0] },
+        children: [
+          { widget: "label", class: "section", text: "NEXT BURN" },
+          {
+            widget: "row",
+            style: { gap: 4 },
+            children: [
+              { widget: "button", class: "sas_button", text: "AUTO", action: "plan.execute", active: "autoburn.engaged" },
+              { widget: "button", class: "sas_button", text: "WARP", action: "warp.to:burn" },
+              { widget: "label", class: "dim", text: "{autoburn.state}  {autoburn.remaining|speed} to go" },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

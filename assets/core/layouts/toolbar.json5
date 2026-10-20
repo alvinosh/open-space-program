@@ -11,6 +11,9 @@
     children: [
       { widget: "button", class: "launcher_button", text: "Flight", action: "ui.toggle:flight_info", active: "ui.shown.flight_info" },
       { widget: "button", class: "launcher_button", text: "Orbit", action: "ui.toggle:orbit_info", active: "ui.shown.orbit_info" },
+      { widget: "button", class: "launcher_button", text: "Plan", action: "ui.toggle:flight_plan", active: "ui.shown.flight_plan" },
+      { widget: "button", class: "launcher_button", text: "Target", action: "ui.toggle:target_info", active: "ui.shown.target_info" },
+      { widget: "button", class: "launcher_button", text: "Transfer", action: "ui.toggle:transfer_planner", active: "ui.shown.transfer_planner" },
       { widget: "button", class: "launcher_button", text: "Vessel", action: "ui.toggle:vessel_info", active: "ui.shown.vessel_info" },
       { widget: "button", class: "launcher_button", text: "Attitude", action: "ui.toggle:attitude_info", active: "ui.shown.attitude_info" },
       { widget: "button", class: "launcher_button", text: "Structure", action: "ui.toggle:structure_info", active: "ui.shown.structure_info" },

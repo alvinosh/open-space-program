@@ -9,6 +9,7 @@ modded.
 cargo run -p osp_bake --release             # once: download and bake Earth's terrain (see below)
 cargo run                                   # launch from the Cape
 OSP_SCENARIO=leo cargo run                  # start in low Earth orbit
+OSP_SCENARIO=rendezvous cargo run           # in low Earth orbit below a station
 OSP_SCENARIO=crew cargo run                 # Pathfinder with a four-person capsule
 OSP_SCENARIO=sounder cargo run              # finned suborbital hop with a one-person capsule
 cargo run --features dev                    # faster incremental builds (Bevy dynamic linking)
@@ -40,6 +41,11 @@ Default bindings (all rebindable in `assets/core/keybindings/default.json5`):
 | Space | Stage (first press arms the booster) |
 | `,` `.` `/` | Time warp down / up / stop |
 | M | Map view with predicted trajectory |
+| Click trajectory, drag arrows | Map view: add a burn there; shape it (drag its marker to move it in time) |
+| Shift+click | Map view: target a body or vessel |
+| `]` / `[` | Fly the next / previous vessel |
+| F4 | Transfer planner: porkchop plot to the target |
+| F11 | Universe Manifest: every body and vessel, target or fly them |
 | Right-drag, wheel | Orbit / zoom camera |
 | F1 / F2 / F3 | Help / mods & diagnostics / hide the flight UI |
 | F5 | Reload mods and UI |
@@ -50,9 +56,34 @@ Default bindings (all rebindable in `assets/core/keybindings/default.json5`):
 The flight screen is split into modules, as in KSP: time warp and clocks (top left),
 altimeter (top centre), the app launcher (top right), the stage stack (bottom left), and the
 navball with throttle, SAS modes and control inputs (bottom centre). The launcher opens and
-closes the Flight, Orbit, Vessel, Attitude, Structure and Log windows; each button lights up while its
+closes the Flight, Orbit, Plan, Vessel, Attitude, Structure and Log windows; each button lights up while its
 window is open. F3 hides the whole flight UI and brings it back as it was. Every module is
 an ordinary layout record, so mods can move, restyle, replace or add to any of them.
+
+**Flight plan.** Plan burns (maneuver nodes) in the Plan window or by clicking the trajectory
+in map view; the prediction runs through every planned burn, and legs after one are drawn
+orange. AUTO hands the next burn to the burn executor: it points along the burn, settles
+the propellant with RCS if the engine needs ullage, lights the engine half the burn time
+early, throttles down to finish on the planned delta-v and cuts off. WARP (and the Orbit
+window's warp-to buttons) warps there, slowing on the way in; rails warp always stops in
+time for an engaged burn.
+
+**Targets and rendezvous.** Target a body or another vessel (Shift+click in map view, or the
+Universe Manifest). The Target window shows distance and relative speed, the closest
+approaches along the planned trajectory (solved to the microsecond, and drawn on the map),
+the relative inclination and the next plane crossings; Match planes plans the burn there.
+SAS can point at or away from the target, and the navball's target frame shows the velocity
+relative to it. `OSP_SCENARIO=rendezvous` starts below a station on a slightly tilted orbit.
+In map view, Ap/Pe and node markers carry their altitude, and a trajectory that descends
+into the air or towards the ground turns red down to its impact point.
+
+**Transfer planner (F4).** A porkchop plot of delta-v against departure time and flight time
+to the target, from Lambert solutions: within one SOI (to a moon or another vessel) or to
+another planet (ejection from the parking orbit, Oberth included). Over long windows each
+departure is the best moment in its parking orbit, which is what finds the cheap
+departures to a moon on another plane. Create burn plans the departure; in the Flight plan
+window, Aim Pe then adjusts it against the full patched-conic prediction for a chosen
+periapsis at the target, and Circ Pe plans the capture there.
 
 ## Layout
 
@@ -111,7 +142,8 @@ the same result at any time warp.
   everything else.
 - **Exact coasting.** Gravity-only motion is an analytic conic in universal variables: one
   formulation for elliptic, parabolic, hyperbolic and radial orbits, with a bracketed
-  solver that always converges. A coasting vessel is evaluated exactly at any time, so 1x and
+  solver that always converges (also far along hyperbolas, where the Stumpff functions
+  overflow away from the root). A coasting vessel is evaluated exactly at any time, so 1x and
   100 000x warp follow the same trajectory.
 - **Events solved to the tick.** SOI exit, atmosphere entry and terrain approach are found
   analytically (grazing passes included). SOI entry into moving moons uses a conservative-

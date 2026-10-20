@@ -47,6 +47,10 @@ pub struct TerrainExtension {
     /// Land-cover class per sample.
     #[texture(105, sample_type = "u_int")]
     pub cover: Handle<Image>,
+    /// The body's sunlight transmittance (`atmosphere::TransmittanceLut`).
+    #[texture(110)]
+    #[sampler(111)]
+    pub transmittance: Handle<Image>,
 }
 
 impl MaterialExtension for TerrainExtension {

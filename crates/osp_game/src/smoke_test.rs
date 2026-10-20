@@ -58,6 +58,14 @@ impl Plugin for SmokeTestPlugin {
                 actions
             } else if std::env::var_os("OSP_CAPTURE_QUICK").is_some() {
                 QUICK_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_PLAN").is_some() {
+                PLAN_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_RENDEZVOUS").is_some() {
+                RENDEZVOUS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_DEORBIT").is_some() {
+                DEORBIT_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_TRANSFER").is_some() {
+                TRANSFER_SCRIPT.to_vec()
             } else if in_orbit {
                 ORBIT_SCRIPT.to_vec()
             } else {
@@ -141,6 +149,77 @@ const ORBIT_SCRIPT: &[(f64, Action)] = &[
     (15.5, Action::MapView(false)),
     (16.5, Action::Capture("orbit_retrograde.png")),
     (17.0, Action::Exit),
+];
+
+/// In orbit (`OSP_CAPTURE_PLAN=1`): plan a 200 m/s prograde burn at periapsis, let the
+/// executor fly it after warping there, and capture the plan, the burn and the result.
+const PLAN_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("ui.show:flight_plan")),
+    (1.5, Action::Ui("plan.add:pe")),
+    (1.7, Action::Ui("plan.dv_step:100")),
+    (1.8, Action::Ui("plan.dv:prograde:1")),
+    (1.9, Action::Ui("plan.dv:prograde:1")),
+    (2.0, Action::MapView(true)),
+    (4.0, Action::Capture("plan_map.png")),
+    (4.5, Action::Ui("plan.execute")),
+    (4.6, Action::Ui("warp.to:burn")),
+    (4.7, Action::MapView(false)),
+    (32.0, Action::Capture("plan_burning.png")),
+    (58.0, Action::MapView(true)),
+    (60.0, Action::Capture("plan_after.png")),
+    (61.0, Action::Exit),
+];
+
+/// `OSP_SCENARIO=rendezvous OSP_CAPTURE_RENDEZVOUS=1`: the target windows, the map with
+/// the station, closest approaches and plane nodes, then a planned plane match.
+const RENDEZVOUS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("ui.show:target_info")),
+    (1.0, Action::Ui("ui.show:manifest")),
+    (3.0, Action::Capture("rendezvous_flight.png")),
+    (3.2, Action::Ui("ui.hide:manifest")),
+    (3.5, Action::MapView(true)),
+    (5.5, Action::Capture("rendezvous_map.png")),
+    (6.0, Action::Ui("ui.show:flight_plan")),
+    (6.0, Action::Ui("plan.match_plane")),
+    (8.0, Action::Capture("rendezvous_plan.png")),
+    (8.5, Action::Exit),
+];
+
+/// In orbit (`OSP_CAPTURE_DEORBIT=1`): plan a 150 m/s retrograde burn and capture the
+/// map, where the path turns red into the atmosphere and ends at an impact marker.
+const DEORBIT_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(true)),
+    (1.0, Action::Ui("plan.add:pe")),
+    (1.2, Action::Ui("plan.dv_step:100")),
+    (1.3, Action::Ui("plan.dv:prograde:-1")),
+    (1.4, Action::Ui("plan.dv_step:10")),
+    (1.5, Action::Ui("plan.dv:prograde:-1")),
+    (1.6, Action::Ui("plan.dv:prograde:-1")),
+    (1.7, Action::Ui("plan.dv:prograde:-1")),
+    (1.8, Action::Ui("plan.dv:prograde:-1")),
+    (1.9, Action::Ui("plan.dv:prograde:-1")),
+    (4.0, Action::Capture("deorbit_map.png")),
+    (4.5, Action::Exit),
+];
+
+/// In LEO (`OSP_CAPTURE_TRANSFER=1`): target the Moon, plot transfers, make the cheapest
+/// one's burn and show the trajectory it leads to.
+const TRANSFER_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("target.body:Moon")),
+    (1.2, Action::Ui("ui.show:transfer_planner")),
+    (1.5, Action::Ui("transfer.compute")),
+    (5.0, Action::Capture("transfer_plot.png")),
+    (5.2, Action::Ui("transfer.create")),
+    (5.4, Action::Ui("ui.hide:transfer_planner")),
+    (5.4, Action::Ui("ui.show:flight_plan")),
+    (5.6, Action::Ui("plan.aim:100000")),
+    (6.2, Action::Ui("plan.circularize:pe")),
+    (6.4, Action::MapView(true)),
+    (8.0, Action::Capture("transfer_map.png")),
+    (8.5, Action::Exit),
 ];
 
 /// Pitch a few degrees towards the east after clearing the tower, then let SAS hold.

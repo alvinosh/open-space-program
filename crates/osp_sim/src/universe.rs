@@ -16,11 +16,14 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::{
+    body::BodyId,
     data::{CraftDef, LaunchSiteDef, PartCatalog, ScenarioDef, StartDef, SystemDef},
+    orbit::{Orbit, StateVector},
+    rendezvous::Target,
     system::{SolarSystem, SystemError},
     terrain::{self, HeightSource},
     time::{SimTime, Ticks},
-    vessel::{Vessel, VesselError, VesselEvent},
+    vessel::{Vessel, VesselError, VesselEvent, VesselEventKind, VesselId},
 };
 
 /// Fixed physics tick.
@@ -34,6 +37,10 @@ pub enum UniverseError {
     Vessel(#[from] VesselError),
     #[error("unknown launch site `{0}`")]
     UnknownSite(String),
+    #[error("{0}")]
+    Craft(String),
+    #[error("scenario target `{0}` is neither a body nor a vessel")]
+    UnknownTarget(String),
 }
 
 /// An event attributed to a vessel (by index).
@@ -55,25 +62,74 @@ pub struct Universe {
     pub system: SolarSystem,
     pub vessels: Vec<Vessel>,
     time: SimTime,
+    next_id: u64,
 }
 
 impl Universe {
     pub fn new(system: SolarSystem, vessels: Vec<Vessel>, time: SimTime) -> Self {
-        Self {
+        let mut universe = Self {
             system,
-            vessels,
+            vessels: Vec::new(),
             time,
+            next_id: 0,
+        };
+        for vessel in vessels {
+            universe.add_vessel(vessel);
         }
+        universe
+    }
+
+    /// Add a vessel, giving it a new id.
+    pub fn add_vessel(&mut self, mut vessel: Vessel) -> VesselId {
+        let id = VesselId(self.next_id);
+        self.next_id += 1;
+        vessel.set_id(id);
+        self.vessels.push(vessel);
+        id
+    }
+
+    /// Index of the vessel with `id`, if it is still in the game.
+    pub fn find_vessel(&self, id: VesselId) -> Option<usize> {
+        self.vessels.iter().position(|v| v.id() == id)
+    }
+
+    /// The conic `target` follows and the body it is relative to (a vessel's osculating
+    /// orbit under power, its surface track's instantaneous conic when landed).
+    pub fn target_orbit(&self, target: Target, time: SimTime) -> Option<(BodyId, Orbit)> {
+        match target {
+            Target::Body(body) => {
+                let body = self.system.body(body);
+                Some((body.parent?, body.orbit?))
+            }
+            Target::Vessel(id) => {
+                let vessel = &self.vessels[self.find_vessel(id)?];
+                Some((vessel.parent(), vessel.orbit(&self.system, time)))
+            }
+        }
+    }
+
+    /// State of vessel `index`'s target relative to that vessel's parent body.
+    pub fn target_state(&self, index: usize, time: SimTime) -> Option<StateVector> {
+        let vessel = &self.vessels[index];
+        let (frame, state) = match vessel.target? {
+            Target::Body(body) => (body, StateVector::default()),
+            Target::Vessel(id) => {
+                let other = self.vessels.get(self.find_vessel(id)?)?;
+                (other.parent(), other.state_at(&self.system, time))
+            }
+        };
+        Some(self.system.transform(state, frame, vessel.parent(), time))
     }
 
     /// Build the solar system with its terrain (`height_sources` by body id, plus the
     /// earthworks of every launch site) and place the scenario's craft.
+    /// `craft_of` looks craft records up by id (the scenario's own and its other vessels').
     pub fn new_game(
         system: &SystemDef,
         height_sources: Vec<(String, Arc<dyn HeightSource>)>,
         sites: &[LaunchSiteDef],
         catalog: &PartCatalog,
-        craft: &CraftDef,
+        craft_of: impl Fn(&str) -> Result<CraftDef, String>,
         scenario: &ScenarioDef,
     ) -> Result<Self, UniverseError> {
         let mut system = SolarSystem::from_def(system)?;
@@ -84,31 +140,74 @@ impl Universe {
         // Sites on unknown bodies only matter if a scenario starts there (reported below).
         terrain::install(&mut system, sources, sites);
         let time = SimTime::from_seconds(scenario.start_time);
-        let vessel = match &scenario.start {
-            StartDef::LaunchSite(start) => {
-                let site = sites
-                    .iter()
-                    .find(|s| s.id == start.site)
-                    .ok_or_else(|| UniverseError::UnknownSite(start.site.clone()))?;
-                Vessel::on_launch_site(craft, catalog, &system, site, time)?
-            }
-            StartDef::Orbit(orbit) => Vessel::in_orbit(craft, catalog, &system, orbit, time)?,
+        let spawn = |craft: &str, start: &StartDef| -> Result<Vessel, UniverseError> {
+            let craft = craft_of(craft).map_err(UniverseError::Craft)?;
+            Ok(match start {
+                StartDef::LaunchSite(start) => {
+                    let site = sites
+                        .iter()
+                        .find(|s| s.id == start.site)
+                        .ok_or_else(|| UniverseError::UnknownSite(start.site.clone()))?;
+                    Vessel::on_launch_site(&craft, catalog, &system, site, time)?
+                }
+                StartDef::Orbit(orbit) => Vessel::in_orbit(&craft, catalog, &system, orbit, time)?,
+            })
         };
-        Ok(Self::new(system, vec![vessel], time))
+        let mut vessels = vec![spawn(&scenario.craft, &scenario.start)?];
+        for other in &scenario.others {
+            let mut vessel = spawn(&other.craft, &other.start)?;
+            if let Some(name) = &other.name {
+                vessel.name = name.clone();
+            }
+            vessels.push(vessel);
+        }
+        let mut universe = Self::new(system, vessels, time);
+        if let Some(target) = &scenario.target {
+            let found = universe
+                .vessels
+                .iter()
+                .skip(1)
+                .find(|v| &v.name == target)
+                .map(|v| Target::Vessel(v.id()))
+                .or_else(|| universe.system.find(target).map(Target::Body))
+                .ok_or_else(|| UniverseError::UnknownTarget(target.clone()))?;
+            universe.vessels[0].target = Some(found);
+        }
+        Ok(universe)
     }
 
     pub fn time(&self) -> SimTime {
         self.time
     }
 
-    /// Rails warp is possible only when every vessel is landed or coasting with engines off.
+    /// Rails warp is possible only when every vessel is landed or coasting with engines off,
+    /// and none has reached the point where it needs physics again (a burn coming up).
     pub fn can_use_rails(&self) -> bool {
-        !self.vessels.iter().any(Vessel::needs_physics)
+        !self
+            .vessels
+            .iter()
+            .any(|v| v.needs_physics() || v.attention_time().is_some_and(|t| t <= self.time))
+    }
+
+    /// The earliest time some vessel needs physics again, if any does, and which vessel.
+    fn attention(&self) -> Option<(usize, SimTime)> {
+        self.vessels
+            .iter()
+            .enumerate()
+            .filter_map(|(i, v)| Some((i, v.attention_time()?)))
+            .min_by_key(|(_, t)| *t)
     }
 
     /// Advance one fixed physics tick.
     pub fn step_physics(&mut self) -> Vec<SimEvent> {
         let (t0, t1) = (self.time, self.time + PHYSICS_STEP);
+        // Vessels steering towards a target need to know where it is.
+        let targets: Vec<_> = (0..self.vessels.len())
+            .map(|i| self.target_state(i, t0))
+            .collect();
+        for (vessel, state) in self.vessels.iter_mut().zip(targets) {
+            vessel.set_target_state(state);
+        }
         let mut events = Vec::new();
         for (index, vessel) in self.vessels.iter_mut().enumerate() {
             let mut local = Vec::new();
@@ -134,6 +233,9 @@ impl Universe {
         for vessel in &mut self.vessels {
             vessel.enter_rails(&self.system, self.time);
         }
+        // Hand over to physics where a vessel needs it.
+        let due = self.attention().filter(|(_, t)| *t <= target);
+        let target = due.map_or(target, |(_, t)| t);
         while self.time < target {
             let next = self
                 .vessels
@@ -162,6 +264,25 @@ impl Universe {
                 outcome.interrupted = true;
                 break;
             }
+        }
+        let targets: Vec<_> = (0..self.vessels.len())
+            .map(|i| self.target_state(i, self.time))
+            .collect();
+        for (vessel, state) in self.vessels.iter_mut().zip(targets) {
+            vessel.set_target_state(state);
+        }
+        if let Some((vessel, time)) = due
+            && !outcome.interrupted
+            && self.time == time
+        {
+            outcome.interrupted = true;
+            outcome.events.push(SimEvent {
+                vessel,
+                event: VesselEvent {
+                    time,
+                    kind: VesselEventKind::BurnDue,
+                },
+            });
         }
         outcome
     }

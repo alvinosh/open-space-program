@@ -112,11 +112,36 @@ fn universal_kepler(
 
 /// Safeguarded Newton iteration on a bracket. F is strictly increasing in χ, so the root is
 /// unique and bracketing always succeeds.
+///
+/// Far along a hyperbola the Stumpff functions overflow (sinh beyond e⁷¹⁰) well away from
+/// the root. Since F rises strictly from −∞ to +∞, an evaluation that overflows is taken as
+/// +∞ above zero and −∞ below it, which keeps the bracket honest; and the starting guess for
+/// hyperbolas comes from the hyperbolic anomaly's logarithmic growth, so the iteration starts
+/// near the root instead of orders of magnitude past it.
 fn solve_universal_kepler(sqrt_mu: f64, r0: f64, sigma0: f64, alpha: f64, dt: f64) -> f64 {
-    let eval = |chi| universal_kepler(sqrt_mu, r0, sigma0, alpha, dt, chi);
+    let eval = |chi: f64| {
+        let (f, df) = universal_kepler(sqrt_mu, r0, sigma0, alpha, dt, chi);
+        if f.is_finite() && df.is_finite() {
+            (f, df)
+        } else {
+            (f64::INFINITY.copysign(chi), f64::INFINITY)
+        }
+    };
 
     let guess = if alpha > 0.0 {
         sqrt_mu * dt * alpha
+    } else if alpha < 0.0 {
+        // Vallado's guess: χ ≈ ±√(−a) ln(−2 μ α Δt / (r0·v0 ± √(−μ a) (1 − r0 α))).
+        let a = 1.0 / alpha;
+        let sign = dt.signum();
+        let denominator =
+            sigma0 * sqrt_mu + sign * (-sqrt_mu * sqrt_mu * a).sqrt() * (1.0 - r0 * alpha);
+        let ratio = -2.0 * sqrt_mu * sqrt_mu * alpha * dt / denominator;
+        if ratio > 1.0 && ratio.is_finite() {
+            sign * (-a).sqrt() * ratio.ln()
+        } else {
+            sqrt_mu * dt / r0
+        }
     } else {
         sqrt_mu * dt / r0
     };
@@ -152,7 +177,7 @@ fn solve_universal_kepler(sqrt_mu: f64, r0: f64, sigma0: f64, alpha: f64, dt: f6
             hi = chi;
         }
         let newton = chi - f / df;
-        let next = if newton > lo && newton < hi {
+        let next = if newton.is_finite() && newton > lo && newton < hi {
             newton
         } else {
             0.5 * (lo + hi)
@@ -211,6 +236,45 @@ mod tests {
     use super::*;
 
     const MU: f64 = 3.986_004_418e14;
+
+    #[test]
+    fn long_hyperbolic_coasts_stay_exact() {
+        // Leaving LEO at 3 km/s beyond escape: compare with the hyperbolic Kepler equation
+        // M = e sinh F − F out to a century, where the Stumpff functions overflow far from
+        // the root.
+        let r0 = DVec3::new(6_671e3, 0.0, 0.0);
+        let v0 = DVec3::new(0.0, (9e6 + 2.0 * MU / 6_671e3).sqrt(), 0.0);
+        let alpha = reciprocal_semi_major_axis(MU, r0, v0);
+        let a = 1.0 / alpha;
+        let e = 1.0 - r0.length() * alpha;
+        let n = (MU * (-alpha).powi(3)).sqrt();
+        for days in [0.01, 1.0, 10.0, 30.0, 365.0, 36_525.0] {
+            let dt = days * 86_400.0;
+            let (r, v) = propagate(MU, r0, v0, alpha, None, dt);
+            let m = n * dt;
+            let mut f = (2.0 * m / e).asinh();
+            for _ in 0..100 {
+                f -= (e * f.sinh() - f - m) / (e * f.cosh() - 1.0);
+            }
+            let expected = a * (1.0 - e * f.cosh());
+            assert!(
+                (r.length() - expected).abs() < 1e-9 * expected,
+                "{days} d: {} vs {expected}",
+                r.length()
+            );
+            let energy = v.length_squared() / 2.0 - MU / r.length();
+            assert!(
+                (energy + MU * alpha / 2.0).abs() < 1e-9 * (MU * alpha / 2.0).abs(),
+                "{days} d"
+            );
+            // And backwards from there to the start.
+            let (back, _) = propagate(MU, r, v, alpha, None, -dt);
+            assert!(
+                (back - r0).length() < 1e-6 * r.length().max(r0.length()),
+                "{days} d back"
+            );
+        }
+    }
 
     fn energy(r: DVec3, v: DVec3) -> f64 {
         v.length_squared() / 2.0 - MU / r.length()
