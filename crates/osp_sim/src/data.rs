@@ -233,9 +233,13 @@ pub struct EngineDef {
     /// Specific impulse in vacuum and at 1 atm, s.
     pub isp_vac: f64,
     pub isp_sl: f64,
-    /// Lowest throttle setting while running, 0..1. 1.0 means not throttleable.
+    /// Lowest thrust share while running, 0..1: throttle settings below it run the engine
+    /// at this floor. 1.0 means not throttleable.
     #[serde(default = "one")]
     pub min_throttle: f64,
+    /// How the thrust follows the throttle: start-up, throttling and shutdown.
+    #[serde(default)]
+    pub response: EngineResponse,
     /// Number of ignitions available; `None` = unlimited.
     #[serde(default)]
     pub ignitions: Option<u32>,
@@ -256,6 +260,74 @@ pub struct EngineDef {
     /// glTF model, relative to the mod root: origin at the gimbal pivot, nozzle down −Y.
     #[serde(default)]
     pub model: Option<String>,
+    /// Pressure of the exhaust leaving the nozzle at full thrust, Pa. Against the ambient
+    /// pressure it decides how the plume expands; estimated from the Isp lost at sea level
+    /// if missing.
+    #[serde(default)]
+    pub exit_pressure: Option<f64>,
+    /// Look of the exhaust: id of a `plumes` record. Without one no plume is drawn.
+    #[serde(default)]
+    pub plume: Option<String>,
+}
+
+impl EngineDef {
+    /// Nozzle exit pressure at full thrust, Pa: the given one, or a guess from how much
+    /// Isp the engine loses at sea level (sea-level engines exit near 1 atm, vacuum engines
+    /// at about 1 kPa).
+    pub fn exit_pressure(&self) -> f64 {
+        self.exit_pressure.unwrap_or_else(|| {
+            let kept = self.isp_sl / self.isp_vac.max(1.0);
+            101_325.0 * ((kept - 0.4) * 1.6).clamp(0.01, 1.0)
+        })
+    }
+}
+
+/// How an engine's thrust follows its throttle, in shares of full thrust. All zero (the
+/// default) is an ideal engine that does whatever the throttle says at once.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct EngineResponse {
+    /// From ignition to full thrust, s: turbopumps spinning up, chamber pressure building.
+    pub spool_up: f64,
+    /// Shape of the start as `[time, thrust]` points, both as shares (time of `spool_up`,
+    /// thrust of full), from `[0, 0]` to `[1, 1]`, piecewise linear. A start throttled
+    /// below full follows it until it reaches the setting.
+    pub startup: Vec<[f64; 2]>,
+    /// From cutoff until the thrust has tailed off to 1%, s.
+    pub spool_down: f64,
+    /// Fastest throttling: time to sweep the thrust from zero to full, s.
+    pub throttle_time: f64,
+}
+
+impl Default for EngineResponse {
+    fn default() -> Self {
+        Self {
+            spool_up: 0.0,
+            startup: vec![[0.0, 0.0], [1.0, 1.0]],
+            spool_down: 0.0,
+            throttle_time: 0.0,
+        }
+    }
+}
+
+impl EngineResponse {
+    /// Thrust share `elapsed` seconds into a start.
+    pub fn startup_level(&self, elapsed: f64) -> f64 {
+        if self.spool_up <= 0.0 || elapsed >= self.spool_up {
+            return 1.0;
+        }
+        let x = (elapsed / self.spool_up).max(0.0);
+        let points = &self.startup;
+        let Some(end) = points.iter().position(|p| p[0] >= x) else {
+            return 1.0;
+        };
+        if end == 0 {
+            return points[0][1].clamp(0.0, 1.0);
+        }
+        let ([x0, y0], [x1, y1]) = (points[end - 1], points[end]);
+        let f = if x1 > x0 { (x - x0) / (x1 - x0) } else { 1.0 };
+        (y0 + (y1 - y0) * f).clamp(0.0, 1.0)
+    }
 }
 
 /// Torque without propellant, for turning while the engines are off.
@@ -325,6 +397,28 @@ pub struct StageDef {
     pub diameter: f64,
     /// Length, m. Used for the centre of mass, inertia and rendering.
     pub length: f64,
+    /// How the stage looks; no effect on physics.
+    #[serde(default)]
+    pub appearance: StageAppearance,
+}
+
+/// How a stage is drawn. The hull is built from the stage itself: its tanks are painted
+/// barrels with weld seams, the structure above them is an interstage (dark, around the
+/// next stage's engines) or more hull, and a top stage without tanks, engines or a pod is a
+/// payload fairing with an ogive nose. Colours are linear RGB.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StageAppearance {
+    /// Hull paint; default white.
+    pub paint: Option<[f32; 3]>,
+    /// The interstage; default black composite.
+    pub interstage: Option<[f32; 3]>,
+    /// Landing legs folded against the base of the stage (for show until legs are parts).
+    pub legs: u32,
+    /// Grid fins stowed at the top of the stage.
+    pub grid_fins: u32,
+    /// A cable raceway running up the side of the tanks.
+    pub raceway: bool,
 }
 
 /// Where and what to spawn when a new game starts.
@@ -415,6 +509,10 @@ pub struct PadDef {
     /// Embankment steepness, rise over run.
     #[serde(default = "default_slope")]
     pub slope: f64,
+    /// Height of the launch mount above the deck, m: vehicles stand on it with their
+    /// engines over the flame trench.
+    #[serde(default)]
+    pub mount_height: f64,
 }
 
 /// A paved road, level across its width, following the ground along its length.

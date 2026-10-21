@@ -6,8 +6,9 @@
     widget: "window",
     title: "Data inspector (bind with {{key}})",
     style: {
-      right: 12,
-      top: 12,
+      left: "50%",
+      margin: [0, 0, 0, -230],
+      top: 60,
       width: 460,
       max_height: "90vh",
       clip: true,

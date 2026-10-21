@@ -4,6 +4,10 @@
 // Colours: "#rgb", "#rrggbb", "#rrggbbaa" or [r, g, b(, a)] in 0..1.
 // `active_*` colours apply while a node's `active` condition holds (selected modes, open
 // windows, the current stage).
+//
+// One look throughout: dark glass surfaces with a hairline border, cool white text, dimmer
+// keys with their values lined up on the right, and one green accent for what is on.
+// Spacing is on a 4 px grid; screen edges and gaps between modules are 12 and 8 px.
 {
   id: "default",
   classes: {
@@ -11,74 +15,105 @@
     column: { gap: 2 },
     row: { gap: 8, align_items: "center" },
     spacer: { grow: 1 },
-    label: { color: "#d8eedb", font_size: 14 },
+    label: { color: "#e3eaef", font_size: 13 },
     button: {
       padding: [4, 10],
-      background: "#26384a",
-      hover_background: "#3a5672",
-      active_background: "#2f7a55",
+      background: "#1d2a36",
+      hover_background: "#2b3e4f",
+      active_background: "#2a7350",
       active_color: "#ffffff",
       radius: 4,
-      color: "#eef6ff",
-      font_size: 14,
+      color: "#e8f0f6",
+      font_size: 13,
       align_items: "center",
       justify_content: "center",
     },
-    bar: { height: 6, min_width: 60, grow: 1, background: "#18222c", radius: 3, clip: true },
+    bar: { height: 6, min_width: 60, grow: 1, background: [1, 1, 1, 0.07], radius: 3, clip: true },
     bar_fill: { background: "#5fd38a" },
     panel: {
-      padding: 10,
+      padding: [8, 10],
       gap: 2,
-      background: [0.03, 0.05, 0.07, 0.82],
+      background: [0.035, 0.05, 0.065, 0.9],
       radius: 6,
       border: 1,
-      border_color: [1, 1, 1, 0.08],
+      border_color: [1, 1, 1, 0.09],
     },
     window: {
       position: "absolute",
       min_width: 240,
-      background: [0.04, 0.06, 0.09, 0.94],
+      background: [0.035, 0.05, 0.065, 0.93],
       radius: 6,
       border: 1,
-      border_color: [1, 1, 1, 0.14],
+      border_color: [1, 1, 1, 0.11],
     },
     window_title: {
       direction: "row",
       gap: 6,
-      padding: [6, 8],
+      padding: [5, 6, 5, 10],
       align_items: "center",
-      background: [1, 1, 1, 0.06],
+      background: [1, 1, 1, 0.04],
+      border: [0, 0, 1, 0],
+      border_color: [1, 1, 1, 0.07],
     },
-    window_title_text: { color: "#ffffff", font_size: 14 },
-    window_content: { padding: 10, gap: 3 },
-    window_close: { padding: [0, 6], background: [0, 0, 0, 0], hover_background: "#9a2f2f", font_size: 13 },
+    window_title_text: { color: [1, 1, 1, 0.92], font_size: 13 },
+    window_content: { padding: [8, 10, 10, 10], gap: 3 },
+    window_close: {
+      padding: [0, 6],
+      background: [0, 0, 0, 0],
+      hover_background: "#8f2e2e",
+      color: [1, 1, 1, 0.6],
+      font_size: 12,
+    },
+
+    // --- docks (see layouts/docks.json5) ---
+    // Every `dock` node stacks what is docked into it; `dock_root` places a dock column on
+    // the screen.
+    dock: { gap: 8 },
+    dock_root: { position: "absolute" },
+    // Takes the dock's free height and scrolls when its windows do not fit.
+    dock_scroll: { grow: 1, shrink: 1, min_height: 0, scroll: true },
 
     // --- flight modules ---
     // Panels anchored to the screen edges; centred ones set `left: "50%"` and a negative
     // left margin of half their width.
     module: { position: "absolute" },
-    launcher: { position: "absolute", right: 12, top: 12, direction: "row", gap: 4 },
-    launcher_button: {
-      padding: [4, 9],
-      font_size: 13,
-      background: [0.08, 0.12, 0.16, 0.88],
-      active_background: "#2d5f80",
+    launcher: {
+      position: "absolute",
+      right: 12,
+      top: 12,
+      direction: "column",
+      gap: 2,
+      padding: 4,
+      width: 96,
+      background: [0.035, 0.05, 0.065, 0.9],
+      radius: 6,
+      border: 1,
+      border_color: [1, 1, 1, 0.09],
     },
+    launcher_button: {
+      padding: [4, 8],
+      font_size: 12,
+      background: [0, 0, 0, 0],
+      hover_background: [1, 1, 1, 0.08],
+      active_background: "#2a7350",
+      align_items: "start",
+    },
+    launcher_divider: { height: 1, margin: [3, 2], background: [1, 1, 1, 0.1] },
     readout: { color: "#ffffff", font_size: 26 },
     caption: { color: [1, 1, 1, 0.5], font_size: 11 },
     housing: {
       padding: [8, 12],
-      background: [0.02, 0.03, 0.04, 0.88],
+      background: [0.035, 0.05, 0.065, 0.9],
       radius: 10,
       border: 1,
-      border_color: [1, 1, 1, 0.1],
+      border_color: [1, 1, 1, 0.09],
     },
     navball_bezel: {
       width: 214,
       height: 214,
       radius: 107,
       border: 3,
-      border_color: "#2e3e4c",
+      border_color: "#2a3846",
       background: "#0a0f14",
       align_items: "center",
       justify_content: "center",
@@ -93,27 +128,31 @@
     },
     sas_button: { min_width: 62, padding: [3, 4], font_size: 12 },
     // Small +/- and step buttons (flight plan).
-    step_button: { min_width: 30, padding: [2, 5], font_size: 12 },
+    step_button: { min_width: 30, padding: [2, 6], font_size: 12 },
     value: { min_width: 86, font_size: 13 },
     vbar: { width: 10, min_width: 10, height: 150, grow: 0 },
+    thin: { width: 4, min_width: 4 },
     ibar: { width: 84, min_width: 84, grow: 0, height: 5 },
     stage_row: {
-      padding: [3, 6],
+      padding: [4, 6],
       radius: 4,
       border: 1,
       border_color: [0, 0, 0, 0],
-      active_background: [0.37, 0.83, 0.54, 0.14],
-      active_border_color: [0.37, 0.83, 0.54, 0.55],
+      active_background: [0.37, 0.83, 0.54, 0.12],
+      active_border_color: [0.37, 0.83, 0.54, 0.5],
     },
 
     // --- named classes ---
     title: { color: "#ffffff", font_size: 17 },
-    section: { color: "#7fb8e0", font_size: 12, margin: [8, 0, 2, 0] },
+    section: { color: "#7fb8e0", font_size: 11, margin: [8, 0, 2, 0] },
     dim: { color: [1, 1, 1, 0.55], font_size: 12 },
-    key: { color: [1, 1, 1, 0.6], min_width: 120 },
+    // Key of a key/value row: it takes the free width, so values line up on the right.
+    key: { color: [1, 1, 1, 0.55], min_width: 112, grow: 1 },
     narrow: { min_width: 104, shrink: 0 },
     nowrap: { shrink: 0 },
     warning: { color: "#ffcc44" },
+    // A screen message: readable over whatever is behind it.
+    notice: { padding: [3, 10], background: [0.035, 0.05, 0.065, 0.75], radius: 4 },
     error: { color: "#ff6b6b" },
     marker: { color: "#5fd38a", min_width: 10 },
   },

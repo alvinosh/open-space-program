@@ -5,10 +5,12 @@
   id: "flight_plan",
   visible: false,
   group: "flight",
+  dock: "right",
+  dock_order: 20,
   root: {
     widget: "window",
     title: "Flight plan - {vessel.name}",
-    style: { right: 12, top: 290, width: 360 },
+    style: { width: 360 },
     children: [
       {
         widget: "row",

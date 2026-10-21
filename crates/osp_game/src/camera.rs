@@ -4,8 +4,11 @@ use bevy::{
     camera::{Exposure, Hdr},
     input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit},
     math::DVec3,
+    post_process::bloom::Bloom,
     prelude::*,
 };
+
+use osp_ui::PointerOverUi;
 
 use crate::{
     FrameSet,
@@ -37,6 +40,9 @@ pub struct CameraRig {
     flight_distance: f64,
     /// Map distance as a multiple of the focused body's radius.
     map_distance: f64,
+    /// Flight view: look at this height above the base of the stack instead of its middle
+    /// (debugging, `OSP_CAMERA`).
+    focus_height: Option<f64>,
     /// Camera position relative to the render origin (f64, sim axes), for systems such as
     /// planet LOD that need more precision than the f32 transform.
     pub position: DVec3,
@@ -51,18 +57,21 @@ impl Default for CameraRig {
             pitch: 0.15,
             flight_distance: 120.0,
             map_distance: 4.0,
+            focus_height: None,
             position: DVec3::ZERO,
         };
-        // Debugging and screenshots: `OSP_CAMERA=<yaw°>,<pitch°>,<distance m>`.
+        // Debugging and screenshots: `OSP_CAMERA=<yaw°>,<pitch°>,<distance m>[,<focus m>]`,
+        // the last being the height above the base of the stack to look at.
         if let Ok(spec) = std::env::var("OSP_CAMERA") {
             let values: Vec<f64> = spec
                 .split(',')
                 .filter_map(|v| v.trim().parse().ok())
                 .collect();
-            if let [yaw, pitch, distance] = values[..] {
+            if let [yaw, pitch, distance, ..] = values[..] {
                 rig.yaw = yaw.to_radians();
                 rig.pitch = pitch.to_radians();
                 rig.flight_distance = distance;
+                rig.focus_height = values.get(3).copied();
             }
         }
         rig
@@ -83,6 +92,11 @@ fn spawn_camera(mut commands: Commands) {
             ..default()
         }),
         Exposure::SUNLIGHT,
+        // Glow around what is much brighter than the scene: plumes, the sun on metal.
+        Bloom {
+            intensity: 0.08,
+            ..Bloom::NATURAL
+        },
         Transform::default(),
     ));
 }
@@ -95,6 +109,7 @@ fn update_camera(
     sim: Res<Sim>,
     frame: Res<RenderFrame>,
     locked: Res<InputLocked>,
+    over_ui: Res<PointerOverUi>,
     mut camera: Single<&mut Transform, With<MainCamera>>,
 ) {
     if !locked.0 && buttons.pressed(MouseButton::Right) {
@@ -105,7 +120,8 @@ fn update_camera(
         MouseScrollUnit::Line => scroll.delta.y as f64,
         MouseScrollUnit::Pixel => scroll.delta.y as f64 / 40.0,
     };
-    let zoom = if locked.0 {
+    // The wheel over a window scrolls it instead.
+    let zoom = if locked.0 || over_ui.0 {
         1.0
     } else {
         0.88f64.powf(scroll_lines)
@@ -128,10 +144,12 @@ fn update_camera(
         )
     } else {
         rig.flight_distance = (rig.flight_distance * zoom).clamp(5.0, 2_000_000.0);
-        // The origin is the centre of mass; look at the middle of the stack.
+        // The origin is the centre of mass; look a little below the middle of the stack, so
+        // the vessel sits above the navball with room for its plume.
         let nose = vessel.attitude_at(system, frame.time) * DVec3::Z;
         let com = vessel.mass_properties().center_of_mass;
-        let focus = nose * (vessel.propulsion.length() * 0.5 - com);
+        let height = rig.focus_height.unwrap_or(vessel.propulsion.length() * 0.3);
+        let focus = nose * (height - com);
         (focus, frame.origin_offset.normalize(), rig.flight_distance)
     };
 

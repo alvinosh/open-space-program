@@ -1,12 +1,12 @@
-// The app launcher (top right): toggles the flight modules, KSP style. Each button lights
-// up while its window is open (`ui.shown.<layout>`). Mods add their own windows here with
-// an `insert` patch on `#toolbar.children`.
+// The app launcher (a column down the right edge): toggles the flight windows, KSP style.
+// Each button lights up while its window is open (`ui.shown.<layout>`). Mods add their own
+// windows here with an `insert` patch on `#toolbar.children`.
 {
   id: "toolbar",
   group: "flight",
   root: {
     id: "toolbar",
-    widget: "row",
+    widget: "column",
     class: "launcher",
     children: [
       { widget: "button", class: "launcher_button", text: "Flight", action: "ui.toggle:flight_info", active: "ui.shown.flight_info" },
@@ -18,6 +18,7 @@
       { widget: "button", class: "launcher_button", text: "Attitude", action: "ui.toggle:attitude_info", active: "ui.shown.attitude_info" },
       { widget: "button", class: "launcher_button", text: "Structure", action: "ui.toggle:structure_info", active: "ui.shown.structure_info" },
       { widget: "button", class: "launcher_button", text: "Log", action: "ui.toggle:log", active: "ui.shown.log" },
+      { widget: "column", class: "launcher_divider" },
       { widget: "button", class: "launcher_button", text: "Map", action: "view.toggle_map", active: "view.map" },
       { widget: "button", class: "launcher_button", text: "Mods", action: "ui.toggle:mods", active: "ui.shown.mods" },
       { widget: "button", class: "launcher_button", text: "Help", action: "ui.toggle:help", active: "ui.shown.help" },

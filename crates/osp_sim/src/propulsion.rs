@@ -1,13 +1,15 @@
 //! Stages and RO-style engines: pressure-dependent Isp, limited ignitions, ullage
-//! requirements and throttle limits. Tanks, fins and RCS blocks are part of their stage too;
-//! sizing tanks and fins is in [`crate::structure`], firing RCS in [`crate::rcs`].
+//! requirements, throttle limits and thrust that spools up after ignition, follows the
+//! throttle at a limited rate and tails off after cutoff. Tanks, fins and RCS blocks are part
+//! of their stage too; sizing tanks and fins is in [`crate::structure`], firing RCS in
+//! [`crate::rcs`].
 
 use glam::DVec2;
 use thiserror::Error;
 
 use crate::{
     constants::{ATM, G0},
-    data::{CraftDef, EngineDef, PartCatalog, PodDef, RcsDef, TankShape},
+    data::{CraftDef, EngineDef, PartCatalog, PodDef, RcsDef, StageAppearance, TankShape},
     structure::{FinSet, Tank},
 };
 
@@ -53,6 +55,11 @@ pub struct Engine {
     pub mount: DVec2,
     /// Thrust in the last physics step, N.
     pub thrust: f64,
+    /// Thrust as a share of full thrust at the end of the last physics step: what the
+    /// throttle asked for, as far as the engine has got there.
+    pub level: f64,
+    /// Seconds since ignition while the engine is still spooling up.
+    spooling: Option<f64>,
     /// Current gimbal angle as a vector in vessel X/Y (the side the thrust is tilted
     /// towards), radians.
     pub deflection: DVec2,
@@ -69,12 +76,63 @@ impl Engine {
         isp_at(self.def.isp_vac, self.def.isp_sl, pressure)
     }
 
-    /// Map player throttle (0..1) onto the engine's throttle range.
-    pub fn effective_throttle(&self, throttle: f64) -> f64 {
-        let min = self.def.min_throttle.clamp(0.0, 1.0);
-        min + (1.0 - min) * throttle.clamp(0.0, 1.0)
+    /// Thrust share a throttle setting asks of a running engine: the setting, held within
+    /// the engine's range (it cannot run below its minimum).
+    pub fn commanded_level(&self, throttle: f64) -> f64 {
+        throttle.clamp(self.def.min_throttle.clamp(0.0, 1.0), 1.0)
+    }
+
+    /// Whether the engine is still coming up to speed after ignition.
+    pub fn spooling(&self) -> bool {
+        self.spooling.is_some()
+    }
+
+    /// Seconds of the current thrust that a shutdown now would still give (the integral of
+    /// the tail-off).
+    pub fn tail_off_time(&self) -> f64 {
+        self.def.response.spool_down / LN_100
+    }
+
+    /// Move the thrust level towards `target` over `dt` s: along the start-up curve after
+    /// ignition, at most at the throttle rate while running, and decaying exponentially
+    /// after cutoff. Exact for any `dt`, so it does not depend on the tick length.
+    fn respond(&mut self, target: f64, dt: f64) {
+        let response = &self.def.response;
+        if target <= 0.0 {
+            self.spooling = None;
+            self.level = if response.spool_down > 0.0 {
+                let left = self.level * (-dt / self.tail_off_time()).exp();
+                if left < TAIL_END { 0.0 } else { left }
+            } else {
+                0.0
+            };
+            return;
+        }
+        if let Some(elapsed) = self.spooling {
+            let elapsed = elapsed + dt;
+            let along = response.startup_level(elapsed).max(self.level);
+            if along >= target {
+                self.level = target;
+                self.spooling = None;
+            } else {
+                self.level = along;
+                self.spooling = Some(elapsed);
+            }
+            return;
+        }
+        let step = if response.throttle_time > 0.0 {
+            dt / response.throttle_time
+        } else {
+            f64::INFINITY
+        };
+        self.level += (target - self.level).clamp(-step, step);
     }
 }
+
+/// ln 100: a tail-off decays to 1% after `spool_down`.
+const LN_100: f64 = 4.605_170_185_988_091;
+/// Thrust share below which a tail-off counts as over.
+const TAIL_END: f64 = 1e-3;
 
 fn isp_at(isp_vac: f64, isp_sl: f64, pressure: f64) -> f64 {
     let x = pressure / ATM;
@@ -133,6 +191,8 @@ pub struct Stage {
     pub propellants: Vec<Propellant>,
     pub diameter: f64,
     pub length: f64,
+    /// How it is drawn.
+    pub appearance: StageAppearance,
 }
 
 impl Stage {
@@ -276,6 +336,8 @@ impl Propulsion {
                         running: false,
                         mount: DVec2::ZERO,
                         thrust: 0.0,
+                        level: 0.0,
+                        spooling: None,
                         deflection: DVec2::ZERO,
                     });
                 }
@@ -396,6 +458,7 @@ impl Propulsion {
                     propellants,
                     diameter: def.diameter,
                     length: def.length,
+                    appearance: def.appearance.clone(),
                 })
             })
             .collect::<Result<Vec<_>, CraftError>>()?;
@@ -428,13 +491,40 @@ impl Propulsion {
             .is_some_and(|s| s.engines.iter().any(|e| e.running))
     }
 
-    /// True when the next physics step may produce thrust, so the vessel cannot coast.
+    /// True when the next physics step may produce thrust, so the vessel cannot coast:
+    /// the throttle is open on an armed stage, or an engine is still tailing off.
     pub fn wants_thrust(&self) -> bool {
-        self.throttle > 0.0
-            && self
-                .stages
-                .first()
-                .is_some_and(|s| s.active && !s.engines.is_empty())
+        self.stages.first().is_some_and(|s| {
+            (self.throttle > 0.0 && s.active && !s.engines.is_empty())
+                || s.engines.iter().any(|e| e.level > 0.0)
+        })
+    }
+
+    /// Thrust-weighted share of full thrust the bottom stage's engines are at, 0..1.
+    pub fn engine_level(&self) -> f64 {
+        let Some(stage) = self.stages.first() else {
+            return 0.0;
+        };
+        let full: f64 = stage.engines.iter().map(|e| e.def.thrust_vac).sum();
+        if full <= 0.0 {
+            return 0.0;
+        }
+        stage
+            .engines
+            .iter()
+            .map(|e| e.level * e.def.thrust_vac)
+            .sum::<f64>()
+            / full
+    }
+
+    /// Impulse the bottom stage's engines would still give if cut now, N·s.
+    pub fn tail_off_impulse(&self, pressure: f64) -> f64 {
+        self.stages.first().map_or(0.0, |s| {
+            s.engines
+                .iter()
+                .map(|e| e.level * e.max_mass_flow() * e.isp(pressure) * G0 * e.tail_off_time())
+                .sum()
+        })
     }
 
     /// Arm the bottom stage, or jettison it and arm the next one. Returns a log message.
@@ -458,7 +548,8 @@ impl Propulsion {
     }
 
     /// Run the engines for `dt` seconds. Handles ignition (consuming ignitions, failing if
-    /// propellant is unsettled), flameout and propellant use. Returns thrust in newtons.
+    /// propellant is unsettled), spool-up, throttling, tail-off, flameout and propellant
+    /// use. Returns thrust in newtons (the mean over the step).
     pub fn burn(&mut self, pressure: f64, dt: f64, settled: bool, log: &mut Vec<String>) -> f64 {
         let throttle = self.throttle;
         let attempt_ignition = std::mem::take(&mut self.ignition_pending);
@@ -471,31 +562,22 @@ impl Propulsion {
             engine.thrust = 0.0;
             if throttle <= 0.0 {
                 engine.running = false;
-                continue;
+            } else if !engine.running && attempt_ignition {
+                engine.running = ignite(engine, settled, log);
             }
-            if !engine.running && attempt_ignition {
-                match engine.ignitions_left {
-                    Some(0) => {
-                        log.push(format!("{}: no ignitions left", engine.def.id));
-                        continue;
-                    }
-                    Some(ref mut n) => *n -= 1,
-                    None => {}
-                }
-                if engine.def.requires_ullage && !settled {
-                    log.push(format!(
-                        "{}: ignition failed, propellant unsettled (ullage needed)",
-                        engine.def.id
-                    ));
-                    continue;
-                }
-                engine.running = true;
-            }
-            if !engine.running {
+            let target = if engine.running {
+                engine.commanded_level(throttle)
+            } else {
+                0.0
+            };
+            let before = engine.level;
+            engine.respond(target, dt);
+            let level = 0.5 * (before + engine.level);
+            if level <= 0.0 {
                 continue;
             }
 
-            let flow = engine.max_mass_flow() * engine.effective_throttle(throttle);
+            let flow = engine.max_mass_flow() * level;
             let isp = engine.isp(pressure);
             let starved = engine.def.propellants.iter().any(|(name, ratio)| {
                 stage
@@ -506,8 +588,12 @@ impl Propulsion {
             });
             if starved {
                 let engine = &mut stage.engines[i];
+                if engine.running {
+                    log.push(format!("{}: flameout, propellant depleted", engine.def.id));
+                }
                 engine.running = false;
-                log.push(format!("{}: flameout, propellant depleted", engine.def.id));
+                engine.level = 0.0;
+                engine.spooling = None;
                 continue;
             }
             for (name, ratio) in stage.engines[i].def.propellants.clone() {
@@ -570,8 +656,32 @@ impl Propulsion {
         for engine in self.stages.iter_mut().flat_map(|s| &mut s.engines) {
             engine.running = false;
             engine.thrust = 0.0;
+            engine.level = 0.0;
+            engine.spooling = None;
         }
     }
+}
+
+/// Try to light an engine; returns whether it lit. Uses up an ignition either way, and
+/// starts the spool-up.
+fn ignite(engine: &mut Engine, settled: bool, log: &mut Vec<String>) -> bool {
+    match engine.ignitions_left {
+        Some(0) => {
+            log.push(format!("{}: no ignitions left", engine.def.id));
+            return false;
+        }
+        Some(ref mut n) => *n -= 1,
+        None => {}
+    }
+    if engine.def.requires_ullage && !settled {
+        log.push(format!(
+            "{}: ignition failed, propellant unsettled (ullage needed)",
+            engine.def.id
+        ));
+        return false;
+    }
+    engine.spooling = Some(0.0);
+    true
 }
 
 /// Engine positions for a stage of the given radius, seen from behind: a single engine on
@@ -588,5 +698,116 @@ fn engine_layout(count: usize, radius: f64) -> Vec<DVec2> {
         _ => std::iter::once(DVec2::ZERO)
             .chain(ring(count - 1, 0.65 * radius))
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn engine(id: &str) -> Engine {
+        let def = crate::test_data::records::<EngineDef>(include_str!(
+            "../../../assets/core/engines/stock.json5"
+        ))
+        .into_iter()
+        .find(|e| e.id == id)
+        .unwrap();
+        Engine {
+            ignitions_left: def.ignitions,
+            def,
+            running: true,
+            mount: DVec2::ZERO,
+            thrust: 0.0,
+            level: 0.0,
+            spooling: Some(0.0),
+            deflection: DVec2::ZERO,
+        }
+    }
+
+    /// Run `respond` for `seconds` in ticks of `dt`; returns the level after each tick.
+    fn run(e: &mut Engine, target: f64, seconds: f64, dt: f64) -> Vec<f64> {
+        (0..(seconds / dt).round() as usize)
+            .map(|_| {
+                e.respond(target, dt);
+                e.level
+            })
+            .collect()
+    }
+
+    #[test]
+    fn startup_follows_the_curve_to_full_thrust() {
+        let mut e = engine("K-1 Booster");
+        let spool = e.def.response.spool_up;
+        let levels = run(&mut e, 1.0, spool + 0.1, 0.02);
+        // Never drops while spooling, and is still well short of full halfway through.
+        assert!(levels.windows(2).all(|w| w[1] >= w[0]));
+        let half = levels[(spool / 2.0 / 0.02) as usize];
+        assert!(half > 0.3 && half < 0.8, "{half}");
+        assert_eq!(e.level, 1.0);
+        assert!(!e.spooling());
+    }
+
+    #[test]
+    fn a_throttled_start_stops_at_the_setting() {
+        let mut e = engine("K-1 Booster");
+        run(&mut e, 0.6, 3.0, 0.02);
+        assert_eq!(e.level, 0.6);
+        assert!(!e.spooling());
+    }
+
+    #[test]
+    fn throttle_settings_below_the_floor_run_at_the_floor() {
+        let e = engine("K-1 Booster");
+        assert_eq!(e.commanded_level(0.1), e.def.min_throttle);
+        assert_eq!(e.commanded_level(0.7), 0.7);
+        // Not throttleable: any setting is full thrust.
+        assert_eq!(engine("H-10").commanded_level(0.2), 1.0);
+    }
+
+    #[test]
+    fn throttling_is_rate_limited() {
+        let mut e = engine("K-1 Booster");
+        run(&mut e, 1.0, 3.0, 0.02);
+        let rate = 1.0 / e.def.response.throttle_time;
+        run(&mut e, 0.4, 0.5, 0.02);
+        assert!((e.level - (1.0 - 0.5 * rate)).abs() < 1e-9, "{}", e.level);
+        run(&mut e, 0.4, 5.0, 0.02);
+        assert_eq!(e.level, 0.4);
+    }
+
+    #[test]
+    fn cutoff_tails_off_to_one_percent_after_spool_down() {
+        let mut e = engine("K-1 Booster");
+        run(&mut e, 1.0, 3.0, 0.02);
+        e.running = false;
+        let spool_down = e.def.response.spool_down;
+        run(&mut e, 0.0, spool_down, 0.02);
+        assert!((e.level - 0.01).abs() < 1e-6, "{}", e.level);
+        run(&mut e, 0.0, 2.0, 0.02);
+        assert_eq!(e.level, 0.0);
+    }
+
+    #[test]
+    fn response_does_not_depend_on_the_tick_length() {
+        let (mut a, mut b) = (engine("K-1 Vacuum"), engine("K-1 Vacuum"));
+        run(&mut a, 1.0, 4.0, 0.02);
+        run(&mut b, 1.0, 4.0, 0.08);
+        assert_eq!(a.level, b.level);
+        run(&mut a, 0.5, 0.8, 0.02);
+        run(&mut b, 0.5, 0.8, 0.08);
+        assert!((a.level - b.level).abs() < 1e-12);
+        run(&mut a, 0.0, 0.4, 0.02);
+        run(&mut b, 0.0, 0.4, 0.08);
+        assert!((a.level - b.level).abs() < 1e-12);
+    }
+
+    #[test]
+    fn exit_pressure_is_estimated_from_the_isp_loss() {
+        let mut e = engine("K-1 Booster").def;
+        e.exit_pressure = None;
+        assert!(e.exit_pressure() > 50_000.0, "{}", e.exit_pressure());
+        let mut e = engine("K-1 Vacuum").def;
+        e.exit_pressure = None;
+        assert!(e.exit_pressure() < 2_000.0, "{}", e.exit_pressure());
     }
 }

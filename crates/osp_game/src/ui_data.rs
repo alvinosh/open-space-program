@@ -149,6 +149,18 @@ fn publish_flight(
     data.set("vessel.dynamic_pressure", vessel.flight.dynamic_pressure);
     data.set("vessel.static_pressure", vessel.flight.static_pressure);
     data.set("vessel.throttle", vessel.propulsion.throttle());
+    // What the engines actually give (spooling, slewing, tailing off), and the lowest
+    // share they can hold while running.
+    data.set("vessel.engine_level", vessel.propulsion.engine_level());
+    data.set(
+        "vessel.min_throttle",
+        vessel.propulsion.stages.first().map_or(0.0, |s| {
+            s.engines
+                .iter()
+                .map(|e| e.def.min_throttle.clamp(0.0, 1.0))
+                .fold(0.0, f64::max)
+        }),
+    );
     data.set("vessel.thrust", vessel.flight.thrust);
     data.set("vessel.twr", vessel.flight.thrust / (mass * local_g));
     data.set("vessel.mass", mass);

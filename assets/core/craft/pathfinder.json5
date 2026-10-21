@@ -16,6 +16,8 @@
       structure_mass: 9400, // thrust structure, interstage, avionics
       diameter: 3.7,
       length: 42,
+      // The interstage is the 4 m above the tank, around the upper stage's engine.
+      appearance: { legs: 4, grid_fins: 4, raceway: true },
     },
     {
       name: "Upper Stage",
@@ -36,6 +38,7 @@
       structure_mass: 1830, // interstage, avionics, payload adapter
       diameter: 3.7,
       length: 14,
+      appearance: { raceway: true },
     },
     {
       name: "Payload",

@@ -431,6 +431,7 @@ mod tests {
                 corner_radius: 5.0,
                 elevation: Some(8.0),
                 slope: 0.5,
+                mount_height: 0.0,
             }),
             roads: vec![RoadDef {
                 points: vec![[0.0, -20.0], [0.0, -500.0]],

@@ -2,10 +2,12 @@
 {
   id: "orbit_info",
   group: "flight",
+  dock: "right",
+  dock_order: 10,
   root: {
     widget: "window",
     title: "Orbit - {vessel.body}",
-    style: { right: 12, top: 52, width: 290 },
+    style: { width: 290 },
     children: [
       {
         id: "orbit",

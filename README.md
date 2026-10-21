@@ -17,12 +17,12 @@ cargo test --workspace                      # physics, mod loader and UI tests (
 OSP_CAPTURE=/tmp/shots cargo run            # scripted run that saves screenshots, then exits
 ```
 
-For debugging the view: `OSP_CAMERA=<yaw°>,<pitch°>,<distance m>` sets the starting
-camera, `OSP_START_TIME=<s since J2000>` the time of day, and `OSP_FPS=1` logs frame
+For debugging the view: `OSP_CAMERA=<yaw°>,<pitch°>,<distance m>[,<focus m>]` sets the
+starting camera (the focus is the height above the base of the stack to look at), `OSP_START_TIME=<s since J2000>` the time of day, and `OSP_FPS=1` logs frame
 times. With `OSP_CAPTURE`, `OSP_CAPTURE_QUICK=1` takes a single still, and
 `OSP_CAPTURE_AT=20,30` launches (SAS on, a small pitch kick at 10 s, the Vessel,
 Attitude and Structure windows open) and takes stills at those times. `OSP_CAPTURE_HIDE_UI=1` leaves the flight UI out
-of the stills.
+of the stills, and `OSP_CAPTURE_SIZE=1280x720` sets the size of the stills (1600x900 by default).
 
 The toolchain is pinned in `rust-toolchain.toml` (Bevy 0.20 needs Rust 1.97.1+).
 
@@ -54,11 +54,16 @@ Default bindings (all rebindable in `assets/core/keybindings/default.json5`):
 ## Flight UI
 
 The flight screen is split into modules, as in KSP: time warp and clocks (top left),
-altimeter (top centre), the app launcher (top right), the stage stack (bottom left), and the
-navball with throttle, SAS modes and control inputs (bottom centre). The launcher opens and
-closes the Flight, Orbit, Plan, Vessel, Attitude, Structure and Log windows; each button lights up while its
-window is open. F3 hides the whole flight UI and brings it back as it was. Every module is
-an ordinary layout record, so mods can move, restyle, replace or add to any of them.
+altimeter (top centre), the app launcher (down the right edge), the stage stack (bottom
+left), and the navball with throttle, SAS modes and control inputs (bottom centre). The
+launcher opens and closes the windows; each button lights up while its window is open.
+Instrument windows (Flight, Vessel, Target on the left; Orbit, Plan, Attitude on the right)
+stack into docks beside the screen edges, so they line up and never cover each other or the
+vessel; a dock scrolls with the mouse wheel when they do not fit. Drag a window's title to
+pop it out, close it to put it back. Large windows (Structure, Log, Manifest, Transfer
+planner) open in the middle, in front. F3 hides the whole flight UI and brings it back as it
+was. Every module is an ordinary layout record, so mods can move, restyle, replace, dock or
+add to any of them.
 
 **Flight plan.** Plan burns (maneuver nodes) in the Plan window or by clicking the trajectory
 in map view; the prediction runs through every planned burn, and legs after one are drawn

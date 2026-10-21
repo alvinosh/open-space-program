@@ -9,10 +9,11 @@
     class: "module",
     style: { left: "50%", margin: [0, 0, 0, -300], top: 110, width: 600, align_items: "center", gap: 4 },
     children: [
-      { widget: "label", class: "warning", style: { font_size: 16 }, text: "{screen.message}", visible: "screen.message" },
-      { widget: "label", class: "warning", text: "{time.notice}", visible: "time.notice" },
+      { widget: "label", class: "warning notice", style: { font_size: 16 }, text: "{screen.message}", visible: "screen.message" },
+      { widget: "label", class: "warning notice", text: "{time.notice}", visible: "time.notice" },
+      { widget: "label", class: "warning notice", text: "Simulation is lagging behind the requested warp", visible: "time.lagging" },
       // Map view: the trajectory point under the mouse.
-      { widget: "label", class: "dim", text: "{map.hover_time_to|countdown} at {map.hover_altitude|distance}: click to add a burn", visible: "map.hovering" },
+      { widget: "label", class: "dim notice", text: "{map.hover_time_to|countdown} at {map.hover_altitude|distance}: click to add a burn", visible: "map.hovering" },
     ],
   },
 }

@@ -2,18 +2,22 @@
 //!
 //! Any widget name not in the registry is a plain container: `column`, `row`, `panel`,
 //! `spacer` and friends differ only by their default theme class. Built-ins with behaviour:
-//! `label`, `button`, `bar` and `window`. Rust code can register more widgets with
-//! [`WidgetRegistry::register`]; data-only mods compose these.
+//! `label`, `button`, `bar`, `window` and `dock` (a container that lets clicks through to
+//! the scene; with an id, layouts with that `dock` stack into it). Rust code can register
+//! more widgets with [`WidgetRegistry::register`]; data-only mods compose these.
 
 use std::collections::HashMap;
 
-use bevy::{picking::hover::Hovered, prelude::*};
+use bevy::{
+    picking::{Pickable, hover::Hovered},
+    prelude::*,
+};
 
 use crate::{
     format::Template,
     layout::NodeDef,
     runtime::{
-        ActionSource, ActiveText, BoundActive, BoundBar, BoundText, WindowDrag, click_action,
+        ActionSource, ActiveText, BoundActive, BoundBar, BoundText, Dock, WindowDrag, click_action,
         drag_window, insert_state_colors, spawn_box,
     },
     style::{StyleDef, ThemeDef},
@@ -78,6 +82,7 @@ impl Default for WidgetRegistry {
         registry.register("button", button);
         registry.register("bar", bar);
         registry.register("window", window);
+        registry.register("dock", dock);
         registry
     }
 }
@@ -97,6 +102,16 @@ impl WidgetRegistry {
 }
 
 fn container(ctx: &mut WidgetContext) -> Entity {
+    ctx.entity
+}
+
+fn dock(ctx: &mut WidgetContext) -> Entity {
+    let mut e = ctx.commands.entity(ctx.entity);
+    // Empty dock space is not UI: the scene underneath stays clickable.
+    e.insert(Pickable::IGNORE);
+    if let Some(id) = &ctx.def.id {
+        e.insert(Dock(id.clone()));
+    }
     ctx.entity
 }
 

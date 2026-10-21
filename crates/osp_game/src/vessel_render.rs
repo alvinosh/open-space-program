@@ -1,18 +1,22 @@
-//! Vessel visuals: a cylinder per stage, engines, RCS blocks and crew pods from their glTF
-//! models (or plain stand-ins without one), procedural fins, a nose cone, exhaust plumes
-//! from the bottom stage's engines that swivel with their gimbal, and puffs from every RCS
+//! Vessel visuals: a procedural hull per stage (see [`crate::hull`]), engines, RCS blocks
+//! and crew pods from their glTF models (or plain stand-ins without one), procedural fins,
+//! exhaust plumes
+//! from the bottom stage's engines that swivel with their gimbal and follow each engine's
+//! thrust level (see [`crate::plume`]), the light they cast, and puffs from every RCS
 //! nozzle that fires.
 
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::TAU;
 
-use bevy::prelude::*;
+use bevy::{light::NotShadowCaster, prelude::*};
 use osp_sim::{DVec3, propulsion::Stage, structure::FinSet};
 
 use crate::{
     FrameSet,
     content::{GameContent, mod_asset_path},
     frame::{RenderFrame, rotation_to_render, to_render},
+    hull::stage_hull,
     meshgen::MeshBuilder,
+    plume::{PlumeDef, PlumeMaterial, PlumeParams, PlumeShape, plume_lumens},
     sim::Sim,
 };
 
@@ -69,6 +73,16 @@ struct EnginePivot {
 struct Plume {
     exit: f32,
     radius: f32,
+    /// Nozzle exit pressure at full thrust, Pa.
+    exit_pressure: f64,
+    look: PlumeDef,
+    seed: f32,
+}
+
+/// The light a vessel's plumes cast, at their middle.
+#[derive(Component)]
+struct PlumeLight {
+    vessel: usize,
 }
 
 /// The puff from one RCS nozzle. `base` puts the nozzle exit at the origin with the gas
@@ -84,9 +98,13 @@ struct RcsPlume {
 
 #[derive(Resource)]
 struct VesselMaterials {
+    /// Stand-ins for missing models.
     hull: [Handle<StandardMaterial>; 2],
+    /// Hull meshes' vertex colours under glossy paint, matte composite and bare metal.
+    paint: Handle<StandardMaterial>,
+    matte: Handle<StandardMaterial>,
+    metal: Handle<StandardMaterial>,
     engine: Handle<StandardMaterial>,
-    plume: Handle<StandardMaterial>,
     rcs_plume: Handle<StandardMaterial>,
     /// White, so the fins' vertex colours show.
     fins: Handle<StandardMaterial>,
@@ -110,16 +128,26 @@ fn spawn_vessel_visuals(
                 ..default()
             }),
         ],
+        paint: materials.add(StandardMaterial {
+            perceptual_roughness: 0.42,
+            clearcoat: 0.6,
+            clearcoat_perceptual_roughness: 0.25,
+            ..default()
+        }),
+        matte: materials.add(StandardMaterial {
+            perceptual_roughness: 0.68,
+            reflectance: 0.35,
+            ..default()
+        }),
+        metal: materials.add(StandardMaterial {
+            metallic: 0.85,
+            perceptual_roughness: 0.48,
+            ..default()
+        }),
         engine: materials.add(StandardMaterial {
             base_color: Color::srgb(0.15, 0.13, 0.12),
             metallic: 0.8,
             perceptual_roughness: 0.4,
-            ..default()
-        }),
-        plume: materials.add(StandardMaterial {
-            base_color: Color::linear_rgba(4.0, 2.2, 0.8, 0.6),
-            alpha_mode: AlphaMode::Add,
-            unlit: true,
             ..default()
         }),
         // Faint and unlit, so a firing nozzle shows on the night side too.
@@ -214,9 +242,22 @@ fn rebuild_on_change(
     content: Res<GameContent>,
     assets: Res<AssetServer>,
     materials: Res<VesselMaterials>,
+    mut plume_materials: ResMut<Assets<PlumeMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut visuals: Query<(Entity, &mut VesselVisual)>,
 ) {
+    let looks = content
+        .0
+        .registry
+        .all::<PlumeDef>("plumes", &mut Vec::new());
+    let look = |id: &Option<String>| {
+        let id = id.as_deref()?;
+        let look = looks.iter().find(|l| l.id == id);
+        if look.is_none() {
+            warn!("plume `{id}` is not defined; the engine has no plume");
+        }
+        look.cloned()
+    };
     let model = |relative: &Option<String>| {
         let relative = relative.as_deref()?;
         let Some(path) = mod_asset_path(&content.0, relative) else {
@@ -237,6 +278,11 @@ fn rebuild_on_change(
         let vessel = visual.index;
 
         let puff = meshes.add(Cone::new(1.0, 1.0));
+        // From the nozzle exit (y = 0) down to y = −1, scaled to each plume's bounds.
+        let plume_volume = meshes.add(
+            Mesh::from(Cylinder::new(1.0, 1.0).mesh().resolution(24))
+                .translated_by(Vec3::NEG_Y * 0.5),
+        );
         let mut entity_commands = commands.entity(entity);
         entity_commands.despawn_children();
         entity_commands.with_children(|parent| {
@@ -269,16 +315,22 @@ fn rebuild_on_change(
                                 ));
                             }
                         }
-                        if i == 0 {
+                        if i == 0
+                            && let Some(look) = look(&engine.def.plume)
+                        {
                             pivot.spawn((
                                 Plume {
                                     exit: bell,
                                     radius: exit,
+                                    exit_pressure: engine.def.exit_pressure(),
+                                    look,
+                                    seed: 7.31 * j as f32,
                                 },
-                                Mesh3d(meshes.add(Cone::new(1.0, 1.0))),
-                                MeshMaterial3d(materials.plume.clone()),
+                                Mesh3d(plume_volume.clone()),
+                                MeshMaterial3d(plume_materials.add(PlumeMaterial::default())),
                                 Transform::default(),
                                 Visibility::Hidden,
+                                NotShadowCaster,
                             ));
                         }
                     });
@@ -287,11 +339,20 @@ fn rebuild_on_change(
                 let pod_height = stage.pod.as_ref().map_or(0.0, |p| p.height as f32);
                 let hull = length - pod_height;
                 if hull > 0.01 {
-                    parent.spawn((
-                        Mesh3d(meshes.add(Cylinder::new(radius, hull))),
-                        MeshMaterial3d(materials.hull[i % 2].clone()),
-                        Transform::from_xyz(0.0, y + hull / 2.0, 0.0),
-                    ));
+                    let parts = stage_hull(stage, stages.get(i + 1), hull);
+                    for (mesh, material) in [
+                        (parts.paint, &materials.paint),
+                        (parts.matte, &materials.matte),
+                        (parts.metal, &materials.metal),
+                    ] {
+                        if !mesh.is_empty() {
+                            parent.spawn((
+                                Mesh3d(meshes.add(mesh.build())),
+                                MeshMaterial3d(material.clone()),
+                                Transform::from_xyz(0.0, y, 0.0),
+                            ));
+                        }
+                    }
                 }
                 if let Some(pod) = &stage.pod {
                     let at = Transform::from_xyz(0.0, y + hull, 0.0);
@@ -359,16 +420,17 @@ fn rebuild_on_change(
                 }
                 y += length;
             }
-            // A nose cone, unless a crew pod tops the stack.
-            if let Some(top) = stages.last().filter(|s| s.pod.is_none()) {
-                let radius = (top.diameter / 2.0) as f32;
-                let nose = radius * 2.5;
-                parent.spawn((
-                    Mesh3d(meshes.add(Cone::new(radius, nose))),
-                    MeshMaterial3d(materials.hull[0].clone()),
-                    Transform::from_xyz(0.0, y + nose / 2.0, 0.0),
-                ));
-            }
+            parent.spawn((
+                PlumeLight { vessel },
+                PointLight {
+                    intensity: 0.0,
+                    range: 400.0,
+                    radius: 1.0,
+                    shadow_maps_enabled: false,
+                    ..default()
+                },
+                Transform::default(),
+            ));
         });
     }
 }
@@ -390,12 +452,43 @@ fn place_vessels(
     }
 }
 
-/// Swivel the bottom stage's engines to their gimbal angles and size their plumes.
+/// Swivel the bottom stage's engines to their gimbal angles, shape their plumes to each
+/// engine's thrust level and the ambient pressure, and light the vessel with them.
 fn update_engines(
     sim: Res<Sim>,
+    frame: Res<RenderFrame>,
     mut pivots: Query<(&EnginePivot, &mut Transform, &Children), Without<Plume>>,
-    mut plumes: Query<(&Plume, &mut Transform, &mut Visibility)>,
+    mut plumes: Query<
+        (
+            &Plume,
+            &MeshMaterial3d<PlumeMaterial>,
+            &mut Transform,
+            &mut Visibility,
+        ),
+        Without<PlumeLight>,
+    >,
+    mut lights: Query<(&PlumeLight, &mut PointLight, &mut Transform), Without<EnginePivot>>,
+    mut materials: ResMut<Assets<PlumeMaterial>>,
 ) {
+    let system = &sim.universe.system;
+    // Per vessel: height of the base above the ground, m, and the local vertical in vessel
+    // render axes.
+    let ground: Vec<(f64, Vec3)> = sim
+        .universe
+        .vessels
+        .iter()
+        .map(|v| {
+            let body = system.body(v.parent());
+            let base = v.base_at(system, frame.time);
+            let fixed = body.orientation(frame.time).inverse() * base.normalize();
+            let height = base.length() - body.radius - body.terrain_height(fixed);
+            let up = v.attitude_at(system, frame.time).inverse() * base.normalize();
+            (height, to_render(up).normalize())
+        })
+        .collect();
+    // Per vessel: lumens, and lumen-weighted colour and position.
+    let mut glow: Vec<(f32, Vec3, Vec3)> =
+        vec![(0.0, Vec3::ZERO, Vec3::ZERO); sim.universe.vessels.len()];
     for (pivot, mut transform, children) in &mut pivots {
         let vessel = &sim.universe.vessels[pivot.vessel];
         let Some(engine) = vessel
@@ -413,22 +506,57 @@ fn update_engines(
         transform.rotation = Quat::from_rotation_arc(Vec3::NEG_Y, exhaust.normalize());
 
         for child in children.iter() {
-            let Ok((plume, mut transform, mut visibility)) = plumes.get_mut(child) else {
+            let Ok((plume, material, mut plume_transform, mut visibility)) = plumes.get_mut(child)
+            else {
                 continue;
             };
-            if engine.thrust <= 0.0 {
+            let level = engine.level as f32;
+            if level <= 0.0 {
                 *visibility = Visibility::Hidden;
                 continue;
             }
             *visibility = Visibility::Inherited;
-            // Plumes balloon as ambient pressure drops.
-            let expansion =
-                1.0 + 2.0 * (1.0 - (vessel.flight.static_pressure / 101_325.0).min(1.0));
-            let width = plume.radius * 0.9 * expansion as f32;
-            let length = (12.0 + 30.0 * vessel.propulsion.throttle()) as f32;
-            transform.translation = Vec3::new(0.0, -plume.exit - length / 2.0, 0.0);
-            transform.rotation = Quat::from_rotation_x(PI);
-            transform.scale = Vec3::new(width, length, width);
+            // How far the exhaust runs along its axis before it hits the ground.
+            let (height, up) = ground[pivot.vessel];
+            let axis = transform.rotation * Vec3::NEG_Y;
+            let exit = transform.translation + axis * plume.exit;
+            let falling = -axis.dot(up);
+            let to_ground = if falling > 0.2 {
+                (height as f32 + exit.dot(up)) / falling
+            } else {
+                f32::INFINITY
+            };
+            let shape = PlumeShape::new(
+                plume.radius,
+                plume.exit_pressure,
+                engine.level,
+                vessel.flight.static_pressure,
+                to_ground,
+            );
+            let end = shape.end_radius();
+            *plume_transform = Transform::from_xyz(0.0, -plume.exit, 0.0).with_scale(Vec3::new(
+                end,
+                shape.length,
+                end,
+            ));
+            if let Some(mut material) = materials.get_mut(&material.0) {
+                material.params = PlumeParams::new(&shape, &plume.look, level, plume.seed);
+            }
+            let lumens = plume_lumens(&shape, &plume.look, level);
+            let middle = exit + axis * (0.5 * shape.fade).min(shape.ground - 1.0).max(0.0);
+            let (sum, color, at) = &mut glow[pivot.vessel];
+            *sum += lumens;
+            *color += lumens * Vec3::from(plume.look.flame);
+            *at += lumens * middle;
+        }
+    }
+    for (light, mut point, mut transform) in &mut lights {
+        let (lumens, color, at) = glow[light.vessel];
+        point.intensity = lumens;
+        if lumens > 0.0 {
+            let c = color / lumens;
+            point.color = Color::linear_rgb(c.x, c.y, c.z);
+            transform.translation = at / lumens;
         }
     }
 }

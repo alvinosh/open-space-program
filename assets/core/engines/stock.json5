@@ -1,5 +1,11 @@
 // Engines. Masses in kg, thrust in N, Isp in s, gimbal_range in degrees.
 // `propellants` maps resource -> mass ratio (normalised at load), so patches can change one entry.
+// `min_throttle` is the lowest thrust share a running engine holds (throttle settings below it
+// run at the floor). `response` is how the thrust follows the throttle, in seconds:
+// `spool_up` from ignition to full thrust along the `startup` curve ([time share, thrust
+// share] points), `spool_down` from cutoff to 1% thrust, `throttle_time` to sweep 0 to 100%.
+// `exit_pressure` (Pa, at full thrust) shapes the plume against the ambient pressure; `plume`
+// is the id of a `plumes` record.
 // `length` (gimbal pivot to nozzle exit) and `exit_diameter` in m size the engine on the
 // rocket; `model` is a glTF file relative to the mod root with its origin at the gimbal
 // pivot and the nozzle pointing down. Without a model a plain bell of that size is drawn.
@@ -11,6 +17,15 @@
     isp_vac: 311,
     isp_sl: 282,
     min_throttle: 0.4,
+    // Gas generator: the start cartridge lights it at once, then the turbopump spins up.
+    response: {
+      spool_up: 1.4,
+      startup: [[0, 0], [0.08, 0.3], [0.3, 0.42], [0.65, 0.82], [1, 1]],
+      spool_down: 0.6,
+      throttle_time: 2.5,
+    },
+    exit_pressure: 70000,
+    plume: "Kerolox",
     ignitions: 3,
     requires_ullage: true,
     gimbal_range: 5,
@@ -26,6 +41,14 @@
     isp_vac: 348,
     isp_sl: 100,
     min_throttle: 0.39,
+    response: {
+      spool_up: 1.6,
+      startup: [[0, 0], [0.08, 0.25], [0.3, 0.4], [0.7, 0.85], [1, 1]],
+      spool_down: 0.8,
+      throttle_time: 3,
+    },
+    exit_pressure: 4000,
+    plume: "Kerolox",
     ignitions: 4,
     requires_ullage: true,
     gimbal_range: 5,
@@ -41,6 +64,14 @@
     isp_vac: 465,
     isp_sl: 180,
     min_throttle: 1.0,
+    // Expander cycle: bootstraps slowly on the heat the chamber picks up.
+    response: {
+      spool_up: 2.5,
+      startup: [[0, 0], [0.35, 0.06], [0.7, 0.45], [0.9, 0.9], [1, 1]],
+      spool_down: 0.5,
+    },
+    exit_pressure: 2500,
+    plume: "Hydrolox",
     ignitions: 15,
     requires_ullage: true,
     gimbal_range: 4,
@@ -56,6 +87,10 @@
     isp_vac: 319,
     isp_sl: 150,
     min_throttle: 1.0,
+    // Pressure-fed hypergolic: opens the valves and it is lit.
+    response: { spool_up: 0.15, spool_down: 0.1 },
+    exit_pressure: 1500,
+    plume: "Hypergolic",
     ignitions: 50,
     requires_ullage: false,
     gimbal_range: 6,

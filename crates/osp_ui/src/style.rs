@@ -147,6 +147,8 @@ style_def! {
     wrap: bool,
     /// Clip overflowing children.
     clip: bool,
+    /// Clip overflowing children and scroll them vertically with the mouse wheel.
+    scroll: bool,
     radius: f32,
     background: ColorDef,
     hover_background: ColorDef,
@@ -247,6 +249,9 @@ impl StyleDef {
         }
         if self.clip == Some(true) {
             node.overflow = Overflow::clip();
+        }
+        if self.scroll == Some(true) {
+            node.overflow = Overflow::scroll_y();
         }
         if let Some(r) = self.radius {
             node.border_radius = BorderRadius::all(Val::Px(r));

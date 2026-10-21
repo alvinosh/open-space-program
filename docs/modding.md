@@ -68,14 +68,15 @@ parts of it instead.
 | Collection | Contents | Notes |
 | --- | --- | --- |
 | `bodies` | Planets, moons, stars | Keplerian `orbit` (J2000 ecliptic, degrees), IAU `rotation`, optional `atmosphere`, `terrain` dataset and `max_terrain_height` (m) |
-| `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }`, `length` and `exit_diameter` (m), `model` |
+| `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `response`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }`, `length` and `exit_diameter` (m), `exit_pressure` (Pa), `plume`, `model`; see [Engine response and plumes](#engine-response-and-plumes) |
+| `plumes` | Exhaust looks | `core`, `flame` and `shock` colours (linear RGB), `luminance` (cd/m² per m at full thrust), `soot` (0..1) |
 | `resources` | Propellants and gases | `density` (kg/m³ as stored), storage `temperature` (K) and `pressure` (Pa) |
 | `materials` | Structural materials | `density` (kg/m³), `yield_strength` and `elastic_modulus` (Pa) |
 | `tank_types` | How procedural tanks are built | `material`, operating `pressure` (Pa), `min_gauge` (m), `stiffening`, `buckling_factor`, `insulation` (kg/m²), `min_temperature` (K), `utilization`, `safety_factor`, `design_load` (g), optional `propellants` allowlist; see [Procedural tanks and fins](#procedural-tanks-and-fins) |
 | `reaction_wheels` | Reaction wheels | `mass` (kg), `torque` (N·m about each axis) |
 | `rcs` | RCS blocks (four nozzles each) | `mass` (kg), `thrust` (N per nozzle, vacuum), `isp_vac`/`isp_sl` (s), `propellants: { Name: mass ratio }`, `model` |
 | `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), `model` |
-| `craft` | Vessels | `stages` in firing order: `engines`, procedural `tanks` and `fins`, `reaction_wheels`, `rcs`, `pod`, `structure_mass`, `diameter`, `length` |
+| `craft` | Vessels | `stages` in firing order: `engines`, procedural `tanks` and `fins`, `reaction_wheels`, `rcs`, `pod`, `structure_mass`, `diameter`, `length`, `appearance`; see [Stage appearance](#stage-appearance) |
 | `launch_sites` | Launch sites | Position, `heading`, optional `pad` and `roads`; see [Launch sites](#launch-sites) |
 | `scenarios` | New-game setups | `start: { type: "LaunchSite", site: "<id>" }` or `{ type: "Orbit", ... }`; pick with `OSP_SCENARIO=<id>` |
 | `layouts` | UI windows and panels | See [User interface](#user-interface) |
@@ -155,6 +156,55 @@ When any part goes past 100% of its strength it fails: fins tear off; a tank fai
 the vessel up (engines, RCS and controls stop, and warp halts). The Structure window shows
 every part's make-up, strength and current load.
 
+### Engine response and plumes
+
+Engines do not jump to whatever the throttle says. Each has a thrust level (a share of
+full thrust) that follows the throttle through its `response`:
+
+```json5
+min_throttle: 0.4,          // the lowest share it holds while running
+response: {
+  spool_up: 1.4,            // s from ignition to full thrust...
+  startup: [[0, 0], [0.08, 0.3], [0.3, 0.42], [0.65, 0.82], [1, 1]],  // ...along this curve
+  spool_down: 0.6,          // s from cutoff until the thrust has tailed off to 1%
+  throttle_time: 2.5,       // s to sweep the thrust from 0 to 100%
+},
+```
+
+`startup` points are `[share of spool_up, share of full thrust]`, piecewise linear; a start
+throttled below full follows the curve until it reaches the setting. Throttle settings
+below `min_throttle` run the engine at that floor (1.0: not throttleable, any setting is
+full thrust). Leaving `response` out gives an ideal engine that responds at once. Thrust and
+propellant flow follow the level, so a tail-off still pushes and settles propellant; the
+burn executor cuts early by what the tail-off will still give.
+
+The plume is drawn from the engine's state: it grows out of the nozzle as the engine spools
+up, and shortens and dims as it throttles down. `exit_pressure` (Pa, at full thrust; scales
+with thrust) against the ambient pressure sets its shape: at or below the ambient pressure
+the jet is a narrow column with shock diamonds; as the air thins it overtakes it, the cells
+stretch and the plume fans out and fades into vacuum. Without `exit_pressure` it is guessed
+from the Isp the engine loses at sea level. `plume` names a `plumes` record for the colours
+and brightness; engines without one draw no plume.
+
+### Stage appearance
+
+Hulls are drawn from the stage itself: its tanks are painted barrels with weld seams; the
+structure above them is a dark interstage when the next stage's engines hang into it (and
+tapers if that stage is narrower), otherwise more hull; a top stage without tanks, engines
+or a pod is a payload fairing; and the top of the stack gets an ogive nose unless a pod is
+there. Engine stages get a dark base ring and heat shield. `appearance` adds the rest, and
+changes nothing in the physics:
+
+```json5
+appearance: {
+  paint: [0.85, 0.85, 0.83],        // hull colour, linear RGB (default white)
+  interstage: [0.03, 0.03, 0.035],  // interstage colour (default black composite)
+  legs: 4,                          // landing legs folded against the base
+  grid_fins: 4,                     // grid fins stowed at the top
+  raceway: true,                    // a cable raceway up the side of the tanks
+},
+```
+
 ### Models
 
 Engines, RCS blocks and crew pods can have a glTF model (`model`, a path relative to the mod
@@ -189,6 +239,7 @@ service tower, floodlights, tanks). Layout coordinates are metres in the site fr
     corner_radius: 12,
     elevation: 110,         // deck height above sea level, m (default: 1 m above the ground)
     slope: 0.4,             // embankment steepness, rise over run
+    mount_height: 3,        // vehicles stand this high on the launch mount, m (default 0)
   },
   roads: [ { points: [[-40, 0], [-400, -150]], width: 9 } ],
 }
@@ -256,6 +307,8 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
   id: "my_window",          // toggle with the action ui.toggle:my_window
   visible: true,            // shown at startup
   group: "flight",          // hidden with the flight UI (F3); optional
+  dock: "right",            // stack into the right-hand dock; optional (see Docks)
+  dock_order: 40,           // place in the dock, lower first
   root: {
     widget: "window", title: "Orbit", style: { left: 20, top: 300, width: 260 },
     children: [
@@ -274,7 +327,7 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 
 | Field | Meaning |
 | --- | --- |
-| `widget` | `column` (default), `row`, `panel`, `spacer`, `label`, `button`, `bar`, `window`, `navball`. Unknown names act as containers. |
+| `widget` | `column` (default), `row`, `panel`, `spacer`, `label`, `button`, `bar`, `window`, `dock`, `navball`. Unknown names act as containers. |
 | `id` | Optional; lets patches address the node with `#id`. |
 | `class` | Space-separated theme classes. |
 | `style` | Inline style (overrides classes). |
@@ -288,8 +341,25 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 | `repeat` | List key; the children are created once per item, and `item.` refers to the current item. |
 | `children` | Child nodes. |
 
-Windows have a title bar that can be dragged to move the window, and a close button.
-`navball` shows the attitude indicator; give it a `width` and `height`.
+Windows have a title bar that can be dragged to move the window, and a close button. A
+floating window comes to the front when it opens or is clicked. `navball` shows the
+attitude indicator; give it a `width` and `height`.
+
+#### Docks
+
+A `dock` node is a column that layouts stack into: a layout with `dock: "<node id>"` is
+placed in the `dock` node with that id, in `dock_order`, instead of by its own position,
+so docked windows line up and never overlap. In a dock a window's `width` becomes a
+minimum, so the column takes the widest one. Empty dock space lets clicks through to the
+scene. Dragging a docked window by its title pops it out to float; closing it puts it back.
+A dock styled `scroll: true` (the `dock_scroll` class) scrolls with the mouse wheel when
+its windows do not fit, with a thin indicator at its edge.
+
+The base game's docks are in `layouts/docks.json5`: `left_top` (clocks), `left` (Flight,
+Vessel, Target), `left_bottom` (the stage stack) and `right` (Orbit, Flight plan, Attitude),
+beside the launcher. Windows that are opened now and then and are large (Structure, Log,
+Manifest, Transfer planner, Mods, Help) float in the middle. To put a mod's window in a
+dock, give its layout a `dock`; to move a base window, patch its `dock` or `dock_order`.
 
 A layout's `group` lets the player hide and show several layouts at once without losing
 which of them were open: `ui.toggle_group:flight` (F3) does that for the flight UI. Every
@@ -341,6 +411,7 @@ classes; all of them merge in load order, so a mod can restyle anything with a p
 | `align_items` `align_self` | `start`, `end`, `center`, `stretch`, `baseline` |
 | `justify_content` | `start`, `end`, `center`, `space_between`, `space_around`, `space_evenly` |
 | `grow` `shrink` `wrap` `clip` | flex grow/shrink, wrapping, clip overflow |
+| `scroll` | clip overflow and scroll it vertically with the mouse wheel |
 | `radius` | corner radius, px |
 | `background` `hover_background` `border_color` `color` | `"#rgb"`, `"#rrggbb"`, `"#rrggbbaa"`, `[r, g, b]`, `[r, g, b, a]` |
 | `active_background` `active_border_color` `active_color` | colours while the node's `active` condition holds |
@@ -351,12 +422,13 @@ The flight UI is a set of modules, each its own layout in the `flight` group:
 
 | Layout | Contents | Node ids |
 | --- | --- | --- |
-| `toolbar` | App launcher (top right) | `#toolbar` |
-| `time` | Warp buttons, UT and mission time (top left) | `#time` |
+| `docks` | The left and right docks (`dock_left`, `dock_right`) | `#left_top`, `#left`, `#left_bottom`, `#right` |
+| `toolbar` | App launcher (down the right edge) | `#toolbar` |
+| `time` | Warp buttons, UT and mission time (top of the left dock) | `#time` |
 | `altimeter` | Altitude, vessel and situation (top centre) | `#altimeter` |
-| `messages` | Latest event and warp notices | `#messages` |
+| `messages` | Latest event, warp notices and lag warning | `#messages` |
 | `navball` | Navball, speed, throttle, SAS modes, control inputs (bottom centre) | `#navball`, `#throttle`, `#ball`, `#sas`, `#inputs` |
-| `staging` | Stage stack (bottom left) | `#staging`, `#stages` |
+| `staging` | Stage stack (bottom of the left dock) | `#staging`, `#stages` |
 | `flight_info` | Speeds, Mach, pressures | `#flight` |
 | `orbit_info` | Apsides, inclination, period, warp-to buttons, predicted events | `#orbit`, `#warp_to`, `#events` |
 | `flight_plan` | Planned burns, the selected burn's editor, the burn executor | `#burns`, `#editor`, `#executor` |
@@ -399,6 +471,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.latitude`, `vessel.longitude` | degrees |
 | `vessel.mach`, `vessel.dynamic_pressure`, `vessel.static_pressure` | Pa |
 | `vessel.throttle`, `vessel.thrust`, `vessel.twr`, `vessel.mass`, `vessel.accel_g` | 0..1, N, -, kg, g |
+| `vessel.engine_level`, `vessel.min_throttle` | Thrust the bottom stage's engines give as a share of full (0..1, follows the throttle through spool-up, throttling and tail-off); the highest minimum throttle among them |
 | `vessel.delta_v`, `vessel.stage_count`, `vessel.landed`, `vessel.engines_running` | |
 | `vessel.sas`, `vessel.sas_mode`, `vessel.sas_mode_label` | SAS on; mode (`off`, `stability`, `prograde`, `retrograde`, `normal`, `anti_normal`, `radial_out`, `radial_in`, `burn`, `target`, `anti_target`) |
 | `vessel.rcs`, `vessel.has_rcs`, `vessel.rcs_fuel` | RCS on; any RCS with a propellant supply in the stack; scarcest RCS propellant left (0..1) |

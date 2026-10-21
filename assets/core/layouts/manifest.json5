@@ -6,14 +6,16 @@
   root: {
     widget: "window",
     title: "Universe Manifest",
-    style: { left: 360, top: 120, width: 560 },
+    style: { left: "50%", margin: [0, 0, 0, -320], top: 150, width: 640 },
     children: [
       {
+        // Same padding and gaps as the rows below, so the columns line up.
         widget: "row",
+        style: { gap: 6, padding: [0, 7] },
         children: [
-          { widget: "label", class: "dim", style: { min_width: 150 }, text: "Name" },
-          { widget: "label", class: "dim", style: { min_width: 80 }, text: "Around" },
-          { widget: "label", class: "dim", style: { min_width: 150 }, text: "Ap / Pe" },
+          { widget: "label", class: "dim", style: { min_width: 140 }, text: "Name" },
+          { widget: "label", class: "dim", style: { min_width: 70 }, text: "Around" },
+          { widget: "label", class: "dim", style: { min_width: 170 }, text: "Ap / Pe" },
           { widget: "label", class: "dim", text: "Distance" },
         ],
       },
@@ -29,9 +31,9 @@
             active: "item.is_active",
             style: { gap: 6 },
             children: [
-              { widget: "label", style: { min_width: 150 }, text: "{item.name}" },
-              { widget: "label", class: "dim", style: { min_width: 80 }, text: "{item.parent}" },
-              { widget: "label", class: "dim", style: { min_width: 150 }, text: "{item.apoapsis|distance} / {item.periapsis|distance}" },
+              { widget: "label", style: { min_width: 140 }, text: "{item.name}" },
+              { widget: "label", class: "dim", style: { min_width: 70 }, text: "{item.parent}" },
+              { widget: "label", class: "dim", style: { min_width: 170 }, text: "{item.apoapsis|distance} / {item.periapsis|distance}" },
               { widget: "label", class: "dim", style: { min_width: 90 }, text: "{item.distance|distance}" },
               { widget: "spacer" },
               { widget: "button", class: "step_button", text: "Target", active: "item.is_target", action: "target.body:{item.key}", visible: "item.target_body" },

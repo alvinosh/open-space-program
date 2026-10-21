@@ -1,12 +1,12 @@
-// Time warp and clocks (top left).
+// Time warp and clocks (top of the left dock).
 {
   id: "time",
   group: "flight",
+  dock: "left_top",
   root: {
     id: "time",
     widget: "panel",
-    class: "module",
-    style: { left: 12, top: 12, width: 270 },
+    style: { width: 270 },
     children: [
       {
         widget: "row",
@@ -21,7 +21,6 @@
       },
       { widget: "label", text: "UT  {time.ut|date}", style: { margin: [4, 0, 0, 0] } },
       { widget: "label", text: "MET {time.met|duration}", visible: "time.launched" },
-      { widget: "label", class: "warning", text: "Simulation is lagging behind the requested warp", visible: "time.lagging" },
     ],
   },
 }

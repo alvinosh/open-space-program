@@ -26,7 +26,19 @@ use crate::{
     sim::{Sim, TimeWarp},
 };
 
+/// Size of the captured image; `OSP_CAPTURE_SIZE=<w>x<h>` overrides it (checking the UI
+/// on small screens).
 const CAPTURE_SIZE: (u32, u32) = (1600, 900);
+
+fn capture_size() -> (u32, u32) {
+    std::env::var("OSP_CAPTURE_SIZE")
+        .ok()
+        .and_then(|s| {
+            let (w, h) = s.split_once('x')?;
+            Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+        })
+        .unwrap_or(CAPTURE_SIZE)
+}
 
 pub struct SmokeTestPlugin;
 
@@ -106,7 +118,7 @@ fn render_offscreen(
     mut locked: ResMut<InputLocked>,
 ) {
     locked.0 = true;
-    let (width, height) = CAPTURE_SIZE;
+    let (width, height) = capture_size();
     let image = Image::new_target_texture(width, height, TextureFormat::Rgba8UnormSrgb, None);
     script.target = images.add(image);
     // UI follows the camera into the image, so captures include the HUD.

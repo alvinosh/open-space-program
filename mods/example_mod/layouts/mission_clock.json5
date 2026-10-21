@@ -1,13 +1,16 @@
 // A new window. Toggle with F6 (see keybindings/) or the launcher button added in patches/.
-// In the "flight" group, so F3 hides it with the rest of the flight UI.
+// In the "flight" group, so F3 hides it with the rest of the flight UI; docked at the end
+// of the base game's right dock, so it lines up with the other windows there.
 {
   id: "example_clock",
   visible: true,
   group: "flight",
+  dock: "right",
+  dock_order: 100,
   root: {
     widget: "window",
     title: "Mission clock",
-    style: { right: 12, bottom: 12, width: 260 },
+    style: { width: 260 },
     children: [
       { widget: "label", class: "title", text: "{time.ut|clock}" },
       { widget: "label", class: "dim", text: "{time.ut|date}" },

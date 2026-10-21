@@ -6,7 +6,8 @@
     widget: "window",
     title: "Mods ({mods.count} loaded, {mods.errors} errors, {mods.warnings} warnings)",
     style: {
-      left: 380,
+      left: "50%",
+      margin: [0, 0, 0, -280],
       top: 80,
       width: 560,
       max_height: "80vh",

@@ -1,0 +1,41 @@
+// Exhaust plume looks, referenced by engines (`plume: "Kerolox"`). The shape comes from the
+// engine: its thrust level, nozzle exit and exit pressure against the ambient pressure (a
+// narrow column with shock diamonds at sea level, fanning out and fading towards vacuum).
+// Colours are linear RGB: `core` for the hot core at the nozzle, `flame` for the body of the
+// plume, `shock` for the shock diamonds. `luminance` is how bright a metre of the flame is
+// at full thrust, cd/m² per m (sunlit white paint is about 30 000 cd/m²). `soot` (0..1)
+// darkens the plume where it cools.
+[
+  {
+    id: "Kerolox", // kerosene and oxygen: bright, yellow-orange, sooty
+    core: [1.0, 0.82, 0.55],
+    flame: [1.0, 0.45, 0.13],
+    shock: [1.0, 0.9, 0.7],
+    luminance: 120000,
+    soot: 0.5,
+  },
+  {
+    id: "Hydrolox", // hydrogen and oxygen: nearly clear, faint blue, bright Mach disks in air
+    core: [0.6, 0.65, 1.0],
+    flame: [0.45, 0.5, 1.0],
+    shock: [1.0, 0.75, 0.55],
+    luminance: 8000,
+    soot: 0.0,
+  },
+  {
+    id: "Hypergolic", // Aerozine 50 and nitrogen tetroxide: translucent orange-pink
+    core: [1.0, 0.75, 0.6],
+    flame: [1.0, 0.5, 0.35],
+    shock: [1.0, 0.8, 0.65],
+    luminance: 25000,
+    soot: 0.05,
+  },
+  {
+    id: "Methalox", // methane and oxygen: blue core, orange diamonds (for mods)
+    core: [0.55, 0.65, 1.0],
+    flame: [0.5, 0.55, 1.0],
+    shock: [1.0, 0.65, 0.4],
+    luminance: 20000,
+    soot: 0.0,
+  },
+]

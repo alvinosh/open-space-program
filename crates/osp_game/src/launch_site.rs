@@ -68,7 +68,13 @@ impl Site<'_> {
         ((self.ground)(dir) - self.deck) as f32
     }
 
+    /// Height of the mount's top, where the vehicle's base stands, above the deck.
+    fn mount_height(&self) -> f32 {
+        self.def.pad.as_ref().map_or(0.0, |p| p.mount_height) as f32
+    }
+
     fn launch_mount(&mut self) {
+        let top = self.mount_height();
         // Grating over the flame trench, running along the heading under the vehicle.
         self.painted.cuboid(
             Self::at(0.0, 0.03, 0.0),
@@ -78,11 +84,12 @@ impl Site<'_> {
         );
         // Octagonal hold-down ring around the vehicle's base.
         let ring = 3.0;
+        let ring_y = (top - 0.4).max(1.2);
         for k in 0..8 {
             let a0 = std::f32::consts::TAU * k as f32 / 8.0;
             let a1 = std::f32::consts::TAU * (k + 1) as f32 / 8.0;
-            let p0 = Self::at(ring * a0.cos(), 1.2, ring * a0.sin());
-            let p1 = Self::at(ring * a1.cos(), 1.2, ring * a1.sin());
+            let p0 = Self::at(ring * a0.cos(), ring_y, ring * a0.sin());
+            let p1 = Self::at(ring * a1.cos(), ring_y, ring * a1.sin());
             self.painted.beam(p0, p1, 0.5, c(STEEL));
             self.painted.beam(
                 Self::at(ring * a0.cos(), 0.0, ring * a0.sin()),
@@ -95,8 +102,8 @@ impl Site<'_> {
         for k in 0..4 {
             let a = std::f32::consts::TAU * (k as f32 + 0.5) / 4.0;
             self.painted.beam(
-                Self::at(ring * a.cos(), 1.2, ring * a.sin()),
-                Self::at(2.0 * a.cos(), 1.6, 2.0 * a.sin()),
+                Self::at(ring * a.cos(), ring_y, ring * a.sin()),
+                Self::at(2.0 * a.cos(), ring_y + 0.4, 2.0 * a.sin()),
                 0.35,
                 c(STEEL),
             );
@@ -297,7 +304,7 @@ impl Site<'_> {
         let tower_half = 3.5;
         let tower_x = 6.5 + tower_half;
         self.tower(tower_x, 0.0, tower_half, 78.0);
-        self.access_arm(tower_x - tower_half, 60.0);
+        self.access_arm(tower_x - tower_half, 60.0 + self.mount_height());
         for (sx, sz) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
             self.floodlight(sx * (across - 5.0), sz * (along - 5.0), 22.0);
         }

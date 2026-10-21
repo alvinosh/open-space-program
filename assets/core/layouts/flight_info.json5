@@ -2,10 +2,12 @@
 {
   id: "flight_info",
   group: "flight",
+  dock: "left",
+  dock_order: 10,
   root: {
     widget: "window",
     title: "Flight",
-    style: { left: 12, top: 140, width: 300 },
+    style: { width: 300 },
     children: [
       {
         id: "flight",

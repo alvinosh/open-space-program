@@ -1,12 +1,12 @@
-// The stage stack (bottom left): the next stage to fire at the bottom, like KSP.
+// The stage stack (bottom of the left dock): the next stage to fire at the bottom, like KSP.
 {
   id: "staging",
   group: "flight",
+  dock: "left_bottom",
   root: {
     id: "staging",
     widget: "panel",
-    class: "module",
-    style: { left: 12, bottom: 12, width: 330 },
+    style: { width: 330 },
     children: [
       {
         widget: "row",

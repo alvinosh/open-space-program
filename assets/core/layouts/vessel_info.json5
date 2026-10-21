@@ -3,16 +3,19 @@
   id: "vessel_info",
   visible: false,
   group: "flight",
+  dock: "left",
+  dock_order: 20,
   root: {
     widget: "window",
     title: "Vessel - {vessel.name}",
-    style: { left: 330, top: 340, width: 300 },
+    style: { width: 300 },
     children: [
       {
         id: "propulsion",
         widget: "column",
         children: [
-          { widget: "row", children: [{ widget: "label", class: "key", text: "Throttle" }, { widget: "label", text: "{vessel.throttle|percent}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Throttle" }, { widget: "label", text: "{vessel.throttle|percent} (min {vessel.min_throttle|percent})" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Engines at" }, { widget: "label", text: "{vessel.engine_level|percent}" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "Thrust" }, { widget: "label", text: "{vessel.thrust|force}" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "TWR" }, { widget: "label", text: "{vessel.twr|fixed:2}" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "Mass" }, { widget: "label", text: "{vessel.mass|mass}" }] },

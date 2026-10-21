@@ -18,6 +18,8 @@
       corner_radius: 12,
       elevation: 7,
       slope: 0.4,
+      // The vehicle stands on its hold-downs with the engine bells above the trench grate.
+      mount_height: 3,
     },
     roads: [
       // Out west-southwest across the marsh, roughly along the old crawlerway.

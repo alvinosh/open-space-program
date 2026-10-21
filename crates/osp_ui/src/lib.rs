@@ -13,6 +13,9 @@
 //! `ui.toggle_group:<group>`, `ui.show_group:<group>`, `ui.hide_group:<group>` for every
 //! layout in a group at once. `ui.shown.<layout>` tells whether a layout is showing.
 //! The `data_inspector` layout, when shown, lists every bindable key.
+//!
+//! Windows can stack into docks (see [`layout`]) and come to the front when opened or
+//! clicked; [`PointerOverUi`] tells the game when the mouse belongs to the UI.
 
 pub mod data;
 pub mod format;
@@ -26,7 +29,7 @@ use bevy::prelude::*;
 pub use data::{UiData, UiRecord, UiValue, record};
 pub use format::{Formatter, Formatters, Template};
 pub use layout::{LayoutDef, NodeDef, UiDocuments};
-pub use runtime::{ActionState, LayoutVisibility, UiAction};
+pub use runtime::{ActionState, LayoutVisibility, PointerOverUi, UiAction};
 pub use widgets::{WidgetBuilder, WidgetContext, WidgetRegistry};
 
 /// Ordering for UI work within `Update`. Publish data before [`UiSet::Update`] and read
@@ -48,9 +51,14 @@ impl Plugin for UiPlugin {
             .init_resource::<UiDocuments>()
             .init_resource::<LayoutVisibility>()
             .init_resource::<ActionState>()
+            .init_resource::<runtime::WindowStack>()
+            .init_resource::<PointerOverUi>()
             .add_message::<UiAction>()
             .configure_sets(Update, (UiSet::Input, UiSet::Build, UiSet::Update).chain())
-            .add_systems(Update, runtime::read_keybindings.in_set(UiSet::Input))
+            .add_systems(
+                Update,
+                (runtime::read_keybindings, runtime::track_pointer_over_ui).in_set(UiSet::Input),
+            )
             .add_systems(
                 Update,
                 runtime::rebuild_ui
@@ -61,6 +69,10 @@ impl Plugin for UiPlugin {
                 Update,
                 (
                     runtime::builtin_actions,
+                    runtime::redock_closed,
+                    runtime::attach_docked,
+                    runtime::sort_docks,
+                    runtime::raise_opened,
                     runtime::publish_layouts,
                     runtime::publish_inspector,
                     runtime::update_repeaters,
@@ -68,6 +80,7 @@ impl Plugin for UiPlugin {
                     runtime::update_visibility,
                     runtime::update_bars,
                     runtime::update_states,
+                    runtime::update_scroll_thumbs,
                 )
                     .chain()
                     .in_set(UiSet::Update),

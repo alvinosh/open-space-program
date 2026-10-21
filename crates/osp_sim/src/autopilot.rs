@@ -242,14 +242,9 @@ impl BurnExecutor {
                 let min = capability.min_throttle;
                 // Thrust share that would finish in FINISH_TIME, within the engine's range.
                 let share = (left / (full * FINISH_TIME)).clamp(min, 1.0);
-                let lever = if min < 1.0 {
-                    (share - min) / (1.0 - min)
-                } else {
-                    1.0
-                };
                 command.direction = Some(aim);
                 // Never 0 while burning: that shuts the engines down.
-                command.throttle = Some(lever.max(1e-6));
+                command.throttle = Some(share.max(1e-6));
                 command.ullage = capability.needs_ullage && !s.settled;
                 if left < FREEZE_SHARE * total {
                     return command;
@@ -265,9 +260,10 @@ impl BurnExecutor {
         command
     }
 
-    /// Count the Δv the engines gave this tick (inertial, m/s); ends the burn when it is
-    /// used up or would be overshot by more than this tick's share.
-    pub fn account(&mut self, given: DVec3, running: bool) -> Option<Finish> {
+    /// Count the Δv the engines gave this tick (inertial, m/s); ends the burn when what is
+    /// left is no more than the engines' tail-off would still give (`tail_off`, m/s) or
+    /// would be overshot by more than this tick's share.
+    pub fn account(&mut self, given: DVec3, running: bool, tail_off: f64) -> Option<Finish> {
         let Phase::Burning {
             remaining,
             total,
@@ -282,9 +278,10 @@ impl BurnExecutor {
                 .finished;
         }
         let left = remaining - given;
-        // Past the target along the burn, or closer than another tick would get.
-        if left.dot(aim) <= 0.5 * given.length() {
-            return self.finish(left.length()).finished;
+        // Past the target along the burn (counting the tail-off still to come), or closer
+        // than another tick would get.
+        if left.dot(aim) <= 0.5 * given.length() + tail_off {
+            return self.finish((left - aim * tail_off).length()).finished;
         }
         self.phase = Phase::Burning {
             remaining: left,

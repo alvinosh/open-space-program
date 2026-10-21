@@ -7,7 +7,7 @@
   root: {
     widget: "window",
     title: "Structure - {vessel.name}",
-    style: { left: 650, top: 140, width: 440 },
+    style: { left: "50%", margin: [0, 0, 0, -255], top: 150, width: 510 },
     children: [
       { widget: "row", children: [{ widget: "label", class: "key", text: "Most loaded" }, { widget: "label", text: "{vessel.structure_load|percent} of its strength" }] },
       { widget: "label", class: "error", text: "Structural failure: vessel destroyed", visible: "vessel.destroyed" },

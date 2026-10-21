@@ -6,7 +6,7 @@
     id: "altimeter",
     widget: "panel",
     class: "module",
-    style: { left: "50%", margin: [0, 0, 0, -170], top: 8, width: 340, align_items: "center" },
+    style: { left: "50%", margin: [0, 0, 0, -150], top: 12, width: 300, align_items: "center" },
     children: [
       { widget: "label", class: "caption", text: "ALTITUDE" },
       { widget: "label", class: "readout", text: "{vessel.altitude|distance}" },

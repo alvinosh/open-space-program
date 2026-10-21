@@ -6,7 +6,7 @@
   root: {
     widget: "window",
     title: "Flight log",
-    style: { left: 330, top: 140, width: 400 },
+    style: { left: "50%", margin: [0, 0, 0, -200], top: 150, width: 400 },
     children: [
       {
         id: "log",

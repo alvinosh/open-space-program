@@ -5,7 +5,7 @@
   root: {
     widget: "window",
     title: "Controls",
-    style: { left: "40%", top: 120, width: 400 },
+    style: { left: "50%", margin: [0, 0, 0, -200], top: 150, width: 400 },
     children: [
       { widget: "row", children: [{ widget: "label", class: "key", text: "Shift / Ctrl" }, { widget: "label", text: "throttle up / down" }] },
       { widget: "row", children: [{ widget: "label", class: "key", text: "Z / X" }, { widget: "label", text: "full / cut throttle" }] },

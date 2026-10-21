@@ -19,7 +19,8 @@ Keep these; parity work must not regress them.
   vessel, Encke integration for powered flight.
 - IAU rotation models for every body; real launch-site coordinates.
 - Exact torque-free rotation for symmetric bodies; SAS that holds exactly on rails.
-- RO-style engines (pressure-dependent Isp, ignitions, ullage), RCS couples, engine gimbal.
+- RO-style engines (pressure-dependent Isp, ignitions, ullage, throttle floors, spool-up
+  curves, throttle slew and tail-off), RCS couples, engine gimbal.
 - Procedural tanks with real wall thickness, burst and buckling, and fins that tear off.
 - Earth from real data at higher resolution than KSA's (30 m elevation and 10 m land cover
   around the Cape), single-scattering atmosphere, trees by land-cover class.
@@ -152,7 +153,9 @@ radial boosters and part damage all need a tree of parts.
 
 - [ ] Volumetric clouds with shadows and god rays; 2D cloud layers with normal maps.
 - [ ] Physics-driven plumes: expansion with pressure, shock diamonds, refraction, crossflow
-      bending, merging, persistent trails with shadows.
+      bending, merging, persistent trails with shadows. (Done: ray-marched plume per engine
+      from its thrust level and exit/ambient pressure, shock diamonds, ground splash, plume
+      light, bloom. Still to do: refraction, crossflow, merging, trails, pad smoke.)
 - [ ] FFT ocean (JONSWAP, foam, refraction, underwater).
 - [ ] GPU particles (launch debris), engine heat glow, thin-film colour on hot metal.
 - [ ] Distant bodies and vessels as sprites, glints, Milky Way, Sun surface, Hapke lighting.

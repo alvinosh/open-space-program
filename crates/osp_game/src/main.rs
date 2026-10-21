@@ -11,12 +11,14 @@ mod content;
 mod controls;
 mod flight_plan;
 mod frame;
+mod hull;
 mod launch_site;
 mod map_labels;
 mod meshgen;
 mod navball;
 mod orbit_lines;
 mod planet;
+mod plume;
 mod sim;
 mod smoke_test;
 mod surface;
@@ -108,6 +110,7 @@ fn main() -> AppExit {
             atmosphere::AtmospherePlugin,
             trees::TreesPlugin,
             launch_site::LaunchSitePlugin,
+            plume::PlumePlugin,
             vessel_render::VesselRenderPlugin,
             navball::NavballPlugin,
             ui_data::UiDataPlugin,

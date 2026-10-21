@@ -22,6 +22,7 @@
       structure_mass: 1830, // interstage, avionics, payload adapter
       diameter: 3.7,
       length: 14,
+      appearance: { raceway: true },
     },
     {
       name: "Payload",

@@ -3,10 +3,12 @@
   id: "attitude_info",
   visible: false,
   group: "flight",
+  dock: "right",
+  dock_order: 30,
   root: {
     widget: "window",
     title: "Attitude control",
-    style: { right: 12, top: 215, width: 390 },
+    style: { width: 350 },
     children: [
       {
         id: "attitude",

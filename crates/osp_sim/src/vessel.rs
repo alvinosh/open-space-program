@@ -291,7 +291,8 @@ impl Vessel {
         let north = DVec3::new(-lat.sin() * lon.cos(), -lat.sin() * lon.sin(), lat.cos());
         let east = north.cross(up);
         let attitude = DQuat::from_mat3(&DMat3::from_cols(east.cross(up), east, up));
-        let base = up * (body.radius + body.terrain_height(up));
+        let mount = site.pad.as_ref().map_or(0.0, |p| p.mount_height);
+        let base = up * (body.radius + body.terrain_height(up) + mount);
 
         let mut vessel = Self::new(
             craft,
@@ -969,10 +970,12 @@ impl Vessel {
 
         let thrust = force.length();
         let thrust_accel = start.orientation * force / mass;
-        if let Some(finish) = self
-            .executor
-            .account(thrust_accel * dt, self.propulsion.any_engine_running())
-        {
+        let tail_off = self.propulsion.tail_off_impulse(air.pressure) / mass;
+        if let Some(finish) = self.executor.account(
+            thrust_accel * dt,
+            self.propulsion.any_engine_running(),
+            tail_off,
+        ) {
             self.end_burn(t0, finish, out);
         }
         let drag_accel = drag(body, &air, &self.propulsion, mass);
@@ -1376,12 +1379,15 @@ pub(crate) mod tests {
         let system = rss();
         let (mut v, start) = pad_vessel(&system);
         let earth = system.body(v.parent());
-        assert!((v.base_at(&system, start).length() - earth.radius).abs() < 1e-6);
+        // On the launch mount, above the (smooth) ground.
+        let mount = launch_sites()[0].pad.as_ref().unwrap().mount_height;
+        let ground = earth.radius + mount;
+        assert!((v.base_at(&system, start).length() - ground).abs() < 1e-6);
         let s = v.state_at(&system, start);
         // The centre of mass is up the stack; Kennedy at 28.6°N moves east at ~408 m/s.
         let com = v.mass_properties().center_of_mass;
         assert!(com > 20.0 && com < 40.0, "{com}");
-        assert!(((s.position.length() - earth.radius) - com).abs() < 1e-6);
+        assert!(((s.position.length() - ground) - com).abs() < 1e-6);
         assert!(
             (s.velocity.length() - 408.0).abs() < 2.0,
             "{}",
@@ -1393,7 +1399,7 @@ pub(crate) mod tests {
         assert!(v.is_landed());
         // A year later it is still exactly on the ground.
         let later = t.add_seconds(365.25 * 86_400.0);
-        assert!((v.base_at(&system, later).length() - earth.radius).abs() < 1e-6);
+        assert!((v.base_at(&system, later).length() - ground).abs() < 1e-6);
     }
 
     #[test]
@@ -1403,7 +1409,8 @@ pub(crate) mod tests {
         crate::terrain::install(&mut system, Vec::new(), &sites);
         let (mut v, start) = pad_vessel(&system);
         let earth = system.body(v.parent());
-        let deck = sites[0].pad.as_ref().unwrap().elevation.unwrap();
+        let pad = sites[0].pad.as_ref().unwrap();
+        let deck = pad.elevation.unwrap() + pad.mount_height;
         let altitude = |v: &Vessel, t| v.base_at(&system, t).length() - earth.radius;
         assert!((altitude(&v, start) - deck).abs() < 1e-6);
         // It stays put on the raised deck rather than sinking or bouncing.
@@ -1452,11 +1459,14 @@ pub(crate) mod tests {
         let altitude = v.base_at(&system, t).length() - system.body(v.parent()).radius;
         assert!(altitude > 500.0, "{altitude}");
 
-        // Cut throttle (drag now decelerates us: propellant floats forward), then try to
-        // light the upper stage: it needs ullage and fails.
+        // Cut throttle and let the thrust tail off (drag then decelerates us: propellant
+        // floats forward), then try to light the upper stage: it needs ullage and fails.
         v.set_throttle(0.0);
-        v.step(&system, t, t + DT, &mut events);
-        t = t + DT;
+        for _ in 0..50 {
+            v.step(&system, t, t + DT, &mut events);
+            t = t + DT;
+        }
+        assert_eq!(v.propulsion.engine_level(), 0.0);
         v.activate_next_stage(&system, t);
         v.set_throttle(1.0);
         v.step(&system, t, t + DT, &mut events);

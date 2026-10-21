@@ -528,6 +528,7 @@ mod tests {
             structure_mass: structure,
             diameter: d,
             length: l,
+            appearance: Default::default(),
         }
     }
 

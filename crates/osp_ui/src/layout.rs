@@ -21,6 +21,11 @@
 //!   },
 //! }
 //! ```
+//!
+//! A layout with `dock: "<id>"` is stacked into the `dock` node with that id instead of
+//! being placed on its own: docked windows line up in a column (in `dock_order`) and never
+//! overlap. Dragging a docked window by its title pops it out to float; closing it puts it
+//! back.
 
 use bevy::prelude::*;
 use osp_mods::{Diagnostic, Registry};
@@ -43,6 +48,13 @@ pub struct LayoutDef {
     /// without forgetting which of them were open.
     #[serde(default)]
     pub group: Option<String>,
+    /// Id of a `dock` node to stack this layout into, instead of placing it by its own
+    /// position.
+    #[serde(default)]
+    pub dock: Option<String>,
+    /// Place in the dock: lower first.
+    #[serde(default)]
+    pub dock_order: i32,
     pub root: NodeDef,
 }
 
