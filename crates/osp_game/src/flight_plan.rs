@@ -41,7 +41,7 @@ use crate::{
     controls::InputLocked,
     frame::{RenderFrame, to_render},
     orbit_lines::{PREDICTION_HORIZON, Prediction, TrajectoryHover, cursor_in_view, project},
-    sim::{Sim, TimeWarp},
+    sim::{Sim, SimRestarted, TimeWarp},
 };
 
 /// Grab distance for handles and markers, logical pixels.
@@ -64,7 +64,12 @@ pub struct FlightPlanPlugin;
 impl Plugin for FlightPlanPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PlanUi>()
-            .add_systems(Update, plan_actions.in_set(FrameSet::Input))
+            .add_systems(
+                Update,
+                (forget_on_restart, plan_actions)
+                    .chain()
+                    .in_set(FrameSet::Input),
+            )
             .add_systems(
                 Update,
                 (map_interaction, publish_plan)
@@ -72,6 +77,13 @@ impl Plugin for FlightPlanPlugin {
                     .in_set(FrameSet::Render)
                     .after(crate::orbit_lines::OrbitLinesSet),
             );
+    }
+}
+
+/// A scenario started afresh: the burn that was selected belonged to another vessel.
+fn forget_on_restart(mut restarted: MessageReader<SimRestarted>, mut ui: ResMut<PlanUi>) {
+    if restarted.read().count() > 0 {
+        *ui = PlanUi::default();
     }
 }
 

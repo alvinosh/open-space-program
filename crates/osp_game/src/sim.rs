@@ -1,4 +1,5 @@
-//! Owns the `Universe` and advances it each frame according to the time-warp setting.
+//! Owns the `Universe` and advances it each frame according to the time-warp setting
+//! (unless paused, behind the main menu), and starts it afresh for another scenario.
 //!
 //! Low warp runs fixed physics ticks from an accumulator; the leftover fraction of a tick
 //! becomes the render time offset, so rendering is smooth at any frame rate while physics
@@ -27,7 +28,7 @@ pub const WARP_RATES: [f64; 10] = [
     1.0, 2.0, 3.0, 4.0, 10.0, 50.0, 100.0, 1_000.0, 10_000.0, 100_000.0,
 ];
 pub const MAX_PHYSICS_WARP: f64 = 4.0;
-/// What `cargo run` starts without `OSP_SCENARIO`.
+/// What `cargo run` shows behind the main menu without `OSP_SCENARIO`.
 const DEFAULT_SCENARIO: &str = "moon_plane";
 /// Longest real frame time we simulate; avoids huge catch-up after a hitch.
 const MAX_FRAME_TIME: f64 = 0.1;
@@ -80,9 +81,11 @@ impl Plugin for SimPlugin {
             accumulator: 0.0,
             render_time,
             lagging: false,
+            paused: false,
         })
         .init_resource::<TimeWarp>()
         .add_message::<SimEventMessage>()
+        .add_message::<SimRestarted>()
         .add_systems(Update, advance_simulation.in_set(FrameSet::Simulate));
     }
 }
@@ -106,6 +109,8 @@ pub struct Sim {
     pub render_time: SimTime,
     /// True if physics could not keep up with the requested warp this frame.
     pub lagging: bool,
+    /// Time stands still (behind the main menu).
+    pub paused: bool,
 }
 
 impl Sim {
@@ -131,6 +136,15 @@ impl Sim {
         self.active
     }
 
+    /// Fly from the start of the universe as it now is (a scenario started afresh in it):
+    /// the first vessel, at its clock.
+    pub fn restarted(&mut self) {
+        self.active = 0;
+        self.accumulator = 0.0;
+        self.render_time = self.universe.time();
+        self.lagging = false;
+    }
+
     /// Fly another vessel; `step` +1 / −1 cycles through them. The one left behind lets
     /// go of the controls (its throttle, SAS and burn executor carry on).
     pub fn switch_vessel(&mut self, step: isize) {
@@ -147,6 +161,10 @@ impl Sim {
 /// Simulation events, re-broadcast for UI and mods.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct SimEventMessage(pub SimEvent);
+
+/// The universe was started afresh for another scenario: every vessel is new.
+#[derive(Message, Clone, Copy, Debug)]
+pub struct SimRestarted;
 
 #[derive(Resource, Default)]
 pub struct TimeWarp {
@@ -254,6 +272,9 @@ fn advance_simulation(
     mut warp: ResMut<TimeWarp>,
     mut messages: MessageWriter<SimEventMessage>,
 ) {
+    if sim.paused {
+        return;
+    }
     let real_dt = time.delta_secs_f64().min(MAX_FRAME_TIME);
     let now = time.elapsed_secs_f64();
     let sim = &mut *sim;

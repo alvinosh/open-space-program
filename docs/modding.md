@@ -68,17 +68,17 @@ parts of it instead.
 | Collection | Contents | Notes |
 | --- | --- | --- |
 | `bodies` | Planets, moons, stars | Keplerian `orbit` (J2000 ecliptic, degrees), IAU `rotation`, optional `atmosphere`, `terrain` dataset and `max_terrain_height` (m) |
-| `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `response`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }`, `length` and `exit_diameter` (m), `exit_pressure` (Pa), `plume`, `model`; see [Engine response and plumes](#engine-response-and-plumes) |
+| `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `response`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }`, `length` and `exit_diameter` (m), `exit_pressure` (Pa), `plume`, `model`, `model_scale` (draw the model this many times its size); see [Engine response and plumes](#engine-response-and-plumes) |
 | `plumes` | Exhaust looks | `core`, `flame` and `shock` colours (linear RGB), `luminance` (cd/m² per m at full thrust), `soot` (0..1) |
 | `resources` | Propellants and gases | `density` (kg/m³ as stored), storage `temperature` (K) and `pressure` (Pa) |
 | `materials` | Structural materials | `density` (kg/m³), `yield_strength` and `elastic_modulus` (Pa) |
 | `tank_types` | How procedural tanks are built | `material`, operating `pressure` (Pa), `min_gauge` (m), `stiffening`, `buckling_factor`, `insulation` (kg/m²), `min_temperature` (K), `utilization`, `safety_factor`, `design_load` (g), optional `propellants` allowlist; see [Procedural tanks and fins](#procedural-tanks-and-fins) |
 | `reaction_wheels` | Reaction wheels | `mass` (kg), `torque` (N·m about each axis) |
 | `rcs` | RCS blocks (four nozzles each) | `mass` (kg), `thrust` (N per nozzle, vacuum), `isp_vac`/`isp_sl` (s), `propellants: { Name: mass ratio }`, `model` |
-| `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), `model` |
-| `craft` | Vessels | `stages` from the bottom: `engines`, procedural `tanks` and `fins`, `reaction_wheels`, `rcs`, `pod`, `fairing: { mass }`, `structure_mass`, `diameter`, `length`, `appearance`; optional `sequences`; see [Staging](#staging) and [Stage appearance](#stage-appearance) |
-| `launch_sites` | Launch sites | Position, `heading`, optional `pad` and `roads`; see [Launch sites](#launch-sites) |
-| `scenarios` | New-game setups | `start: { type: "LaunchSite", site: "<id>" }` or `{ type: "Orbit", body, periapsis_altitude, apoapsis_altitude, inclination, longitude_of_ascending_node, argument_of_periapsis, mean_anomaly }` (degrees, from the body's equator; `plane: "<body>"` instead takes the plane of a body that orbits it, like the Moon); optional `others` and `target`; pick with `OSP_SCENARIO=<id>` (default `moon_plane`) |
+| `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), optional `top_diameter` (m, a third of `diameter` by default), `model` |
+| `craft` | Vessels | `stages` from the bottom: `engines`, procedural `tanks` and `fins`, `wings`, `gear`, `reaction_wheels`, `rcs`, `pod`, `fairing: { mass }`, `structure_mass`, `diameter`, `length`, `appearance`; optional `sequences`; see [Staging](#staging) and [Stage appearance](#stage-appearance) |
+| `launch_sites` | Launch sites | Position, `heading`, optional `pad`, `roads` and `runway`; see [Launch sites](#launch-sites) |
+| `scenarios` | New-game setups | `name` and `description` (shown in the main menu, which lists scenarios in load order); `start: { type: "LaunchSite", site: "<id>" }`, `{ type: "Runway", site: "<id>" }` (at the start of the site's runway, on its wheels), `{ type: "Flight", body, latitude, longitude, altitude, heading, speed, climb }` (in the air, nose along the flight path, wings level; degrees, metres and m/s) or `{ type: "Orbit", body, periapsis_altitude, apoapsis_altitude, inclination, longitude_of_ascending_node, argument_of_periapsis, mean_anomaly }` (degrees, from the body's equator; `plane: "<body>"` instead takes the plane of a body that orbits it, like the Moon); optional `others` and `target`; `OSP_SCENARIO=<id>` starts one without the menu |
 | `layouts` | UI windows and panels | See [User interface](#user-interface) |
 | `themes` | Style classes | All theme records merge in load order |
 | `keybindings` | Key → action | All keybinding records combine |
@@ -89,9 +89,9 @@ See the files in `assets/core` for complete, commented examples of each.
 
 A stage's `diameter` and `length` shape its rotation as well as its looks. Each stage is
 modelled as a cylinder: tank dry mass as a thin shell along it, `structure_mass` (and
-reaction wheels, RCS blocks and the crew pod) as a uniform solid, engines as point masses on
-its base, fins as rings of mass at their centroid, and propellant as a solid column settled
-at the aft end. That gives the centre of mass and the moments of inertia, which change as
+reaction wheels and RCS blocks) as a uniform solid, the crew pod as a solid frustum from
+`diameter` to `top_diameter` on top, engines as point masses on its base, fins as rings of
+mass at their centroid, and propellant as a solid column settled at the aft end. That gives the centre of mass and the moments of inertia, which change as
 tanks drain and stages drop.
 
 Control torque comes from the bottom stage's burning engines swivelling up to
@@ -146,15 +146,115 @@ stringers, liners) plus `insulation`. That gives two strengths:
   flight a tank carries everything stacked above it at the current acceleration, plus the
   drag on the nose; on the pad, the stack's weight.
 
-A **fin** is a solid plate of its `material`. The air pushes on it at the vessel's angle of
-attack (lift slope from DATCOM below Mach 0.8, Ackeret above Mach 1.2, plus crossflow drag
-at large angles) and its root bends; it fails when the root reaches yield. Fins add mass
-and drag. They do not turn the vessel yet, because the game has no aerodynamic moment
-model.
+A **fin** is a solid plate of its `material`. The air pushes on it at its own angle of
+attack (see [Aerodynamics](#aerodynamics)) and its root bends; it fails when the root
+reaches yield.
 
 When any part goes past 100% of its strength it fails: fins tear off; a tank failure breaks
 the vessel up (engines, RCS and controls stop, and warp halts). The Structure window shows
 every part's make-up, strength and current load.
+
+### Aerodynamics
+
+The air works on a vessel the way Ferram Aerospace Research does in KSP: the outline of the
+stack (stages, tapers between them, the nose or pod on top) is cut into thin sections, and
+each section is pushed by the air it actually meets, including the vessel's own rotation.
+So lift, drag, stability and damping all follow from the shape:
+
+- A section whose cross-section grows along the flow (a nose, a pod, a step up to a wider
+  stage) lifts towards where it points. A bare stack is therefore unstable, like a real
+  launcher: the engines' gimbal or SAS has to hold it. Fins behind the centre of mass pull
+  the centre of pressure back so the vessel turns into the wind by itself.
+- Each fin lifts at its own angle of attack (DATCOM lift slope subsonic, Ackeret bounded by
+  slender-wing theory supersonic, flat-plate crossflow beyond), at a quarter of its mean
+  chord, moving to half of it supersonic.
+- Drag is skin friction (by Reynolds number) plus pressure: blunt faces and steep slopes
+  cost the most, especially through Mach 1, where drag rises steeply. A base or step down
+  leaves a wake that pulls back, except where engines are firing out of the base.
+- Blunt bodies use Newtonian flow: a capsule's heat shield takes the full stagnation
+  pressure, and since a pod's mass sits low, a capsule falls heat shield first.
+- Wings are worked out in strips along their span, each at its own angle of attack: lift
+  slope from the wing's aspect ratio and sweep, a stall at a lift coefficient set by the
+  airfoil's thickness, flat-plate flow beyond, induced drag, and downwash from the wing
+  onto the tailplane behind it.
+
+Engine bells, landing legs and grid fins are not part of the outline.
+
+### Wings and control surfaces
+
+A stage can carry `wings`: wings, tailplanes and tail fins. Each is a trapezoidal panel
+standing out from the stage's hull; `mirror: true` adds the matching panel on the other
+side. Vessel axes: +X is the pilot's right, +Y their feet, +Z the nose, and the stage's
+base is at the bottom.
+
+```json5
+wings: [
+  {
+    name: "Wing",
+    position: 1.1,       // root leading edge, m above the stage base
+    angle: 0,            // where around the hull: 0 right, 90 down, 180 left, 270 on top
+    root_chord: 1.0, tip_chord: 0.45, span: 7.0,  // m; span from the hull to the tip
+    sweep: 0.15,         // tip leading edge behind the root's, m
+    dihedral: 3,         // degrees, tip up
+    incidence: 1.5,      // degrees, leading edge up
+    thickness: 0.15,     // airfoil thickness over chord (sets the stall and profile drag)
+    mass: 160,           // kg, both panels
+    mirror: true,
+    // Ailerons on the outer 40% of the span, 22% of the chord, 15 degrees each way.
+    control: { axes: ["roll"], chord: 0.22, span: [0.55, 0.95], deflection: 15 },
+  },
+],
+```
+
+A control surface answers the rotation commands in `axes` (`pitch`, `yaw`, `roll`; list
+two for elevons or ruddervators). Which way each one moves follows from where it is: a
+right aileron goes up when the left goes down, an elevator behind the centre of mass goes
+up to pitch up, a canard ahead of it goes down. SAS uses them too; their authority grows
+with dynamic pressure. A wing's mass counts towards the stage, and the panels set the
+vessel's moments of inertia, so a winged vessel rolls, pitches and yaws differently.
+
+The `glider` craft is a worked example: it trims to glide hands off at about 38 m/s.
+Wings cannot be torn off yet.
+
+A winged vessel has to be stable to fly: its centre of mass ahead of the point where the
+air's push on the whole vessel acts. A long nose ahead of the wing pushes that point
+forward (it lifts like a rocket's nose), and in yaw it fights the fin; the `comet` craft
+moved its wing back and grew its fin until both settled.
+
+### Landing gear
+
+A stage's `gear` legs stand out from its hull like wings do, each a sprung, damped strut
+with a wheel at its end:
+
+```json5
+gear: [
+  {
+    name: "Main gear",
+    position: 3.6,       // strut mount, m above the stage base
+    angle: 50,           // around the hull: 90 straight down, less splays a right leg out
+    length: 1.2,         // hull to axle, fully extended, m
+    wheel_radius: 0.3,
+    stroke: 0.25,        // strut travel, m
+    load: 2300,          // kg it is sprung for: standing still it sits a third into its travel
+    mass: 80,            // kg, both legs
+    mirror: true,
+    brakes: true,        // B holds the brakes
+  },
+  { name: "Nose gear", position: 0.8, length: 0.84, wheel_radius: 0.22, stroke: 0.2,
+    load: 560, mass: 40, steering: 25 },   // steers with the yaw command, degrees
+],
+```
+
+Wheels roll along the nose, grip sideways like tyres and brake up to the friction their
+load allows; fixed gear adds drag in the air. Near the ground a vessel on gear is
+integrated in 2 ms substeps. Anything else that touches the ground (the hull, a wing tip)
+skids on it; hitting the ground with it faster than 5 m/s is a crash. Standing still on its
+wheels a vessel is parked, and it rolls again once its engines push.
+
+Mind the geometry: the main wheels go just behind the centre of mass (or it sits on its
+tail), the struts' lengths decide whether it stands level, and the track must be wide
+enough for the springs to hold it upright (roughly `k · track² / 2` above
+`mass · g · height`, k the strut stiffness), or it rolls onto a wing.
 
 ### Engine response and plumes
 
@@ -272,10 +372,15 @@ service tower, floodlights, tanks). Layout coordinates are metres in the site fr
     mount_height: 3,        // vehicles stand this high on the launch mount, m (default 0)
   },
   roads: [ { points: [[-40, 0], [-400, -150]], width: 9 } ],
+  // A level concrete runway centred on the site along its heading, with painted
+  // markings: length, width (m) and height above sea level (default 1 m above the ground).
+  runway: { size: [4570, 91], elevation: 4 },
 }
 ```
 
-Start a scenario there with `start: { type: "LaunchSite", site: "my_site" }`.
+Start a scenario there with `start: { type: "LaunchSite", site: "my_site" }`, or at the
+near end of its runway, lined up and on its wheels, with `{ type: "Runway", site:
+"my_site" }`.
 
 ### Terrain data
 
@@ -502,6 +607,8 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.altitude`, `vessel.vertical_speed`, `vessel.surface_speed`, `vessel.orbital_speed` | m, m/s |
 | `vessel.latitude`, `vessel.longitude` | degrees |
 | `vessel.mach`, `vessel.dynamic_pressure`, `vessel.static_pressure` | Pa |
+| `vessel.angle_of_attack`, `vessel.sideslip` | Degrees: nose above the airflow, airflow from the right |
+| `vessel.lift`, `vessel.drag` | N: the air's force across and against the airflow |
 | `vessel.throttle`, `vessel.thrust`, `vessel.twr`, `vessel.mass`, `vessel.accel_g` | 0..1, N, -, kg, g |
 | `vessel.engine_level`, `vessel.min_throttle` | Thrust the bottom stage's engines give as a share of full (0..1, follows the throttle through spool-up, throttling and tail-off); the highest minimum throttle among them |
 | `vessel.delta_v`, `vessel.stage_count`, `vessel.landed`, `vessel.engines_running` | |
@@ -512,7 +619,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `nav.frame`, `nav.speed` | `"Surface"`, `"Orbit"` or `"Target"`; speed in that frame, m/s |
 | `nav.heading`, `nav.pitch`, `nav.roll` | Attitude against the local horizon, degrees (roll is empty pointing straight up or down) |
 | `control.pitch`, `control.yaw`, `control.roll` | Rotation command applied (pilot or SAS), −1..1 |
-| `attitude.com`, `attitude.moi_pitch`, `attitude.moi_roll` | Centre of mass above the base (m); moments of inertia (kg·m²) |
+| `attitude.com`, `attitude.moi_pitch`, `attitude.moi_yaw`, `attitude.moi_roll` | Centre of mass above the base (m); moments of inertia (kg·m²) |
 | `attitude.torque_pitch`, `attitude.torque_roll`, `attitude.accel_pitch`, `attitude.accel_roll` | Torque available (N·m) and the angular acceleration it gives (deg/s²) |
 | `attitude.rate_pitch`, `attitude.rate_yaw`, `attitude.rate_roll` | Angular velocity, deg/s |
 | `attitude.gimbal`, `attitude.gimbal_range`, `attitude.wheels`, `attitude.rcs` | Current and maximum gimbal angle (deg); reaction wheel and RCS pitch torque (N·m) |

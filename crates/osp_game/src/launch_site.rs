@@ -1,4 +1,5 @@
-//! Launch-site structures: a small pad built around every site that has one.
+//! Launch-site structures: a small pad built around every site that has one, and the
+//! markings painted on a runway.
 //!
 //! The deck, its embankment and the roads are terrain (see `osp_sim::terrain`). This
 //! adds what stands on them: the launch mount and flame-trench grate under the vehicle, a
@@ -9,7 +10,7 @@
 
 use bevy::{math::DVec3, prelude::*};
 use osp_sim::{
-    data::LaunchSiteDef,
+    data::{LaunchSiteDef, RunwayDef},
     terrain::{site_axes, site_point},
 };
 
@@ -317,6 +318,48 @@ impl Site<'_> {
     }
 }
 
+/// White paint on a runway (site frame, on its deck): edge lines, a dashed centreline, and
+/// threshold bars at both ends, following the curve of the body along its length.
+fn runway_markings(mesh: &mut MeshBuilder, runway: &RunwayDef, radius: f64) {
+    const PAINT: [f32; 3] = [0.8, 0.8, 0.78];
+    let (length, width) = (runway.size[0] as f32, runway.size[1] as f32);
+    let (half_l, half_w) = (length / 2.0, width / 2.0);
+    // A rectangle from `right0`..`right1` across and `forward0`..`forward1` along, facing up.
+    let mut paint = |right0: f32, right1: f32, forward0: f32, forward1: f32| {
+        let at = |x: f32, z: f32| {
+            let drop = (x * x + z * z) / (2.0 * radius as f32);
+            Site::at(x, 0.03 - drop, z)
+        };
+        mesh.quad(
+            at(right0, forward0),
+            at(right0, forward1),
+            at(right1, forward1),
+            at(right1, forward0),
+            c(PAINT),
+        );
+    };
+    for side in [-1.0, 1.0] {
+        let x = side * (half_w - 1.5);
+        paint(x - 0.45, x + 0.45, -half_l, half_l);
+    }
+    let mut z = -half_l + 120.0;
+    while z + 36.0 < half_l - 120.0 {
+        paint(-0.45, 0.45, z, z + 36.0);
+        z += 60.0;
+    }
+    for end in [-1.0, 1.0] {
+        let (near, far) = (end * (half_l - 6.0), end * (half_l - 51.0));
+        let (z0, z1) = (near.min(far), near.max(far));
+        let stripes = ((width - 12.0) / 3.6) as i32;
+        for k in 0..stripes {
+            let x = -half_w + 6.0 + 3.6 * k as f32;
+            if x.abs() > 2.5 {
+                paint(x, x + 1.8, z0, z1);
+            }
+        }
+    }
+}
+
 fn spawn_sites(
     mut commands: Commands,
     sim: Res<Sim>,
@@ -340,7 +383,7 @@ fn spawn_sites(
         let Some(body_id) = system.find(&def.body) else {
             continue;
         };
-        if def.pad.is_none() {
+        if def.pad.is_none() && def.runway.is_none() {
             continue;
         }
         let body = system.body(body_id);
@@ -357,7 +400,12 @@ fn spawn_sites(
             lamps: MeshBuilder::default(),
             floodlights: Vec::new(),
         };
-        site.build();
+        if def.pad.is_some() {
+            site.build();
+        }
+        if let Some(runway) = &def.runway {
+            runway_markings(&mut site.painted, runway, body.radius);
+        }
         // Site frame (x right, y up, -z forward) to body-fixed render axes.
         let rotation = Quat::from_mat3(&Mat3::from_cols(
             to_render(right),

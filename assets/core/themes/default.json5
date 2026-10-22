@@ -65,6 +65,41 @@
       font_size: 12,
     },
 
+    // --- main menu (see layouts/main_menu.json5) ---
+    menu_backdrop: {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: "100%",
+      height: "100%",
+      align_items: "center",
+      justify_content: "center",
+      background: [0.01, 0.015, 0.02, 0.55],
+      z_index: 50,
+    },
+    menu: {
+      width: 560,
+      max_height: "86vh",
+      padding: [22, 24],
+      gap: 10,
+      background: [0.035, 0.05, 0.065, 0.96],
+      radius: 8,
+      border: 1,
+      border_color: [1, 1, 1, 0.11],
+    },
+    menu_title: { font_size: 26, color: "#f2f7fa" },
+    menu_list: { gap: 6, scroll: true, shrink: 1, min_height: 0 },
+    menu_item: {
+      direction: "column",
+      align_items: "start",
+      padding: [8, 12],
+      gap: 2,
+      background: "#16212b",
+      hover_background: "#24384a",
+      radius: 5,
+    },
+    menu_item_name: { font_size: 15, color: "#ffffff" },
+
     // --- docks (see layouts/docks.json5) ---
     // Every `dock` node stacks what is docked into it; `dock_root` places a dock column on
     // the screen.

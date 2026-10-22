@@ -17,11 +17,14 @@
 //! - **Powered flight** uses Encke's method ([`integrator`]): precision scales with the
 //!   deviation from a conic, not the distance from the origin.
 //! - **Rotation** ([`attitude`]): torque-free spin is exact like coasting, torque from
-//!   gimbal, reaction wheels and RCS ([`rcs`]) is integrated on the tick, and SAS holds
-//!   exactly on rails.
+//!   gimbal, reaction wheels, RCS ([`rcs`]) and the air is integrated on the tick, and SAS
+//!   holds exactly on rails.
+//! - **Aerodynamics** ([`aero`]): FAR-style, the vessel cut into sections along its axis,
+//!   each pushed by the air it meets, so lift, drag, stability and damping follow the shape.
 //! - **Planning**: burns ([`plan`]) are predicted as impulses with the same event code, and
 //!   flown as finite burns by the executor ([`autopilot`]).
 
+pub mod aero;
 pub mod atmosphere;
 pub mod attitude;
 pub mod autopilot;
@@ -29,6 +32,7 @@ pub mod body;
 pub mod constants;
 pub mod data;
 pub mod events;
+pub mod gear;
 pub mod integrator;
 pub mod kepler;
 pub mod orbit;

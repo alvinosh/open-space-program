@@ -14,6 +14,7 @@ mod frame;
 mod hull;
 mod launch_site;
 mod map_labels;
+mod menu;
 mod meshgen;
 mod navball;
 mod orbit_lines;
@@ -115,6 +116,7 @@ fn main() -> AppExit {
             navball::NavballPlugin,
             ui_data::UiDataPlugin,
             smoke_test::SmokeTestPlugin,
+            menu::MenuPlugin,
         ))
         // Map view and flight planning.
         .add_plugins((

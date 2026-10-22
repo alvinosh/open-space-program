@@ -7,12 +7,14 @@ modded.
 
 ```sh
 cargo run -p osp_bake --release             # once: download and bake Earth's terrain (see below)
-cargo run                                   # low Earth orbit in the Moon's plane, lots of RCS
+cargo run                                   # main menu: pick a scenario (Esc brings it back)
 OSP_SCENARIO=pad cargo run                  # launch from the Cape
 OSP_SCENARIO=leo cargo run                  # start in low Earth orbit
 OSP_SCENARIO=rendezvous cargo run           # in low Earth orbit below a station
 OSP_SCENARIO=crew cargo run                 # Pathfinder with a four-person capsule
 OSP_SCENARIO=sounder cargo run              # finned suborbital hop with a one-person capsule
+OSP_SCENARIO=glider cargo run               # a sailplane released at 1500 m over the Cape
+OSP_SCENARIO=runway cargo run               # rocket plane on the Shuttle Landing Facility runway
 cargo run --features dev                    # faster incremental builds (Bevy dynamic linking)
 cargo test --workspace                      # physics, mod loader and UI tests (no GPU needed)
 OSP_CAPTURE=/tmp/shots cargo run            # scripted run that saves screenshots, then exits (from the pad)

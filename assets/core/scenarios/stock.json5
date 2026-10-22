@@ -1,9 +1,11 @@
-// New-game setups. start_time is seconds since J2000 (2000-01-01 12:00 TDB);
-// 21600 s = 18:00 UT, around midday at the Cape. Select with OSP_SCENARIO=<id>.
+// New-game setups, in the order the main menu lists them. start_time is seconds since J2000
+// (2000-01-01 12:00 TDB); 21600 s = 18:00 UT, around midday at the Cape. OSP_SCENARIO=<id>
+// skips the menu and starts one straight away.
 [
   {
     id: "pad",
     name: "Launch from the Cape",
+    description: "Pathfinder on LC-39A with a 15 t payload under its fairing. Fly it to orbit.",
     start_time: 21600,
     craft: "pathfinder",
     start: { type: "LaunchSite", site: "cape_canaveral" },
@@ -11,14 +13,42 @@
   {
     id: "crew",
     name: "Crewed launch from the Cape",
+    description: "Pathfinder with a four-person capsule on top.",
     start_time: 21600,
     craft: "pathfinder_crew",
     start: { type: "LaunchSite", site: "cape_canaveral" },
   },
   {
+    // The Comet rocket plane at the south-east end of the Shuttle Landing Facility.
+    id: "runway",
+    name: "Rocket plane on the runway",
+    description: "The Comet at the end of the Shuttle Landing Facility runway. Throttle up, rotate at 75 m/s, land back on the runway.",
+    start_time: 21600,
+    craft: "comet",
+    start: { type: "Runway", site: "cape_slf" },
+  },
+  {
+    // A sailplane released at 1500 m over the Cape, heading east at 36 m/s.
+    id: "glider",
+    name: "Glider over the Cape",
+    description: "A sailplane released at 1500 m over the Cape. It glides hands off; it has no wheels.",
+    start_time: 21600,
+    craft: "glider",
+    start: {
+      type: "Flight",
+      body: "Earth",
+      latitude: 28.6,
+      longitude: -80.6,
+      altitude: 1500,
+      heading: 90,
+      speed: 36,
+    },
+  },
+  {
     // Finned single stage with a one-person capsule: a suborbital hop.
     id: "sounder",
     name: "Suborbital hop",
+    description: "A finned single stage with a one-person capsule, for a suborbital hop.",
     start_time: 21600,
     craft: "sounder",
     start: { type: "LaunchSite", site: "cape_canaveral" },
@@ -28,6 +58,7 @@
     // ahead. Match planes at a node, then plan a transfer to meet it.
     id: "rendezvous",
     name: "Rendezvous in low Earth orbit",
+    description: "In low Earth orbit below a station: match planes, then plan a transfer to meet it.",
     start_time: 21600,
     craft: "upper_stage",
     start: {
@@ -59,6 +90,7 @@
     // reaches the Moon without a plane change.
     id: "moon_plane",
     name: "Low Earth orbit in the Moon's plane",
+    description: "An upper stage with lots of RCS in a 300 km orbit in the Moon's plane. One burn reaches the Moon.",
     start_time: 21600,
     craft: "lunar_upper",
     start: {
@@ -75,6 +107,7 @@
     // A ~3.1 km/s prograde burn from here reaches the Moon.
     id: "leo",
     name: "Low Earth orbit",
+    description: "An upper stage parked in a 300 km circular orbit.",
     start_time: 21600,
     craft: "upper_stage",
     start: {

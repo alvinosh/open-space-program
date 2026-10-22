@@ -7,7 +7,7 @@ use std::{
 };
 
 use bevy::{math::DVec3, prelude::*};
-use osp_mods::{Content, Diagnostic, Severity};
+use osp_mods::{Content, Diagnostic, Registry, Severity};
 use osp_sim::{
     data::{
         BodyDef, CraftDef, EngineDef, LaunchSiteDef, MaterialDef, PartCatalog, PodDef, RcsDef,
@@ -158,26 +158,9 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
     let system = SystemDef {
         bodies: registry.all::<BodyDef>("bodies", &mut diagnostics),
     };
-    let catalog = PartCatalog {
-        engines: registry.all::<EngineDef>("engines", &mut diagnostics),
-        resources: registry.all::<ResourceDef>("resources", &mut diagnostics),
-        materials: registry.all::<MaterialDef>("materials", &mut diagnostics),
-        tank_types: registry.all::<TankTypeDef>("tank_types", &mut diagnostics),
-        reaction_wheels: registry.all::<ReactionWheelDef>("reaction_wheels", &mut diagnostics),
-        rcs: registry.all::<RcsDef>("rcs", &mut diagnostics),
-        pods: registry.all::<PodDef>("pods", &mut diagnostics),
-    };
+    let catalog = catalog(registry, &mut diagnostics);
     let sites = registry.all::<LaunchSiteDef>("launch_sites", &mut diagnostics);
-    let mut scenario: ScenarioDef = registry
-        .get("scenarios", scenario)
-        .map_err(|d| d.to_string())?;
-    // Debugging lighting: `OSP_START_TIME=<seconds since J2000>`.
-    if let Some(time) = std::env::var("OSP_START_TIME")
-        .ok()
-        .and_then(|t| t.parse().ok())
-    {
-        scenario.start_time = time;
-    }
+    let scenario = scenario_def(registry, scenario)?;
     let datasets = load_datasets(content, &system.bodies, &mut diagnostics);
     let heights = datasets
         .iter()
@@ -188,11 +171,7 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
             )
         })
         .collect();
-    let craft_of = |id: &str| {
-        registry
-            .get::<CraftDef>("craft", id)
-            .map_err(|d| d.to_string())
-    };
+    let craft_of = |id: &str| craft(registry, id);
     let universe = Universe::new_game(&system, heights, &sites, &catalog, craft_of, &scenario)
         .map_err(|e| e.to_string())?;
     Ok(NewGame {
@@ -201,6 +180,50 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
         sites,
         diagnostics,
     })
+}
+
+/// Start the scenario `id` afresh in `universe` (same solar system and terrain), from the
+/// records loaded now. On an error nothing changes.
+pub fn restart(content: &Content, universe: &mut Universe, id: &str) -> Result<(), String> {
+    let registry = &content.registry;
+    let mut diagnostics = Vec::new();
+    let catalog = catalog(registry, &mut diagnostics);
+    let sites = registry.all::<LaunchSiteDef>("launch_sites", &mut diagnostics);
+    let scenario = scenario_def(registry, id)?;
+    universe
+        .restart(&sites, &catalog, |id| craft(registry, id), &scenario)
+        .map_err(|e| e.to_string())
+}
+
+fn catalog(registry: &Registry, diagnostics: &mut Vec<Diagnostic>) -> PartCatalog {
+    PartCatalog {
+        engines: registry.all::<EngineDef>("engines", diagnostics),
+        resources: registry.all::<ResourceDef>("resources", diagnostics),
+        materials: registry.all::<MaterialDef>("materials", diagnostics),
+        tank_types: registry.all::<TankTypeDef>("tank_types", diagnostics),
+        reaction_wheels: registry.all::<ReactionWheelDef>("reaction_wheels", diagnostics),
+        rcs: registry.all::<RcsDef>("rcs", diagnostics),
+        pods: registry.all::<PodDef>("pods", diagnostics),
+    }
+}
+
+fn craft(registry: &Registry, id: &str) -> Result<CraftDef, String> {
+    registry
+        .get::<CraftDef>("craft", id)
+        .map_err(|d| d.to_string())
+}
+
+/// A scenario record. `OSP_START_TIME=<seconds since J2000>` moves its start (debugging
+/// lighting).
+fn scenario_def(registry: &Registry, id: &str) -> Result<ScenarioDef, String> {
+    let mut scenario: ScenarioDef = registry.get("scenarios", id).map_err(|d| d.to_string())?;
+    if let Some(time) = std::env::var("OSP_START_TIME")
+        .ok()
+        .and_then(|t| t.parse().ok())
+    {
+        scenario.start_time = time;
+    }
+    Ok(scenario)
 }
 
 /// Load the pictures of UI `image` nodes from the mods (the highest-priority mod's file).

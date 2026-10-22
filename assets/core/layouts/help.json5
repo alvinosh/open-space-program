@@ -11,6 +11,8 @@
       { widget: "row", children: [{ widget: "label", class: "key", text: "Z / X" }, { widget: "label", text: "full / cut throttle" }] },
       { widget: "row", children: [{ widget: "label", class: "key", text: "W S / A D / Q E" }, { widget: "label", text: "pitch / yaw / roll" }] },
       { widget: "row", children: [{ widget: "label", class: "key", text: "T" }, { widget: "label", text: "SAS on / off (modes next to the navball)" }] },
+      { widget: "row", children: [{ widget: "label", class: "key", text: "B" }, { widget: "label", text: "wheel brakes (hold); A / D also steer the nose wheel" }] },
+      { widget: "row", children: [{ widget: "label", class: "key", text: "Esc" }, { widget: "label", text: "main menu: pick a scenario, resume or quit" }] },
       { widget: "row", children: [{ widget: "label", class: "key", text: "R" }, { widget: "label", text: "RCS on / off" }] },
       { widget: "row", children: [{ widget: "label", class: "key", text: "H N / J L / I K" }, { widget: "label", text: "RCS forward, back / left, right / up, down" }] },
       { widget: "row", children: [{ widget: "label", class: "key", text: "Space" }, { widget: "label", text: "stage" }] },

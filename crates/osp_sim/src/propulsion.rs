@@ -12,7 +12,10 @@ use thiserror::Error;
 
 use crate::{
     constants::{ATM, G0},
-    data::{CraftDef, EngineDef, PartCatalog, PodDef, RcsDef, StageAppearance, TankShape},
+    data::{
+        CraftDef, EngineDef, GearDef, PartCatalog, PodDef, RcsDef, StageAppearance, TankShape,
+        WingDef,
+    },
     staging::{Activation, Sequences},
     structure::{FinSet, Tank},
 };
@@ -43,6 +46,8 @@ pub enum CraftError {
     BadTank { tank_type: String, problem: String },
     #[error("fins: {0}")]
     BadFins(String),
+    #[error("wing `{wing}`: {problem}")]
+    BadWing { wing: String, problem: String },
     #[error("stage `{stage}`: {problem}")]
     BadStage { stage: String, problem: String },
     #[error("sequences: {0}")]
@@ -187,6 +192,10 @@ pub struct Stage {
     /// Empty tanks, kg: thin shells along the stage.
     pub tank_mass: f64,
     pub fins: Option<FinSet>,
+    /// Wings, tailplanes and tail fins.
+    pub wings: Vec<WingDef>,
+    /// Landing gear legs.
+    pub gear: Vec<GearDef>,
     /// Structure, avionics, payload, crew pod, reaction wheels and RCS, kg: spread through
     /// the stage.
     pub structure_mass: f64,
@@ -221,6 +230,14 @@ impl Stage {
         self.fins.as_ref().map_or(0.0, |f| f.mass)
     }
 
+    pub fn wing_mass(&self) -> f64 {
+        self.wings.iter().map(|w| w.mass).sum()
+    }
+
+    pub fn gear_mass(&self) -> f64 {
+        self.gear.iter().map(|g| g.mass).sum()
+    }
+
     /// The fairing, while it is still on, kg.
     pub fn fairing_mass(&self) -> f64 {
         self.fairing
@@ -234,6 +251,8 @@ impl Stage {
         self.engine_mass()
             + self.tank_mass
             + self.fin_mass()
+            + self.wing_mass()
+            + self.gear_mass()
             + self.structure_mass
             + self.fairing_mass()
     }
@@ -459,6 +478,23 @@ impl Propulsion {
                     .as_ref()
                     .map(|f| FinSet::new(f, catalog))
                     .transpose()?;
+                for wing in &def.wings {
+                    check_wing(wing)?;
+                }
+                for leg in &def.gear {
+                    if leg.length <= 0.0 || leg.wheel_radius <= 0.0 || leg.stroke <= 0.0 {
+                        return Err(bad(format!(
+                            "gear `{}`: length, wheel radius and stroke must be positive",
+                            leg.name
+                        )));
+                    }
+                    if leg.load <= 0.0 || leg.mass < 0.0 {
+                        return Err(bad(format!(
+                            "gear `{}`: it needs a load to be sprung for, and no negative mass",
+                            leg.name
+                        )));
+                    }
+                }
                 // Cylinders stack up from the stage base; spheres sit inside, at the base.
                 let mut tanks = Vec::new();
                 let mut stacked = 0.0;
@@ -507,6 +543,8 @@ impl Propulsion {
                     tanks,
                     tank_mass,
                     fins,
+                    wings: def.wings.clone(),
+                    gear: def.gear.clone(),
                     structure_mass,
                     wheel_torque,
                     rcs,
@@ -773,21 +811,6 @@ impl Propulsion {
         thrust / flow * (mass / (mass - propellant)).ln()
     }
 
-    /// Frontal area for drag, m².
-    pub fn reference_area(&self) -> f64 {
-        let d = self.stages.iter().map(|s| s.diameter).fold(0.0, f64::max);
-        std::f64::consts::PI * d * d / 4.0
-    }
-
-    /// Drag area (C_D · A) of the fins, m², on top of the body's.
-    pub fn fin_drag_area(&self) -> f64 {
-        self.stages
-            .iter()
-            .filter_map(|s| s.fins.as_ref())
-            .map(FinSet::drag_area)
-            .sum()
-    }
-
     pub fn length(&self) -> f64 {
         self.stages.iter().map(|s| s.length).sum()
     }
@@ -842,6 +865,40 @@ fn engine_layout(count: usize, radius: f64) -> Vec<DVec2> {
             .chain(ring(count - 1, 0.65 * radius))
             .collect(),
     }
+}
+
+/// A wing must have a shape, a thickness that is an airfoil's, and its control surface
+/// must fit on it.
+fn check_wing(wing: &WingDef) -> Result<(), CraftError> {
+    let bad = |problem: &str| {
+        Err(CraftError::BadWing {
+            wing: wing.name.clone(),
+            problem: problem.into(),
+        })
+    };
+    if wing.root_chord <= 0.0 || wing.tip_chord < 0.0 || wing.span <= 0.0 {
+        return bad("chords and span must be positive");
+    }
+    if !(0.0..=0.5).contains(&wing.thickness) || wing.thickness == 0.0 {
+        return bad("thickness is a share of the chord, above 0 and at most 0.5");
+    }
+    if wing.mass < 0.0 {
+        return bad("mass cannot be negative");
+    }
+    if let Some(c) = &wing.control {
+        if !(c.chord > 0.0 && c.chord <= 1.0) {
+            return bad("the control surface's chord is a share of the wing's, up to 1");
+        }
+        if !(0.0 <= c.span[0] && c.span[0] < c.span[1] && c.span[1] <= 1.0) {
+            return bad(
+                "the control surface's span runs from a share to a larger one, within 0..1",
+            );
+        }
+        if !(c.deflection > 0.0 && c.deflection <= 60.0) {
+            return bad("the control surface deflects more than 0 and at most 60 degrees");
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

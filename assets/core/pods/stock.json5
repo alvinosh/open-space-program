@@ -1,5 +1,6 @@
 // Crew pods. A pod sits at the top of its stage (`pod: "<id>"`); its mass (with crew and
-// consumables, kg) counts as structure. `diameter` is the base, `height` the whole pod (m).
+// consumables, kg) counts as structure. `diameter` is the base, `height` the whole pod (m),
+// `top_diameter` the top (the air sees the pod as a frustum).
 // Models are glTF, origin at the centre of the base, nose up.
 [
   {
@@ -8,6 +9,7 @@
     crew: 1,
     diameter: 1.9,
     height: 2.9,
+    top_diameter: 0.73,
     model: "models/pods/c1.glb",
   },
   {
@@ -16,6 +18,7 @@
     crew: 4,
     diameter: 3.7,
     height: 3.9,
+    top_diameter: 1.1,
     model: "models/pods/c4.glb",
   },
 ]

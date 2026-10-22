@@ -1,0 +1,46 @@
+// Main menu: pick a scenario (`game.start:<id>`), go back to the flight in progress
+// (`game.resume`), or quit. The game opens on it unless OSP_SCENARIO picks a scenario; Esc
+// (`game.menu`) brings it back. Scenarios are listed from `menu.scenarios` (id, name,
+// description), in load order.
+{
+  id: "main_menu",
+  visible: false,
+  root: {
+    widget: "column",
+    class: "menu_backdrop",
+    children: [
+      {
+        widget: "panel",
+        class: "menu",
+        children: [
+          { widget: "label", class: "menu_title", text: "Open Space Program" },
+          { widget: "label", class: "dim", text: "Choose a scenario" },
+          {
+            widget: "column",
+            class: "menu_list",
+            repeat: "menu.scenarios",
+            children: [
+              {
+                widget: "button",
+                class: "menu_item",
+                action: "game.start:{item.id}",
+                children: [
+                  { widget: "label", class: "menu_item_name", text: "{item.name}" },
+                  { widget: "label", class: "dim", text: "{item.description}", visible: "item.description" },
+                ],
+              },
+            ],
+          },
+          {
+            widget: "row",
+            children: [
+              { widget: "button", text: "Resume", action: "game.resume", visible: "menu.playing" },
+              { widget: "spacer" },
+              { widget: "button", text: "Quit", action: "game.quit" },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

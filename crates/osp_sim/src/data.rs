@@ -208,6 +208,148 @@ pub struct FinDef {
     pub material: String,
 }
 
+/// A lifting surface on a stage: a wing, tailplane or tail fin. Unlike rocket fins it has
+/// an airfoil (so it stalls), can be set at an angle to the hull, and can carry a control
+/// surface.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WingDef {
+    #[serde(default)]
+    pub name: String,
+    /// Height of the root's leading edge above the stage base, m.
+    pub position: f64,
+    /// Where around the hull the root stands, degrees from the pilot's right (vessel +X)
+    /// towards their feet (+Y): 0 a right wing, 270 a fin on top.
+    #[serde(default)]
+    pub angle: f64,
+    /// Chord at the root and at the tip, m.
+    pub root_chord: f64,
+    pub tip_chord: f64,
+    /// From the hull to the tip, m.
+    pub span: f64,
+    /// How far the tip's leading edge sits behind the root's, m.
+    #[serde(default)]
+    pub sweep: f64,
+    /// Degrees the panel turns about the hull's axis towards smaller `angle` (a right
+    /// wing's tip goes up).
+    #[serde(default)]
+    pub dihedral: f64,
+    /// Degrees the leading edge turns towards the lifting side (up, for a wing).
+    #[serde(default)]
+    pub incidence: f64,
+    /// Airfoil thickness over chord.
+    #[serde(default = "default_wing_thickness")]
+    pub thickness: f64,
+    /// All panels together, kg.
+    pub mass: f64,
+    /// A second panel mirrored across the vessel's plane of symmetry (a left wing for a
+    /// right one).
+    #[serde(default)]
+    pub mirror: bool,
+    #[serde(default)]
+    pub control: Option<ControlSurfaceDef>,
+}
+
+/// A hinged trailing-edge surface: aileron, elevator, rudder, or a mix such as elevons.
+/// Which way it moves for a command follows from where it is.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControlSurfaceDef {
+    /// The rotation commands that move it.
+    pub axes: Vec<ControlAxis>,
+    /// Share of the chord, from the trailing edge.
+    #[serde(default = "default_control_chord")]
+    pub chord: f64,
+    /// Where it runs, as shares of the span from the root.
+    #[serde(default = "default_control_span")]
+    pub span: [f64; 2],
+    /// Largest deflection each way, degrees.
+    #[serde(default = "default_control_deflection")]
+    pub deflection: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ControlAxis {
+    Pitch,
+    Yaw,
+    Roll,
+}
+
+impl ControlAxis {
+    /// The vessel axis it turns about: X, Y or Z.
+    pub fn index(self) -> usize {
+        match self {
+            ControlAxis::Pitch => 0,
+            ControlAxis::Yaw => 1,
+            ControlAxis::Roll => 2,
+        }
+    }
+}
+
+fn default_wing_thickness() -> f64 {
+    0.12
+}
+
+fn default_control_chord() -> f64 {
+    0.25
+}
+
+fn default_control_span() -> [f64; 2] {
+    [0.0, 1.0]
+}
+
+fn default_control_deflection() -> f64 {
+    20.0
+}
+
+/// A landing gear leg: a sprung, damped strut standing out from the hull with a wheel at
+/// its end. It rolls freely along the vessel's nose, grips sideways like a tyre, and can
+/// brake and steer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GearDef {
+    #[serde(default)]
+    pub name: String,
+    /// Height of the strut's mount above the stage base, m.
+    pub position: f64,
+    /// Where around the hull it stands, degrees from the pilot's right (vessel +X) towards
+    /// their feet (+Y): 90 straight down, less to splay a right-hand leg outwards.
+    #[serde(default = "default_gear_angle")]
+    pub angle: f64,
+    /// From the hull to the wheel's axle, strut fully extended, m.
+    pub length: f64,
+    /// Wheel radius, m.
+    #[serde(default = "default_wheel_radius")]
+    pub wheel_radius: f64,
+    /// Strut travel, m.
+    #[serde(default = "default_stroke")]
+    pub stroke: f64,
+    /// Mass the leg is sprung for: standing still under it, the strut sits a third of the
+    /// way into its travel, kg.
+    pub load: f64,
+    /// All legs together (with `mirror`), kg.
+    pub mass: f64,
+    /// A second leg mirrored across the vessel's plane of symmetry.
+    #[serde(default)]
+    pub mirror: bool,
+    /// The wheel has brakes.
+    #[serde(default)]
+    pub brakes: bool,
+    /// The wheel steers with the yaw command, this many degrees each way.
+    #[serde(default)]
+    pub steering: f64,
+}
+
+fn default_gear_angle() -> f64 {
+    90.0
+}
+
+fn default_wheel_radius() -> f64 {
+    0.3
+}
+
+fn default_stroke() -> f64 {
+    0.3
+}
+
 /// A crew cabin (capsule or cockpit). It sits at the top of its stage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PodDef {
@@ -218,9 +360,19 @@ pub struct PodDef {
     /// Base diameter and height, m.
     pub diameter: f64,
     pub height: f64,
+    /// Diameter at the top, m, for the aerodynamics: the pod is a frustum to the air. A
+    /// third of the base by default.
+    #[serde(default)]
+    pub top_diameter: Option<f64>,
     /// glTF model, relative to the mod root.
     #[serde(default)]
     pub model: Option<String>,
+}
+
+impl PodDef {
+    pub fn top_diameter(&self) -> f64 {
+        self.top_diameter.unwrap_or(self.diameter / 3.0)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -260,6 +412,10 @@ pub struct EngineDef {
     /// glTF model, relative to the mod root: origin at the gimbal pivot, nozzle down −Y.
     #[serde(default)]
     pub model: Option<String>,
+    /// Scales the model evenly, to make a smaller or larger engine from it (`length` and
+    /// `exit_diameter` are the scaled engine's).
+    #[serde(default = "one")]
+    pub model_scale: f64,
     /// Pressure of the exhaust leaving the nozzle at full thrust, Pa. Against the ambient
     /// pressure it decides how the plume expands; estimated from the Isp lost at sea level
     /// if missing.
@@ -387,6 +543,12 @@ pub struct StageDef {
     pub tanks: Vec<TankDef>,
     #[serde(default)]
     pub fins: Option<FinDef>,
+    /// Wings, tailplanes and tail fins.
+    #[serde(default)]
+    pub wings: Vec<WingDef>,
+    /// Landing gear legs.
+    #[serde(default)]
+    pub gear: Vec<GearDef>,
     /// Reaction wheel part names.
     #[serde(default)]
     pub reaction_wheels: Vec<String>,
@@ -444,6 +606,9 @@ pub struct ScenarioDef {
     pub id: String,
     #[serde(default)]
     pub name: String,
+    /// A line for the main menu.
+    #[serde(default)]
+    pub description: String,
     /// Seconds since J2000.
     pub start_time: f64,
     pub craft: String,
@@ -471,8 +636,30 @@ pub struct VesselStartDef {
 pub enum StartDef {
     /// On the pad of a `launch_sites` record.
     LaunchSite(LaunchSiteStartDef),
+    /// At the start of a `launch_sites` record's runway, lined up along it, on its wheels.
+    Runway(LaunchSiteStartDef),
     /// Already in orbit. Angles in degrees relative to the body's equator; altitudes in m.
     Orbit(OrbitStartDef),
+    /// Flying through the air, as if dropped from a carrier aircraft.
+    Flight(FlightStartDef),
+}
+
+/// Nose along the flight path, feet towards the ground. Degrees and metres.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlightStartDef {
+    pub body: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    /// Above sea level.
+    pub altitude: f64,
+    /// Clockwise from north.
+    #[serde(default)]
+    pub heading: f64,
+    /// Airspeed, m/s.
+    pub speed: f64,
+    /// Climb angle of the flight path.
+    #[serde(default)]
+    pub climb: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -500,6 +687,8 @@ pub struct LaunchSiteDef {
     pub pad: Option<PadDef>,
     #[serde(default)]
     pub roads: Vec<RoadDef>,
+    #[serde(default)]
+    pub runway: Option<RunwayDef>,
 }
 
 impl LaunchSiteDef {
@@ -530,6 +719,18 @@ pub struct PadDef {
     /// engines over the flame trench.
     #[serde(default)]
     pub mount_height: f64,
+}
+
+/// A level, paved runway centred on the site and running along its heading. Vessels start
+/// at its near end (`start: { type: "Runway", site }`), facing along it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunwayDef {
+    /// Length along the heading and width across it, m.
+    pub size: [f64; 2],
+    /// Surface height above the mean radius (sea level), m. Defaults to 1 m above the
+    /// ground at its centre.
+    #[serde(default)]
+    pub elevation: Option<f64>,
 }
 
 /// A paved road, level across its width, following the ground along its length.

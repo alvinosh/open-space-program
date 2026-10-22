@@ -5,16 +5,17 @@
 //! - **Coasting**: gravity only, so its trajectory is an exact conic. It is evaluated
 //!   analytically at any time and only changes at [`TrajectoryEvent`]s. This is the same at
 //!   1x and at 100 000x, so time warp cannot change where a coasting vessel ends up.
-//! - **Integrated**: thrust, drag or terrain proximity, integrated with Encke's method on a
-//!   fixed tick grid.
+//! - **Integrated**: thrust, the air or terrain proximity, integrated with Encke's method on
+//!   a fixed tick grid.
 //!
 //! Transitions happen at exact ticks: Coasting → Integrated at a descent event or when
 //! thrust starts, Integrated → Coasting once forces stop above the coast floor.
 //!
 //! A vessel's position is its centre of mass, which it rotates about. Rotation follows the
 //! same idea as translation ([`crate::attitude`]): without torque it is exact at any time,
-//! and torque from the engine gimbal, reaction wheels or RCS is integrated on the physics
-//! tick. During time warp on rails, SAS holds its attitude exactly instead of steering.
+//! and torque from the engine gimbal, reaction wheels, RCS or the air ([`crate::aero`]) is
+//! integrated on the physics tick. During time warp on rails, SAS holds its attitude exactly
+//! instead of steering.
 //!
 //! Engines that need ullage only light while the propellant is settled, i.e. while
 //! something pushes the vessel forward: thrust still running (hot staging), or RCS
@@ -24,21 +25,24 @@ use glam::{DMat3, DQuat, DVec3};
 use thiserror::Error;
 
 use crate::{
+    aero::{self, Flow, Loads, Panel, Shape},
     atmosphere::AtmosphereSample,
     attitude::{self, Attitude, Inertia, MassProperties, NavBasis, NavFrame, Sas, SasMode},
     autopilot::{self, BurnExecutor, BurnTiming, Capability, Finish},
     body::{Body, BodyId},
-    data::{CraftDef, LaunchSiteDef, OrbitStartDef, PartCatalog},
+    data::{CraftDef, FlightStartDef, LaunchSiteDef, OrbitStartDef, PartCatalog},
     events::{EventKind, TrajectoryEvent, apply_event, next_event},
+    gear::{self, Contact, Leg},
     integrator::Encke,
     orbit::{Elements, Orbit, StateVector},
     plan::{Burn, FlightPlan},
-    propulsion::{CraftError, Propulsion},
+    propulsion::{CraftError, Propulsion, Stage},
     rcs,
     rendezvous::Target,
     structure::{self, Conditions, Part, PartLoad},
     system::SolarSystem,
-    time::SimTime,
+    terrain,
+    time::{SimTime, Ticks},
 };
 
 /// Impacts slower than this (relative to the ground) count as a landing, not a crash.
@@ -48,6 +52,17 @@ const ULLAGE_ACCELERATION: f64 = 1e-3;
 /// A vessel may only start coasting if it won't hit the coast floor within this many
 /// seconds; prevents flip-flopping between modes on the boundary.
 const COAST_HYSTERESIS: f64 = 0.1;
+/// Substep for a vessel on or near the ground on landing gear, whose struts are stiff.
+const GEAR_SUBSTEP: Ticks = Ticks::from_millis(2);
+/// Height above its gear's reach within which a vessel rolls (see `Vessel::roll`), m.
+const GEAR_MARGIN: f64 = 30.0;
+/// Hitting the ground with anything but its wheels faster than this is a crash, m/s.
+const HULL_IMPACT_SPEED: f64 = 5.0;
+/// On the ground with no thrust and slower than these (m/s, rad/s), a vessel comes to rest.
+const REST_SPEED: f64 = 0.05;
+const REST_RATE: f64 = 0.02;
+/// How far in from the end of a runway a vessel starts, m.
+const RUNWAY_START: f64 = 60.0;
 const MAX_LOG: usize = 64;
 
 #[derive(Debug, Error)]
@@ -58,6 +73,8 @@ pub enum VesselError {
     UnknownBody(String),
     #[error("`{0}` does not orbit `{1}`, so its plane cannot be used")]
     NotOrbiting(String, String),
+    #[error("{0} has no runway")]
+    NoRunway(String),
 }
 
 #[derive(Debug, Clone)]
@@ -137,6 +154,12 @@ pub struct FlightData {
     pub thrust: f64,
     pub dynamic_pressure: f64,
     pub mach: f64,
+    /// Nose above the airflow (pitch up) and the airflow from the right, rad.
+    pub angle_of_attack: f64,
+    pub sideslip: f64,
+    /// The air's force across and against the airflow, N.
+    pub lift: f64,
+    pub drag: f64,
     pub static_pressure: f64,
     /// Non-gravitational acceleration (what an accelerometer reads), m/s².
     pub proper_acceleration: f64,
@@ -182,6 +205,12 @@ pub struct Vessel {
     pub rotation_input: DVec3,
     /// The pilot's translation command (right, down, forward), −1..1, for the RCS.
     pub translation_input: DVec3,
+    /// Wheel brakes on.
+    pub brakes: bool,
+    /// How far into its travel each gear leg's strut is, m, as of the last physics step.
+    gear: Vec<f64>,
+    /// Some wheel was on the ground at the last physics step.
+    wheels_down: bool,
     sas: Sas,
     /// RCS armed: it translates on the pilot's command and helps with every rotation.
     rcs: bool,
@@ -257,6 +286,9 @@ impl Vessel {
             plan: FlightPlan::default(),
             executor: BurnExecutor::default(),
             ullage_push: false,
+            brakes: false,
+            gear: Vec::new(),
+            wheels_down: false,
             id: VesselId::default(),
             target: None,
             target_state: None,
@@ -309,6 +341,107 @@ impl Vessel {
             time,
             format!("{} on the pad at {}", vessel.name, site.display_name()),
         );
+        Ok(vessel)
+    }
+
+    /// At the near end of a launch site's runway, lined up along it, standing level on its
+    /// gear (or on its belly without any), brakes on.
+    pub fn on_runway(
+        craft: &CraftDef,
+        catalog: &PartCatalog,
+        system: &SolarSystem,
+        site: &LaunchSiteDef,
+        time: SimTime,
+    ) -> Result<Self, VesselError> {
+        let runway = site
+            .runway
+            .as_ref()
+            .ok_or_else(|| VesselError::NoRunway(site.display_name().to_owned()))?;
+        let parent = system
+            .find(&site.body)
+            .ok_or_else(|| VesselError::UnknownBody(site.body.clone()))?;
+        let body = system.body(parent);
+        let along = -(runway.size[0] / 2.0 - RUNWAY_START);
+        let up = terrain::site_point(site, body.radius, 0.0, along);
+        let (_, _, forward) = terrain::site_axes(site);
+        let nose = forward.reject_from(up).normalize();
+        let attitude = DQuat::from_mat3(&DMat3::from_cols((-up).cross(nose), -up, nose));
+        let mut vessel = Self::new(
+            craft,
+            catalog,
+            parent,
+            Motion::Landed {
+                base: up * body.radius,
+                attitude,
+            },
+            body.orientation(time) * attitude,
+            time,
+        )?;
+        let legs = gear::legs(&vessel.propulsion.stages);
+        let height =
+            gear::rest_height(&legs).unwrap_or_else(|| vessel.propulsion.stages[0].diameter / 2.0);
+        let ground = body.radius + body.terrain_height(up);
+        vessel.motion = Motion::Landed {
+            base: up * (ground + height),
+            attitude,
+        };
+        let contact = gear::contact(
+            &legs,
+            body,
+            time,
+            &vessel.state_at(system, time),
+            &vessel.attitude_state(system, time),
+            vessel.mass.center_of_mass,
+            false,
+            0.0,
+        );
+        vessel.wheels_down = contact.touching();
+        vessel.gear = contact.compression;
+        vessel.brakes = true;
+        vessel.propellant_settled = true;
+        vessel.record(
+            time,
+            format!("{} on the runway at {}", vessel.name, site.display_name()),
+        );
+        Ok(vessel)
+    }
+
+    /// Flying through the air, as if just dropped from a carrier aircraft: nose along the
+    /// flight path, feet towards the ground, wings level.
+    pub fn in_flight(
+        craft: &CraftDef,
+        catalog: &PartCatalog,
+        system: &SolarSystem,
+        start: &FlightStartDef,
+        time: SimTime,
+    ) -> Result<Self, VesselError> {
+        let parent = system
+            .find(&start.body)
+            .ok_or_else(|| VesselError::UnknownBody(start.body.clone()))?;
+        let body = system.body(parent);
+        let (lat, lon) = (start.latitude.to_radians(), start.longitude.to_radians());
+        let up = Body::surface_normal_fixed(lat, lon);
+        let north = DVec3::new(-lat.sin() * lon.cos(), -lat.sin() * lon.sin(), lat.cos());
+        let east = north.cross(up);
+        let (heading, climb) = (start.heading.to_radians(), start.climb.to_radians());
+        let level = north * heading.cos() + east * heading.sin();
+        let to_inertial = body.orientation(time);
+        let nose = to_inertial * (level * climb.cos() + up * climb.sin());
+        let feet = (to_inertial * -up).reject_from(nose).normalize();
+        let position = to_inertial * up * (body.radius + start.altitude);
+        let velocity = body.surface_velocity(position) + nose * start.speed;
+        let attitude = DQuat::from_mat3(&DMat3::from_cols(feet.cross(nose), feet, nose));
+        let state = StateVector::new(position, velocity);
+
+        let mut vessel = Self::new(
+            craft,
+            catalog,
+            parent,
+            free_motion(body, state, time),
+            attitude,
+            time,
+        )?;
+        vessel.record(time, format!("{} flying over {}", vessel.name, body.name));
         Ok(vessel)
     }
 
@@ -432,6 +565,11 @@ impl Vessel {
     /// Mass, centre of mass and inertia as of the last physics step.
     pub fn mass_properties(&self) -> MassProperties {
         self.mass
+    }
+
+    /// How far into its travel each gear leg's strut is (see [`gear::legs`]), m.
+    pub fn gear_compression(&self) -> &[f64] {
+        &self.gear
     }
 
     /// State of the centre of mass relative to [`Self::parent`] at `time`. Exact for
@@ -780,7 +918,7 @@ impl Vessel {
     }
 
     pub fn situation(&self, system: &SolarSystem, time: SimTime) -> Situation {
-        if self.is_landed() {
+        if self.is_landed() || self.wheels_down {
             return Situation::Landed;
         }
         let body = system.body(self.parent);
@@ -939,10 +1077,29 @@ impl Vessel {
         // Rotation over this tick, under the torque commanded at its start.
         let start = self.attitude_state(system, t0);
         let com = self.mass.center_of_mass;
+
+        // The air, felt from the attitude at the start of the tick and again as the vessel
+        // turns within it, with the control surfaces where the command puts them.
+        let air_velocity = state.velocity - body.surface_velocity(state.position);
+        let shape =
+            (!self.is_landed() && air.density > 0.0).then(|| Shape::new(&self.propulsion.stages));
+        let plume = self
+            .propulsion
+            .stages
+            .first()
+            .is_some_and(|s| s.engines.iter().any(|e| e.thrust > 0.0));
+        let spin = body.angular_velocity();
+        let flow_at = |attitude: Attitude, controls: DVec3| {
+            flow(attitude, air_velocity, spin, air, plume, controls)
+        };
+
         let rcs = (self.rcs || self.ullage_push) && !self.is_landed();
         let mut authority = attitude::torque_authority(&self.propulsion, com);
         if rcs {
             authority += rcs::torque_authority(&self.propulsion, com, air.pressure);
+        }
+        if let Some(shape) = &shape {
+            authority += shape.control_authority(&flow_at(start, DVec3::ZERO), com);
         }
         let command = if self.is_landed() || self.destroyed {
             DVec3::ZERO
@@ -971,14 +1128,36 @@ impl Vessel {
         } else {
             rcs::idle(&mut self.propulsion);
         }
+        let air_loads = |attitude: Attitude| {
+            shape.as_ref().map_or(Loads::default(), |shape| {
+                shape.loads(&flow_at(attitude, command), com)
+            })
+        };
+        let air_now = air_loads(start);
+
+        // On or near the ground on landing gear, rotation and translation are integrated
+        // together in short substeps (`roll`). Parked on its wheels, a vessel rolls away as
+        // soon as anything pushes it; come to rest on anything else, it stays put.
+        let legs = gear::legs(&self.propulsion.stages);
+        let rolling = !legs.is_empty()
+            && match &self.motion {
+                Motion::Integrated(encke) => near_ground(body, &encke.state(), t0, &legs, com),
+                Motion::Landed { .. } => force != DVec3::ZERO && self.wheels_down,
+                Motion::Coasting(_) => false,
+            };
+
         let track = &self.attitude;
         if !self.is_landed()
+            && !rolling
             && (torque != DVec3::ZERO
+                || shape.is_some()
                 || track.inertia != self.mass.inertia
                 || track.hold != Hold::Free)
         {
             let inertia = self.mass.inertia;
-            let end = if torque == DVec3::ZERO {
+            let end = if shape.is_some() {
+                attitude::integrate_with(start, inertia, dt, |a| torque + air_loads(a).torque)
+            } else if torque == DVec3::ZERO {
                 attitude::coast(start, inertia, dt)
             } else {
                 attitude::integrate(start, inertia, torque, dt)
@@ -1001,11 +1180,11 @@ impl Vessel {
         ) {
             self.end_burn(t0, finish, out);
         }
-        let drag_accel = drag(body, &air, &self.propulsion, mass);
-        let drag_now = drag_accel(state.position, state.velocity);
-        let proper = thrust_accel + drag_now;
-        let air_velocity = state.velocity - body.surface_velocity(state.position);
+        let air_accel = start.orientation * air_now.force / mass;
+        let proper = thrust_accel + air_accel;
         let air_speed = air_velocity.length();
+        let airflow = start.orientation.inverse() * air_velocity;
+        let along = air_now.force.dot(airflow.normalize_or_zero());
         let structure_load = self.flight.structure_load;
         self.flight = FlightData {
             mass,
@@ -1016,6 +1195,18 @@ impl Vessel {
             } else {
                 0.0
             },
+            angle_of_attack: if air_speed > 1.0 {
+                airflow.y.atan2(airflow.z)
+            } else {
+                0.0
+            },
+            sideslip: if air_speed > 1.0 {
+                (airflow.x / air_speed).clamp(-1.0, 1.0).asin()
+            } else {
+                0.0
+            },
+            lift: (air_now.force - airflow.normalize_or_zero() * along).length(),
+            drag: -along,
             static_pressure: air.pressure,
             proper_acceleration: proper.length(),
             control: command,
@@ -1032,7 +1223,7 @@ impl Vessel {
             } else {
                 proper.dot(nose)
             },
-            drag: (-drag_now.dot(nose) * mass).max(0.0),
+            drag: (-air_now.force.z).max(0.0),
             dynamic_pressure: self.flight.dynamic_pressure,
             mach: self.flight.mach,
             angle_of_attack: if air_speed > 1.0 {
@@ -1043,7 +1234,28 @@ impl Vessel {
         };
         self.check_structure(&conditions, t0, out);
 
+        let rolled = Rolled {
+            thrust: force,
+            torque,
+            legs: &legs,
+            shape: shape.as_ref(),
+            air,
+            plume,
+            command,
+        };
         match self.motion {
+            Motion::Landed { .. } if rolling => {
+                self.motion = Motion::Integrated(Encke::new(body.gm, t0, state));
+                self.attitude = AttitudeTrack {
+                    epoch: t0,
+                    state: start,
+                    inertia: self.mass.inertia,
+                    hold: Hold::Free,
+                };
+                self.roll(system, t0, t1, &rolled, out);
+            }
+            // Parked on its gear.
+            Motion::Landed { .. } if !legs.is_empty() => {}
             Motion::Landed { .. } => {
                 let up = state.position.normalize();
                 let weight = body.gm / state.position.length_squared();
@@ -1062,11 +1274,11 @@ impl Vessel {
                     time: t0,
                     kind: VesselEventKind::Liftoff,
                 });
-                self.integrate(system, t1, thrust_accel, out);
+                self.integrate(system, t1, thrust_accel, air_accel, out);
             }
             Motion::Coasting(orbit) if thrust > 0.0 => {
                 self.motion = Motion::Integrated(Encke::new(orbit.mu(), t0, orbit.state_at(t0)));
-                self.integrate(system, t1, thrust_accel, out);
+                self.integrate(system, t1, thrust_accel, air_accel, out);
             }
             Motion::Coasting(_) => {
                 let mut t = t0;
@@ -1075,12 +1287,138 @@ impl Vessel {
                     t = event.time;
                     if event.kind == EventKind::Descent {
                         // Finish this tick under physics from the exact event time.
-                        self.integrate(system, t1, DVec3::ZERO, out);
+                        self.integrate(system, t1, DVec3::ZERO, DVec3::ZERO, out);
                         break;
                     }
                 }
             }
-            Motion::Integrated(_) => self.integrate(system, t1, thrust_accel, out),
+            Motion::Integrated(_) if rolling => self.roll(system, t0, t1, &rolled, out),
+            Motion::Integrated(_) => self.integrate(system, t1, thrust_accel, air_accel, out),
+        }
+    }
+
+    /// Integrate from `t0` to `t1` on or near the ground on landing gear: rotation and
+    /// translation together, in substeps short enough for the stiff struts, with the
+    /// wheels', the skidding hull's and the air's forces worked out afresh for each. Then
+    /// note touching down and leaving the ground, stop if the hull hit the ground hard (a
+    /// crash), and park once at rest.
+    fn roll(
+        &mut self,
+        system: &SolarSystem,
+        t0: SimTime,
+        t1: SimTime,
+        rolled: &Rolled,
+        out: &mut Vec<VesselEvent>,
+    ) {
+        let body = system.body(self.parent);
+        let (mass, com, inertia) = (self.mass.mass, self.mass.center_of_mass, self.mass.inertia);
+        let spin = body.angular_velocity();
+        let mut attitude = self.attitude_state(system, t0);
+        let brakes = self.brakes;
+        let hull = hard_points(&self.propulsion.stages);
+        let Motion::Integrated(encke) = &mut self.motion else {
+            return;
+        };
+        let mut contact = Contact::default();
+        let mut impact: f64 = 0.0;
+        let mut t = t0;
+        while t < t1 {
+            let next = (t + GEAR_SUBSTEP).min(t1);
+            let h = next.seconds_since(t);
+            let state = encke.state();
+            contact = gear::contact(
+                rolled.legs,
+                body,
+                t,
+                &state,
+                &attitude,
+                com,
+                brakes,
+                rolled.command.y,
+            );
+            let points = hull.world(&state, &attitude, com);
+            impact = impact.max(gear::skid(
+                &points,
+                body,
+                t,
+                &state,
+                &attitude,
+                mass,
+                &mut contact,
+            ));
+            let air_velocity = state.velocity - body.surface_velocity(state.position);
+            let air_loads = |a: Attitude| {
+                rolled.shape.map_or(Loads::default(), |shape| {
+                    let flow = flow(
+                        a,
+                        air_velocity,
+                        spin,
+                        rolled.air,
+                        rolled.plume,
+                        rolled.command,
+                    );
+                    shape.loads(&flow, com)
+                })
+            };
+            let push = attitude.orientation * (rolled.thrust + air_loads(attitude).force);
+            let accel = (push + contact.force) / mass;
+            let turning = rolled.torque + contact.torque;
+            attitude =
+                attitude::integrate_with(attitude, inertia, h, |a| turning + air_loads(a).torque);
+            encke.step(next, |_, _| accel);
+            t = next;
+        }
+        let state = encke.state();
+        self.attitude = AttitudeTrack {
+            epoch: t1,
+            state: attitude,
+            inertia,
+            hold: Hold::Free,
+        };
+
+        let up = state.position.normalize();
+        let ground_velocity = state.velocity - body.surface_velocity(state.position);
+        let touching = contact.touching();
+        if touching && !self.wheels_down {
+            let sink = (-ground_velocity.dot(up)).max(0.0);
+            self.record(t1, format!("Touched down at {sink:.1} m/s"));
+            out.push(VesselEvent {
+                time: t1,
+                kind: VesselEventKind::Landed { speed: sink },
+            });
+        } else if !touching && self.wheels_down {
+            self.record(t1, "Airborne".into());
+            out.push(VesselEvent {
+                time: t1,
+                kind: VesselEventKind::Liftoff,
+            });
+        }
+        self.wheels_down = touching;
+        self.gear = contact.compression;
+
+        let to_fixed = body.orientation(t1).inverse();
+        let base = state.position - attitude.nose() * com;
+        let parked = Motion::Landed {
+            base: to_fixed * base,
+            attitude: to_fixed * attitude.orientation,
+        };
+        if impact > HULL_IMPACT_SPEED {
+            self.record(t1, format!("Crashed into {} at {impact:.0} m/s", body.name));
+            out.push(VesselEvent {
+                time: t1,
+                kind: VesselEventKind::Crashed { speed: impact },
+            });
+            self.motion = parked;
+            self.wheels_down = false;
+            return;
+        }
+        let rate = attitude.angular_velocity - attitude.orientation.inverse() * spin;
+        if (touching || contact.force != DVec3::ZERO)
+            && rolled.thrust == DVec3::ZERO
+            && ground_velocity.length() < REST_SPEED
+            && rate.length() < REST_RATE
+        {
+            self.motion = parked;
         }
     }
 
@@ -1186,15 +1524,14 @@ impl Vessel {
         system: &SolarSystem,
         end: SimTime,
         thrust_accel: DVec3,
+        air_accel: DVec3,
         out: &mut Vec<VesselEvent>,
     ) {
         let Motion::Integrated(encke) = &mut self.motion else {
             return;
         };
         let body = system.body(self.parent);
-        let air = air_at(body, &encke.state());
-        let drag_accel = drag(body, &air, &self.propulsion, self.propulsion.mass());
-        encke.step(end, |r, v| thrust_accel + drag_accel(r, v));
+        encke.step(end, |_, _| thrust_accel + air_accel);
         let state = encke.state();
 
         // Ground contact at the base of the stack, while moving towards the ground.
@@ -1259,6 +1596,89 @@ impl Vessel {
     }
 }
 
+/// The points of a vessel that can touch the ground besides its wheels: its outline
+/// (height up the stack, radius) and its wing tips (stack coordinates).
+struct HardPoints {
+    outline: Vec<(f64, f64)>,
+    tips: Vec<DVec3>,
+}
+
+fn hard_points(stages: &[Stage]) -> HardPoints {
+    let mut tips = Vec::new();
+    let mut base = 0.0;
+    for stage in stages {
+        for wing in &stage.wings {
+            for panel in Panel::of(wing, stage.diameter / 2.0, base) {
+                tips.extend([panel.tip, panel.tip - DVec3::Z * panel.tip_chord]);
+            }
+        }
+        base += stage.length;
+    }
+    HardPoints {
+        outline: aero::outline(stages),
+        tips,
+    }
+}
+
+impl HardPoints {
+    /// Inertial positions for a vessel at `state` turned to `attitude`: the lowest point of
+    /// each ring of the outline, and the wing tips.
+    fn world(&self, state: &StateVector, attitude: &Attitude, com: f64) -> Vec<DVec3> {
+        let nose = attitude.nose();
+        let below = (-state.position).reject_from(nose).normalize_or_zero();
+        let to_world = |p: DVec3| state.position + attitude.orientation * (p - DVec3::Z * com);
+        self.outline
+            .iter()
+            .map(|&(z, r)| state.position + nose * (z - com) + below * r)
+            .chain(self.tips.iter().map(|&p| to_world(p)))
+            .collect()
+    }
+}
+
+/// What drives a vessel rolling on its gear over one tick (see `Vessel::roll`).
+struct Rolled<'a> {
+    /// Thrust (engines and RCS) and actuator torque, vessel axes.
+    thrust: DVec3,
+    torque: DVec3,
+    legs: &'a [Leg],
+    shape: Option<&'a Shape>,
+    air: AtmosphereSample,
+    plume: bool,
+    /// The rotation command, which the control surfaces and steering follow.
+    command: DVec3,
+}
+
+/// How a vessel turned to `attitude` meets the air, flying at `air_velocity` (inertial)
+/// through air that turns with its body at `spin`.
+fn flow(
+    attitude: Attitude,
+    air_velocity: DVec3,
+    spin: DVec3,
+    air: AtmosphereSample,
+    plume: bool,
+    controls: DVec3,
+) -> Flow {
+    let to_vessel = attitude.orientation.inverse();
+    Flow {
+        velocity: to_vessel * air_velocity,
+        angular_velocity: attitude.angular_velocity - to_vessel * spin,
+        air,
+        plume,
+        controls,
+    }
+}
+
+/// Close enough to the ground that its gear might touch within the tick.
+fn near_ground(body: &Body, state: &StateVector, time: SimTime, legs: &[Leg], com: f64) -> bool {
+    let reach = legs
+        .iter()
+        .map(|l| (l.axle(0.0) - DVec3::Z * com).length() + l.wheel_radius)
+        .fold(0.0, f64::max);
+    let fixed = body.orientation(time).inverse() * state.position.normalize();
+    let height = state.position.length() - body.radius - body.terrain_height(fixed);
+    height < reach + GEAR_MARGIN
+}
+
 fn free_motion(body: &Body, state: StateVector, time: SimTime) -> Motion {
     if can_coast(body, &state) {
         Motion::Coasting(Orbit::new(body.gm, time, state))
@@ -1280,36 +1700,6 @@ fn air_at(body: &Body, state: &StateVector) -> AtmosphereSample {
     body.atmosphere
         .as_ref()
         .map_or(AtmosphereSample::VACUUM, |a| a.sample(altitude))
-}
-
-/// Drag acceleration with air co-rotating with the body; density held for the step. The
-/// body's drag scales with its frontal area, the fins' with their own drag area.
-fn drag(
-    body: &Body,
-    air: &AtmosphereSample,
-    propulsion: &Propulsion,
-    mass: f64,
-) -> impl Fn(DVec3, DVec3) -> DVec3 + use<> {
-    let omega = body.angular_velocity();
-    let (density, speed_of_sound) = (air.density, air.speed_of_sound);
-    let (area, fins) = (propulsion.reference_area(), propulsion.fin_drag_area());
-    move |r, v| {
-        if density == 0.0 {
-            return DVec3::ZERO;
-        }
-        let v_air = v - omega.cross(r);
-        let speed = v_air.length();
-        let drag_area = drag_coefficient(speed / speed_of_sound) * area + fins;
-        -0.5 * density * speed * v_air * drag_area / mass
-    }
-}
-
-/// Crude transonic drag rise for a slender rocket.
-fn drag_coefficient(mach: f64) -> f64 {
-    let base = 0.3;
-    let wave = 0.5 * (-((mach - 1.1) / 0.35).powi(2)).exp();
-    let supersonic = if mach > 1.0 { 0.1 / mach } else { 0.0 };
-    base + wave + supersonic
 }
 
 #[cfg(test)]
@@ -1949,6 +2339,315 @@ pub(crate) mod tests {
         assert!(!v.is_destroyed());
     }
 
+    /// The sounder (minus the stages in `drop`) flying through the air at `altitude`,
+    /// `speed` along `direction` (+1 up, −1 down), its nose `angle` off the airflow.
+    fn sounder_in_the_air(
+        system: &SolarSystem,
+        drop: usize,
+        altitude: f64,
+        speed: f64,
+        direction: f64,
+        angle: f64,
+    ) -> (Vessel, SimTime) {
+        let mut craft: CraftDef =
+            records(include_str!("../../../assets/core/craft/sounder.json5")).remove(0);
+        craft.stages.drain(..drop);
+        let start = OrbitStartDef {
+            body: "Earth".into(),
+            periapsis_altitude: 300e3,
+            apoapsis_altitude: 300e3,
+            inclination: 0.0,
+            longitude_of_ascending_node: 0.0,
+            plane: None,
+            argument_of_periapsis: 0.0,
+            mean_anomaly: 0.0,
+        };
+        let t = SimTime::J2000;
+        let mut v = Vessel::in_orbit(&craft, &catalog(), system, &start, t).unwrap();
+        let earth = system.body(v.parent());
+        let nose = nose(&v, system, t);
+        let side = nose.any_orthonormal_vector();
+        // Straight up or down, so gravity does not turn the flow.
+        let airflow = nose * angle.cos() + side * angle.sin();
+        let position = airflow * direction * (earth.radius + altitude);
+        let state = StateVector::new(position, earth.surface_velocity(position) + airflow * speed);
+        v.set_free_state(system, v.parent(), state, t);
+        (v, t)
+    }
+
+    /// Angle between the nose and the airflow, degrees.
+    fn angle_off_airflow(v: &Vessel, system: &SolarSystem, t: SimTime) -> f64 {
+        let state = v.state_at(system, t);
+        let body = system.body(v.parent());
+        let air = state.velocity - body.surface_velocity(state.position);
+        nose(v, system, t).angle_between(air).to_degrees()
+    }
+
+    pub fn glider() -> CraftDef {
+        records(include_str!("../../../assets/core/craft/glider.json5")).remove(0)
+    }
+
+    /// The glider released at `altitude` over the Cape, heading east at `speed`.
+    fn glider_in_flight(system: &SolarSystem, altitude: f64, speed: f64) -> (Vessel, SimTime) {
+        let start = FlightStartDef {
+            body: "Earth".into(),
+            latitude: 28.6,
+            longitude: -80.6,
+            altitude,
+            heading: 90.0,
+            speed,
+            climb: 0.0,
+        };
+        let t = SimTime::J2000;
+        let v = Vessel::in_flight(&glider(), &catalog(), system, &start, t).unwrap();
+        (v, t)
+    }
+
+    /// Bank (right wing down positive), heading and pitch of the glider, degrees.
+    fn glider_angles(v: &Vessel, system: &SolarSystem, t: SimTime) -> (f64, f64, f64) {
+        let earth = system.body(v.parent());
+        let s = v.state_at(system, t);
+        let up = s.position.normalize();
+        let q = v.attitude_at(system, t);
+        let (nose, right) = (q * DVec3::Z, q * DVec3::X);
+        let north = earth.pole().reject_from(up).normalize();
+        let east = north.cross(up);
+        let level = nose.reject_from(up).normalize();
+        let heading = level.dot(east).atan2(level.dot(north)).to_degrees();
+        let bank = (-right.dot(up)).asin().to_degrees();
+        let pitch = nose.dot(up).asin().to_degrees();
+        (bank, heading, pitch)
+    }
+
+    pub fn comet() -> CraftDef {
+        records(include_str!("../../../assets/core/craft/comet.json5")).remove(0)
+    }
+
+    /// The Comet at the start of the Shuttle Landing Facility's runway.
+    fn comet_on_runway(system: &SolarSystem) -> (Vessel, SimTime) {
+        let site = launch_sites()
+            .into_iter()
+            .find(|s| s.id == "cape_slf")
+            .unwrap();
+        let t = SimTime::J2000;
+        let v = Vessel::on_runway(&comet(), &catalog(), system, &site, t).unwrap();
+        (v, t)
+    }
+
+    /// Height of the centre of mass above the ground, ground speed and pitch (nose above the
+    /// horizon), degrees.
+    fn on_the_ground(v: &Vessel, system: &SolarSystem, t: SimTime) -> (f64, f64, f64) {
+        let body = system.body(v.parent());
+        let s = v.state_at(system, t);
+        let up = s.position.normalize();
+        let fixed = body.orientation(t).inverse() * up;
+        let height = s.position.length() - body.radius - body.terrain_height(fixed);
+        let speed = (s.velocity - body.surface_velocity(s.position)).length();
+        let pitch = nose(v, system, t).dot(up).asin().to_degrees();
+        (height, speed, pitch)
+    }
+
+    /// The Comet, nearly out of propellant, gliding in at `altitude` and `speed` along a
+    /// sea-level runway, descending at `glide` degrees.
+    fn comet_on_approach(
+        system: &SolarSystem,
+        altitude: f64,
+        speed: f64,
+        glide: f64,
+    ) -> (Vessel, SimTime) {
+        let start = FlightStartDef {
+            body: "Earth".into(),
+            latitude: 28.6,
+            longitude: -80.7,
+            altitude,
+            heading: 330.0,
+            speed,
+            climb: -glide,
+        };
+        let t = SimTime::J2000;
+        let mut v = Vessel::in_flight(&comet(), &catalog(), system, &start, t).unwrap();
+        for p in &mut v.propulsion.stages[0].propellants {
+            p.amount *= 0.1;
+        }
+        (v, t)
+    }
+
+    /// Fly `seconds`, holding the nose `pitch` degrees above the horizon.
+    fn hold_pitch(v: &mut Vessel, system: &SolarSystem, t: &mut SimTime, pitch: f64, seconds: f64) {
+        for _ in 0..(seconds * 50.0) as usize {
+            let (_, _, now) = on_the_ground(v, system, *t);
+            let rate = v.attitude_state(system, *t).angular_velocity.x;
+            v.rotation_input = DVec3::new(
+                (0.08 * (pitch - now) - 2.0 * rate).clamp(-1.0, 1.0),
+                0.0,
+                0.0,
+            );
+            run(v, system, t, 0.02);
+        }
+        v.rotation_input = DVec3::ZERO;
+    }
+
+    #[test]
+    fn the_rocket_plane_takes_off_from_the_runway() {
+        let system = rss();
+        let (mut v, mut t) = comet_on_runway(&system);
+        // Parked on its wheels, level, until something pushes it.
+        run(&mut v, &system, &mut t, 2.0);
+        let (height, speed, pitch) = on_the_ground(&v, &system, t);
+        assert!(v.is_landed() && v.wheels_down && speed == 0.0);
+        assert!(
+            (height - 1.69).abs() < 0.01 && pitch.abs() < 0.1,
+            "{height} {pitch}"
+        );
+        // Engine armed, throttle up, brakes off: it rolls straight down the runway.
+        v.activate_next_stage(&system, t);
+        v.set_throttle(1.0);
+        v.brakes = false;
+        run(&mut v, &system, &mut t, 15.0);
+        let (height, speed, pitch) = on_the_ground(&v, &system, t);
+        assert!(!v.is_landed() && v.wheels_down);
+        assert!(
+            (60.0..80.0).contains(&speed) && (height - 1.7).abs() < 0.05,
+            "{speed} {height}"
+        );
+        assert!(pitch.abs() < 1.0 && v.attitude_state(&system, t).angular_velocity.length() < 0.01);
+        // Rotate and climb out at 10°.
+        hold_pitch(&mut v, &system, &mut t, 10.0, 25.0);
+        let (height, _, _) = on_the_ground(&v, &system, t);
+        assert!(!v.wheels_down && height > 100.0, "{height}");
+        assert!(v.log.iter().any(|e| e.message == "Airborne"));
+    }
+
+    #[test]
+    fn the_rocket_plane_lands_and_brakes_to_a_stop() {
+        let system = rss();
+        let (mut v, mut t) = comet_on_approach(&system, 10.0, 75.0, 2.0);
+        hold_pitch(&mut v, &system, &mut t, 4.0, 6.0);
+        assert!(v.wheels_down && !v.is_landed());
+        let touchdown = v.log.iter().find(|e| e.message.starts_with("Touched down"));
+        assert!(touchdown.is_some(), "{:?}", v.log);
+        v.brakes = true;
+        run(&mut v, &system, &mut t, 20.0);
+        let (height, speed, _) = on_the_ground(&v, &system, t);
+        // Parked on its wheels, struts settled, no crash.
+        assert!(v.is_landed() && v.wheels_down && speed == 0.0, "{speed}");
+        assert!((height - 1.7).abs() < 0.05, "{height}");
+        assert!(!v.log.iter().any(|e| e.message.starts_with("Crashed")));
+    }
+
+    #[test]
+    fn flying_into_the_ground_is_a_crash() {
+        let system = rss();
+        // Nose first at 30° down.
+        let (mut v, mut t) = comet_on_approach(&system, 20.0, 60.0, 30.0);
+        run(&mut v, &system, &mut t, 3.0);
+        assert!(v.is_landed() && !v.wheels_down);
+        assert!(
+            v.log.iter().any(|e| e.message.starts_with("Crashed")),
+            "{:?}",
+            v.log
+        );
+    }
+
+    #[test]
+    fn a_glider_glides_hands_off() {
+        let system = rss();
+        let earth = system.body(system.find("Earth").unwrap());
+        let (mut v, mut t) = glider_in_flight(&system, 1500.0, 38.0);
+        let altitude = |v: &Vessel, t| v.state_at(&system, t).position.length() - earth.radius;
+        // Settle, then measure two minutes of glide.
+        run(&mut v, &system, &mut t, 30.0);
+        let (top, mut across, mut worst): (f64, f64, f64) = (altitude(&v, t), 0.0, 0.0);
+        for _ in 0..(120 * 50) {
+            run(&mut v, &system, &mut t, 0.02);
+            let s = v.state_at(&system, t);
+            let air = s.velocity - earth.surface_velocity(s.position);
+            across += air.reject_from(s.position).length() * 0.02;
+            worst = worst.max(v.flight.angle_of_attack.to_degrees());
+        }
+        let sink = top - altitude(&v, t);
+        // A sailplane: well clear of the stall, about 22 metres forward for each one down.
+        assert!(worst < 8.0, "{worst}");
+        assert!(
+            sink > 0.0 && (18.0..30.0).contains(&(across / sink)),
+            "{} {sink}",
+            across / sink
+        );
+        let (bank, heading, _) = glider_angles(&v, &system, t);
+        assert!(
+            bank.abs() < 2.0 && (heading - 90.0).abs() < 5.0,
+            "{bank} {heading}"
+        );
+    }
+
+    #[test]
+    fn ailerons_bank_the_glider_and_it_turns() {
+        let system = rss();
+        let (mut v, mut t) = glider_in_flight(&system, 1500.0, 38.0);
+        run(&mut v, &system, &mut t, 10.0);
+        v.rotation_input = DVec3::new(0.0, 0.0, 0.5);
+        run(&mut v, &system, &mut t, 1.5);
+        v.rotation_input = DVec3::ZERO;
+        let (bank, _, _) = glider_angles(&v, &system, t);
+        assert!(bank > 15.0, "{bank}");
+        run(&mut v, &system, &mut t, 10.0);
+        let (_, heading, _) = glider_angles(&v, &system, t);
+        assert!(heading > 140.0, "{heading}");
+    }
+
+    #[test]
+    fn a_finned_rocket_weathervanes_and_a_bare_one_tumbles() {
+        let system = rss();
+        // Diving at Mach 0.8 from 8 km, 8° off the wind: it swings about the wind, the
+        // swing dying away as the air thickens.
+        let (mut v, mut t) = sounder_in_the_air(&system, 0, 8_000.0, 260.0, -1.0, 0.14);
+        let (mut early, mut late): (f64, f64) = (0.0, 0.0);
+        for i in 0..800 {
+            run(&mut v, &system, &mut t, 0.02);
+            let angle = angle_off_airflow(&v, &system, t);
+            if i < 200 {
+                early = early.max(angle);
+            } else if i >= 700 {
+                late = late.max(angle);
+            }
+        }
+        assert!(early < 9.0 && late < 1.5, "{early} {late}");
+        assert!(v.flight.drag > 0.0);
+
+        // Without its fins, the capsule's lift up front turns it over.
+        let (mut v, mut t) = sounder_in_the_air(&system, 0, 8_000.0, 260.0, -1.0, 0.14);
+        v.propulsion.stages[0].fins = None;
+        run(&mut v, &system, &mut t, 3.0);
+        assert!(angle_off_airflow(&v, &system, t) > 45.0);
+    }
+
+    #[test]
+    fn a_capsule_keeps_its_heat_shield_to_the_flow() {
+        let system = rss();
+        // The C-1 capsule alone, falling at 2 km/s through 45 km, 30° off heat shield
+        // first: it rocks (there is little damping at hypersonic speed, as in reality) but
+        // never turns its side, let alone its nose, to the flow.
+        let (mut v, mut t) =
+            sounder_in_the_air(&system, 1, 45_000.0, 2_000.0, -1.0, 150f64.to_radians());
+        let mut least: f64 = 180.0;
+        for _ in 0..750 {
+            run(&mut v, &system, &mut t, 0.02);
+            least = least.min(angle_off_airflow(&v, &system, t));
+        }
+        assert!(least > 145.0, "{least}");
+        // Its blunt face makes it mostly drag.
+        assert!(v.flight.drag > 2.0 * v.flight.lift, "{:?}", v.flight);
+
+        // Started nose first, it swings round.
+        let (mut v, mut t) = sounder_in_the_air(&system, 1, 45_000.0, 2_000.0, -1.0, 0.35);
+        let mut most: f64 = 0.0;
+        for _ in 0..150 {
+            run(&mut v, &system, &mut t, 0.02);
+            most = most.max(angle_off_airflow(&v, &system, t));
+        }
+        assert!(most > 150.0, "{most}");
+    }
+
     #[test]
     fn starts_in_the_plane_of_a_moon() {
         let system = rss();
@@ -2004,11 +2703,7 @@ pub(crate) mod tests {
                 .flat_map(|s| &s.rcs)
                 .map(|b| b.def.thrust)
                 .sum();
-            (
-                torque.x / m.inertia.transverse,
-                push / m.mass,
-                p.rcs_delta_v(),
-            )
+            (torque.x / m.inertia.pitch, push / m.mass, p.rcs_delta_v())
         };
         let stock = agility(&stock);
         let (turn, push, delta_v) = agility(&lunar);

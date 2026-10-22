@@ -29,8 +29,8 @@ const GOLD_FOIL: [f32; 3] = [0.85, 0.62, 0.25];
 const SOLAR_CELLS: [f32; 3] = [0.03, 0.05, 0.14];
 /// Barrel sections between weld seams are about this tall, m.
 const BARREL_SECTION: f32 = 6.0;
-/// Nose length as a multiple of the diameter.
-const NOSE_FINENESS: f32 = 1.3;
+/// Nose length as a multiple of the diameter (the air sees the same nose).
+const NOSE_FINENESS: f32 = osp_sim::aero::NOSE_FINENESS as f32;
 
 /// A stage's hull, by material.
 #[derive(Default)]

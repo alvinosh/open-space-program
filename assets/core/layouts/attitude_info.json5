@@ -17,6 +17,7 @@
           { widget: "row", children: [{ widget: "label", class: "key", text: "SAS" }, { widget: "label", text: "{vessel.sas_mode_label} ({nav.frame})" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "Centre of mass" }, { widget: "label", text: "{attitude.com|fixed:2} m above base" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "Inertia pitch" }, { widget: "label", text: "{attitude.moi_pitch|sci:2} kg m2" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Inertia yaw" }, { widget: "label", text: "{attitude.moi_yaw|sci:2} kg m2" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "Inertia roll" }, { widget: "label", text: "{attitude.moi_roll|sci:2} kg m2" }] },
           { widget: "label", class: "section", text: "AUTHORITY" },
           { widget: "row", children: [{ widget: "label", class: "key", text: "Pitch / yaw" }, { widget: "label", text: "{attitude.torque_pitch|torque}, {attitude.accel_pitch|fixed:2} deg/s2" }] },

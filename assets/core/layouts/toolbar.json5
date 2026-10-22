@@ -22,6 +22,7 @@
       { widget: "button", class: "launcher_button", text: "Map", action: "view.toggle_map", active: "view.map" },
       { widget: "button", class: "launcher_button", text: "Mods", action: "ui.toggle:mods", active: "ui.shown.mods" },
       { widget: "button", class: "launcher_button", text: "Help", action: "ui.toggle:help", active: "ui.shown.help" },
+      { widget: "button", class: "launcher_button", text: "Menu", action: "game.menu" },
     ],
   },
 }

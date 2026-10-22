@@ -30,6 +30,7 @@ use osp_ui::{ActionState, UiAction};
 use crate::{
     FrameSet,
     camera::CameraRig,
+    menu::Menu,
     sim::{Sim, TimeWarp},
 };
 
@@ -57,8 +58,9 @@ fn apply_actions(
     mut warp: ResMut<TimeWarp>,
     mut rig: ResMut<CameraRig>,
     locked: Res<InputLocked>,
+    menu: Res<Menu>,
 ) {
-    if locked.0 {
+    if locked.0 || menu.open {
         actions.read().for_each(drop);
         return;
     }
@@ -79,6 +81,7 @@ fn apply_actions(
         held.axis("vessel.yaw_right", "vessel.yaw_left"),
         held.axis("vessel.roll_right", "vessel.roll_left"),
     );
+    vessel.brakes = held.held("vessel.brakes");
     vessel.translation_input = DVec3::new(
         held.axis("vessel.translate_right", "vessel.translate_left"),
         held.axis("vessel.translate_down", "vessel.translate_up"),

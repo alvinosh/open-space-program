@@ -1,14 +1,18 @@
 //! Vessel visuals: a procedural hull per stage (see [`crate::hull`]), engines, RCS blocks
-//! and crew pods from their glTF models (or plain stand-ins without one), procedural fins,
+//! and crew pods from their glTF models (or plain stand-ins without one), procedural fins
+//! and wings, control surfaces that move with the controls, landing gear whose struts
+//! give and whose nose wheels steer,
 //! exhaust plumes from the bottom stage's engines that follow each engine's thrust level and
 //! leave along its gimballed nozzle (see [`crate::plume`]), the light they cast, and puffs
 //! from every RCS nozzle that fires.
 
-use std::f32::consts::TAU;
+use std::f32::consts::{FRAC_PI_2, TAU};
 
 use bevy::{light::NotShadowCaster, prelude::*};
 use osp_sim::{
     DVec3,
+    aero::{self, Panel},
+    data::WingDef,
     propulsion::{Engine, Stage},
     structure::FinSet,
     time::SimTime,
@@ -24,7 +28,7 @@ use crate::{
         AXIS_LAG, PlumeDef, PlumeMaterial, PlumeParams, PlumeShape, plume_axes, plume_axis,
         plume_lumens,
     },
-    sim::Sim,
+    sim::{Sim, SimRestarted},
 };
 
 /// How far below a stage's forward rim its RCS blocks sit, m.
@@ -50,9 +54,12 @@ impl Plugin for VesselRenderPlugin {
         app.add_systems(Startup, spawn_vessel_visuals).add_systems(
             Update,
             (
+                respawn_on_restart,
                 rebuild_on_change,
                 place_vessels,
                 update_engines,
+                update_control_surfaces,
+                update_gear,
                 update_rcs_plumes,
             )
                 .chain()
@@ -74,6 +81,25 @@ struct VesselVisual {
 struct EnginePivot {
     vessel: usize,
     engine: usize,
+}
+
+/// A control surface on its hinge (at the pivot's origin), turned about `axis` (vessel render
+/// axes) by its deflection.
+#[derive(Component)]
+struct ControlSurfaceVisual {
+    vessel: usize,
+    stage: usize,
+    wing: usize,
+    panel: usize,
+    axis: Vec3,
+}
+
+/// A gear leg's strut or wheel, placed each frame where the strut's give puts it.
+#[derive(Component)]
+struct GearVisual {
+    vessel: usize,
+    leg: usize,
+    wheel: bool,
 }
 
 /// The exhaust plume of an engine of the bottom stage, starting at its nozzle exit, `exit`
@@ -208,6 +234,36 @@ fn bell_size(stage: &Stage, engine: usize) -> (f32, f32) {
     (bell, bell * 1.6)
 }
 
+/// A stand-in engine bell from the gimbal pivot down to an exit `radius` wide, `length`
+/// below: open, and seen from inside as well as out.
+fn bell_mesh(radius: f32, length: f32) -> Mesh {
+    const SEGMENTS: usize = 24;
+    const STEPS: usize = 8;
+    let throat = 0.35 * radius;
+    let profile: Vec<(f32, f32)> = (0..=STEPS)
+        .map(|i| {
+            let t = i as f32 / STEPS as f32;
+            (throat + (radius - throat) * t.powf(1.6), -length * t)
+        })
+        .collect();
+    let mut mesh = MeshBuilder::default();
+    let white = LinearRgba::WHITE;
+    for w in profile.windows(2) {
+        let [(r0, y0), (r1, y1)] = [w[0], w[1]];
+        for k in 0..SEGMENTS {
+            let (a0, a1) = (
+                TAU * k as f32 / SEGMENTS as f32,
+                TAU * (k + 1) as f32 / SEGMENTS as f32,
+            );
+            let p = |r: f32, y: f32, a: f32| Vec3::new(r * a.cos(), y, -r * a.sin());
+            let (a, b, c, d) = (p(r0, y0, a0), p(r0, y0, a1), p(r1, y1, a1), p(r1, y1, a0));
+            mesh.quad(a, b, c, d, white);
+            mesh.quad(d, c, b, a, white);
+        }
+    }
+    mesh.build()
+}
+
 /// Trapezoidal plates around the stage base, `radius` out from the axis.
 fn fin_mesh(fins: &FinSet, radius: f32) -> Mesh {
     let d = &fins.def;
@@ -250,6 +306,97 @@ fn fin_mesh(fins: &FinSet, radius: f32) -> Mesh {
         }
     }
     mesh.build()
+}
+
+/// A wing panel's fixed part (stack render axes) and, if it has one, its control surface:
+/// the hinge's start (stack render axes), the axis it turns about so that a positive
+/// deflection moves its trailing edge towards the lifting side, and its mesh about the
+/// hinge. Slabs as thick as the airfoil, the control surface half that.
+fn wing_meshes(wing: &WingDef, panel: &Panel) -> (MeshBuilder, Option<(Vec3, Vec3, MeshBuilder)>) {
+    const SKIN: [f32; 3] = [0.86, 0.86, 0.84];
+    const FLAP: [f32; 3] = [0.7, 0.71, 0.72];
+    let n = panel.normal;
+    let half = |chord: f64| wing.thickness * chord / 2.0;
+    // A slab through the outline `corners` (root leading edge, tip leading edge, tip
+    // trailing edge, root trailing edge), `thick` apart at each, relative to `origin`.
+    let slab = |mesh: &mut MeshBuilder,
+                corners: [DVec3; 4],
+                thick: [f64; 4],
+                origin: DVec3,
+                color: [f32; 3]| {
+        let color = LinearRgba::rgb(color[0], color[1], color[2]);
+        let point = |i: usize, side: f64| to_render(corners[i] + n * thick[i] * side - origin);
+        let center = corners.iter().map(|&c| to_render(c - origin)).sum::<Vec3>() / 4.0;
+        let mut face = |q: [Vec3; 4]| {
+            let [a, b, c, d] = q;
+            if (b - a).cross(c - a).dot(a - center) >= 0.0 {
+                mesh.quad(a, b, c, d, color);
+            } else {
+                mesh.quad(d, c, b, a, color);
+            }
+        };
+        face([0, 1, 2, 3].map(|i| point(i, 1.0)));
+        face([0, 1, 2, 3].map(|i| point(i, -1.0)));
+        for i in 0..4 {
+            let j = (i + 1) % 4;
+            face([point(i, 1.0), point(i, -1.0), point(j, -1.0), point(j, 1.0)]);
+        }
+    };
+    let section = |eta: f64, from: f64, to: f64| {
+        let (leading_edge, chord) = panel.station(eta);
+        (
+            leading_edge - DVec3::Z * chord * from,
+            leading_edge - DVec3::Z * chord * to,
+            half(chord),
+        )
+    };
+    let piece = |mesh: &mut MeshBuilder,
+                 span: [f64; 2],
+                 chord: [f64; 2],
+                 scale: f64,
+                 origin: DVec3,
+                 color| {
+        if span[1] <= span[0] {
+            return;
+        }
+        let (a0, a1, ha) = section(span[0], chord[0], chord[1]);
+        let (b0, b1, hb) = section(span[1], chord[0], chord[1]);
+        slab(
+            mesh,
+            [a0, b0, b1, a1],
+            [ha, hb, hb, ha].map(|h| h * scale),
+            origin,
+            color,
+        );
+    };
+    let mut fixed = MeshBuilder::default();
+    let Some(control) = &wing.control else {
+        piece(&mut fixed, [0.0, 1.0], [0.0, 1.0], 1.0, DVec3::ZERO, SKIN);
+        return (fixed, None);
+    };
+    let [inner, outer] = control.span;
+    let hinge = 1.0 - control.chord;
+    piece(&mut fixed, [0.0, inner], [0.0, 1.0], 1.0, DVec3::ZERO, SKIN);
+    piece(
+        &mut fixed,
+        [inner, outer],
+        [0.0, hinge],
+        1.0,
+        DVec3::ZERO,
+        SKIN,
+    );
+    piece(&mut fixed, [outer, 1.0], [0.0, 1.0], 1.0, DVec3::ZERO, SKIN);
+    let (start, _, _) = section(inner, hinge, 1.0);
+    let (end, _, _) = section(outer, hinge, 1.0);
+    let line = (end - start).normalize();
+    // Turning the trailing edge (aft of the hinge) towards the lifting side.
+    let sign = line.cross(-DVec3::Z).dot(n).signum();
+    let mut flap = MeshBuilder::default();
+    piece(&mut flap, [inner, outer], [hinge, 1.0], 0.5, start, FLAP);
+    (
+        fixed,
+        Some((to_render(start), to_render(line * sign), flap)),
+    )
 }
 
 fn rebuild_on_change(
@@ -322,13 +469,14 @@ fn rebuild_on_change(
                     }
                     pivot.with_children(|pivot| match model(&engine.def.model) {
                         Some(scene) => {
-                            pivot.spawn(scene);
+                            let scale = engine.def.model_scale as f32;
+                            pivot.spawn((scene, Transform::from_scale(Vec3::splat(scale))));
                         }
                         None => {
                             pivot.spawn((
-                                Mesh3d(meshes.add(Cone::new(exit, bell))),
+                                Mesh3d(meshes.add(bell_mesh(exit, bell))),
                                 MeshMaterial3d(materials.engine.clone()),
-                                Transform::from_xyz(0.0, -bell / 2.0, 0.0),
+                                Transform::default(),
                             ));
                         }
                     });
@@ -384,7 +532,7 @@ fn rebuild_on_change(
                             let r = (pod.diameter / 2.0) as f32;
                             parent.spawn((
                                 Mesh3d(meshes.add(ConicalFrustum {
-                                    radius_top: r / 3.0,
+                                    radius_top: (pod.top_diameter() / 2.0) as f32,
                                     radius_bottom: r,
                                     height: pod_height,
                                 })),
@@ -400,6 +548,38 @@ fn rebuild_on_change(
                         MeshMaterial3d(materials.fins.clone()),
                         Transform::from_xyz(0.0, y, 0.0),
                     ));
+                }
+                for (w, wing) in stage.wings.iter().enumerate() {
+                    let panels = Panel::of(wing, stage.diameter / 2.0, y as f64);
+                    for (k, panel) in panels.iter().enumerate() {
+                        let (fixed, flap) = wing_meshes(wing, panel);
+                        parent.spawn((
+                            Mesh3d(meshes.add(fixed.build())),
+                            MeshMaterial3d(materials.fins.clone()),
+                            Transform::default(),
+                        ));
+                        if let Some((hinge, axis, flap)) = flap {
+                            parent
+                                .spawn((
+                                    ControlSurfaceVisual {
+                                        vessel,
+                                        stage: i,
+                                        wing: w,
+                                        panel: k,
+                                        axis,
+                                    },
+                                    Transform::from_translation(hinge),
+                                    Visibility::default(),
+                                ))
+                                .with_children(|pivot| {
+                                    pivot.spawn((
+                                        Mesh3d(meshes.add(flap.build())),
+                                        MeshMaterial3d(materials.fins.clone()),
+                                        Transform::default(),
+                                    ));
+                                });
+                        }
+                    }
                 }
                 for (k, block) in stage.rcs.iter().enumerate() {
                     let angle = block.mount.y.atan2(block.mount.x) as f32;
@@ -439,6 +619,30 @@ fn rebuild_on_change(
                     }
                 }
                 y += length;
+            }
+            let strut = meshes.add(Cylinder::new(1.0, 1.0));
+            for (k, leg) in osp_sim::gear::legs(stages).iter().enumerate() {
+                let r = leg.wheel_radius as f32;
+                parent.spawn((
+                    GearVisual {
+                        vessel,
+                        leg: k,
+                        wheel: false,
+                    },
+                    Mesh3d(strut.clone()),
+                    MeshMaterial3d(materials.metal.clone()),
+                    Transform::default(),
+                ));
+                parent.spawn((
+                    GearVisual {
+                        vessel,
+                        leg: k,
+                        wheel: true,
+                    },
+                    Mesh3d(meshes.add(Cylinder::new(r, 0.7 * r).mesh().resolution(24))),
+                    MeshMaterial3d(materials.hull[1].clone()),
+                    Transform::default(),
+                ));
             }
             parent.spawn((
                 PlumeLight { vessel },
@@ -592,6 +796,89 @@ fn update_engines(
             point.color = Color::linear_rgb(c.x, c.y, c.z);
             transform.translation = at / lumens;
         }
+    }
+}
+
+/// A scenario started afresh: every vessel is new, so are their visuals.
+fn respawn_on_restart(
+    mut commands: Commands,
+    mut restarted: MessageReader<SimRestarted>,
+    sim: Res<Sim>,
+    visuals: Query<Entity, With<VesselVisual>>,
+) {
+    if restarted.read().count() == 0 {
+        return;
+    }
+    for entity in &visuals {
+        commands.entity(entity).despawn();
+    }
+    for index in 0..sim.universe.vessels.len() {
+        commands.spawn((
+            VesselVisual { index, built: None },
+            Transform::default(),
+            Visibility::default(),
+        ));
+    }
+}
+
+/// Put each gear leg's strut between its mount and its axle as far as the strut has given,
+/// and its wheel on the axle, turned by the steering.
+fn update_gear(sim: Res<Sim>, mut parts: Query<(&GearVisual, &mut Transform)>) {
+    for (visual, mut transform) in &mut parts {
+        let vessel = &sim.universe.vessels[visual.vessel];
+        let legs = osp_sim::gear::legs(&vessel.propulsion.stages);
+        let Some(leg) = legs.get(visual.leg) else {
+            continue;
+        };
+        let give = vessel
+            .gear_compression()
+            .get(visual.leg)
+            .copied()
+            .unwrap_or(0.0)
+            .min(leg.stroke);
+        let (mount, axle) = (to_render(leg.mount), to_render(leg.axle(give)));
+        let along = to_render(leg.direction);
+        *transform = if visual.wheel {
+            let steer = (leg.steering * vessel.flight.control.y.clamp(-1.0, 1.0)) as f32;
+            Transform::from_translation(axle).with_rotation(
+                Quat::from_axis_angle(along, steer) * Quat::from_rotation_z(FRAC_PI_2),
+            )
+        } else {
+            let width = 0.25 * leg.wheel_radius as f32;
+            Transform::from_translation((mount + axle) / 2.0)
+                .with_rotation(Quat::from_rotation_arc(Vec3::Y, along))
+                .with_scale(Vec3::new(width, mount.distance(axle), width))
+        };
+    }
+}
+
+/// Turn each control surface to the deflection the controls ask of it.
+fn update_control_surfaces(
+    sim: Res<Sim>,
+    mut surfaces: Query<(&ControlSurfaceVisual, &mut Transform)>,
+) {
+    for (visual, mut transform) in &mut surfaces {
+        let vessel = &sim.universe.vessels[visual.vessel];
+        let stages = &vessel.propulsion.stages;
+        let Some(stage) = stages.get(visual.stage) else {
+            continue;
+        };
+        let Some(wing) = stage.wings.get(visual.wing) else {
+            continue;
+        };
+        let Some(control) = &wing.control else {
+            continue;
+        };
+        let base = stages[..visual.stage].iter().map(|s| s.length).sum();
+        let Some(panel) = Panel::of(wing, stage.diameter / 2.0, base)
+            .get(visual.panel)
+            .copied()
+        else {
+            continue;
+        };
+        let com = vessel.mass_properties().center_of_mass;
+        let angle = aero::deflection(control, &panel, vessel.flight.control, com);
+        transform.rotation = Quat::from_axis_angle(visual.axis, angle as f32);
     }
 }
 

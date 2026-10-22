@@ -11,9 +11,9 @@
 //! what is left in it, and the weight, under the vessel's acceleration, of everything
 //! stacked above it.
 //!
-//! Fins are solid plates. The air pushes on them in proportion to the angle of attack, and
-//! each fin's root bends under that force. (The force does not turn the vessel yet: there
-//! is no aerodynamic moment model.)
+//! Fins are solid plates. The air pushes on them in proportion to the angle of attack
+//! (which turns the vessel, see [`crate::aero`]), and each fin's root bends under that
+//! force.
 
 use std::f64::consts::PI;
 
@@ -303,16 +303,33 @@ impl FinSet {
         2.0 * self.def.span.powi(2) / self.area
     }
 
-    /// Normal force on one fin meeting the air at `angle_of_attack`, N.
-    pub fn normal_force(&self, dynamic_pressure: f64, mach: f64, angle_of_attack: f64) -> f64 {
+    /// Where the air's push on a fin acts: its distance out from the root and its height
+    /// above the stage base, m. A quarter of the mean aerodynamic chord back from its leading
+    /// edge subsonic (Barrowman), moving back to half of it by Mach 2.
+    pub fn aerodynamic_center(&self, mach: f64) -> (f64, f64) {
+        let d = &self.def;
+        let (root, tip) = (d.root_chord, d.tip_chord);
+        let out = d.span / 3.0 * (root + 2.0 * tip) / (root + tip);
+        let mean_chord = 2.0 / 3.0 * (root + tip - root * tip / (root + tip));
+        let leading_edge = root - d.sweep * out / d.span;
+        let share = 0.25 + 0.25 * (mach - 1.0).clamp(0.0, 1.0);
+        (out, leading_edge - share * mean_chord)
+    }
+
+    /// Normal force coefficient of one fin (on its planform area) meeting the air at
+    /// `angle_of_attack`, rad, signed like it: linear at small angles, a flat plate's
+    /// crossflow drag broadside, and nothing flying straight backwards.
+    pub fn normal_coefficient(&self, mach: f64, angle_of_attack: f64) -> f64 {
         let d = &self.def;
         let mid_chord_sweep = (d.sweep + (d.tip_chord - d.root_chord) / 2.0) / d.span;
         let slope = lift_slope(self.aspect_ratio(), mid_chord_sweep, mach);
-        // Linear at small angles, a flat plate's crossflow drag broadside, and nothing
-        // flying straight backwards.
-        let a = angle_of_attack.abs().min(PI);
-        let coefficient = slope * (a.sin() * a.cos()).abs() + CROSSFLOW_DRAG * a.sin().powi(2);
-        dynamic_pressure * self.area * coefficient
+        let (sin, cos) = angle_of_attack.sin_cos();
+        slope * sin * cos.abs() + CROSSFLOW_DRAG * sin * sin.abs()
+    }
+
+    /// Normal force on one fin meeting the air at `angle_of_attack`, N.
+    pub fn normal_force(&self, dynamic_pressure: f64, mach: f64, angle_of_attack: f64) -> f64 {
+        dynamic_pressure * self.area * self.normal_coefficient(mach, angle_of_attack).abs()
     }
 
     /// Drag area (C_D · A) of the whole set, m².
@@ -324,13 +341,17 @@ impl FinSet {
 }
 
 /// Lift-curve slope per radian: DATCOM's subsonic formula (Prandtl–Glauert compressibility,
-/// `tan_sweep` the mid-chord sweep), Ackeret's supersonic one, and a blend between.
-fn lift_slope(aspect: f64, tan_sweep: f64, mach: f64) -> f64 {
+/// `tan_sweep` the mid-chord sweep); supersonic, Ackeret's 4/β, bounded at low aspect ratio
+/// by slender-wing theory's πA/2 (which both meet at Mach 1); and a blend between.
+pub(crate) fn lift_slope(aspect: f64, tan_sweep: f64, mach: f64) -> f64 {
     let subsonic = |m: f64| {
         let beta2 = 1.0 - m * m;
         2.0 * PI * aspect / (2.0 + (4.0 + aspect * aspect * (beta2 + tan_sweep.powi(2))).sqrt())
     };
-    let supersonic = |m: f64| 4.0 / (m * m - 1.0).sqrt();
+    let supersonic = |m: f64| {
+        let beta = (m * m - 1.0).sqrt();
+        1.0 / ((beta / 4.0).powi(2) + (2.0 / (PI * aspect)).powi(2)).sqrt()
+    };
     match mach {
         m if m <= 0.8 => subsonic(m),
         m if m >= 1.2 => supersonic(m),

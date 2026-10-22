@@ -140,17 +140,41 @@ impl Universe {
         // Sites on unknown bodies only matter if a scenario starts there (reported below).
         terrain::install(&mut system, sources, sites);
         let time = SimTime::from_seconds(scenario.start_time);
+        let mut universe = Self::new(system, Vec::new(), time);
+        universe.restart(sites, catalog, craft_of, scenario)?;
+        Ok(universe)
+    }
+
+    /// Start `scenario` afresh in this solar system: its craft replace every vessel and the
+    /// clock goes to its start time. On an error nothing changes.
+    pub fn restart(
+        &mut self,
+        sites: &[LaunchSiteDef],
+        catalog: &PartCatalog,
+        craft_of: impl Fn(&str) -> Result<CraftDef, String>,
+        scenario: &ScenarioDef,
+    ) -> Result<(), UniverseError> {
+        let system = &self.system;
+        let time = SimTime::from_seconds(scenario.start_time);
         let spawn = |craft: &str, start: &StartDef| -> Result<Vessel, UniverseError> {
             let craft = craft_of(craft).map_err(UniverseError::Craft)?;
+            let site = |id: &str| {
+                sites
+                    .iter()
+                    .find(|s| s.id == id)
+                    .ok_or_else(|| UniverseError::UnknownSite(id.to_owned()))
+            };
             Ok(match start {
                 StartDef::LaunchSite(start) => {
-                    let site = sites
-                        .iter()
-                        .find(|s| s.id == start.site)
-                        .ok_or_else(|| UniverseError::UnknownSite(start.site.clone()))?;
-                    Vessel::on_launch_site(&craft, catalog, &system, site, time)?
+                    Vessel::on_launch_site(&craft, catalog, system, site(&start.site)?, time)?
                 }
-                StartDef::Orbit(orbit) => Vessel::in_orbit(&craft, catalog, &system, orbit, time)?,
+                StartDef::Runway(start) => {
+                    Vessel::on_runway(&craft, catalog, system, site(&start.site)?, time)?
+                }
+                StartDef::Orbit(orbit) => Vessel::in_orbit(&craft, catalog, system, orbit, time)?,
+                StartDef::Flight(flight) => {
+                    Vessel::in_flight(&craft, catalog, system, flight, time)?
+                }
             })
         };
         let mut vessels = vec![spawn(&scenario.craft, &scenario.start)?];
@@ -161,19 +185,28 @@ impl Universe {
             }
             vessels.push(vessel);
         }
-        let mut universe = Self::new(system, vessels, time);
+        // An unknown target fails the start before anything changes.
+        if let Some(target) = &scenario.target
+            && !vessels.iter().skip(1).any(|v| &v.name == target)
+            && self.system.find(target).is_none()
+        {
+            return Err(UniverseError::UnknownTarget(target.clone()));
+        }
+        self.vessels.clear();
+        self.time = time;
+        for vessel in vessels {
+            self.add_vessel(vessel);
+        }
         if let Some(target) = &scenario.target {
-            let found = universe
+            self.vessels[0].target = self
                 .vessels
                 .iter()
                 .skip(1)
                 .find(|v| &v.name == target)
                 .map(|v| Target::Vessel(v.id()))
-                .or_else(|| universe.system.find(target).map(Target::Body))
-                .ok_or_else(|| UniverseError::UnknownTarget(target.clone()))?;
-            universe.vessels[0].target = Some(found);
+                .or_else(|| self.system.find(target).map(Target::Body));
         }
-        Ok(universe)
+        Ok(())
     }
 
     pub fn time(&self) -> SimTime {
@@ -322,6 +355,44 @@ mod tests {
         let mut v = Vessel::in_orbit(&pathfinder(), &catalog(), system, &start, t).unwrap();
         v.set_free_state(system, frame, state, t);
         v
+    }
+
+    #[test]
+    fn a_restart_replaces_the_vessels_and_the_clock() {
+        let scenarios: Vec<ScenarioDef> =
+            crate::test_data::records(include_str!("../../../assets/core/scenarios/stock.json5"));
+        let scenario = |id: &str| scenarios.iter().find(|s| s.id == id).unwrap();
+        let sites = crate::vessel::tests::launch_sites();
+        let craft_of = |id: &str| {
+            let text = match id {
+                "pathfinder" => include_str!("../../../assets/core/craft/pathfinder.json5"),
+                "upper_stage" => include_str!("../../../assets/core/craft/upper_stage.json5"),
+                "comet" => include_str!("../../../assets/core/craft/comet.json5"),
+                _ => return Err(format!("no craft `{id}`")),
+            };
+            Ok(crate::test_data::records(text).remove(0))
+        };
+        let mut universe = Universe::new(rss(), Vec::new(), SimTime::J2000);
+        universe
+            .restart(&sites, &catalog(), craft_of, scenario("rendezvous"))
+            .unwrap();
+        assert_eq!(universe.vessels.len(), 2);
+        assert!(universe.vessels[0].target.is_some());
+        // Into another: everything from before is gone.
+        universe
+            .restart(&sites, &catalog(), craft_of, scenario("runway"))
+            .unwrap();
+        assert_eq!(universe.vessels.len(), 1);
+        assert_eq!(universe.vessels[0].name, "Comet");
+        assert!(universe.vessels[0].is_landed() && universe.vessels[0].target.is_none());
+        assert_eq!(universe.time(), SimTime::from_seconds(21600.0));
+        // A scenario that cannot start leaves things as they were.
+        assert!(
+            universe
+                .restart(&sites, &catalog(), craft_of, scenario("glider"))
+                .is_err()
+        );
+        assert_eq!(universe.vessels[0].name, "Comet");
     }
 
     fn universe_with(state: StateVector, frame_name: &str, t: SimTime) -> Universe {

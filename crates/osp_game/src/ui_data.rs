@@ -147,6 +147,13 @@ fn publish_flight(
     data.set("vessel.longitude", lon.to_degrees());
     data.set("vessel.mach", vessel.flight.mach);
     data.set("vessel.dynamic_pressure", vessel.flight.dynamic_pressure);
+    data.set(
+        "vessel.angle_of_attack",
+        vessel.flight.angle_of_attack.to_degrees(),
+    );
+    data.set("vessel.sideslip", vessel.flight.sideslip.to_degrees());
+    data.set("vessel.lift", vessel.flight.lift);
+    data.set("vessel.drag", vessel.flight.drag);
     data.set("vessel.static_pressure", vessel.flight.static_pressure);
     data.set("vessel.throttle", vessel.propulsion.throttle());
     // What the engines actually give (spooling, slewing, tailing off), and the lowest
@@ -258,8 +265,9 @@ fn publish_flight(
     let authority = vessel.flight.torque_authority;
     let inertia = props.inertia.diagonal().max(DVec3::splat(1e-9));
     data.set("attitude.com", props.center_of_mass);
-    data.set("attitude.moi_pitch", props.inertia.transverse);
-    data.set("attitude.moi_roll", props.inertia.axial);
+    data.set("attitude.moi_pitch", props.inertia.pitch);
+    data.set("attitude.moi_yaw", props.inertia.yaw);
+    data.set("attitude.moi_roll", props.inertia.roll);
     data.set("attitude.torque_pitch", authority.x);
     data.set("attitude.torque_roll", authority.z);
     data.set(

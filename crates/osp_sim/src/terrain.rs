@@ -127,6 +127,9 @@ enum Feature {
     },
 }
 
+/// Embankment of a runway, rise over run: graded gently, so a vessel running off the end
+/// rolls onto it.
+const RUNWAY_SLOPE: f64 = 0.05;
 /// Ground kept clear of vegetation around a pad's deck and beside a road, m.
 const PAD_APRON: f64 = 60.0;
 const ROAD_VERGE: f64 = 4.0;
@@ -199,28 +202,38 @@ impl Terrain {
                 });
             }
         }
+        // Pads and runways: level decks, `size` [along the heading, across], on embankments.
         for site in sites {
-            let Some(pad) = &site.pad else { continue };
             let center_dir =
                 Body::surface_normal_fixed(site.latitude.to_radians(), site.longitude.to_radians());
             let ground = terrain.height_lod(center_dir, FINEST);
-            let elevation = pad.elevation.unwrap_or(ground + 1.0);
-            let skirt = ((elevation - ground).abs() / pad.slope.max(0.05)).max(3.0);
-            // Reach covers the apron too, for `is_cleared`.
-            // `size` is [along the heading, across]; `half` is (right, forward).
-            let half = (pad.size[1] / 2.0, pad.size[0] / 2.0);
-            let corner = pad.corner_radius.clamp(0.0, half.0.min(half.1));
-            terrain.features.push(Feature::Pad {
-                frame: SiteFrame::new(
-                    site,
-                    radius,
-                    half.0.hypot(half.1) + skirt + PAD_APRON + 10.0,
-                ),
-                half,
-                corner,
-                elevation,
-                skirt,
-            });
+            let decks = site
+                .pad
+                .iter()
+                .map(|p| (p.size, p.corner_radius, p.elevation, p.slope))
+                .chain(
+                    site.runway
+                        .iter()
+                        .map(|r| (r.size, 0.0, r.elevation, RUNWAY_SLOPE)),
+                );
+            for (size, corner, elevation, slope) in decks.collect::<Vec<_>>() {
+                let elevation = elevation.unwrap_or(ground + 1.0);
+                let skirt = ((elevation - ground).abs() / slope.max(0.05)).max(3.0);
+                // Reach covers the apron too, for `is_cleared`. `half` is (right, forward).
+                let half = (size[1] / 2.0, size[0] / 2.0);
+                let corner = corner.clamp(0.0, half.0.min(half.1));
+                terrain.features.push(Feature::Pad {
+                    frame: SiteFrame::new(
+                        site,
+                        radius,
+                        half.0.hypot(half.1) + skirt + PAD_APRON + 10.0,
+                    ),
+                    half,
+                    corner,
+                    elevation,
+                    skirt,
+                });
+            }
         }
         terrain
     }
@@ -403,7 +416,7 @@ pub fn install(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{PadDef, RoadDef};
+    use crate::data::{PadDef, RoadDef, RunwayDef};
 
     struct Slope;
     impl HeightSource for Slope {
@@ -437,6 +450,7 @@ mod tests {
                 points: vec![[0.0, -20.0], [0.0, -500.0]],
                 width: 8.0,
             }],
+            runway: None,
         }
     }
 
@@ -474,6 +488,22 @@ mod tests {
         assert!(terrain.max_feature_height() == 8.0);
         assert!(terrain.is_cleared(at(&s, 0.0, 0.0)) && terrain.is_cleared(at(&s, 60.0, 0.0)));
         assert!(!terrain.is_cleared(at(&s, 300.0, 300.0)));
+    }
+
+    #[test]
+    fn runway_is_level_concrete_along_its_length() {
+        let mut s = site();
+        (s.pad, s.roads) = (None, Vec::new());
+        s.runway = Some(RunwayDef {
+            size: [3000.0, 60.0],
+            elevation: Some(5.0),
+        });
+        let terrain = Terrain::new(R, Some(Arc::new(Slope)), &[&s]);
+        for (x, y) in [(0.0, 0.0), (25.0, 1450.0), (-25.0, -1450.0)] {
+            assert!((terrain.height(at(&s, x, y)) - 5.0).abs() < 1e-9, "{x} {y}");
+            assert_eq!(terrain.paving(at(&s, x, y)), Some((Paving::Concrete, 1.0)));
+        }
+        assert_eq!(terrain.paving(at(&s, 60.0, 0.0)), None);
     }
 
     #[test]

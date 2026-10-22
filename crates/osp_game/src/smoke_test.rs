@@ -80,6 +80,12 @@ impl Plugin for SmokeTestPlugin {
                 TRANSFER_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_STAGING").is_some() {
                 STAGING_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_GLIDER").is_some() {
+                GLIDER_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_MENU").is_some() {
+                MENU_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_RUNWAY").is_some() {
+                RUNWAY_SCRIPT.to_vec()
             } else if in_orbit {
                 ORBIT_SCRIPT.to_vec()
             } else {
@@ -132,7 +138,7 @@ fn render_offscreen(
 #[derive(Clone, Copy)]
 enum Action {
     Capture(&'static str),
-    /// Throttle up, SAS on and stage.
+    /// Throttle up, brakes off, SAS on and stage.
     Launch,
     /// Fire the next activation sequence.
     Stage,
@@ -167,6 +173,52 @@ const ORBIT_SCRIPT: &[(f64, Action)] = &[
     (15.5, Action::MapView(false)),
     (16.5, Action::Capture("orbit_retrograde.png")),
     (17.0, Action::Exit),
+];
+
+/// `OSP_SCENARIO=glider OSP_CAPTURE_GLIDER=1`: the glider in flight, then with the stick
+/// back and to the right (elevator and ailerons deflected), then banked into a turn.
+const GLIDER_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("ui.show:attitude_info")),
+    (3.0, Action::Capture("glider.png")),
+    (3.2, Action::Steer(DVec3::new(0.6, 0.0, 1.0))),
+    (3.7, Action::Capture("glider_controls.png")),
+    (3.9, Action::Steer(DVec3::ZERO)),
+    (9.0, Action::Capture("glider_turn.png")),
+    (9.5, Action::Exit),
+];
+
+/// `OSP_CAPTURE_MENU=1`: open the main menu, start the rocket plane on the runway from it,
+/// take off and climb out.
+const MENU_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (2.5, Action::Capture("menu.png")),
+    (2.6, Action::Ui("game.start:runway")),
+    (5.0, Action::Capture("runway.png")),
+    (5.2, Action::Launch),
+    (15.0, Action::Capture("rolling.png")),
+    (22.5, Action::Steer(DVec3::new(0.3, 0.0, 0.0))),
+    (26.0, Action::Steer(DVec3::ZERO)),
+    (30.0, Action::Capture("climb.png")),
+    (31.5, Action::Exit),
+];
+
+/// `OSP_SCENARIO=runway OSP_CAPTURE_RUNWAY=1`: the rocket plane at the threshold, its
+/// engine lit, then a burst of frames during the fast part of the takeoff roll (watching
+/// the scenery go by).
+const RUNWAY_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (3.0, Action::Capture("parked.png")),
+    (3.2, Action::Launch),
+    (5.0, Action::Capture("lit.png")),
+    (16.0, Action::Capture("roll_0.png")),
+    (16.1, Action::Capture("roll_1.png")),
+    (16.2, Action::Capture("roll_2.png")),
+    (16.3, Action::Capture("roll_3.png")),
+    (16.4, Action::Capture("roll_4.png")),
+    (16.5, Action::Capture("roll_5.png")),
+    (17.5, Action::Exit),
 ];
 
 /// In orbit (`OSP_CAPTURE_PLAN=1`): plan a 200 m/s prograde burn at periapsis, let the
@@ -311,6 +363,7 @@ fn run_script(
         Action::Launch => {
             let ut = sim.universe.time();
             let (vessel, system) = sim.active_vessel_in_system();
+            vessel.brakes = false;
             vessel.set_throttle(1.0);
             vessel.set_sas(system, ut, true);
             vessel.activate_next_stage(system, ut);

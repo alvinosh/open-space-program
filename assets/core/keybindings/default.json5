@@ -19,6 +19,8 @@
     { key: "KeyQ", action: "vessel.roll_left", hold: true },
     { key: "KeyE", action: "vessel.roll_right", hold: true },
     { key: "KeyT", action: "vessel.sas_toggle" },
+    { key: "KeyB", action: "vessel.brakes", hold: true },
+    { key: "Escape", action: "game.menu" },
     { key: "KeyR", action: "vessel.rcs_toggle" },
     { key: "KeyH", action: "vessel.translate_forward", hold: true },
     { key: "KeyN", action: "vessel.translate_back", hold: true },

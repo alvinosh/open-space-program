@@ -99,4 +99,24 @@
     exit_diameter: 1.5,
     model: "models/engines/a10.glb",
   },
+  {
+    id: "R-6", // XLR11-class pump-fed kerolox for rocket planes: deep throttling, relights
+    mass: 150,
+    thrust_vac: 30000,
+    isp_vac: 245,
+    isp_sl: 215,
+    min_throttle: 0.2,
+    response: { spool_up: 1.0, spool_down: 0.5, throttle_time: 1.0 },
+    exit_pressure: 60000,
+    plume: "Kerolox",
+    ignitions: 20,
+    requires_ullage: false,
+    gimbal_range: 0,
+    propellants: { Kerosene: 1.0, LqdOxygen: 2.3 },
+    // The booster's model at half size.
+    length: 1.25,
+    exit_diameter: 0.45,
+    model: "models/engines/k1_booster.glb",
+    model_scale: 0.5,
+  },
 ]
