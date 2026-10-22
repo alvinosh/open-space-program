@@ -593,18 +593,29 @@ pub fn track_pointer_over_ui(
     over.set_if_neq(PointerOverUi(any));
 }
 
+/// Rebuild repeated lists whose length changed. A list inside another one that is rebuilt
+/// now goes with it (its new copy fills itself next frame), so it is left alone.
 pub fn update_repeaters(
     mut commands: Commands,
     data: Res<UiData>,
     docs: Res<UiDocuments>,
     widgets: Res<WidgetRegistry>,
     mut repeaters: Query<(Entity, &mut Repeater)>,
+    parents: Query<&ChildOf>,
 ) {
-    for (entity, mut repeater) in &mut repeaters {
-        let count = data.list_len(&repeater.list);
-        if count == repeater.count {
+    let changed: Vec<Entity> = repeaters
+        .iter()
+        .filter(|(_, r)| data.list_len(&r.list) != r.count)
+        .map(|(e, _)| e)
+        .collect();
+    for &entity in &changed {
+        if parents.iter_ancestors(entity).any(|a| changed.contains(&a)) {
             continue;
         }
+        let Ok((_, mut repeater)) = repeaters.get_mut(entity) else {
+            continue;
+        };
+        let count = data.list_len(&repeater.list);
         repeater.count = count;
         commands.entity(entity).despawn_children();
         for index in 0..count {
@@ -745,11 +756,14 @@ fn drag_start(
         return;
     }
     event.propagate(false);
+    // A list may rebuild its nodes mid-drag, so they may be gone when these run.
     let dragged = event.entity;
     for e in std::iter::once(dragged).chain(children.iter_descendants(dragged)) {
-        commands.entity(e).insert(Pickable::IGNORE);
+        commands.entity(e).try_insert(Pickable::IGNORE);
     }
-    commands.entity(dragged).insert(GlobalZIndex(i32::MAX - 1));
+    commands
+        .entity(dragged)
+        .try_insert(GlobalZIndex(i32::MAX - 1));
 }
 
 fn drag_move(mut event: On<PointerDrag>, mut nodes: Query<&mut Node, With<DragPayload>>) {
@@ -775,9 +789,9 @@ fn drag_end(
     event.propagate(false);
     (node.left, node.top) = (Val::Auto, Val::Auto);
     for e in std::iter::once(dragged).chain(children.iter_descendants(dragged)) {
-        commands.entity(e).remove::<Pickable>();
+        commands.entity(e).try_remove::<Pickable>();
     }
-    commands.entity(dragged).remove::<GlobalZIndex>();
+    commands.entity(dragged).try_remove::<GlobalZIndex>();
 }
 
 /// Something was dropped on a `drop` node: fire its action with what it carried. What the
@@ -842,7 +856,7 @@ pub fn drag_window(
     let top_left = transform.translation * scale - size / 2.0;
     if let Some(mut member) = member.filter(|m| m.state == DockState::Docked) {
         member.state = DockState::Floating;
-        commands.entity(handle.window).remove::<ChildOf>();
+        commands.entity(handle.window).try_remove::<ChildOf>();
         node.position_type = PositionType::Absolute;
         node.width = Val::Px(size.x);
         stack.next += 1;
@@ -1082,6 +1096,44 @@ mod dock_tests {
         app.update();
         app.update();
         assert_eq!(docked(&mut app), ["w"]);
+    }
+
+    fn nested_lists(app: &mut App, rows: &[usize]) {
+        let rows: Vec<_> = rows
+            .iter()
+            .map(|&n| {
+                let items: Vec<_> = (0..n).map(|i| record([("i", i.into())])).collect();
+                record([("items", items.into())])
+            })
+            .collect();
+        app.world_mut().resource_mut::<UiData>().set("rows", rows);
+    }
+
+    #[test]
+    fn a_list_and_the_lists_in_it_can_change_in_the_same_frame() {
+        let mut app = app(vec![layout(json!({
+            "id": "lists",
+            "root": {
+                "repeat": "rows",
+                "children": [{
+                    "repeat": "item.items",
+                    "children": [{ "widget": "label", "text": "{item.i}" }],
+                }],
+            },
+        }))]);
+        nested_lists(&mut app, &[1]);
+        app.update();
+        app.update();
+        // More rows, and more items in the first: the inner list goes with its row.
+        nested_lists(&mut app, &[3, 2]);
+        app.update();
+        app.update();
+        let texts = app
+            .world_mut()
+            .query::<&BoundText>()
+            .iter(app.world())
+            .count();
+        assert_eq!(texts, 5);
     }
 
     #[test]

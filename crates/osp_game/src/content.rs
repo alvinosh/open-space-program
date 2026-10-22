@@ -45,7 +45,7 @@ impl Plugin for ContentPlugin {
         app.insert_resource(content)
             .insert_resource(documents)
             .add_systems(Update, reload_on_request.after(UiSet::Input))
-            .add_systems(Update, load_ui_images.after(UiSet::Build));
+            .add_systems(Update, load_ui_images.after(UiSet::Update));
     }
 }
 
@@ -198,6 +198,8 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
 }
 
 /// Load the pictures of UI `image` nodes from the mods (the highest-priority mod's file).
+/// Repeated lists rebuild their nodes as the data changes, so a node may be gone by the
+/// time the command runs; that is fine.
 fn load_ui_images(
     mut commands: Commands,
     content: Res<GameContent>,
@@ -212,7 +214,7 @@ fn load_ui_images(
                 ImageNode::default().with_color(Color::NONE)
             }
         };
-        commands.entity(entity).insert(node);
+        commands.entity(entity).try_insert(node);
     }
 }
 

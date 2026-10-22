@@ -2,18 +2,6 @@
 
 Open problems found while playing, oldest first. Delete an entry when it is fixed.
 
-## 1. Atmosphere stops rendering above 100 km
-
-Reported 2026-10-20, not looked into yet. The atmosphere stops rendering once the vessel is
-above 100 km.
-
-100 km is exactly the top of the scattering shell (`THICKNESS` in
-`crates/osp_game/src/shaders/atmosphere.wesl` and `crates/osp_game/src/atmosphere.rs`), so
-the switch from inside to outside the shell is the first suspect: the from-outside branch of
-`crates/osp_game/src/shaders/sky.wesl`, and `dim_sunlight`, which changes lighting and
-exposure at the same height. Repro: `OSP_SCENARIO=leo cargo run` (300 km), flight view, or
-fly the default launch past 100 km.
-
 ## 2. Plume swings with the engine gimbal
 
 Reported 2026-10-20. The whole plume is a child of the engine's gimbal pivot (`EnginePivot`

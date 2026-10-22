@@ -18,6 +18,11 @@ const MIE_G: f32 = 0.76;
 const OZONE: vec3<f32> = vec3<f32>(0.650e-6, 1.881e-6, 0.085e-6);
 /// Height of the top of the scattering atmosphere above the surface.
 const THICKNESS: f32 = 100000.0;
+/// The sky mesh's radius as a multiple of the atmosphere's top: just enough for its flat
+/// faces to clear the shell. While the camera is inside the mesh the sky draws only behind
+/// everything (its far side), so the terrain hazes itself; outside, the mesh's near side
+/// hazes it. `crate::atmosphere::SKY_MESH_SCALE` must match.
+const SKY_MESH_SCALE: f32 = 1.002;
 const PI: f32 = 3.141592653589793;
 
 /// Light scattered more than once, as a multiple of single Rayleigh scattering. Without it

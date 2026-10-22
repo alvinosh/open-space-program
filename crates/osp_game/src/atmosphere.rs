@@ -41,6 +41,13 @@ use crate::{
 
 /// Height of the scattering atmosphere above the surface (`THICKNESS` in the shader).
 const THICKNESS: f64 = 100_000.0;
+/// The sky mesh's radius over the atmosphere's top (`SKY_MESH_SCALE` in the shader): enough
+/// for its flat faces to clear the shell. The shaders decide what to draw by which side of
+/// the mesh the camera is on, so it must match.
+const SKY_MESH_SCALE: f64 = 1.002;
+/// Icosphere subdivisions of the sky mesh: each edge of the icosahedron in 21 pieces, so
+/// the faces dip at most about 0.05% inside its vertices.
+const SKY_MESH_SUBDIVISIONS: u32 = 20;
 const RAYLEIGH: [f64; 3] = [5.802e-6, 13.558e-6, 33.1e-6];
 const RAYLEIGH_HEIGHT: f64 = 8000.0;
 const MIE_EXTINCTION: f64 = 4.44e-6;
@@ -152,7 +159,8 @@ fn spawn_skies(
     mut materials: ResMut<Assets<SkyMaterial>>,
     luts: Res<TransmittanceLuts>,
 ) {
-    let mesh = meshes.add(Sphere::new(1.0).mesh().ico(5).unwrap());
+    // Fine enough that its flat faces stay within `SKY_MESH_SCALE` of the sphere.
+    let mesh = meshes.add(Sphere::new(1.0).mesh().ico(SKY_MESH_SUBDIVISIONS).unwrap());
     for body in sim.universe.system.bodies() {
         if !Surface::is_earthlike(body) {
             continue;
@@ -180,8 +188,7 @@ fn place_skies(sim: Res<Sim>, frame: Res<RenderFrame>, mut skies: Query<(&Sky, &
     for (sky, mut transform) in &mut skies {
         let body = sim.universe.system.body(sky.0);
         transform.translation = frame.to_render(sky.0, DVec3::ZERO);
-        // The icosphere's faces dip inside the unit sphere; leave margin over the shell.
-        transform.scale = Vec3::splat(((body.radius + THICKNESS) * 1.02) as f32);
+        transform.scale = Vec3::splat(((body.radius + THICKNESS) * SKY_MESH_SCALE) as f32);
     }
 }
 
@@ -409,6 +416,30 @@ mod tests {
     use super::*;
 
     const R: f64 = 6_371_000.0;
+
+    #[test]
+    fn sky_mesh_faces_clear_the_top_of_the_atmosphere() {
+        use bevy::mesh::{Indices, VertexAttributeValues};
+        let mesh = Sphere::new(1.0).mesh().ico(SKY_MESH_SUBDIVISIONS).unwrap();
+        let Some(VertexAttributeValues::Float32x3(points)) =
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("no positions");
+        };
+        let Some(Indices::U32(indices)) = mesh.indices() else {
+            panic!("no indices");
+        };
+        // Closest any face comes to the centre: its plane's distance from it.
+        let closest = indices
+            .chunks(3)
+            .map(|t| {
+                let [a, b, c] = [0, 1, 2].map(|k| Vec3::from(points[t[k] as usize]));
+                (b - a).cross(c - a).normalize().dot(a).abs()
+            })
+            .fold(1.0f32, f32::min) as f64;
+        // Scaled to the mesh, every face stays outside the atmosphere with room to spare.
+        assert!(closest * SKY_MESH_SCALE > 1.001, "{closest}");
+    }
     static LUT: LazyLock<TransmittanceLut> = LazyLock::new(|| TransmittanceLut::new(R));
 
     fn sun_transmittance(p: DVec3, sun: DVec3) -> [f64; 3] {

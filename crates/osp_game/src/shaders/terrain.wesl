@@ -17,7 +17,8 @@ import bevy_pbr::render::{
     mesh_functions::{get_world_from_local, get_local_from_world},
 };
 import osp::shaders::atmosphere::{
-    scatter, sun_transmittance, origin_sun_transmittance, luminance, THICKNESS,
+    scatter, sun_transmittance, origin_sun_transmittance, luminance, sphere_hits, THICKNESS,
+    SKY_MESH_SCALE,
 };
 
 struct TerrainParams {
@@ -270,12 +271,15 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
         * smoothstep(-0.1, 0.2, sun_up);
     out.color = vec4<f32>(out.color.rgb + skylight * fresnel * water * view.exposure, out.color.a);
 
-    // Aerial perspective while inside the atmosphere (from outside, the sky shell does it).
+    // Aerial perspective while the camera is inside the sky mesh (from outside it, the
+    // mesh's near side does it), over the part of the ray inside the atmosphere.
     if earthlike {
         let eye = camera - planet_center;
-        if length(eye) < radius + THICKNESS {
+        let top = radius + THICKNESS;
+        if length(eye) < top * SKY_MESH_SCALE {
             let ray = (position - camera) / max(distance_to_camera, 1e-3);
-            let s = scatter(eye, ray, 0.0, distance_to_camera, sun, sun_color, radius);
+            let entry = max(sphere_hits(eye, ray, top).x, 0.0);
+            let s = scatter(eye, ray, entry, distance_to_camera, sun, sun_color, radius);
             out.color = vec4<f32>(out.color.rgb * s.transmittance + s.inscatter * view.exposure, out.color.a);
         }
     }
