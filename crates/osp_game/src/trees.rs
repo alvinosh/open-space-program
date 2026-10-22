@@ -13,14 +13,14 @@ use std::sync::Arc;
 use bevy::{
     light::NotShadowCaster,
     math::DVec3,
-    platform::collections::{HashMap, HashSet},
+    platform::collections::HashMap,
     prelude::*,
     tasks::{AsyncComputeTaskPool, Task, block_on, poll_once},
 };
 use osp_sim::body::BodyId;
 use osp_terrain::{
     Cover, TILE_CELLS, TileKey,
-    cube::{east_north, lat_lon, sphere_to_cube},
+    cube::{east_north, lat_lon},
     noise::{fbm, random},
 };
 
@@ -98,6 +98,33 @@ fn wanted_detail(distance: f64, current: Option<bool>) -> Option<bool> {
         .then(|| distance < DETAIL_RADIUS + slack(current == Some(true)))
 }
 
+/// Cells within `reach` of `camera` (body-fixed, m) on a sphere of `radius`, with their
+/// distances (roughly to the cell's near edge). Walks down the quadtree from the faces, so
+/// every cell in reach is found whatever its size and orientation; probing a grid around
+/// the camera skipped some, and their trees blinked out as the camera moved.
+fn cells_near(camera: DVec3, radius: f64, reach: f64) -> Vec<(TileKey, f64)> {
+    fn visit(camera: DVec3, radius: f64, reach: f64, key: TileKey, out: &mut Vec<(TileKey, f64)>) {
+        let size = key.edge_length(radius);
+        let distance = camera.distance(key.center_dir() * radius);
+        if key.level == CELL_LEVEL {
+            let distance = distance - size * 0.7;
+            if distance < reach {
+                out.push((key, distance));
+            }
+        } else if distance - 2.0 * size < reach {
+            // Twice the edge covers the node's extent plus a cell's own slack.
+            for child in key.children() {
+                visit(camera, radius, reach, child, out);
+            }
+        }
+    }
+    let mut cells = Vec::new();
+    for face in 0..6 {
+        visit(camera, radius, reach, TileKey::root(face), &mut cells);
+    }
+    cells
+}
+
 #[derive(Resource)]
 struct Trees {
     /// Replaced meshes, despawned once their successors have had time to reach the GPU.
@@ -168,27 +195,10 @@ fn update_trees(
         && altitude < MAX_ALTITUDE
         && !rig.map_view
     {
-        let ground = camera_fixed.normalize();
-        let cell = TileKey::containing(0, 0.5, 0.5, CELL_LEVEL).edge_length(body.radius);
-        let reach = ((RADIUS + HYSTERESIS) / cell).ceil() as i32 + 1;
-        let (east, north) = east_north(ground);
-        let mut seen: HashSet<TileKey> = HashSet::default();
-        for dy in -reach..=reach {
-            for dx in -reach..=reach {
-                let probe = (ground
-                    + (east * dx as f64 + north * dy as f64) * (cell / body.radius))
-                    .normalize();
-                let (face, s, t) = sphere_to_cube(probe);
-                let key = TileKey::containing(face, s, t, CELL_LEVEL);
-                if !seen.insert(key) {
-                    continue;
-                }
-                let center = key.center_dir() * surface.radius;
-                let distance = (camera_fixed - center).length() - cell * 0.7;
-                let current = trees.cells.get(&key).map(CellState::detailed);
-                if let Some(detailed) = wanted_detail(distance, current) {
-                    wanted.insert(key, detailed);
-                }
+        for (key, distance) in cells_near(camera_fixed, surface.radius, RADIUS + HYSTERESIS) {
+            let current = trees.cells.get(&key).map(CellState::detailed);
+            if let Some(detailed) = wanted_detail(distance, current) {
+                wanted.insert(key, detailed);
             }
         }
     }
@@ -598,6 +608,8 @@ impl Tree {
 
 #[cfg(test)]
 mod tests {
+    use osp_terrain::cube::sphere_to_cube;
+
     use super::*;
 
     #[test]
@@ -621,5 +633,38 @@ mod tests {
         let far = RADIUS + HYSTERESIS - 1.0;
         assert_eq!(wanted_detail(far, Some(false)), Some(false));
         assert_eq!(wanted_detail(RADIUS + HYSTERESIS + 1.0, Some(false)), None);
+    }
+
+    #[test]
+    fn every_cell_in_reach_is_found() {
+        let radius = 6_371_000.0;
+        let reach = RADIUS + HYSTERESIS;
+        let corner = DVec3::ONE.normalize();
+        // The launch site, a face centre, and a cube corner (cells most skewed).
+        for ground in [
+            osp_terrain::cube::from_lat_lon(28.6f64.to_radians(), -80.6f64.to_radians()),
+            DVec3::X,
+            corner,
+        ] {
+            let camera = ground * (radius + 150.0);
+            let found: HashMap<TileKey, f64> =
+                cells_near(camera, radius, reach).into_iter().collect();
+            // Every cell touched by a dense sample around the camera.
+            let (east, north) = east_north(ground);
+            let step = 20.0;
+            let n = ((reach + 500.0) / step) as i32;
+            for dy in -n..=n {
+                for dx in -n..=n {
+                    let offset = (east * dx as f64 + north * dy as f64) * step;
+                    let (face, s, t) = sphere_to_cube((ground * radius + offset).normalize());
+                    let key = TileKey::containing(face, s, t, CELL_LEVEL);
+                    let size = key.edge_length(radius);
+                    let distance = camera.distance(key.center_dir() * radius) - size * 0.7;
+                    if distance < reach {
+                        assert_eq!(found.get(&key), Some(&distance), "{key:?} missing");
+                    }
+                }
+            }
+        }
     }
 }

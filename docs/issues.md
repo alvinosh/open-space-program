@@ -31,8 +31,11 @@ https://kittenspaceagency.wiki.gg/wiki/Controls, https://areweksayet.com/ (unoff
 Reported 2026-10-22 (seen before the aerodynamics work too), most visible flying low and
 fast, e.g. the rocket plane's takeoff roll. Fixed 2026-10-22: trees loading and
 unloading as the camera orbits (no hysteresis on the radii, and cells dropped with their
-old mesh when their detail flipped mid-build). Remaining suspects, from reading
-`crates/osp_game/src/trees.rs`:
+old mesh when their detail flipped mid-build). Fixed again 2026-10-22 (reported as trees
+appearing and disappearing with camera angle and position): cells were found by probing a
+grid one cell apart around the camera, which missed ~12% of them at the Cape, and a
+different set as the camera moved; they are now found by walking the quadtree.
+Remaining suspects, from reading `crates/osp_game/src/trees.rs`:
 
 - When a rebuilt cell lands, the old mesh stays for three more frames (`retiring`) on top
   of the new one, so detailed and cheap trees overlap for those frames.
