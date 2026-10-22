@@ -560,12 +560,9 @@ impl Vessel {
         if self.plan.is_empty() || self.destroyed || self.executor.engaged() {
             return;
         }
-        // Arm the bottom stage if its engines are not armed yet (never jettisons anything).
-        if let Some(stage) = self.propulsion.stages.first()
-            && !stage.active
-            && !stage.engines.is_empty()
-        {
-            self.activate_next_stage(system, time);
+        // Arm the bottom stage if its engines are not armed yet (never fires a decoupler).
+        if let Some(message) = self.propulsion.arm_bottom() {
+            self.record(time, message);
         }
         self.executor.engage();
         self.set_sas_mode(system, time, SasMode::Burn);
@@ -785,21 +782,26 @@ impl Vessel {
         }
     }
 
-    /// Arm the bottom stage, or jettison it and arm the next. The rest of the stack keeps
-    /// moving as it was, so its centre of mass (the vessel's position) moves up the stack.
+    /// Fire the next activation sequence (see [`crate::staging`]). What is left keeps
+    /// moving as it was, so when stages fall away or a fairing goes the centre of mass (the
+    /// vessel's position) moves along the stack.
     pub fn activate_next_stage(&mut self, system: &SolarSystem, time: SimTime) {
         if self.destroyed {
             return;
         }
-        let stages = self.propulsion.stages.len();
-        let dropped = self.propulsion.stages.first().map_or(0.0, |s| s.length);
-        let Some(message) = self.propulsion.activate_next_stage() else {
+        let Some(staged) = self.propulsion.activate_next_sequence() else {
             return;
         };
-        self.record(time, message);
-        if self.propulsion.stages.len() == stages {
+        for message in staged.messages {
+            self.record(time, message);
+        }
+        if staged.rcs_on {
+            self.rcs = true;
+        }
+        if !staged.mass_changed {
             return;
         }
+        let dropped = staged.dropped_length;
         let attitude = self.attitude_state(system, time);
         let before = self.mass.center_of_mass;
         self.mass = attitude::mass_properties(&self.propulsion.stages);
@@ -1438,6 +1440,129 @@ pub(crate) mod tests {
         v.set_throttle(1.0);
         v.activate_next_stage(system, t);
         (v, t)
+    }
+
+    /// The Pathfinder's sequences, as `kind:stage name`.
+    fn sequence_names(v: &Vessel) -> Vec<Vec<String>> {
+        let stages = craft_stage_names();
+        v.propulsion
+            .sequences
+            .list()
+            .iter()
+            .map(|seq| {
+                seq.iter()
+                    .map(|a| format!("{}:{}", a.kind(), stages[a.stage()]))
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn craft_stage_names() -> Vec<String> {
+        pathfinder().stages.into_iter().map(|s| s.name).collect()
+    }
+
+    #[test]
+    fn default_sequences_light_separate_jettison_and_release() {
+        let system = rss();
+        let (v, _) = pad_vessel(&system);
+        assert_eq!(
+            sequence_names(&v),
+            [
+                vec!["engines:Booster"],
+                vec![
+                    "decoupler:Booster",
+                    "engines:Upper Stage",
+                    "rcs:Upper Stage"
+                ],
+                vec!["fairing:Payload"],
+                vec!["decoupler:Upper Stage"],
+            ]
+        );
+    }
+
+    #[test]
+    fn staging_follows_the_sequences_and_the_fairing_takes_its_mass() {
+        let system = rss();
+        let (mut v, mut t) = launch(&system);
+        assert!(v.propulsion.stages[0].active && v.propulsion.stages.len() == 3);
+        run(&mut v, &system, &mut t, 20.0);
+        // Separation, upper stage ignition and RCS on in one press.
+        v.activate_next_stage(&system, t);
+        assert_eq!(v.propulsion.stages.len(), 2);
+        assert!(v.propulsion.stages[0].active);
+        assert!(v.rcs());
+        // The fairing goes with its mass; the payload stays.
+        let mass = v.propulsion.mass();
+        v.activate_next_stage(&system, t);
+        assert_eq!(v.propulsion.stages.len(), 2);
+        assert!((mass - v.propulsion.mass() - 1900.0).abs() < 1e-6);
+        assert!(v.log.iter().any(|e| e.message == "Fairing jettisoned"));
+        // Payload separation leaves the payload alone; then nothing is left to stage.
+        v.activate_next_stage(&system, t);
+        assert_eq!(v.propulsion.stages.len(), 1);
+        assert!(v.propulsion.sequences.is_empty());
+        let log = v.log.len();
+        v.activate_next_stage(&system, t);
+        assert_eq!(v.log.len(), log);
+    }
+
+    #[test]
+    fn engines_armed_early_light_when_their_stage_is_at_the_bottom() {
+        use crate::staging::Target;
+        let system = rss();
+        let (mut v, mut t) = launch(&system);
+        run(&mut v, &system, &mut t, 10.0);
+        // Light the upper stage in its own sequence before separating: it does not burn
+        // while the booster is below it, and lights the moment it is at the bottom.
+        let seqs = &mut v.propulsion.sequences;
+        assert!(seqs.move_activation(0, 1, Target::New(0)));
+        assert_eq!(sequence_names(&v)[0], ["engines:Upper Stage"]);
+        v.activate_next_stage(&system, t);
+        assert!(v.propulsion.stages[1].active && v.propulsion.stages.len() == 3);
+        v.step(&system, t, t + DT, &mut Vec::new());
+        t = t + DT;
+        assert!(!v.propulsion.stages[1].engines[0].running);
+        v.activate_next_stage(&system, t);
+        v.step(&system, t, t + DT, &mut Vec::new());
+        assert!(v.propulsion.stages[0].engines[0].running, "{:?}", v.log);
+    }
+
+    #[test]
+    fn the_burn_executor_arms_engines_without_firing_their_sequence() {
+        let system = rss();
+        let (mut v, _) = pad_vessel(&system);
+        // Put the booster's engines with its decoupler: arming them must not separate.
+        let seqs = &mut v.propulsion.sequences;
+        assert!(seqs.move_activation(0, 0, crate::staging::Target::Into(1)));
+        assert!(seqs.remove_empty(0));
+        assert_eq!(
+            v.propulsion.arm_bottom().as_deref(),
+            Some("Staged: Booster")
+        );
+        assert_eq!(v.propulsion.stages.len(), 3);
+        assert_eq!(
+            sequence_names(&v)[0],
+            [
+                "decoupler:Booster",
+                "engines:Upper Stage",
+                "rcs:Upper Stage"
+            ]
+        );
+    }
+
+    #[test]
+    fn craft_files_can_set_their_own_sequences() {
+        let mut craft = pathfinder();
+        craft.sequences = Some(vec![
+            vec!["engines:Booster".into()],
+            vec!["fairing:Payload".into(), "decoupler:Booster".into()],
+            vec!["engines:Upper Stage".into()],
+        ]);
+        let p = Propulsion::from_craft(&craft, &catalog()).unwrap();
+        assert_eq!(p.sequences.list().len(), 3);
+        craft.sequences = Some(vec![vec!["fairing:Booster".into()]]);
+        let err = Propulsion::from_craft(&craft, &catalog()).unwrap_err();
+        assert!(err.to_string().contains("nothing to activate"), "{err}");
     }
 
     #[test]

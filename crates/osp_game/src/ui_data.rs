@@ -325,6 +325,7 @@ fn publish_flight(
             .sum::<f64>(),
     );
     data.set("vessel.stages", rows);
+    publish_sequences(&mut data, vessel, mass * local_g);
 
     // Procedural tanks and fins: what each is made of and how hard it is working.
     data.set("vessel.destroyed", vessel.is_destroyed());
@@ -515,4 +516,67 @@ pub fn format_date(ut: SimTime) -> String {
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = yoe + era * 400 + i64::from(month <= 2);
     format!("{year:04}-{month:02}-{day:02} {}", format_clock(ut))
+}
+
+/// The activation sequences, next first (`vessel.sequences`), each with the activations
+/// in it (`items`), and the thrust-to-weight ratio the bottom stage's engines give at full
+/// throttle here (`vessel.stage_twr`). `weight` is the vessel's weight here, N.
+fn publish_sequences(data: &mut UiData, vessel: &osp_sim::vessel::Vessel, weight: f64) {
+    use osp_sim::staging::Activation;
+    let propulsion = &vessel.propulsion;
+    let stages = &propulsion.stages;
+    let sequences = &propulsion.sequences;
+    let rows: Vec<_> = sequences
+        .list()
+        .iter()
+        .enumerate()
+        .map(|(i, seq)| {
+            let items: Vec<_> = seq
+                .iter()
+                .enumerate()
+                .map(|(j, &a)| {
+                    let stage = stages.iter().find(|s| s.id == a.stage());
+                    let (count, fuel) = match (a, stage) {
+                        (Activation::Engines(_), Some(s)) => (s.engines.len(), s.fuel_fraction()),
+                        (Activation::Rcs(_), Some(s)) => (s.rcs.len(), s.rcs_fraction()),
+                        _ => (1, None),
+                    };
+                    record([
+                        ("seq", i.into()),
+                        ("index", j.into()),
+                        ("kind", a.kind().into()),
+                        ("is_engines", matches!(a, Activation::Engines(_)).into()),
+                        ("is_decoupler", matches!(a, Activation::Decoupler(_)).into()),
+                        ("is_fairing", matches!(a, Activation::Fairing(_)).into()),
+                        ("is_rcs", matches!(a, Activation::Rcs(_)).into()),
+                        ("stage", stage.map_or("", |s| s.name.as_str()).into()),
+                        ("count", count.into()),
+                        ("multiple", (count > 1).into()),
+                        ("fuel", fuel.into()),
+                        ("has_fuel", fuel.is_some().into()),
+                    ])
+                })
+                .collect();
+            record([
+                ("index", i.into()),
+                ("number", sequences.number(i).into()),
+                ("next", (i == 0).into()),
+                ("empty", seq.is_empty().into()),
+                ("items", items.into()),
+            ])
+        })
+        .collect();
+    data.set("vessel.sequence_count", rows.len());
+    data.set("vessel.sequences", rows);
+    let pressure = vessel.flight.static_pressure;
+    let full: f64 = stages.first().map_or(0.0, |s| {
+        s.engines
+            .iter()
+            .map(|e| e.max_mass_flow() * e.isp(pressure) * G0)
+            .sum()
+    });
+    data.set(
+        "vessel.stage_twr",
+        if weight > 0.0 { full / weight } else { 0.0 },
+    );
 }

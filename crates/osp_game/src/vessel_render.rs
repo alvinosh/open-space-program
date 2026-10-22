@@ -57,8 +57,9 @@ impl Plugin for VesselRenderPlugin {
 #[derive(Component)]
 struct VesselVisual {
     index: usize,
-    /// Which stages had fins when it was built, bottom first (`None`: not built yet).
-    built: Option<Vec<bool>>,
+    /// The stages it was built from, bottom first: id, fins, fairing on (`None`: not built
+    /// yet). A change (a stage falls away, fins tear off, the fairing goes) rebuilds it.
+    built: Option<Vec<(usize, bool, bool)>>,
 }
 
 /// Pivot of an engine of the bottom stage, at its mount on the stage base.
@@ -270,7 +271,10 @@ fn rebuild_on_change(
     };
     for (entity, mut visual) in &mut visuals {
         let stages = &sim.universe.vessels[visual.index].propulsion.stages;
-        let shape: Vec<bool> = stages.iter().map(|s| s.fins.is_some()).collect();
+        let shape: Vec<_> = stages
+            .iter()
+            .map(|s| (s.id, s.fins.is_some(), s.fairing_mass() > 0.0))
+            .collect();
         if visual.built.as_ref() == Some(&shape) {
             continue;
         }

@@ -38,6 +38,7 @@ pub mod propulsion;
 pub mod rcs;
 pub mod rendezvous;
 pub mod search;
+pub mod staging;
 pub mod structure;
 pub mod system;
 pub mod terrain;

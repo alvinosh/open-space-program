@@ -1,4 +1,6 @@
-// Two-stage kerolox launcher with a 15 t payload. Stages are listed in firing order.
+// Two-stage kerolox launcher with a 15 t payload under a fairing. Stages are listed from the
+// bottom. Without `sequences` the stage key fires: 1 booster engines; 2 separation, upper
+// stage engine and RCS; 3 fairing; 4 payload separation (rearrange them in flight).
 {
   id: "pathfinder",
   name: "Pathfinder",
@@ -43,6 +45,8 @@
     {
       name: "Payload",
       structure_mass: 15000,
+      // Two composite halves and the nose, jettisoned once out of the thick air.
+      fairing: { mass: 1900 },
       diameter: 3.7,
       length: 11,
     },

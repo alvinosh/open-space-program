@@ -6,7 +6,10 @@ use bevy::{
     input::mouse::MouseScrollPixelsPerLine,
     picking::{
         Pickable,
-        events::{PointerClick, PointerDrag, PointerPress, PointerScroll},
+        events::{
+            PointerClick, PointerDrag, PointerDragDrop, PointerDragEnd, PointerDragStart,
+            PointerPress, PointerScroll,
+        },
         hover::{HoverMap, Hovered},
         pointer::PointerButton,
     },
@@ -159,6 +162,23 @@ impl BoundBar {
 
 #[derive(Component)]
 pub struct ActionSource(pub Template);
+
+/// A node that can be dragged onto `drop` nodes; what it carries (`drag`).
+#[derive(Component)]
+pub struct DragPayload(pub Template);
+
+/// A node things can be dropped on: the action to fire, with `$drag` standing for what the
+/// dropped node carries.
+#[derive(Component)]
+pub struct DropAction(pub Template);
+
+/// An image from a mod (`image`, relative to the mod root), tinted with the style's text
+/// colour. The game resolves the path through its mods and adds the `ImageNode`.
+#[derive(Component, Debug, Clone)]
+pub struct UiImage {
+    pub path: String,
+    pub tint: Color,
+}
 
 /// Condition for a node's active look.
 #[derive(Component)]
@@ -357,6 +377,21 @@ pub fn spawn_node(
     }
     if def.active.is_some() || style.hover_background.is_some() {
         insert_state_colors(commands, entity, &style);
+    }
+    let text = |key: &str| def.extra.get(key).and_then(|v| v.as_str());
+    if let Some(payload) = text("drag") {
+        commands
+            .entity(entity)
+            .insert(DragPayload(Template::parse(payload)))
+            .observe(drag_start)
+            .observe(drag_move)
+            .observe(drag_end);
+    }
+    if let Some(action) = text("drop") {
+        commands
+            .entity(entity)
+            .insert(DropAction(Template::parse(action)))
+            .observe(drop_on);
     }
     let builder = widgets.get(&def.widget);
     let children_parent = builder(&mut WidgetContext {
@@ -698,6 +733,89 @@ pub fn click_action(
     }
 }
 
+/// Pick up a `drag` node: it follows the pointer, in front of everything, and lets the
+/// pointer see through it to where it will be dropped.
+fn drag_start(
+    mut event: On<PointerDragStart>,
+    mut commands: Commands,
+    payloads: Query<(), With<DragPayload>>,
+    children: Query<&Children>,
+) {
+    if event.button != PointerButton::Primary || !payloads.contains(event.entity) {
+        return;
+    }
+    event.propagate(false);
+    let dragged = event.entity;
+    for e in std::iter::once(dragged).chain(children.iter_descendants(dragged)) {
+        commands.entity(e).insert(Pickable::IGNORE);
+    }
+    commands.entity(dragged).insert(GlobalZIndex(i32::MAX - 1));
+}
+
+fn drag_move(mut event: On<PointerDrag>, mut nodes: Query<&mut Node, With<DragPayload>>) {
+    let Ok(mut node) = nodes.get_mut(event.entity) else {
+        return;
+    };
+    event.propagate(false);
+    node.left = Val::Px(event.distance.x);
+    node.top = Val::Px(event.distance.y);
+}
+
+/// Put a dragged node back where it was (a drop, if any, has fired its action).
+fn drag_end(
+    mut event: On<PointerDragEnd>,
+    mut commands: Commands,
+    mut nodes: Query<&mut Node, With<DragPayload>>,
+    children: Query<&Children>,
+) {
+    let dragged = event.entity;
+    let Ok(mut node) = nodes.get_mut(dragged) else {
+        return;
+    };
+    event.propagate(false);
+    (node.left, node.top) = (Val::Auto, Val::Auto);
+    for e in std::iter::once(dragged).chain(children.iter_descendants(dragged)) {
+        commands.entity(e).remove::<Pickable>();
+    }
+    commands.entity(dragged).remove::<GlobalZIndex>();
+}
+
+/// Something was dropped on a `drop` node: fire its action with what it carried. What the
+/// pointer grabbed may be a child of the `drag` node (its icon, say), so the payload is the
+/// nearest one up from there.
+fn drop_on(
+    mut event: On<PointerDragDrop>,
+    drops: Query<&DropAction>,
+    payloads: Query<&DragPayload>,
+    parents: Query<&ChildOf>,
+    data: Res<UiData>,
+    formatters: Res<Formatters>,
+    mut actions: MessageWriter<UiAction>,
+) {
+    let Ok(drop) = drops.get(event.entity) else {
+        return;
+    };
+    let dropped = event.dropped;
+    let Some(payload) = std::iter::once(dropped)
+        .chain(parents.iter_ancestors(dropped))
+        .find_map(|e| payloads.get(e).ok())
+    else {
+        return;
+    };
+    event.propagate(false);
+    let action = drop_action(&drop.0, &payload.0, &data, &formatters);
+    if !action.is_empty() {
+        actions.write(UiAction(action));
+    }
+}
+
+/// The action a drop fires: the drop node's template with `$drag` replaced by what the
+/// dragged node carries.
+fn drop_action(drop: &Template, payload: &Template, data: &UiData, f: &Formatters) -> String {
+    let payload = payload.render(data, f);
+    drop.render(data, f).replace("$drag", &payload)
+}
+
 /// Move a window by its title bar, from where it is on screen (however it was placed). A
 /// docked window pops out of its dock and floats from there.
 pub fn drag_window(
@@ -825,6 +943,20 @@ mod tests {
             max,
             vertical: false,
         }
+    }
+
+    #[test]
+    fn drops_carry_what_was_dragged() {
+        let mut data = UiData::default();
+        data.set("row", 2);
+        data.set("seq", 1);
+        let action = drop_action(
+            &Template::parse("staging.drop:$drag:{row}"),
+            &Template::parse("item:{seq}:0"),
+            &data,
+            &Formatters::default(),
+        );
+        assert_eq!(action, "staging.drop:item:1:0:2");
     }
 
     #[test]

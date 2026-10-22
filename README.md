@@ -38,7 +38,8 @@ Default bindings (all rebindable in `assets/core/keybindings/default.json5`):
 | T | SAS on / off (modes are next to the navball) |
 | R | RCS on / off |
 | H N / J L / I K | RCS translate forward, back / left, right / up, down |
-| Space | Stage (first press arms the booster) |
+| Space | Fire the next sequence (first press lights the booster) |
+| F8 | Sequence stack: drag icons between sequences, drag numbers to reorder |
 | `,` `.` `/` | Time warp down / up / stop |
 | M | Map view with predicted trajectory |
 | Click trajectory, drag arrows | Map view: add a burn there; shape it (drag its marker to move it in time) |
@@ -54,7 +55,7 @@ Default bindings (all rebindable in `assets/core/keybindings/default.json5`):
 ## Flight UI
 
 The flight screen is split into modules, as in KSP: time warp and clocks (top left),
-altimeter (top centre), the app launcher (down the right edge), the stage stack (bottom
+altimeter (top centre), the app launcher (down the right edge), the sequence stack (bottom
 left), and the navball with throttle, SAS modes and control inputs (bottom centre). The
 launcher opens and closes the windows; each button lights up while its window is open.
 Instrument windows (Flight, Vessel, Target on the left; Orbit, Plan, Attitude on the right)
@@ -64,6 +65,14 @@ pop it out, close it to put it back. Large windows (Structure, Log, Manifest, Tr
 planner) open in the middle, in front. F3 hides the whole flight UI and brings it back as it
 was. Every module is an ordinary layout record, so mods can move, restyle, replace, dock or
 add to any of them.
+
+**Staging.** As in Kitten Space Agency, staging is a list of sequences, separate from the
+stages themselves. Space fires the next sequence; each holds activations shown as icons:
+engines (with their count and fuel), a decoupler, a fairing, RCS. The default Pathfinder
+order is booster ignition; separation with upper stage ignition and RCS; fairing; payload
+separation. Rearrange it in flight in the sequence stack (F8): drag an icon onto another
+sequence, or onto + for a new one; drag a sequence's number to reorder; x removes an empty
+one. A jettisoned fairing takes its mass with it and shows the payload.
 
 **Flight plan.** Plan burns (maneuver nodes) in the Plan window or by clicking the trajectory
 in map view; the prediction runs through every planned burn, and legs after one are drawn

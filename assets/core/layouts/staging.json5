@@ -1,4 +1,9 @@
-// The stage stack (bottom of the left dock): the next stage to fire at the bottom, like KSP.
+// The sequence stack (bottom of the left dock), as in KSA: each numbered row is a sequence
+// the stage key fires, the next one at the bottom and highlighted. Each holds an icon per
+// activation: engines (with how many and their fuel), decoupler, fairing, RCS. Drag an
+// icon onto another row to move it there, or onto + to give it a new sequence; drag a
+// row's number onto another row to reorder; + alone adds an empty sequence, x removes one.
+// F8 shows and hides it.
 {
   id: "staging",
   group: "flight",
@@ -10,49 +15,53 @@
     children: [
       {
         widget: "row",
+        style: { gap: 6 },
         children: [
-          { widget: "label", class: "section", style: { margin: 0 }, text: "STAGES" },
+          { widget: "label", class: "caption", text: "dV" },
+          { widget: "label", text: "{vessel.delta_v|speed}" },
+          { widget: "label", class: "caption", style: { margin: [0, 0, 0, 8] }, text: "TWR" },
+          { widget: "label", text: "{vessel.stage_twr|fixed:2}" },
           { widget: "spacer" },
-          { widget: "button", text: "Stage (Space)", action: "vessel.stage" },
+          { widget: "button", class: "step_button", text: "+", action: "staging.add", drop: "staging.drop_new:$drag" },
         ],
       },
       {
-        id: "stages",
+        id: "sequences",
         widget: "column",
-        repeat: "vessel.stages",
+        repeat: "vessel.sequences",
         style: { direction: "column_reverse", gap: 3, margin: [6, 0, 0, 0] },
         children: [
           {
-            widget: "column",
-            class: "stage_row",
-            active: "item.active",
+            widget: "row",
+            class: "seq_row",
+            active: "item.next",
+            drop: "staging.drop:$drag:{item.index}",
             children: [
+              { widget: "label", class: "seq_number", active: "item.next", drag: "seq:{item.index}", text: "{item.number}" },
               {
                 widget: "row",
+                repeat: "item.items",
+                style: { gap: 6 },
                 children: [
-                  { widget: "label", class: "narrow", text: "{item.name}" },
-                  { widget: "label", class: "dim narrow", text: "{item.delta_v|speed}" },
-                  { widget: "label", class: "dim nowrap", text: "{item.burn_time|duration}", visible: "item.engines" },
+                  {
+                    widget: "column",
+                    class: "seq_item",
+                    drag: "item:{item.seq}:{item.index}",
+                    children: [
+                      { widget: "image", class: "seq_icon", image: "icons/engine.png", visible: "item.is_engines" },
+                      { widget: "image", class: "seq_icon", image: "icons/decoupler.png", visible: "item.is_decoupler" },
+                      { widget: "image", class: "seq_icon", image: "icons/fairing.png", visible: "item.is_fairing" },
+                      { widget: "image", class: "seq_icon", image: "icons/rcs.png", visible: "item.is_rcs" },
+                      { widget: "label", class: "seq_count", text: "{item.count}", visible: "item.multiple" },
+                      { widget: "bar", class: "seq_fuel", value: "item.fuel", visible: "item.has_fuel" },
+                    ],
+                  },
                 ],
               },
-              {
-                widget: "row",
-                visible: "item.has_fuel",
-                children: [
-                  { widget: "bar", value: "item.fuel" },
-                  { widget: "label", class: "dim nowrap", text: "{item.engines} eng, {item.ignitions} ign", visible: "item.ignitions" },
-                ],
-              },
+              { widget: "spacer" },
+              { widget: "button", class: "step_button", text: "x", visible: "item.empty", action: "staging.remove:{item.index}" },
             ],
           },
-        ],
-      },
-      {
-        widget: "row",
-        style: { margin: [6, 0, 0, 0] },
-        children: [
-          { widget: "label", class: "key", text: "Delta-v (vac)" },
-          { widget: "label", text: "{vessel.delta_v|speed}" },
         ],
       },
     ],

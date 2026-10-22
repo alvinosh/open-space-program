@@ -3,8 +3,9 @@
 //!
 //! A stage's tanks are painted barrels with weld seams, the structure above them is an
 //! interstage (dark composite around the next stage's engines, tapering if the next stage
-//! is narrower) or more hull, and a top stage without tanks, engines or a pod is a payload
-//! fairing. The top of the stack gets a tangent-ogive nose. Engine stages get a dark base
+//! is narrower) or more hull. A stage with a fairing is the fairing until it is jettisoned,
+//! then the payload inside shows; a top stage without tanks, engines, pod or fairing looks
+//! like one too. The top of the stack gets a tangent-ogive nose. Engine stages get a dark base
 //! ring and heat shield. Optional extras: folded landing legs, stowed grid fins and a cable
 //! raceway. Parts come out as three vertex-coloured meshes, one per material: glossy paint,
 //! matte composite and bare metal.
@@ -24,6 +25,8 @@ const SEGMENTS: usize = 48;
 const WHITE: [f32; 3] = [0.85, 0.85, 0.83];
 const COMPOSITE: [f32; 3] = [0.028, 0.028, 0.032];
 const TITANIUM: [f32; 3] = [0.55, 0.55, 0.57];
+const GOLD_FOIL: [f32; 3] = [0.85, 0.62, 0.25];
+const SOLAR_CELLS: [f32; 3] = [0.03, 0.05, 0.14];
 /// Barrel sections between weld seams are about this tall, m.
 const BARREL_SECTION: f32 = 6.0;
 /// Nose length as a multiple of the diameter.
@@ -284,6 +287,45 @@ fn grid_fin(hull: &mut Hull, radius: f32, y: f32, a: f32) {
     );
 }
 
+/// What a jettisoned fairing leaves: a separation ring and adapter cone, and a satellite in
+/// gold foil with its solar panels folded against it.
+fn payload(hull: &mut Hull, radius: f32, height: f32) {
+    let dark = rgb(COMPOSITE);
+    let adapter = 0.9;
+    let top_radius = 0.5 * radius;
+    revolve(
+        &mut hull.matte,
+        &[(radius, 0.0), (radius, 0.12), (top_radius, adapter)],
+        dark,
+    );
+    disc(&mut hull.matte, 0.0, radius, true, dark);
+    disc(&mut hull.matte, adapter, top_radius, false, dark);
+    let half = 0.45 * radius;
+    let bus = (height - adapter).clamp(1.0, 4.5);
+    let middle = Vec3::Y * (adapter + bus / 2.0);
+    hull.metal.cuboid(
+        middle,
+        Vec3::new(half, bus / 2.0, half),
+        Quat::IDENTITY,
+        rgb(GOLD_FOIL),
+    );
+    for a in [0.0, std::f32::consts::PI] {
+        hull.paint.cuboid(
+            middle + out(a) * (half + 0.05),
+            Vec3::new(0.025, bus * 0.46, half * 0.9),
+            Quat::from_rotation_y(a),
+            rgb(SOLAR_CELLS),
+        );
+    }
+    // A small antenna on top.
+    let top = adapter + bus;
+    revolve(
+        &mut hull.paint,
+        &[(0.6 * half, top + 0.05), (0.0, top + 0.3)],
+        rgb(WHITE),
+    );
+}
+
 /// Height of the top of the stage's stacked cylindrical tanks above its base, m.
 fn tanks_top(stage: &Stage) -> f32 {
     stage
@@ -302,10 +344,19 @@ pub fn stage_hull(stage: &Stage, above: Option<&Stage>, height: f32) -> Hull {
     let paint = rgb(look.paint.unwrap_or(WHITE));
     let interstage = rgb(look.interstage.unwrap_or(COMPOSITE));
     let radius = (stage.diameter / 2.0) as f32;
-    let fairing = above.is_none()
-        && stage.pod.is_none()
-        && stage.engines.is_empty()
-        && stage.tanks.is_empty();
+    let fairing = match &stage.fairing {
+        Some(f) => f.attached,
+        None => {
+            above.is_none()
+                && stage.pod.is_none()
+                && stage.engines.is_empty()
+                && stage.tanks.is_empty()
+        }
+    };
+    if stage.fairing.as_ref().is_some_and(|f| !f.attached) {
+        payload(&mut hull, radius, height);
+        return hull;
+    }
     let tanks = tanks_top(stage).min(height);
 
     // Painted barrel over the tanks (or the whole fairing).

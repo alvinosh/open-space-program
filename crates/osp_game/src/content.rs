@@ -17,7 +17,7 @@ use osp_sim::{
     universe::Universe,
 };
 use osp_terrain::{Dataset, dataset::META_FILE};
-use osp_ui::{LayoutVisibility, UiAction, UiDocuments, UiSet};
+use osp_ui::{LayoutVisibility, UiAction, UiDocuments, UiImage, UiSet};
 
 pub struct ContentPlugin;
 
@@ -44,7 +44,8 @@ impl Plugin for ContentPlugin {
         }
         app.insert_resource(content)
             .insert_resource(documents)
-            .add_systems(Update, reload_on_request.after(UiSet::Input));
+            .add_systems(Update, reload_on_request.after(UiSet::Input))
+            .add_systems(Update, load_ui_images.after(UiSet::Build));
     }
 }
 
@@ -194,6 +195,25 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
         sites,
         diagnostics,
     })
+}
+
+/// Load the pictures of UI `image` nodes from the mods (the highest-priority mod's file).
+fn load_ui_images(
+    mut commands: Commands,
+    content: Res<GameContent>,
+    assets: Res<AssetServer>,
+    images: Query<(Entity, &UiImage), Without<ImageNode>>,
+) {
+    for (entity, image) in &images {
+        let node = match mod_asset_path(&content.0, &image.path) {
+            Some(path) => ImageNode::new(assets.load(path)).with_color(image.tint),
+            None => {
+                warn!("UI image `{}` is not in any mod", image.path);
+                ImageNode::default().with_color(Color::NONE)
+            }
+        };
+        commands.entity(entity).insert(node);
+    }
 }
 
 /// `game.reload`: reload every mod from disk and rebuild the UI. Physics data already in

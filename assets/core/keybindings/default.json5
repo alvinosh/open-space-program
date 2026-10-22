@@ -7,6 +7,7 @@
   id: "default",
   bindings: [
     { key: "Space", action: "vessel.stage" },
+    { key: "F8", action: "ui.toggle:staging" },
     { key: "ShiftLeft", action: "vessel.throttle_up", hold: true },
     { key: "ControlLeft", action: "vessel.throttle_down", hold: true },
     { key: "KeyZ", action: "vessel.throttle_full" },

@@ -78,6 +78,8 @@ impl Plugin for SmokeTestPlugin {
                 DEORBIT_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_TRANSFER").is_some() {
                 TRANSFER_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_STAGING").is_some() {
+                STAGING_SCRIPT.to_vec()
             } else if in_orbit {
                 ORBIT_SCRIPT.to_vec()
             } else {
@@ -132,6 +134,10 @@ enum Action {
     Capture(&'static str),
     /// Throttle up, SAS on and stage.
     Launch,
+    /// Fire the next activation sequence.
+    Stage,
+    /// Rearrange the sequences as the staging panel does (a `staging.*` action).
+    Sequences(&'static str),
     /// Pilot rotation input (pitch up, yaw right, roll right).
     Steer(DVec3),
     Sas(SasMode),
@@ -234,6 +240,20 @@ const TRANSFER_SCRIPT: &[(f64, Action)] = &[
     (8.5, Action::Exit),
 ];
 
+/// In LEO (`OSP_CAPTURE_STAGING=1`): the sequence stack, rearranged (RCS moved in with the
+/// fairing, an empty sequence added), then the engine armed and the fairing jettisoned.
+const STAGING_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (2.0, Action::Capture("staging_start.png")),
+    (2.2, Action::Sequences("staging.drop:item:0:1:1")),
+    (2.3, Action::Sequences("staging.add")),
+    (3.0, Action::Capture("staging_edited.png")),
+    (3.2, Action::Stage),
+    (3.4, Action::Stage),
+    (5.0, Action::Capture("staging_fairing.png")),
+    (5.5, Action::Exit),
+];
+
 /// Pitch a few degrees towards the east after clearing the tower, then let SAS hold.
 const PITCH_KICK: &[(f64, Action)] = &[
     (10.0, Action::Steer(DVec3::new(-0.3, 0.0, 0.0))),
@@ -294,6 +314,17 @@ fn run_script(
             vessel.set_throttle(1.0);
             vessel.set_sas(system, ut, true);
             vessel.activate_next_stage(system, ut);
+        }
+        Action::Stage => {
+            let ut = sim.universe.time();
+            let (vessel, system) = sim.active_vessel_in_system();
+            vessel.activate_next_stage(system, ut);
+        }
+        Action::Sequences(action) => {
+            let sequences = &mut sim.active_vessel_mut().propulsion.sequences;
+            if !crate::controls::edit_sequences(sequences, &UiAction(action.into())) {
+                warn!("smoke test: `{action}` did not apply");
+            }
         }
         Action::Steer(input) => sim.active_vessel_mut().rotation_input = input,
         Action::Sas(mode) => {

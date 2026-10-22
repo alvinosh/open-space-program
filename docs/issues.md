@@ -28,51 +28,26 @@ direction is smoothed over time so quick gimbal moves do not show in it. The sha
 marches in plume coordinates (`crates/osp_game/src/shaders/plume.wesl`), so the bend can be
 an offset of the axis that grows with distance from the nozzle.
 
-## 3. Staging should work like KSA's
+## 3. Staging: what is still different from KSA
 
-Reported 2026-10-20. Today a stage is one unit: Space arms its engines, the next press drops
-it and arms the one above (`Propulsion::activate_next_stage` in
-`crates/osp_sim/src/propulsion.rs`). Problems:
+Reported 2026-10-20; the main request (KSA-style sequences, icons and numbers, fairings and
+RCS stageable, reorder and regroup, decoupling apart from ignition) landed 2026-10-22, see
+"Staging" in `docs/modding.md`. Left over:
 
-- The stage stack (`assets/core/layouts/staging.json5`) shows too much text.
-- The fairing cannot be jettisoned; it is only drawn (`crates/osp_game/src/hull.rs`).
-- RCS cannot be put in a stage (only toggled with R).
-- Stages cannot be reordered or regrouped, and decoupling cannot be staged apart from
-  ignition.
+- A stage's engines are one activation, so a cluster cannot be split (light the centre
+  engine first, say). KSA moves single parts and groups symmetric ones under one icon.
+- No right-click "add a sequence above / below"; + adds one at the end and numbers are
+  dragged to reorder.
+- One fuel bar per engine group, not per engine.
+- Stages and fairings that are released just vanish (no debris yet).
+- Drag and drop in the panel is covered by tests of each piece and the scripted capture
+  (`OSP_SCENARIO=leo OSP_CAPTURE_STAGING=1`), but not tried by hand yet.
 
-Wanted: staging done the way KSA does it, with icons and numbers instead of text.
-
-How KSA does it, from the community wiki's build notes and a fan feature list (KSA has no
-official docs on this):
-
-- Two separate things. Sequences are the activation groups that Space fires one after
-  another. Resource groups (called stages until build 2026.6.9.4750) are the parts that
-  share propellant. Decoupling and engine ignition are separate entries, so they can sit in
-  different sequences.
-- The Sequence window (F8) lists the sequences as rows of part icons instead of text (first
-  pass in 2026.6.9.4750, icons in flight from 2026.7.4.4860). Symmetric parts share one
-  icon and can be expanded.
-- In flight it shows live delta-v, TWR and a fuel bar per engine for the active sequence;
-  the editor shows delta-v and TWR per sequence (2026.7.4.4860).
-- Editable in flight and in the editor (2026.5.12.4510): drag a part from one sequence or
-  stage to another, drag a whole sequence or stage to reorder it, right-click a sequence or
-  stage to add a new one above or below it.
-- Decouplers, and interstage shrouds with their own decouplers, are staged like engines. A
-  part's decoupler can be switched off, which turns it into a plain shroud and removes it
-  from the Sequence window. A launch escape tower is staged like any other motor.
-
-What it means here: split our stage into a resource group (the propellant pool it is now)
-and an ordered list of sequences, each holding activations (light these engines, fire this
-decoupler, jettison the fairing, switch RCS on) that can be moved between sequences. The sim
-needs decouplers and the fairing as things it knows about (Phase 2 of `docs/ksa-parity.md`:
-decouplers, activation sequences separate from resource groups, drag and drop in flight).
-The staging panel becomes a column of numbered sequences with one icon per item and a fuel
-bar under the engines, plus delta-v and TWR for the active one.
-
-Sources:
-
-- https://kittenspaceagency.wiki.gg/wiki/Version_2026.5.12.4510
-- https://kittenspaceagency.wiki.gg/wiki/Version_2026.6.9.4750
-- https://kittenspaceagency.wiki.gg/wiki/Version_2026.7.4.4860
-- https://kittenspaceagency.wiki.gg/wiki/Controls
-- https://areweksayet.com/ (unofficial feature list)
+KSA's model, from the community wiki's build notes: sequences are the activation groups
+Space fires; resource groups (stages until 2026.6.9.4750) share propellant; the Sequence
+window (F8) shows part icons with live delta-v, TWR and fuel; parts and sequences are
+dragged around in flight (2026.5.12.4510). Sources:
+https://kittenspaceagency.wiki.gg/wiki/Version_2026.5.12.4510,
+https://kittenspaceagency.wiki.gg/wiki/Version_2026.6.9.4750,
+https://kittenspaceagency.wiki.gg/wiki/Version_2026.7.4.4860,
+https://kittenspaceagency.wiki.gg/wiki/Controls, https://areweksayet.com/ (unofficial).

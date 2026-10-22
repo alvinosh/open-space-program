@@ -76,7 +76,7 @@ parts of it instead.
 | `reaction_wheels` | Reaction wheels | `mass` (kg), `torque` (N·m about each axis) |
 | `rcs` | RCS blocks (four nozzles each) | `mass` (kg), `thrust` (N per nozzle, vacuum), `isp_vac`/`isp_sl` (s), `propellants: { Name: mass ratio }`, `model` |
 | `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), `model` |
-| `craft` | Vessels | `stages` in firing order: `engines`, procedural `tanks` and `fins`, `reaction_wheels`, `rcs`, `pod`, `structure_mass`, `diameter`, `length`, `appearance`; see [Stage appearance](#stage-appearance) |
+| `craft` | Vessels | `stages` from the bottom: `engines`, procedural `tanks` and `fins`, `reaction_wheels`, `rcs`, `pod`, `fairing: { mass }`, `structure_mass`, `diameter`, `length`, `appearance`; optional `sequences`; see [Staging](#staging) and [Stage appearance](#stage-appearance) |
 | `launch_sites` | Launch sites | Position, `heading`, optional `pad` and `roads`; see [Launch sites](#launch-sites) |
 | `scenarios` | New-game setups | `start: { type: "LaunchSite", site: "<id>" }` or `{ type: "Orbit", ... }`; pick with `OSP_SCENARIO=<id>` |
 | `layouts` | UI windows and panels | See [User interface](#user-interface) |
@@ -185,6 +185,33 @@ the jet is a narrow column with shock diamonds; as the air thins it overtakes it
 stretch and the plume fans out and fades into vacuum. Without `exit_pressure` it is guessed
 from the Isp the engine loses at sea level. `plume` names a `plumes` record for the colours
 and brightness; engines without one draw no plume.
+
+### Staging
+
+As in KSA, stages and staging are separate. A stage is a section of the vessel and its
+propellant pool. What the stage key does is a list of **sequences**, fired one per press,
+each holding **activations**: `engines` (light a stage's engines; they start with the
+throttle once their stage is at the bottom), `decoupler` (release the joint above a stage,
+dropping it and everything below), `fairing` (jettison a stage's fairing, which takes its
+mass with it) and `rcs` (switch RCS on). The player rearranges them in flight in the
+sequence stack: drag an icon to another sequence, drag a sequence's number to reorder.
+
+A craft can set its own; each activation is `"<kind>:<stage name>"`:
+
+```json5
+sequences: [
+  ["engines:Booster"],
+  ["decoupler:Booster", "rcs:Upper Stage"],   // separate, settle with RCS...
+  ["engines:Upper Stage"],                    // ...then light the upper stage
+  ["fairing:Payload"],
+  ["decoupler:Upper Stage"],
+],
+```
+
+Without `sequences`: light the first stage; at each joint release the decoupler, light the
+stage above and switch on its RCS together (so an engine that needs ullage lights while
+the propellant is still settled); jettison a fairing right after the stage below it is lit;
+release a stage without engines (a payload) on its own.
 
 ### Stage appearance
 
@@ -327,7 +354,9 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 
 | Field | Meaning |
 | --- | --- |
-| `widget` | `column` (default), `row`, `panel`, `spacer`, `label`, `button`, `bar`, `window`, `dock`, `navball`. Unknown names act as containers. |
+| `widget` | `column` (default), `row`, `panel`, `spacer`, `label`, `button`, `bar`, `window`, `dock`, `image`, `navball`. Unknown names act as containers. |
+| `image` | `image` only: a picture relative to the mod root (`"icons/engine.png"`), from the highest-priority mod that has it, tinted with the style's `color`; size it with `width` and `height`. |
+| `drag`, `drop` | Drag and drop: a node with `drag` can be picked up and carries that text (a template); dropping it on a node with `drop` fires the `drop` action with `$drag` replaced by what it carried, e.g. `drop: "staging.drop:$drag:{item.index}"`. |
 | `id` | Optional; lets patches address the node with `#id`. |
 | `class` | Space-separated theme classes. |
 | `style` | Inline style (overrides classes). |
@@ -338,7 +367,7 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 | `min`, `max`, `vertical` | `bar` only: the value range (with `min` below zero the bar fills either way from zero, for −1..1 inputs) and filling upwards instead of across. |
 | `visible` | Condition (below); the node shows while it holds. |
 | `active` | Condition for the node's active look (`active_background`, `active_color`, `active_border_color`): a selected mode, a toggle that is on, an open window. |
-| `repeat` | List key; the children are created once per item, and `item.` refers to the current item. |
+| `repeat` | List key; the children are created once per item, and `item.` refers to the current item. A `repeat` inside one takes a list from its item (`repeat: "item.items"`), and its children's `item.` is an item of that list. |
 | `children` | Child nodes. |
 
 Windows have a title bar that can be dragged to move the window, and a close button. A
@@ -428,7 +457,7 @@ The flight UI is a set of modules, each its own layout in the `flight` group:
 | `altimeter` | Altitude, vessel and situation (top centre) | `#altimeter` |
 | `messages` | Latest event, warp notices and lag warning | `#messages` |
 | `navball` | Navball, speed, throttle, SAS modes, control inputs (bottom centre) | `#navball`, `#throttle`, `#ball`, `#sas`, `#inputs` |
-| `staging` | Stage stack (bottom of the left dock) | `#staging`, `#stages` |
+| `staging` | Sequence stack (bottom of the left dock, F8) | `#staging`, `#sequences` |
 | `flight_info` | Speeds, Mach, pressures | `#flight` |
 | `orbit_info` | Apsides, inclination, period, warp-to buttons, predicted events | `#orbit`, `#warp_to`, `#events` |
 | `flight_plan` | Planned burns, the selected burn's editor, the burn executor | `#burns`, `#editor`, `#executor` |
@@ -487,6 +516,8 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `screen.message` | The latest log message, for a few seconds |
 | `ui.shown.<layout>` | Whether a layout is showing |
 | `vessel.stages[]` | `name`, `active`, `delta_v`, `burn_time`, `fuel` (0..1), `has_fuel`, `ignitions`, `engines` |
+| `vessel.sequences[]` | The activation sequences, next first: `index`, `number`, `next`, `empty`, `items[]` (`seq`, `index`, `kind`, `is_engines`, `is_decoupler`, `is_fairing`, `is_rcs`, `stage`, `count`, `multiple`, `fuel`, `has_fuel`) |
+| `vessel.sequence_count`, `vessel.stage_twr` | How many sequences are left; thrust-to-weight of the bottom stage at full throttle here |
 | `vessel.parts[]` | Tanks and fin sets: `stage`, `name`, `tank` (bool), `size`, `material`, `mass` (kg, empty), `load` (0..1+), `mode` (`buckling`, `pressure`, `bending`); tanks also `volume` (m³), `utilization`, `contents`, `wall` (mm), `max_pressure` (bar), `max_axial_load` (N, cylinders); fins `max_fin_force` (N per fin) |
 | `vessel.log[]` | `time`, `message` (newest first) |
 | `orbit.apoapsis`, `orbit.periapsis` | Altitudes, m (apoapsis empty when escaping) |
@@ -516,7 +547,10 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 
 | Action | |
 | --- | --- |
-| `vessel.stage`, `vessel.throttle_full`, `vessel.throttle_cut` | press |
+| `vessel.stage` | Fire the next activation sequence |
+| `vessel.throttle_full`, `vessel.throttle_cut` | press |
+| `staging.drop:<dragged>:<sequence>` | `<dragged>` is `item:<sequence>:<index>` (an activation, moves into that sequence) or `seq:<sequence>` (a sequence, moves to its place) |
+| `staging.drop_new:<dragged>`, `staging.add`, `staging.remove:<sequence>` | Give an activation a new last sequence (or move a sequence to the end); add an empty sequence at the end; remove an empty one |
 | `vessel.throttle_up`, `vessel.throttle_down` | hold |
 | `vessel.pitch_up`, `vessel.pitch_down`, `vessel.yaw_left`, `vessel.yaw_right`, `vessel.roll_left`, `vessel.roll_right` | hold |
 | `vessel.sas_toggle`, `vessel.sas_mode:<mode>` | SAS on/off; select a mode (switches SAS on) |

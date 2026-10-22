@@ -2,9 +2,10 @@
 //!
 //! Any widget name not in the registry is a plain container: `column`, `row`, `panel`,
 //! `spacer` and friends differ only by their default theme class. Built-ins with behaviour:
-//! `label`, `button`, `bar`, `window` and `dock` (a container that lets clicks through to
-//! the scene; with an id, layouts with that `dock` stack into it). Rust code can register
-//! more widgets with [`WidgetRegistry::register`]; data-only mods compose these.
+//! `label`, `button`, `bar`, `window`, `dock` (a container that lets clicks through to the
+//! scene; with an id, layouts with that `dock` stack into it) and `image` (a picture from a
+//! mod, `image: "icons/engine.png"`). Rust code can register more widgets with
+//! [`WidgetRegistry::register`]; data-only mods compose these.
 
 use std::collections::HashMap;
 
@@ -17,8 +18,8 @@ use crate::{
     format::Template,
     layout::NodeDef,
     runtime::{
-        ActionSource, ActiveText, BoundActive, BoundBar, BoundText, Dock, WindowDrag, click_action,
-        drag_window, insert_state_colors, spawn_box,
+        ActionSource, ActiveText, BoundActive, BoundBar, BoundText, Dock, UiImage, WindowDrag,
+        click_action, drag_window, insert_state_colors, spawn_box,
     },
     style::{StyleDef, ThemeDef},
 };
@@ -83,6 +84,7 @@ impl Default for WidgetRegistry {
         registry.register("bar", bar);
         registry.register("window", window);
         registry.register("dock", dock);
+        registry.register("image", image);
         registry
     }
 }
@@ -102,6 +104,16 @@ impl WidgetRegistry {
 }
 
 fn container(ctx: &mut WidgetContext) -> Entity {
+    ctx.entity
+}
+
+fn image(ctx: &mut WidgetContext) -> Entity {
+    if let Some(path) = ctx.def.extra.get("image").and_then(|v| v.as_str()) {
+        ctx.commands.entity(ctx.entity).insert(UiImage {
+            path: path.to_owned(),
+            tint: ctx.style.text_color(),
+        });
+    }
     ctx.entity
 }
 

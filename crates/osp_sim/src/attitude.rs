@@ -73,6 +73,9 @@ pub fn mass_properties(stages: &[Stage]) -> MassProperties {
             m * (r2 / 4.0 + length * length / 12.0),
             m * r2 / 2.0,
         );
+        // The fairing: a thin shell around the stage.
+        let m = stage.fairing_mass();
+        add(m, middle, m * (r2 / 2.0 + length * length / 12.0), m * r2);
         for engine in &stage.engines {
             let (m, d2) = (engine.def.mass, engine.mount.length_squared());
             add(m, base, m * d2 / 2.0, m * d2);
@@ -525,6 +528,7 @@ mod tests {
             reaction_wheels: Vec::new(),
             rcs: Vec::new(),
             pod: None,
+            fairing: None,
             structure_mass: structure,
             diameter: d,
             length: l,
@@ -537,6 +541,7 @@ mod tests {
             id: "test".into(),
             name: String::new(),
             stages,
+            sequences: None,
         };
         Propulsion::from_craft(&craft, &catalog()).unwrap()
     }

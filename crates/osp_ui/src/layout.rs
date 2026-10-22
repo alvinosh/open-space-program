@@ -109,10 +109,32 @@ pub struct NodeDef {
 }
 
 impl NodeDef {
-    /// Copy of this subtree with `item.` bindings pointing at `list[index].`.
+    /// Copy of this subtree with `item.` bindings pointing at `list[index].`, in its fields
+    /// and in the string properties of custom widgets (`drag`, `drop`, ...). A nested
+    /// `repeat` takes its list from here, but its children are its own template: their
+    /// `item.` is an item of the nested list.
     pub fn instantiate(&self, list: &str, index: usize) -> NodeDef {
         let prefix = format!("{list}[{index}].");
         let sub = |s: &Option<String>| s.as_ref().map(|s| s.replace("item.", &prefix));
+        let extra = self
+            .extra
+            .iter()
+            .map(|(k, v)| {
+                let v = match v {
+                    Value::String(s) => Value::String(s.replace("item.", &prefix)),
+                    other => other.clone(),
+                };
+                (k.clone(), v)
+            })
+            .collect();
+        let children = if self.repeat.is_some() {
+            self.children.clone()
+        } else {
+            self.children
+                .iter()
+                .map(|c| c.instantiate(list, index))
+                .collect()
+        };
         NodeDef {
             text: sub(&self.text),
             title: sub(&self.title),
@@ -121,13 +143,42 @@ impl NodeDef {
             visible: sub(&self.visible),
             active: sub(&self.active),
             repeat: sub(&self.repeat),
-            children: self
-                .children
-                .iter()
-                .map(|c| c.instantiate(list, index))
-                .collect(),
+            children,
+            extra,
             ..self.clone()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn nested_repeats_keep_their_own_items() {
+        let node: NodeDef = serde_json::from_value(json!({
+            "repeat": "seqs",
+            "children": [{
+                "text": "{item.number}",
+                "drop": "move:$drag:{item.index}",
+                "children": [{
+                    "repeat": "item.items",
+                    "children": [{ "text": "{item.kind}" }],
+                }],
+            }],
+        }))
+        .unwrap();
+        let row = node.children[0].instantiate("seqs", 1);
+        assert_eq!(row.text.as_deref(), Some("{seqs[1].number}"));
+        assert_eq!(row.extra["drop"], json!("move:$drag:{seqs[1].index}"));
+        let inner = &row.children[0];
+        assert_eq!(inner.repeat.as_deref(), Some("seqs[1].items"));
+        // The inner template still refers to its own items.
+        assert_eq!(inner.children[0].text.as_deref(), Some("{item.kind}"));
+        let icon = inner.children[0].instantiate("seqs[1].items", 2);
+        assert_eq!(icon.text.as_deref(), Some("{seqs[1].items[2].kind}"));
     }
 }
 

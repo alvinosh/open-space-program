@@ -77,8 +77,11 @@ radial boosters and part damage all need a tree of parts.
 - [ ] Port procedural tanks, fins, engines, RCS, wheels and pods to parts; existing craft
       files become part trees.
 - [ ] Propellant graph per engine with flow rules (KSA has four), drain order, crossfeed.
-- [ ] Decouplers (stack and radial), interstages and fairings, size adapters.
-- [ ] Activation sequences separate from resource groups; drag and drop in flight.
+- [ ] Decouplers (stack and radial), interstages and fairings, size adapters. (Done for
+      stacks: a decoupler at every stage joint and jettisonable fairings, as activations;
+      radial decouplers and size adapters wait for the part tree.)
+- [x] Activation sequences separate from resource groups; drag and drop in flight
+      (activations per stage, not per part, until the part tree).
 - [ ] Debris vessels from jettisoned parts.
 - [x] Vessel switching (`]`/`[`), several vessels per scenario, Universe Manifest window
       (all objects, target, fly).

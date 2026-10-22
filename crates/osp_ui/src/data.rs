@@ -2,8 +2,8 @@
 //!
 //! The game publishes values under dotted keys each frame (`vessel.altitude`,
 //! `orbit.period`, ...). Layouts reference them in text templates (`{vessel.altitude}`),
-//! visibility conditions, progress bars and repeated lists. Lists hold records:
-//! `vessel.stages[2].name`.
+//! visibility conditions, progress bars and repeated lists. Lists hold records, whose
+//! fields can be lists again: `vessel.stages[2].name`, `vessel.sequences[0].items[1].kind`.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -104,26 +104,32 @@ impl UiData {
         self.values.remove(key);
     }
 
-    /// Look up `key`, `list[3]` or `list[3].field`.
+    /// Look up `key`, `list[3]`'s `field` (`list[3].field`), and so on into lists held by
+    /// record fields (`list[3].items[0].name`). A bare `list[3]` is no value.
     pub fn get(&self, path: &str) -> Option<&UiValue> {
-        let Some((base, rest)) = path.split_once('[') else {
+        let Some((base, mut rest)) = path.split_once('[') else {
             return self.values.get(path);
         };
-        let (index, field) = rest.split_once(']')?;
-        let index: usize = index.parse().ok()?;
-        let UiValue::List(items) = self.values.get(base)? else {
-            return None;
-        };
-        let item = items.get(index)?;
-        match field.strip_prefix('.') {
-            Some(field) => item.get(field),
-            None if field.is_empty() => None,
-            None => None,
+        let mut value = self.values.get(base)?;
+        loop {
+            let (index, after) = rest.split_once(']')?;
+            let UiValue::List(items) = value else {
+                return None;
+            };
+            let item = items.get(index.parse::<usize>().ok()?)?;
+            let field = after.strip_prefix('.')?;
+            match field.split_once('[') {
+                None => return item.get(field),
+                Some((name, next)) => {
+                    value = item.get(name)?;
+                    rest = next;
+                }
+            }
         }
     }
 
     pub fn list_len(&self, key: &str) -> usize {
-        match self.values.get(key) {
+        match self.get(key) {
             Some(UiValue::List(items)) => items.len(),
             _ => 0,
         }
@@ -194,5 +200,33 @@ mod tests {
         assert!(data.condition("vessel.stages[1].name == Upper"));
         assert!(data.condition("missing == "));
         assert!(!data.condition("missing != "));
+    }
+
+    #[test]
+    fn lists_inside_records() {
+        let mut data = UiData::default();
+        let items = vec![
+            record([("kind", "engines".into())]),
+            record([("kind", "rcs".into())]),
+        ];
+        data.set(
+            "seqs",
+            vec![record([("n", 1.into())]), record([("items", items.into())])],
+        );
+        assert_eq!(data.list_len("seqs[1].items"), 2);
+        assert_eq!(
+            data.get("seqs[1].items[1].kind"),
+            Some(&UiValue::Text("rcs".into()))
+        );
+        assert_eq!(data.list_len("seqs[0].items"), 0);
+        assert_eq!(data.get("seqs[1].items[2].kind"), None);
+        assert_eq!(
+            data.get("seqs[1].items"),
+            Some(&UiValue::List(vec![
+                record([("kind", "engines".into())]),
+                record([("kind", "rcs".into())]),
+            ]))
+        );
+        assert_eq!(data.get("seqs[1]"), None);
     }
 }

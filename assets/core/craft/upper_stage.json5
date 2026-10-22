@@ -27,6 +27,8 @@
     {
       name: "Payload",
       structure_mass: 15000,
+      // Two composite halves and the nose, jettisoned once out of the thick air.
+      fairing: { mass: 1900 },
       diameter: 3.7,
       length: 11,
     },

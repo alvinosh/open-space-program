@@ -367,6 +367,13 @@ pub struct CraftDef {
     pub name: String,
     /// Stages in firing order: index 0 is the first stage (bottom of the stack).
     pub stages: Vec<StageDef>,
+    /// What each press of the stage key does, in order: lists of activations written
+    /// `"<what>:<stage name>"`, where `<what>` is `engines` (light the stage's engines),
+    /// `decoupler` (release the joint above the stage, dropping it and everything below),
+    /// `fairing` (jettison the stage's fairing) or `rcs` (switch RCS on). Without it the
+    /// sequences are made from the stages: see `Propulsion::default_sequences`.
+    #[serde(default)]
+    pub sequences: Option<Vec<Vec<String>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -389,6 +396,9 @@ pub struct StageDef {
     /// Crew pod part name, at the top of the stage.
     #[serde(default)]
     pub pod: Option<String>,
+    /// A payload fairing around the stage, jettisoned by a sequence.
+    #[serde(default)]
+    pub fairing: Option<FairingDef>,
     /// Extra structural mass (interstage, thrust structure, fairings, avionics, payload),
     /// kg.
     #[serde(default)]
@@ -400,6 +410,13 @@ pub struct StageDef {
     /// How the stage looks; no effect on physics.
     #[serde(default)]
     pub appearance: StageAppearance,
+}
+
+/// A payload fairing: two shells around a stage and a nose, jettisoned in flight.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FairingDef {
+    /// Both halves, kg.
+    pub mass: f64,
 }
 
 /// How a stage is drawn. The hull is built from the stage itself: its tanks are painted

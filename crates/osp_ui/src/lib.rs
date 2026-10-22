@@ -29,7 +29,7 @@ use bevy::prelude::*;
 pub use data::{UiData, UiRecord, UiValue, record};
 pub use format::{Formatter, Formatters, Template};
 pub use layout::{LayoutDef, NodeDef, UiDocuments};
-pub use runtime::{ActionState, LayoutVisibility, PointerOverUi, UiAction};
+pub use runtime::{ActionState, LayoutVisibility, PointerOverUi, UiAction, UiImage};
 pub use widgets::{WidgetBuilder, WidgetContext, WidgetRegistry};
 
 /// Ordering for UI work within `Update`. Publish data before [`UiSet::Update`] and read

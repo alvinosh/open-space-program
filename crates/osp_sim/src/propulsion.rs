@@ -1,8 +1,9 @@
 //! Stages and RO-style engines: pressure-dependent Isp, limited ignitions, ullage
 //! requirements, throttle limits and thrust that spools up after ignition, follows the
-//! throttle at a limited rate and tails off after cutoff. Tanks, fins and RCS blocks are part
-//! of their stage too; sizing tanks and fins is in [`crate::structure`], firing RCS in
-//! [`crate::rcs`].
+//! throttle at a limited rate and tails off after cutoff. Tanks, fins, RCS blocks and
+//! fairings are part of their stage too; sizing tanks and fins is in [`crate::structure`],
+//! firing RCS in [`crate::rcs`]. What the stage key does is a list of activation sequences
+//! ([`crate::staging`]), carried out here.
 
 use glam::DVec2;
 use thiserror::Error;
@@ -10,6 +11,7 @@ use thiserror::Error;
 use crate::{
     constants::{ATM, G0},
     data::{CraftDef, EngineDef, PartCatalog, PodDef, RcsDef, StageAppearance, TankShape},
+    staging::{Activation, Sequences},
     structure::{FinSet, Tank},
 };
 
@@ -41,6 +43,8 @@ pub enum CraftError {
     BadFins(String),
     #[error("stage `{stage}`: {problem}")]
     BadStage { stage: String, problem: String },
+    #[error("sequences: {0}")]
+    BadSequence(String),
     #[error("craft has no stages")]
     NoStages,
 }
@@ -171,8 +175,10 @@ pub struct Propellant {
 
 #[derive(Debug, Clone)]
 pub struct Stage {
+    /// Index in the craft definition; stays the same as stages below fall away.
+    pub id: usize,
     pub name: String,
-    /// Staged (engines armed). Only the bottom stage can be active.
+    /// Engines armed: they light with the throttle once this is the bottom stage.
     pub active: bool,
     pub engines: Vec<Engine>,
     pub tanks: Vec<Tank>,
@@ -186,6 +192,7 @@ pub struct Stage {
     pub wheel_torque: f64,
     pub rcs: Vec<RcsBlock>,
     pub pod: Option<PodDef>,
+    pub fairing: Option<Fairing>,
     /// What the tanks hold, pooled: engines and RCS draw from here and the tanks drain
     /// together.
     pub propellants: Vec<Propellant>,
@@ -212,9 +219,21 @@ impl Stage {
         self.fins.as_ref().map_or(0.0, |f| f.mass)
     }
 
+    /// The fairing, while it is still on, kg.
+    pub fn fairing_mass(&self) -> f64 {
+        self.fairing
+            .as_ref()
+            .filter(|f| f.attached)
+            .map_or(0.0, |f| f.mass)
+    }
+
     /// Everything except propellant, kg.
     pub fn dry_mass(&self) -> f64 {
-        self.engine_mass() + self.tank_mass + self.fin_mass() + self.structure_mass
+        self.engine_mass()
+            + self.tank_mass
+            + self.fin_mass()
+            + self.structure_mass
+            + self.fairing_mass()
     }
 
     pub fn mass(&self) -> f64 {
@@ -288,6 +307,28 @@ impl Stage {
     }
 }
 
+/// A payload fairing around a stage.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fairing {
+    /// kg.
+    pub mass: f64,
+    /// Not jettisoned yet.
+    pub attached: bool,
+}
+
+/// What firing a sequence did.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Staged {
+    /// For the flight log, one per activation.
+    pub messages: Vec<String>,
+    /// Length of the stages that fell away, m.
+    pub dropped_length: f64,
+    /// Mass left the vessel (stages fell away or a fairing was jettisoned).
+    pub mass_changed: bool,
+    /// An activation switched RCS on.
+    pub rcs_on: bool,
+}
+
 /// Per-stage delta-v readout.
 #[derive(Debug, Clone)]
 pub struct StageInfo {
@@ -297,11 +338,13 @@ pub struct StageInfo {
     pub start_mass: f64,
 }
 
-/// The stack of stages plus throttle and ignition state.
+/// The stack of stages, the activation sequences, and throttle and ignition state.
 #[derive(Debug, Clone)]
 pub struct Propulsion {
-    /// Stages in firing order; index 0 is the current bottom stage.
+    /// Stages from the bottom of the stack; index 0 is the current bottom stage.
     pub stages: Vec<Stage>,
+    /// What the stage key does next; the player can rearrange them.
+    pub sequences: Sequences,
     throttle: f64,
     ignition_pending: bool,
 }
@@ -314,7 +357,8 @@ impl Propulsion {
         let stages = craft
             .stages
             .iter()
-            .map(|def| {
+            .enumerate()
+            .map(|(id, def)| {
                 let mut tank_mass = 0.0;
                 let mut structure_mass = def.structure_mass;
                 let mut wheel_torque = 0.0;
@@ -445,6 +489,7 @@ impl Propulsion {
                     }
                 }
                 Ok(Stage {
+                    id,
                     name: def.name.clone(),
                     active: false,
                     engines,
@@ -455,6 +500,10 @@ impl Propulsion {
                     wheel_torque,
                     rcs,
                     pod,
+                    fairing: def.fairing.as_ref().map(|f| Fairing {
+                        mass: f.mass,
+                        attached: true,
+                    }),
                     propellants,
                     diameter: def.diameter,
                     length: def.length,
@@ -462,8 +511,13 @@ impl Propulsion {
                 })
             })
             .collect::<Result<Vec<_>, CraftError>>()?;
+        let sequences = match &craft.sequences {
+            Some(def) => Sequences::parse(def, &stages).map_err(CraftError::BadSequence)?,
+            None => Sequences::default_for(&stages),
+        };
         Ok(Self {
             stages,
+            sequences,
             throttle: 0.0,
             ignition_pending: false,
         })
@@ -527,20 +581,77 @@ impl Propulsion {
         })
     }
 
-    /// Arm the bottom stage, or jettison it and arm the next one. Returns a log message.
-    pub fn activate_next_stage(&mut self) -> Option<String> {
-        let first = self.stages.first_mut()?;
-        let message = if !first.active {
-            first.active = true;
-            format!("Staged: {}", first.name)
-        } else if self.stages.len() > 1 {
-            // TODO: spawn the spent stage as a debris vessel.
-            let spent = self.stages.remove(0);
-            self.stages[0].active = true;
-            format!("Jettisoned {}; staged {}", spent.name, self.stages[0].name)
-        } else {
-            return None;
-        };
+    /// Fire the next sequence: release its decouplers (everything below falls away), light
+    /// its engines (they start with the throttle once their stage is at the bottom), jettison
+    /// its fairings and switch RCS on. `None` when no sequence is left.
+    pub fn activate_next_sequence(&mut self) -> Option<Staged> {
+        let sequence = self.sequences.pop_next()?;
+        let mut staged = Staged::default();
+        if sequence.is_empty() {
+            staged.messages.push("Nothing to stage".into());
+        }
+        for activation in sequence {
+            let Some(index) = self.stages.iter().position(|s| s.id == activation.stage()) else {
+                continue;
+            };
+            match activation {
+                Activation::Decoupler(_) => {
+                    if index + 1 >= self.stages.len() {
+                        continue;
+                    }
+                    // TODO: spawn what falls away as debris vessels.
+                    let spent: Vec<Stage> = self.stages.drain(..=index).collect();
+                    staged.dropped_length += spent.iter().map(|s| s.length).sum::<f64>();
+                    staged.mass_changed = true;
+                    let names: Vec<_> = spent.iter().map(|s| s.name.as_str()).collect();
+                    staged
+                        .messages
+                        .push(format!("Separated {}", names.join(", ")));
+                    let gone: Vec<usize> = spent.iter().map(|s| s.id).collect();
+                    self.sequences.forget(&gone);
+                    // Engines armed above light as soon as they are at the bottom.
+                    if self.throttle > 0.0 && self.stages[0].active {
+                        self.ignition_pending = true;
+                    }
+                }
+                Activation::Engines(_) => {
+                    let stage = &mut self.stages[index];
+                    stage.active = true;
+                    staged.messages.push(format!("Staged: {}", stage.name));
+                    if index == 0 && self.throttle > 0.0 {
+                        self.ignition_pending = true;
+                    }
+                }
+                Activation::Fairing(_) => {
+                    if let Some(fairing) =
+                        self.stages[index].fairing.as_mut().filter(|f| f.attached)
+                    {
+                        fairing.attached = false;
+                        staged.mass_changed = true;
+                        staged.messages.push("Fairing jettisoned".into());
+                    }
+                }
+                Activation::Rcs(_) => {
+                    staged.rcs_on = true;
+                    staged.messages.push("RCS on".into());
+                }
+            }
+        }
+        Some(staged)
+    }
+
+    /// Arm the bottom stage's engines outside the sequences (the burn executor does), taking
+    /// their activation out of whichever sequence held it. Returns a log message if they
+    /// were not armed yet.
+    pub fn arm_bottom(&mut self) -> Option<String> {
+        let stage = self
+            .stages
+            .first_mut()
+            .filter(|s| !s.active && !s.engines.is_empty())?;
+        stage.active = true;
+        let message = format!("Staged: {}", stage.name);
+        let id = stage.id;
+        self.sequences.take(Activation::Engines(id));
         if self.throttle > 0.0 {
             self.ignition_pending = true;
         }
