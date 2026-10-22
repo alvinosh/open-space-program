@@ -158,7 +158,8 @@ radial boosters and part damage all need a tree of parts.
 - [ ] Physics-driven plumes: expansion with pressure, shock diamonds, refraction, crossflow
       bending, merging, persistent trails with shadows. (Done: ray-marched plume per engine
       from its thrust level and exit/ambient pressure, shock diamonds, ground splash, plume
-      light, bloom. Still to do: refraction, crossflow, merging, trails, pad smoke.)
+      light, bloom, bending from the gimballed nozzle onto a smoothed axis that trails the
+      airflow. Still to do: refraction, merging, trails, pad smoke.)
 - [ ] FFT ocean (JONSWAP, foam, refraction, underwater).
 - [ ] GPU particles (launch debris), engine heat glow, thin-film colour on hot metal.
 - [ ] Distant bodies and vessels as sprites, glints, Milky Way, Sun surface, Hapke lighting.

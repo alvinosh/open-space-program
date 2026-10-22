@@ -1,14 +1,18 @@
 //! Vessel visuals: a procedural hull per stage (see [`crate::hull`]), engines, RCS blocks
 //! and crew pods from their glTF models (or plain stand-ins without one), procedural fins,
-//! exhaust plumes
-//! from the bottom stage's engines that swivel with their gimbal and follow each engine's
-//! thrust level (see [`crate::plume`]), the light they cast, and puffs from every RCS
-//! nozzle that fires.
+//! exhaust plumes from the bottom stage's engines that follow each engine's thrust level and
+//! leave along its gimballed nozzle (see [`crate::plume`]), the light they cast, and puffs
+//! from every RCS nozzle that fires.
 
 use std::f32::consts::TAU;
 
 use bevy::{light::NotShadowCaster, prelude::*};
-use osp_sim::{DVec3, propulsion::Stage, structure::FinSet};
+use osp_sim::{
+    DVec3,
+    propulsion::{Engine, Stage},
+    structure::FinSet,
+    time::SimTime,
+};
 
 use crate::{
     FrameSet,
@@ -16,7 +20,10 @@ use crate::{
     frame::{RenderFrame, rotation_to_render, to_render},
     hull::stage_hull,
     meshgen::MeshBuilder,
-    plume::{PlumeDef, PlumeMaterial, PlumeParams, PlumeShape, plume_lumens},
+    plume::{
+        AXIS_LAG, PlumeDef, PlumeMaterial, PlumeParams, PlumeShape, plume_axes, plume_axis,
+        plume_lumens,
+    },
     sim::Sim,
 };
 
@@ -69,15 +76,23 @@ struct EnginePivot {
     engine: usize,
 }
 
-/// An exhaust plume starting at its nozzle exit, `exit` below the pivot.
+/// The exhaust plume of an engine of the bottom stage, starting at its nozzle exit, `exit`
+/// along the bell from the gimbal pivot at `mount` (vessel render axes). It hangs off the
+/// vessel, not the pivot: it runs where the exhaust has been going lately and only its
+/// start follows the nozzle.
 #[derive(Component)]
 struct Plume {
+    vessel: usize,
+    engine: usize,
+    mount: Vec3,
     exit: f32,
     radius: f32,
     /// Nozzle exit pressure at full thrust, Pa.
     exit_pressure: f64,
     look: PlumeDef,
     seed: f32,
+    /// The nozzle axis smoothed over time, and when it was, while the engine burns.
+    exhaust: Option<(Vec3, SimTime)>,
 }
 
 /// The light a vessel's plumes cast, at their middle.
@@ -299,45 +314,46 @@ fn rebuild_on_change(
                 for (j, engine) in stage.engines.iter().enumerate() {
                     let mount = to_render(DVec3::new(engine.mount.x, engine.mount.y, 0.0));
                     let (exit, bell) = bell_size(stage, j);
-                    let mut pivot = parent.spawn((
-                        Transform::from_translation(mount + Vec3::Y * y),
-                        Visibility::default(),
-                    ));
+                    let mount = mount + Vec3::Y * y;
+                    let mut pivot =
+                        parent.spawn((Transform::from_translation(mount), Visibility::default()));
                     if i == 0 {
                         pivot.insert(EnginePivot { vessel, engine: j });
                     }
-                    pivot.with_children(|pivot| {
-                        match model(&engine.def.model) {
-                            Some(scene) => {
-                                pivot.spawn(scene);
-                            }
-                            None => {
-                                pivot.spawn((
-                                    Mesh3d(meshes.add(Cone::new(exit, bell))),
-                                    MeshMaterial3d(materials.engine.clone()),
-                                    Transform::from_xyz(0.0, -bell / 2.0, 0.0),
-                                ));
-                            }
+                    pivot.with_children(|pivot| match model(&engine.def.model) {
+                        Some(scene) => {
+                            pivot.spawn(scene);
                         }
-                        if i == 0
-                            && let Some(look) = look(&engine.def.plume)
-                        {
+                        None => {
                             pivot.spawn((
-                                Plume {
-                                    exit: bell,
-                                    radius: exit,
-                                    exit_pressure: engine.def.exit_pressure(),
-                                    look,
-                                    seed: 7.31 * j as f32,
-                                },
-                                Mesh3d(plume_volume.clone()),
-                                MeshMaterial3d(plume_materials.add(PlumeMaterial::default())),
-                                Transform::default(),
-                                Visibility::Hidden,
-                                NotShadowCaster,
+                                Mesh3d(meshes.add(Cone::new(exit, bell))),
+                                MeshMaterial3d(materials.engine.clone()),
+                                Transform::from_xyz(0.0, -bell / 2.0, 0.0),
                             ));
                         }
                     });
+                    if i == 0
+                        && let Some(look) = look(&engine.def.plume)
+                    {
+                        parent.spawn((
+                            Plume {
+                                vessel,
+                                engine: j,
+                                mount,
+                                exit: bell,
+                                radius: exit,
+                                exit_pressure: engine.def.exit_pressure(),
+                                look,
+                                seed: 7.31 * j as f32,
+                                exhaust: None,
+                            },
+                            Mesh3d(plume_volume.clone()),
+                            MeshMaterial3d(plume_materials.add(PlumeMaterial::default())),
+                            Transform::default(),
+                            Visibility::Hidden,
+                            NotShadowCaster,
+                        ));
+                    }
                 }
 
                 let pod_height = stage.pod.as_ref().map_or(0.0, |p| p.height as f32);
@@ -457,14 +473,15 @@ fn place_vessels(
 }
 
 /// Swivel the bottom stage's engines to their gimbal angles, shape their plumes to each
-/// engine's thrust level and the ambient pressure, and light the vessel with them.
+/// engine's thrust level, the ambient pressure and the airflow, and light the vessel with
+/// them.
 fn update_engines(
     sim: Res<Sim>,
     frame: Res<RenderFrame>,
-    mut pivots: Query<(&EnginePivot, &mut Transform, &Children), Without<Plume>>,
+    mut pivots: Query<(&EnginePivot, &mut Transform), Without<Plume>>,
     mut plumes: Query<
         (
-            &Plume,
+            &mut Plume,
             &MeshMaterial3d<PlumeMaterial>,
             &mut Transform,
             &mut Visibility,
@@ -475,9 +492,21 @@ fn update_engines(
     mut materials: ResMut<Assets<PlumeMaterial>>,
 ) {
     let system = &sim.universe.system;
-    // Per vessel: height of the base above the ground, m, and the local vertical in vessel
-    // render axes.
-    let ground: Vec<(f64, Vec3)> = sim
+    let engine = |vessel: usize, engine: usize| {
+        sim.universe.vessels[vessel]
+            .propulsion
+            .stages
+            .first()
+            .and_then(|s| s.engines.get(engine))
+    };
+    for (pivot, mut transform) in &mut pivots {
+        if let Some(engine) = engine(pivot.vessel, pivot.engine) {
+            transform.rotation = Quat::from_rotation_arc(Vec3::NEG_Y, nozzle_axis(engine));
+        }
+    }
+    // Per vessel, in vessel render axes: height of the base above the ground, m, the local
+    // vertical, and the air's velocity past the vessel, m/s.
+    let around: Vec<(f64, Vec3, Vec3)> = sim
         .universe
         .vessels
         .iter()
@@ -486,73 +515,74 @@ fn update_engines(
             let base = v.base_at(system, frame.time);
             let fixed = body.orientation(frame.time).inverse() * base.normalize();
             let height = base.length() - body.radius - body.terrain_height(fixed);
-            let up = v.attitude_at(system, frame.time).inverse() * base.normalize();
-            (height, to_render(up).normalize())
+            let into = v.attitude_at(system, frame.time).inverse();
+            let state = v.state_at(system, frame.time);
+            let airflow = body.surface_velocity(state.position) - state.velocity;
+            (
+                height,
+                to_render(into * base.normalize()).normalize(),
+                to_render(into * airflow),
+            )
         })
         .collect();
     // Per vessel: lumens, and lumen-weighted colour and position.
     let mut glow: Vec<(f32, Vec3, Vec3)> =
         vec![(0.0, Vec3::ZERO, Vec3::ZERO); sim.universe.vessels.len()];
-    for (pivot, mut transform, children) in &mut pivots {
-        let vessel = &sim.universe.vessels[pivot.vessel];
-        let Some(engine) = vessel
-            .propulsion
-            .stages
-            .first()
-            .and_then(|s| s.engines.get(pivot.engine))
-        else {
+    for (mut plume, material, mut transform, mut visibility) in &mut plumes {
+        let Some(engine) = engine(plume.vessel, plume.engine) else {
             continue;
         };
-        // The bell points along the exhaust, opposite the (tilted) thrust.
-        let angle = engine.deflection.length();
-        let side = engine.deflection.normalize_or_zero() * angle.sin();
-        let exhaust = -to_render(DVec3::new(side.x, side.y, angle.cos()));
-        transform.rotation = Quat::from_rotation_arc(Vec3::NEG_Y, exhaust.normalize());
-
-        for child in children.iter() {
-            let Ok((plume, material, mut plume_transform, mut visibility)) = plumes.get_mut(child)
-            else {
-                continue;
-            };
-            let level = engine.level as f32;
-            if level <= 0.0 {
-                *visibility = Visibility::Hidden;
-                continue;
-            }
-            *visibility = Visibility::Inherited;
-            // How far the exhaust runs along its axis before it hits the ground.
-            let (height, up) = ground[pivot.vessel];
-            let axis = transform.rotation * Vec3::NEG_Y;
-            let exit = transform.translation + axis * plume.exit;
-            let falling = -axis.dot(up);
-            let to_ground = if falling > 0.2 {
-                (height as f32 + exit.dot(up)) / falling
-            } else {
-                f32::INFINITY
-            };
-            let shape = PlumeShape::new(
-                plume.radius,
-                plume.exit_pressure,
-                engine.level,
-                vessel.flight.static_pressure,
-                to_ground,
-            );
-            let end = shape.end_radius();
-            *plume_transform = Transform::from_xyz(0.0, -plume.exit, 0.0).with_scale(Vec3::new(
-                end,
-                shape.length,
-                end,
-            ));
-            if let Some(mut material) = materials.get_mut(&material.0) {
-                material.params = PlumeParams::new(&shape, &plume.look, level, plume.seed);
-            }
-            let lumens = plume_lumens(&shape, &plume.look, level);
-            let middle = exit + axis * (0.5 * shape.fade).min(shape.ground - 1.0).max(0.0);
-            let (sum, color, at) = &mut glow[pivot.vessel];
-            *sum += lumens;
-            *color += lumens * Vec3::from(plume.look.flame);
-            *at += lumens * middle;
+        let level = engine.level as f32;
+        if level <= 0.0 {
+            *visibility = Visibility::Hidden;
+            plume.exhaust = None;
+            continue;
         }
+        *visibility = Visibility::Inherited;
+        let vessel = &sim.universe.vessels[plume.vessel];
+        let nozzle = nozzle_axis(engine);
+        let exhaust = match plume.exhaust {
+            Some((last, at)) => {
+                let dt = frame.time.seconds_since(at) as f32;
+                last.lerp(nozzle, 1.0 - (-dt.max(0.0) / AXIS_LAG).exp())
+                    .normalize()
+            }
+            None => nozzle,
+        };
+        plume.exhaust = Some((exhaust, frame.time));
+        let (height, up, airflow) = around[plume.vessel];
+        let jet = engine.thrust as f32 / (std::f32::consts::PI * plume.radius * plume.radius);
+        let axis = plume_axis(exhaust, airflow, vessel.flight.dynamic_pressure as f32, jet);
+        let (rotation, bend) = plume_axes(axis, nozzle);
+        // How far the exhaust runs along its axis before it hits the ground.
+        let exit = plume.mount + nozzle * plume.exit;
+        let falling = -axis.dot(up);
+        let to_ground = if falling > 0.2 {
+            (height as f32 + exit.dot(up)) / falling
+        } else {
+            f32::INFINITY
+        };
+        let shape = PlumeShape::new(
+            plume.radius,
+            plume.exit_pressure,
+            engine.level,
+            vessel.flight.static_pressure,
+            to_ground,
+            bend,
+        );
+        let end = shape.end_radius();
+        *transform = Transform::from_translation(exit)
+            .with_rotation(rotation)
+            .with_scale(Vec3::new(end, shape.length, end));
+        if let Some(mut material) = materials.get_mut(&material.0) {
+            material.params = PlumeParams::new(&shape, &plume.look, level, plume.seed);
+        }
+        let lumens = plume_lumens(&shape, &plume.look, level);
+        let middle = exit + axis * (0.5 * shape.fade).min(shape.ground - 1.0).max(0.0);
+        let (sum, color, at) = &mut glow[plume.vessel];
+        *sum += lumens;
+        *color += lumens * Vec3::from(plume.look.flame);
+        *at += lumens * middle;
     }
     for (light, mut point, mut transform) in &mut lights {
         let (lumens, color, at) = glow[light.vessel];
@@ -563,6 +593,14 @@ fn update_engines(
             transform.translation = at / lumens;
         }
     }
+}
+
+/// Where an engine's bell points, along its exhaust (opposite the tilted thrust), in vessel
+/// render axes.
+fn nozzle_axis(engine: &Engine) -> Vec3 {
+    let angle = engine.deflection.length();
+    let side = engine.deflection.normalize_or_zero() * angle.sin();
+    -to_render(DVec3::new(side.x, side.y, angle.cos())).normalize()
 }
 
 /// Size each RCS puff by how hard its nozzle fired on the last physics tick.

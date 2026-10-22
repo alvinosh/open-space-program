@@ -78,7 +78,7 @@ parts of it instead.
 | `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), `model` |
 | `craft` | Vessels | `stages` from the bottom: `engines`, procedural `tanks` and `fins`, `reaction_wheels`, `rcs`, `pod`, `fairing: { mass }`, `structure_mass`, `diameter`, `length`, `appearance`; optional `sequences`; see [Staging](#staging) and [Stage appearance](#stage-appearance) |
 | `launch_sites` | Launch sites | Position, `heading`, optional `pad` and `roads`; see [Launch sites](#launch-sites) |
-| `scenarios` | New-game setups | `start: { type: "LaunchSite", site: "<id>" }` or `{ type: "Orbit", ... }`; pick with `OSP_SCENARIO=<id>` |
+| `scenarios` | New-game setups | `start: { type: "LaunchSite", site: "<id>" }` or `{ type: "Orbit", body, periapsis_altitude, apoapsis_altitude, inclination, longitude_of_ascending_node, argument_of_periapsis, mean_anomaly }` (degrees, from the body's equator; `plane: "<body>"` instead takes the plane of a body that orbits it, like the Moon); optional `others` and `target`; pick with `OSP_SCENARIO=<id>` (default `moon_plane`) |
 | `layouts` | UI windows and panels | See [User interface](#user-interface) |
 | `themes` | Style classes | All theme records merge in load order |
 | `keybindings` | Key → action | All keybinding records combine |
@@ -184,7 +184,10 @@ with thrust) against the ambient pressure sets its shape: at or below the ambien
 the jet is a narrow column with shock diamonds; as the air thins it overtakes it, the cells
 stretch and the plume fans out and fades into vacuum. Without `exit_pressure` it is guessed
 from the Isp the engine loses at sea level. `plume` names a `plumes` record for the colours
-and brightness; engines without one draw no plume.
+and brightness; engines without one draw no plume. The jet leaves along the gimballed
+nozzle and bends within a few metres onto where the exhaust has been going over the last
+half second or so, leaning into the airflow the harder the air pushes against the jet, so
+quick gimbal moves do not swing the whole plume.
 
 ### Staging
 
@@ -504,6 +507,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.delta_v`, `vessel.stage_count`, `vessel.landed`, `vessel.engines_running` | |
 | `vessel.sas`, `vessel.sas_mode`, `vessel.sas_mode_label` | SAS on; mode (`off`, `stability`, `prograde`, `retrograde`, `normal`, `anti_normal`, `radial_out`, `radial_in`, `burn`, `target`, `anti_target`) |
 | `vessel.rcs`, `vessel.has_rcs`, `vessel.rcs_fuel` | RCS on; any RCS with a propellant supply in the stack; scarcest RCS propellant left (0..1) |
+| `vessel.rcs_mass`, `vessel.rcs_delta_v` | RCS propellant left (kg) and the delta-v it can still give the whole vessel in vacuum (m/s) |
 | `vessel.structure_load`, `vessel.destroyed` | The most loaded part's load over its strength (1 = failing); broke up |
 | `nav.frame`, `nav.speed` | `"Surface"`, `"Orbit"` or `"Target"`; speed in that frame, m/s |
 | `nav.heading`, `nav.pitch`, `nav.roll` | Attitude against the local horizon, degrees (roll is empty pointing straight up or down) |

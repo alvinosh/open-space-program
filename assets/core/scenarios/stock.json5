@@ -54,6 +54,23 @@
     target: "Station",
   },
   {
+    // The default start: a 300 km circular orbit in the Moon's plane, targeting the Moon,
+    // in an upper stage with plenty of RCS. A single prograde burn at the right moment
+    // reaches the Moon without a plane change.
+    id: "moon_plane",
+    name: "Low Earth orbit in the Moon's plane",
+    start_time: 21600,
+    craft: "lunar_upper",
+    start: {
+      type: "Orbit",
+      body: "Earth",
+      periapsis_altitude: 300000,
+      apoapsis_altitude: 300000,
+      plane: "Moon",
+    },
+    target: "Moon",
+  },
+  {
     // Parked in a 300 km circular orbit: good for testing time warp and transfers.
     // A ~3.1 km/s prograde burn from here reaches the Moon.
     id: "leo",

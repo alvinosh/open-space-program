@@ -133,6 +133,8 @@
     vbar: { width: 10, min_width: 10, height: 150, grow: 0 },
     thin: { width: 4, min_width: 4 },
     ibar: { width: 84, min_width: 84, grow: 0, height: 5 },
+    // RCS propellant gauge under the SAS buttons, as wide as the control bars.
+    rcs_bar: { width: 84, min_width: 84, grow: 0 },
     // The sequence stack (layouts/staging.json5).
     seq_row: {
       padding: [3, 6],

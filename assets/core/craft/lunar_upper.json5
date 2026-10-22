@@ -1,0 +1,41 @@
+// The Pathfinder upper stage and payload with a heavy hypergolic RCS kit, for flying around
+// in orbit: eight quads round the top of the upper stage fed from a titanium sphere, and a
+// second reaction wheel unit, so it turns and translates far more briskly than the stock
+// upper stage. Starts the `moon_plane` scenario.
+{
+  id: "lunar_upper",
+  name: "Pathfinder Lunar",
+  stages: [
+    {
+      name: "Upper Stage",
+      engines: ["K-1 Vacuum"],
+      tanks: [
+        {
+          type: "Isogrid Al-Li",
+          length: 9.6,
+          design_load: 6.5,
+          propellants: { Kerosene: 1, LqdOxygen: 2.36 },
+        },
+        // RCS propellant in a sphere inside the interstage.
+        { type: "Titanium Sphere", shape: "sphere", diameter: 2.0, propellants: { Aerozine50: 1, NTO: 1.6 } },
+      ],
+      reaction_wheels: ["Attitude Control Unit", "Attitude Control Unit"],
+      rcs: [
+        "Hypergolic Quad", "Hypergolic Quad", "Hypergolic Quad", "Hypergolic Quad",
+        "Hypergolic Quad", "Hypergolic Quad", "Hypergolic Quad", "Hypergolic Quad",
+      ],
+      structure_mass: 1830, // interstage, avionics, payload adapter
+      diameter: 3.7,
+      length: 14,
+      appearance: { raceway: true },
+    },
+    {
+      name: "Payload",
+      structure_mass: 15000,
+      // Two composite halves and the nose.
+      fairing: { mass: 1900 },
+      diameter: 3.7,
+      length: 11,
+    },
+  ],
+}

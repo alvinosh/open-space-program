@@ -550,6 +550,10 @@ pub struct OrbitStartDef {
     pub inclination: f64,
     #[serde(default)]
     pub longitude_of_ascending_node: f64,
+    /// Start in the orbital plane of this body (one that orbits `body`, like the Moon)
+    /// instead of `inclination` and `longitude_of_ascending_node`.
+    #[serde(default)]
+    pub plane: Option<String>,
     #[serde(default)]
     pub argument_of_periapsis: f64,
     #[serde(default)]

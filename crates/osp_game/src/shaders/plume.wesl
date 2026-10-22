@@ -3,7 +3,9 @@
 // The mesh is a unit cylinder from the nozzle exit (local y = 0) down to y = -1, scaled to
 // the bounding volume. Each pixel is shaded once: by the front face when the camera is
 // outside the cylinder, by the back face when it is inside. The march runs in metres along
-// the plume: `a` from the nozzle exit along the exhaust, `r` out from the axis.
+// the plume: `a` from the nozzle exit along the exhaust, `r` out from the jet's centre. The
+// jet leaves along the nozzle, which may be gimballed off the plume axis, and turns onto
+// the axis within the bend length.
 //
 // What glows: a hot core that narrows to a point a few nozzle radii out, the flame (a soft
 // column whose edge spreads with the jet's expansion, dimming as it widens and with
@@ -30,6 +32,8 @@ struct PlumeParams {
     core: vec4<f32>,
     flame: vec4<f32>,
     shock: vec4<f32>,
+    /// xy: tangent of the nozzle axis against the plume axis (x, z), z: bend length.
+    bend: vec4<f32>,
 };
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: PlumeParams;
@@ -121,7 +125,9 @@ struct Sample {
 
 fn sample(p: vec3<f32>, time: f32) -> Sample {
     let a = max(p.y, 0.0);
-    let r = length(p.xz);
+    let bend_length = max(params.bend.z, 1e-3);
+    let across = p.xz - params.bend.xy * bend_length * (1.0 - exp(-a / bend_length));
+    let r = length(across);
     let re = params.shape.x;
     let level = params.flow.x;
     let expansion = params.flow.y;
@@ -140,7 +146,7 @@ fn sample(p: vec3<f32>, time: f32) -> Sample {
     // Turbulence: eddies grow and slow down along the plume, and wash out its edge.
     let scale = 1.4 * re + 0.15 * a;
     let flow_speed = 40.0 * re * (0.4 + level);
-    let moving = vec3<f32>(p.x, a - time * flow_speed, p.z) / scale + params.shape.w;
+    let moving = vec3<f32>(across.x, a - time * flow_speed, across.y) / scale + params.shape.w;
     let eddy = 0.7 * noise(moving) + 0.3 * noise(2.1 * moving + 3.1);
     let rough = smoothstep(0.0, 6.0 * re, a) * (1.0 - 0.6 * expansion);
     let edge = q * (1.0 + 0.35 * rough * (eddy - 0.5));

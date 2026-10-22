@@ -315,6 +315,7 @@ mod tests {
             apoapsis_altitude: 400e3,
             inclination: 0.0,
             longitude_of_ascending_node: 0.0,
+            plane: None,
             argument_of_periapsis: 0.0,
             mean_anomaly: 0.0,
         };

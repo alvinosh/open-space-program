@@ -27,6 +27,8 @@ pub const WARP_RATES: [f64; 10] = [
     1.0, 2.0, 3.0, 4.0, 10.0, 50.0, 100.0, 1_000.0, 10_000.0, 100_000.0,
 ];
 pub const MAX_PHYSICS_WARP: f64 = 4.0;
+/// What `cargo run` starts without `OSP_SCENARIO`.
+const DEFAULT_SCENARIO: &str = "moon_plane";
 /// Longest real frame time we simulate; avoids huge catch-up after a hitch.
 const MAX_FRAME_TIME: f64 = 0.1;
 /// Physics ticks per frame before the simulation is allowed to fall behind real time.
@@ -41,7 +43,14 @@ pub struct SimPlugin;
 
 impl Plugin for SimPlugin {
     fn build(&self, app: &mut App) {
-        let scenario = std::env::var("OSP_SCENARIO").unwrap_or_else(|_| "pad".into());
+        let scenario = std::env::var("OSP_SCENARIO").unwrap_or_else(|_| {
+            // The scripted captures were written for a launch from the pad.
+            if std::env::var_os("OSP_CAPTURE").is_some() {
+                "pad".into()
+            } else {
+                DEFAULT_SCENARIO.into()
+            }
+        });
         let content = &app.world().resource::<GameContent>().0;
         let game = crate::content::new_game(content, &scenario)
             .unwrap_or_else(|e| panic!("cannot start scenario `{scenario}`: {e}"));

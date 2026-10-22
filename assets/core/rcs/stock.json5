@@ -14,4 +14,16 @@
     propellants: { Nitrogen: 1.0 },
     model: "models/rcs/cold_gas_quad.glb",
   },
+  {
+    // Pressure-fed hypergolic thrusters (Shuttle primary RCS class): ten times the thrust
+    // of the cold-gas quad at four times the Isp, enough to throw a hundred-tonne vessel
+    // around.
+    id: "Hypergolic Quad",
+    mass: 60,
+    thrust: 3870,
+    isp_vac: 280,
+    isp_sl: 120,
+    propellants: { Aerozine50: 1.0, NTO: 1.6 },
+    model: "models/rcs/cold_gas_quad.glb",
+  },
 ]

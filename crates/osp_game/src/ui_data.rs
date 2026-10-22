@@ -207,6 +207,8 @@ fn publish_flight(
         .reduce(f64::min);
     data.set("vessel.has_rcs", rcs_fuel.is_some());
     data.set("vessel.rcs_fuel", rcs_fuel);
+    data.set("vessel.rcs_mass", vessel.propulsion.rcs_propellant_mass());
+    data.set("vessel.rcs_delta_v", vessel.propulsion.rcs_delta_v());
     let frame = vessel.nav_frame();
     data.set("nav.frame", frame.label());
     let speed = match frame {

@@ -2,20 +2,6 @@
 
 Open problems found while playing, oldest first. Delete an entry when it is fixed.
 
-## 2. Plume swings with the engine gimbal
-
-Reported 2026-10-20. The whole plume is a child of the engine's gimbal pivot (`EnginePivot`
-in `crates/osp_game/src/vessel_render.rs`), so when the engine gimbals the plume swings like
-a rigid stick, by metres at its far end. Only the exhaust at the nozzle should follow the
-gimbal; gas already downstream keeps going where it was going.
-
-Idea: hang the plume off the vessel instead of the pivot and bend it. The start follows the
-nozzle axis, the far part follows the flow (the vessel axis in vacuum, trailing the airflow
-in atmosphere, which is also the "crossflow bending" in `docs/ksa-parity.md`), and the far
-direction is smoothed over time so quick gimbal moves do not show in it. The shader already
-marches in plume coordinates (`crates/osp_game/src/shaders/plume.wesl`), so the bend can be
-an offset of the axis that grows with distance from the nozzle.
-
 ## 3. Staging: what is still different from KSA
 
 Reported 2026-10-20; the main request (KSA-style sequences, icons and numbers, fairings and

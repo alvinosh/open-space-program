@@ -56,6 +56,8 @@ pub enum VesselError {
     Craft(#[from] CraftError),
     #[error("unknown body `{0}`")]
     UnknownBody(String),
+    #[error("`{0}` does not orbit `{1}`, so its plane cannot be used")]
+    NotOrbiting(String, String),
 }
 
 #[derive(Debug, Clone)]
@@ -310,8 +312,8 @@ impl Vessel {
         Ok(vessel)
     }
 
-    /// In orbit, from elements relative to the body's equator. Nose prograde, feet towards
-    /// the body.
+    /// In orbit, from elements relative to the body's equator (or in the plane of a body
+    /// that orbits it). Nose prograde, feet towards the body.
     pub fn in_orbit(
         craft: &CraftDef,
         catalog: &PartCatalog,
@@ -323,19 +325,38 @@ impl Vessel {
             .find(&start.body)
             .ok_or_else(|| VesselError::UnknownBody(start.body.clone()))?;
         let body = system.body(parent);
+        let frame = body.rotation.equatorial_frame();
+        let (inclination, node) = match &start.plane {
+            Some(name) => {
+                let other = system
+                    .find(name)
+                    .map(|id| system.body(id))
+                    .ok_or_else(|| VesselError::UnknownBody(name.clone()))?;
+                let orbit = other
+                    .orbit
+                    .filter(|_| other.parent == Some(parent))
+                    .ok_or_else(|| VesselError::NotOrbiting(name.clone(), body.name.clone()))?;
+                // The plane's normal in the equatorial frame gives its tilt and node.
+                let normal = frame.inverse() * orbit.normal();
+                (normal.z.clamp(-1.0, 1.0).acos(), normal.x.atan2(-normal.y))
+            }
+            None => (
+                start.inclination.to_radians(),
+                start.longitude_of_ascending_node.to_radians(),
+            ),
+        };
         let rp = body.radius + start.periapsis_altitude;
         let ra = body.radius + start.apoapsis_altitude.max(start.periapsis_altitude);
         let elements = Elements {
             semi_major_axis: (rp + ra) / 2.0,
             eccentricity: (ra - rp) / (ra + rp),
-            inclination: start.inclination.to_radians(),
-            longitude_of_ascending_node: start.longitude_of_ascending_node.to_radians(),
+            inclination,
+            longitude_of_ascending_node: node,
             argument_of_periapsis: start.argument_of_periapsis.to_radians(),
             true_anomaly: 0.0,
         };
         let equatorial =
             Orbit::from_elements(body.gm, &elements, start.mean_anomaly.to_radians(), time);
-        let frame = body.rotation.equatorial_frame();
         let local = equatorial.epoch_state();
         let state = StateVector::new(frame * local.position, frame * local.velocity);
         let nose = state.velocity.normalize();
@@ -1320,6 +1341,10 @@ pub(crate) mod tests {
         records(include_str!("../../../assets/core/craft/upper_stage.json5")).remove(0)
     }
 
+    pub fn lunar_upper() -> CraftDef {
+        records(include_str!("../../../assets/core/craft/lunar_upper.json5")).remove(0)
+    }
+
     pub fn launch_sites() -> Vec<LaunchSiteDef> {
         records(include_str!(
             "../../../assets/core/launch_sites/stock.json5"
@@ -1352,6 +1377,7 @@ pub(crate) mod tests {
             apoapsis_altitude: 300e3,
             inclination: 28.6,
             longitude_of_ascending_node: 0.0,
+            plane: None,
             argument_of_periapsis: 0.0,
             mean_anomaly: 0.0,
         };
@@ -1778,6 +1804,7 @@ pub(crate) mod tests {
             apoapsis_altitude: 320e3,
             inclination: 28.6,
             longitude_of_ascending_node: 0.0,
+            plane: None,
             argument_of_periapsis: 0.0,
             mean_anomaly: 1.0,
         };
@@ -1894,6 +1921,7 @@ pub(crate) mod tests {
             apoapsis_altitude: 300e3,
             inclination: 0.0,
             longitude_of_ascending_node: 0.0,
+            plane: None,
             argument_of_periapsis: 0.0,
             mean_anomaly: 0.0,
         };
@@ -1919,6 +1947,92 @@ pub(crate) mod tests {
         assert!(v.propulsion.stages[0].fins.is_none());
         assert!(v.log.iter().any(|e| e.message.contains("fins torn off")));
         assert!(!v.is_destroyed());
+    }
+
+    #[test]
+    fn starts_in_the_plane_of_a_moon() {
+        let system = rss();
+        let moon = system.body(system.find("Moon").unwrap());
+        let start = OrbitStartDef {
+            body: "Earth".into(),
+            periapsis_altitude: 300e3,
+            apoapsis_altitude: 300e3,
+            inclination: 0.0,
+            longitude_of_ascending_node: 0.0,
+            plane: Some("Moon".into()),
+            argument_of_periapsis: 0.0,
+            mean_anomaly: 0.0,
+        };
+        let t = SimTime::J2000;
+        let v = Vessel::in_orbit(&upper_stage(), &catalog(), &system, &start, t).unwrap();
+        let normal = v.orbit(&system, t).normal();
+        assert!(normal.angle_between(moon.orbit.unwrap().normal()) < 1e-9);
+        // Only a body orbiting the same one has a plane to borrow.
+        let mars = OrbitStartDef {
+            plane: Some("Mars".into()),
+            ..start
+        };
+        assert!(matches!(
+            Vessel::in_orbit(&upper_stage(), &catalog(), &system, &mars, t),
+            Err(VesselError::NotOrbiting(..))
+        ));
+    }
+
+    #[test]
+    fn lunar_upper_has_plenty_of_rcs() {
+        let system = rss();
+        let (stock, t) = leo_vessel(&system);
+        let start = OrbitStartDef {
+            body: "Earth".into(),
+            periapsis_altitude: 300e3,
+            apoapsis_altitude: 300e3,
+            inclination: 0.0,
+            longitude_of_ascending_node: 0.0,
+            plane: None,
+            argument_of_periapsis: 0.0,
+            mean_anomaly: 0.0,
+        };
+        let lunar = Vessel::in_orbit(&lunar_upper(), &catalog(), &system, &start, t).unwrap();
+        // Pitch acceleration with wheels and RCS, forward push from the RCS, RCS delta-v.
+        let agility = |v: &Vessel| {
+            let (m, p) = (v.mass_properties(), &v.propulsion);
+            let torque = attitude::torque_authority(p, m.center_of_mass)
+                + rcs::torque_authority(p, m.center_of_mass, 0.0);
+            let push: f64 = p
+                .stages
+                .iter()
+                .flat_map(|s| &s.rcs)
+                .map(|b| b.def.thrust)
+                .sum();
+            (
+                torque.x / m.inertia.transverse,
+                push / m.mass,
+                p.rcs_delta_v(),
+            )
+        };
+        let stock = agility(&stock);
+        let (turn, push, delta_v) = agility(&lunar);
+        // About 1.2 °/s², 0.26 m/s² and 110 m/s, against 0.4 °/s², 0.014 m/s² and 2.4 m/s.
+        assert!(turn > 2.5 * stock.0);
+        assert!(push > 15.0 * stock.1);
+        assert!(delta_v > 100.0 && delta_v > 40.0 * stock.2);
+        // The rocket equation at the hypergolic quads' Isp.
+        let (mass, propellant) = (
+            lunar.propulsion.mass(),
+            lunar.propulsion.rcs_propellant_mass(),
+        );
+        assert!(
+            (delta_v - 280.0 * crate::constants::G0 * (mass / (mass - propellant)).ln()).abs()
+                < 1e-6
+        );
+        // SAS swings it a quarter turn in about 20 s with the RCS on, without overshoot.
+        let (mut v, mut t) = (lunar, t);
+        v.set_rcs(true);
+        v.set_sas_mode(&system, t, SasMode::RadialOut);
+        run(&mut v, &system, &mut t, 25.0);
+        let target = v.nav_basis(&system, t).unwrap().radial_out;
+        assert!(nose(&v, &system, t).angle_between(target) < 0.2f64.to_radians());
+        assert!(v.attitude_state(&system, t).angular_velocity.length() < 0.002);
     }
 
     #[test]

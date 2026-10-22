@@ -68,4 +68,15 @@
     utilization: 1.0,
     propellants: ["Nitrogen", "Helium"],
   },
+  {
+    // Titanium spheres for pressure-fed storable propellants (RCS, small engines), 20 bar.
+    // Mount them as spheres.
+    id: "Titanium Sphere",
+    material: "Ti-6Al-4V",
+    pressure: 2.0e6,
+    min_gauge: 0.0008,
+    safety_factor: 1.5,
+    utilization: 0.95, // the rest is the propellant management device and ullage
+    propellants: ["Aerozine50", "NTO", "Hydrazine"],
+  },
 ]

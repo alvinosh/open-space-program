@@ -5,6 +5,8 @@
 //! firing RCS in [`crate::rcs`]. What the stage key does is a list of activation sequences
 //! ([`crate::staging`]), carried out here.
 
+use std::collections::BTreeMap;
+
 use glam::DVec2;
 use thiserror::Error;
 
@@ -242,13 +244,22 @@ impl Stage {
 
     /// Mass of the propellants this stage's engines can actually burn, given mixture ratios.
     pub fn usable_propellant_mass(&self) -> f64 {
-        let Some(engine) = self.engines.first() else {
-            return 0.0;
-        };
+        self.engines
+            .first()
+            .map_or(0.0, |e| self.burnable(&e.def.propellants))
+    }
+
+    /// Mass of the propellants this stage's RCS blocks can still burn, kg.
+    pub fn rcs_propellant_mass(&self) -> f64 {
+        self.rcs
+            .first()
+            .map_or(0.0, |b| self.burnable(&b.def.propellants))
+    }
+
+    /// How much of the stage's propellant a mixture (ratios normalised) can burn, kg.
+    fn burnable(&self, mixture: &BTreeMap<String, f64>) -> f64 {
         // Limited by whichever propellant runs out first.
-        let burnable = engine
-            .def
-            .propellants
+        let burnable = mixture
             .iter()
             .map(|(name, ratio)| {
                 let available = self
@@ -739,6 +750,27 @@ impl Propulsion {
                 }
             })
             .collect()
+    }
+
+    /// Mass of propellant left for the RCS, kg.
+    pub fn rcs_propellant_mass(&self) -> f64 {
+        self.stages.iter().map(Stage::rcs_propellant_mass).sum()
+    }
+
+    /// Delta-v the RCS can still give, pushing the whole vessel along in vacuum, m/s.
+    pub fn rcs_delta_v(&self) -> f64 {
+        let (mut thrust, mut flow) = (0.0, 0.0);
+        for stage in self.stages.iter().filter(|s| s.rcs_propellant_mass() > 0.0) {
+            for block in &stage.rcs {
+                thrust += block.def.thrust;
+                flow += block.nozzle_mass_flow();
+            }
+        }
+        let (mass, propellant) = (self.mass(), self.rcs_propellant_mass());
+        if flow <= 0.0 || propellant >= mass {
+            return 0.0;
+        }
+        thrust / flow * (mass / (mass - propellant)).ln()
     }
 
     /// Frontal area for drag, m².

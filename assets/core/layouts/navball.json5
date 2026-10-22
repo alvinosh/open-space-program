@@ -1,6 +1,7 @@
-// Navball, SAS and control inputs (bottom centre).
+// Navball, SAS, RCS propellant and control inputs (bottom centre).
 // Click the speed display to switch between surface and orbital speed (and the frame the
-// navball markers and SAS directions use).
+// navball markers and SAS directions use). The RCS gauge shows the propellant left (the
+// scarcest of what the thrusters burn), its mass, and the delta-v it can still give.
 {
   id: "navball",
   group: "flight",
@@ -57,6 +58,32 @@
               { widget: "button", class: "sas_button", text: "SAS", action: "vessel.sas_toggle", active: "vessel.sas" },
               { widget: "button", class: "sas_button", text: "RCS", action: "vessel.rcs_toggle", active: "vessel.rcs" },
               { widget: "label", class: "dim", text: "{vessel.sas_mode_label}" },
+            ],
+          },
+          {
+            id: "rcs_fuel",
+            widget: "column",
+            visible: "vessel.has_rcs",
+            style: { gap: 3, margin: [2, 0, 4, 0] },
+            children: [
+              {
+                widget: "row",
+                style: { gap: 6, align_items: "center" },
+                children: [
+                  { widget: "label", class: "caption", style: { min_width: 30 }, text: "RCS" },
+                  { widget: "bar", class: "rcs_bar", value: "vessel.rcs_fuel" },
+                  { widget: "label", text: "{vessel.rcs_fuel|percent}" },
+                ],
+              },
+              {
+                widget: "row",
+                style: { gap: 6 },
+                children: [
+                  { widget: "label", class: "dim", style: { min_width: 66 }, text: "{vessel.rcs_mass|mass}" },
+                  { widget: "label", class: "caption", text: "dV" },
+                  { widget: "label", class: "dim", text: "{vessel.rcs_delta_v|speed}" },
+                ],
+              },
             ],
           },
           {
