@@ -40,6 +40,10 @@ const CELL_LEVEL: u8 = 15;
 const RADIUS: f64 = 2_500.0;
 /// Within this distance cells get detailed trees, m.
 const DETAIL_RADIUS: f64 = 900.0;
+/// Cells keep their trees, and their detail, this far past [`RADIUS`] and
+/// [`DETAIL_RADIUS`], m. More than the camera moves orbiting the vessel at the default
+/// zoom (twice the 120 m distance), so turning the view does not reload trees.
+const HYSTERESIS: f64 = 300.0;
 /// No trees above this camera altitude, m.
 const MAX_ALTITUDE: f64 = 6_000.0;
 /// Candidate spacing, m.
@@ -78,6 +82,20 @@ impl CellState {
             CellState::Ready { entity, .. } => *entity,
         }
     }
+
+    fn detailed(&self) -> bool {
+        match self {
+            CellState::Building { detailed, .. } | CellState::Ready { detailed, .. } => *detailed,
+        }
+    }
+}
+
+/// Whether a cell `distance` from the camera should have trees, and whether detailed
+/// ones; `current` is the detail of the trees it has (or is building), if any.
+fn wanted_detail(distance: f64, current: Option<bool>) -> Option<bool> {
+    let slack = |kept: bool| if kept { HYSTERESIS } else { 0.0 };
+    (distance < RADIUS + slack(current.is_some()))
+        .then(|| distance < DETAIL_RADIUS + slack(current == Some(true)))
 }
 
 #[derive(Resource)]
@@ -134,6 +152,16 @@ fn update_trees(
         body.orientation(frame.time).inverse() * (rig.position - frame.body_offset(body_id));
     let altitude = camera_fixed.length() - body.radius;
 
+    // Switching bodies (or losing data) clears everything.
+    if trees.body != Some(body_id) {
+        for (_, state) in trees.cells.drain() {
+            if let Some(entity) = state.entities() {
+                commands.entity(entity).despawn();
+            }
+        }
+        trees.body = Some(body_id);
+    }
+
     // Wanted cells and whether each should be detailed.
     let mut wanted: HashMap<TileKey, bool> = HashMap::default();
     if let Some(surface) = &surface
@@ -142,7 +170,7 @@ fn update_trees(
     {
         let ground = camera_fixed.normalize();
         let cell = TileKey::containing(0, 0.5, 0.5, CELL_LEVEL).edge_length(body.radius);
-        let reach = (RADIUS / cell).ceil() as i32 + 1;
+        let reach = ((RADIUS + HYSTERESIS) / cell).ceil() as i32 + 1;
         let (east, north) = east_north(ground);
         let mut seen: HashSet<TileKey> = HashSet::default();
         for dy in -reach..=reach {
@@ -157,21 +185,12 @@ fn update_trees(
                 }
                 let center = key.center_dir() * surface.radius;
                 let distance = (camera_fixed - center).length() - cell * 0.7;
-                if distance < RADIUS {
-                    wanted.insert(key, distance < DETAIL_RADIUS);
+                let current = trees.cells.get(&key).map(CellState::detailed);
+                if let Some(detailed) = wanted_detail(distance, current) {
+                    wanted.insert(key, detailed);
                 }
             }
         }
-    }
-
-    // Switching bodies (or losing data) clears everything.
-    if trees.body != Some(body_id) {
-        for (_, state) in trees.cells.drain() {
-            if let Some(entity) = state.entities() {
-                commands.entity(entity).despawn();
-            }
-        }
-        trees.body = Some(body_id);
     }
 
     trees.retiring.retain_mut(|(entity, age)| {
@@ -218,13 +237,11 @@ fn update_trees(
         *state = CellState::Ready { entity, detailed };
     }
 
-    // Drop cells no longer wanted, or whose detail changed (once the new one is ready).
+    // Drop cells no longer wanted. A cell whose detail changed keeps its mesh until the
+    // rebuild lands, and one that changes again mid-build finishes and is rebuilt after:
+    // dropping it would take its old mesh with it and leave a gap.
     trees.cells.retain(|key, state| {
-        let keep = match (&*state, wanted.get(key)) {
-            (_, None) => false,
-            (CellState::Building { detailed, .. }, Some(want)) => detailed == want,
-            (CellState::Ready { .. }, Some(_)) => true,
-        };
+        let keep = wanted.contains_key(key);
         if !keep && let Some(entity) = state.entities() {
             commands.entity(entity).despawn();
         }
@@ -576,5 +593,33 @@ impl Tree {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_cells_use_the_plain_radii() {
+        assert_eq!(wanted_detail(DETAIL_RADIUS - 1.0, None), Some(true));
+        assert_eq!(wanted_detail(DETAIL_RADIUS + 1.0, None), Some(false));
+        assert_eq!(wanted_detail(RADIUS + 1.0, None), None);
+    }
+
+    #[test]
+    fn shown_cells_keep_their_trees_and_detail_past_the_radii() {
+        let near = DETAIL_RADIUS + HYSTERESIS - 1.0;
+        assert_eq!(wanted_detail(near, Some(true)), Some(true));
+        assert_eq!(wanted_detail(near, Some(false)), Some(false));
+        assert_eq!(wanted_detail(DETAIL_RADIUS - 1.0, Some(false)), Some(true));
+        assert_eq!(
+            wanted_detail(DETAIL_RADIUS + HYSTERESIS + 1.0, Some(true)),
+            Some(false)
+        );
+
+        let far = RADIUS + HYSTERESIS - 1.0;
+        assert_eq!(wanted_detail(far, Some(false)), Some(false));
+        assert_eq!(wanted_detail(RADIUS + HYSTERESIS + 1.0, Some(false)), None);
     }
 }

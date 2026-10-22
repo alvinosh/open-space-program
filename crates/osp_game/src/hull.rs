@@ -89,10 +89,11 @@ fn disc(mesh: &mut MeshBuilder, y: f32, radius: f32, down: bool, color: LinearRg
         let a0 = TAU * k as f32 / SEGMENTS as f32;
         let a1 = TAU * (k + 1) as f32 / SEGMENTS as f32;
         let (p0, p1) = (center + out(a0) * radius, center + out(a1) * radius);
+        // `out` turns counter-clockwise seen from above: center, p0, p1 faces up.
         if down {
-            mesh.triangle(center, p0, p1, color);
-        } else {
             mesh.triangle(center, p1, p0, color);
+        } else {
+            mesh.triangle(center, p0, p1, color);
         }
     }
 }

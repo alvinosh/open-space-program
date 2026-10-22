@@ -29,12 +29,11 @@ https://kittenspaceagency.wiki.gg/wiki/Controls, https://areweksayet.com/ (unoff
 ## 4. Trees glitch near the ground
 
 Reported 2026-10-22 (seen before the aerodynamics work too), most visible flying low and
-fast, e.g. the rocket plane's takeoff roll. Not pinned down yet. Suspects, from reading
+fast, e.g. the rocket plane's takeoff roll. Fixed 2026-10-22: trees loading and
+unloading as the camera orbits (no hysteresis on the radii, and cells dropped with their
+old mesh when their detail flipped mid-build). Remaining suspects, from reading
 `crates/osp_game/src/trees.rs`:
 
-- No hysteresis on `DETAIL_RADIUS`: a cell whose wanted detail flips while it is building
-  is dropped in `update_trees` (`cells.retain`), and its previous mesh is despawned with
-  it, so its trees vanish until the rebuild lands.
 - When a rebuilt cell lands, the old mesh stays for three more frames (`retiring`) on top
   of the new one, so detailed and cheap trees overlap for those frames.
 - Trees stand on the finest terrain height (`surface.terrain.height`), while the terrain

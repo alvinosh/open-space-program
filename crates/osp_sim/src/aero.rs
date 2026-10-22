@@ -179,8 +179,8 @@ pub struct Panel {
     pub tip: DVec3,
     pub root_chord: f64,
     pub tip_chord: f64,
-    /// The lifting side: angle of attack, incidence and a trailing edge deflected this way
-    /// all push the panel this way.
+    /// The lifting side: angle of attack, incidence and a trailing edge deflected the other
+    /// way all push the panel this way.
     pub normal: DVec3,
 }
 
@@ -239,7 +239,7 @@ impl Panel {
 }
 
 /// How far a control surface on `panel` deflects for the rotation `command` (−1..1 about
-/// each vessel axis), rad, positive with the trailing edge towards the lifting side: the
+/// each vessel axis), rad, positive with the trailing edge away from the lifting side: the
 /// way that turns the vessel about the commanded axes it answers to, with the centre of mass
 /// `center_of_mass` up the stack.
 pub fn deflection(

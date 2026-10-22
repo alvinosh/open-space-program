@@ -310,7 +310,7 @@ fn fin_mesh(fins: &FinSet, radius: f32) -> Mesh {
 
 /// A wing panel's fixed part (stack render axes) and, if it has one, its control surface:
 /// the hinge's start (stack render axes), the axis it turns about so that a positive
-/// deflection moves its trailing edge towards the lifting side, and its mesh about the
+/// deflection moves its trailing edge away from the lifting side, and its mesh about the
 /// hinge. Slabs as thick as the airfoil, the control surface half that.
 fn wing_meshes(wing: &WingDef, panel: &Panel) -> (MeshBuilder, Option<(Vec3, Vec3, MeshBuilder)>) {
     const SKIN: [f32; 3] = [0.86, 0.86, 0.84];
@@ -389,8 +389,8 @@ fn wing_meshes(wing: &WingDef, panel: &Panel) -> (MeshBuilder, Option<(Vec3, Vec
     let (start, _, _) = section(inner, hinge, 1.0);
     let (end, _, _) = section(outer, hinge, 1.0);
     let line = (end - start).normalize();
-    // Turning the trailing edge (aft of the hinge) towards the lifting side.
-    let sign = line.cross(-DVec3::Z).dot(n).signum();
+    // Turning the trailing edge (aft of the hinge) away from the lifting side.
+    let sign = line.cross(DVec3::Z).dot(n).signum();
     let mut flap = MeshBuilder::default();
     piece(&mut flap, [inner, outer], [hinge, 1.0], 0.5, start, FLAP);
     (
