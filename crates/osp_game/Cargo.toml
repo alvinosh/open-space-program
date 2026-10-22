@@ -21,6 +21,8 @@ half = "2"
 [features]
 # Faster incremental builds during development: `cargo run --features dev`
 dev = ["bevy/dynamic_linking"]
+# Time every system and schedule for the profiler (F10, `OSP_PROFILE`); costs a little.
+profile = ["bevy/trace", "bevy/debug"]
 
 [lints]
 workspace = true

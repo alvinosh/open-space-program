@@ -29,6 +29,8 @@ struct TerrainParams {
     /// x: chunk level, y: colour data level, z: cover data level, w: 1 for an Earth-like
     /// atmosphere.
     levels: vec4<f32>,
+    /// x: ray-marching steps for the haze.
+    quality: vec4<f32>,
 };
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> params: TerrainParams;
@@ -79,6 +81,15 @@ fn noise(p: vec3<f32>, cell: f32) -> f32 {
 /// Octave weight that fades a pattern of `cell` metres out before it would alias.
 fn octave_fade(cell: f32, distance: f32) -> f32 {
     return 1.0 - smoothstep(cell * 60.0, cell * 180.0, distance);
+}
+
+/// `noise(p, cell)` times `weight`, skipped where the weight is zero: most of the ground in
+/// view is past where the fine octaves fade out, and each costs eight hashes.
+fn weighted_noise(p: vec3<f32>, cell: f32, weight: f32) -> f32 {
+    if weight <= 0.0 {
+        return 0.0;
+    }
+    return noise(p, cell) * weight;
 }
 
 /// Albedo (linear) and perceptual roughness of a land-cover class, varied by noise `n`.
@@ -169,23 +180,24 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let p = params.detail_origin.xyz + local;
     let d = distance_to_camera;
     let near = 1.0 - smoothstep(300.0, 6000.0, d);
-    let o1 = noise(p, 32.0) * octave_fade(32.0, d);
-    let o2 = noise(p, 8.0) * octave_fade(8.0, d);
-    let o3 = noise(p, 2.0) * octave_fade(2.0, d);
-    let o4 = noise(p, 0.5) * octave_fade(0.5, d);
+    let o1 = weighted_noise(p, 32.0, octave_fade(32.0, d));
+    let o2 = weighted_noise(p, 8.0, octave_fade(8.0, d));
+    let o3 = weighted_noise(p, 2.0, octave_fade(2.0, d));
+    let o4 = weighted_noise(p, 0.5, octave_fade(0.5, d));
     // Large-scale variation for colour, small-scale for relief.
     let n_color = clamp(0.55 * o1 + 0.3 * o2 + 0.15 * o3, -1.0, 1.0);
     let n_relief = 0.15 * o1 + 0.3 * o2 + 0.35 * o3 + 0.2 * o4;
     // Slowly drifting ripples on water.
     let t = globals.time;
-    let wave = noise(p + vec3<f32>(t * 1.1, t * 0.4, -t * 0.7), 6.0) * octave_fade(6.0, d)
-        + 0.5 * noise(p + vec3<f32>(-t * 0.9, t * 1.3, t * 0.5), 1.5) * octave_fade(1.5, d);
+    let wave = weighted_noise(p + vec3<f32>(t * 1.1, t * 0.4, -t * 0.7), 6.0, octave_fade(6.0, d))
+        + 0.5 * weighted_noise(p + vec3<f32>(-t * 0.9, t * 1.3, t * 0.5), 1.5, octave_fade(1.5, d));
 
     // Land-cover classes, blended bilinearly between the four nearest samples.
     let st = uv * CELLS;
     let cell = min(floor(st), vec2<f32>(CELLS - 1.0));
     // Jitter the blend position so class edges are ragged rather than straight.
-    let jitter = 0.45 * vec2<f32>(o3 + 0.5 * o4, noise(p + 31.0, 2.0) + 0.5 * o4) * near;
+    let jitter = 0.45
+        * vec2<f32>((o3 + 0.5 * o4) * near, weighted_noise(p + 31.0, 2.0, near) + 0.5 * o4 * near);
     let f = clamp(st - cell + jitter, vec2<f32>(0.0), vec2<f32>(1.0));
     let base = vec2<i32>(cell);
     let classes = vec4<u32>(
@@ -279,7 +291,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
         if length(eye) < top * SKY_MESH_SCALE {
             let ray = (position - camera) / max(distance_to_camera, 1e-3);
             let entry = max(sphere_hits(eye, ray, top).x, 0.0);
-            let s = scatter(eye, ray, entry, distance_to_camera, sun, sun_color, radius);
+            let s = scatter(
+                eye, ray, entry, distance_to_camera, sun, sun_color, radius, i32(params.quality.x),
+            );
             out.color = vec4<f32>(out.color.rgb * s.transmittance + s.inscatter * view.exposure, out.color.a);
         }
     }

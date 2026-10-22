@@ -29,7 +29,6 @@ const PI: f32 = 3.141592653589793;
 /// the daytime sky comes out too dark and too deep a blue.
 const MULTIPLE_SCATTERING: f32 = 1.6;
 
-const VIEW_STEPS: i32 = 12;
 /// Transmittance table size (sun angle, height) and how far below the mean surface it
 /// starts: where sun rays are fully in the planet's shadow.
 const LUT_SIZE: vec2<f32> = vec2<f32>(256.0, 64.0);
@@ -114,7 +113,13 @@ struct Scattering {
     transmittance: vec3<f32>,
 };
 
-/// Scattering along the ray segment `origin + dir * [t0, t1]`.
+/// A segment this long, or climbing this much, gets all of `scatter`'s steps, m.
+const FULL_STEPS_LENGTH: f32 = 20000.0;
+const FULL_STEPS_CLIMB: f32 = 2000.0;
+
+/// Scattering along the ray segment `origin + dir * [t0, t1]`, integrated in up to `steps`
+/// steps (the effects setting, see `atmosphere::view_steps`). Short, level segments (the
+/// ground near the camera) cross air of nearly even density and get as few as two.
 fn scatter(
     origin: vec3<f32>,
     dir: vec3<f32>,
@@ -123,6 +128,7 @@ fn scatter(
     sun: vec3<f32>,
     sun_color: vec3<f32>,
     radius: f32,
+    steps: i32,
 ) -> Scattering {
     var result: Scattering;
     result.inscatter = vec3<f32>(0.0);
@@ -130,11 +136,15 @@ fn scatter(
     if t1 <= t0 {
         return result;
     }
-    let ds = (t1 - t0) / f32(VIEW_STEPS);
+    let most = max(steps, 1);
+    let climb = abs(length(origin + dir * t1) - length(origin + dir * t0));
+    let share = max((t1 - t0) / FULL_STEPS_LENGTH, climb / FULL_STEPS_CLIMB);
+    let n = clamp(i32(ceil(f32(most) * share)), min(2, most), most);
+    let ds = (t1 - t0) / f32(n);
     var transmittance = vec3<f32>(1.0);
     var rayleigh = vec3<f32>(0.0);
     var mie = vec3<f32>(0.0);
-    for (var i = 0; i < VIEW_STEPS; i++) {
+    for (var i = 0; i < n; i++) {
         let p = origin + dir * (t0 + ds * (f32(i) + 0.5));
         let d = densities(length(p) - radius);
         let step = exp(-extinction(d) * ds);

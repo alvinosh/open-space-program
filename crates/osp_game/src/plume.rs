@@ -24,6 +24,8 @@ use bevy::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::settings::Quality;
+
 /// 1 atm, Pa.
 const ATM: f64 = 101_325.0;
 
@@ -206,10 +208,22 @@ pub struct PlumeParams {
     pub shock: Vec4,
     /// xy: the nozzle axis's bend against the plume axis (x, z), z: bend length.
     pub bend: Vec4,
+    /// x: ray-marching steps ([`march_steps`]).
+    pub quality: Vec4,
+}
+
+/// Ray-marching steps through a plume at each `effects` setting.
+pub fn march_steps(quality: Quality) -> u32 {
+    match quality {
+        Quality::Off | Quality::Low => 16,
+        Quality::Medium => 24,
+        Quality::High => 40,
+        Quality::Ultra => 56,
+    }
 }
 
 impl PlumeParams {
-    pub fn new(shape: &PlumeShape, look: &PlumeDef, level: f32, seed: f32) -> Self {
+    pub fn new(shape: &PlumeShape, look: &PlumeDef, level: f32, seed: f32, steps: u32) -> Self {
         let rgb = |c: [f32; 3]| Vec4::new(c[0], c[1], c[2], 0.0);
         Self {
             shape: Vec4::new(shape.exit_radius, shape.length, shape.end_radius(), seed),
@@ -230,6 +244,7 @@ impl PlumeParams {
             flame: rgb(look.flame),
             shock: rgb(look.shock),
             bend: Vec4::new(shape.bend.x, shape.bend.y, shape.bend_length, 0.0),
+            quality: Vec4::new(steps as f32, 0.0, 0.0, 0.0),
         }
     }
 }

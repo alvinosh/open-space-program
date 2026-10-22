@@ -34,11 +34,12 @@ struct PlumeParams {
     shock: vec4<f32>,
     /// xy: tangent of the nozzle axis against the plume axis (x, z), z: bend length.
     bend: vec4<f32>,
+    /// x: ray-marching steps (the effects setting).
+    quality: vec4<f32>,
 };
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: PlumeParams;
 
-const STEPS: u32 = 40u;
 const TAU: f32 = 6.2831853;
 
 fn hash(p: vec3<f32>) -> f32 {
@@ -209,13 +210,14 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     if t1 <= t0 {
         discard;
     }
-    let dt = (t1 - t0) / f32(STEPS);
+    let steps = max(u32(params.quality.x), 1u);
+    let dt = (t1 - t0) / f32(steps);
     let ds = dt * length(d);
     let time = globals.time;
     var t = t0 + dt * dither(in.position.xy);
     var light = vec3<f32>(0.0);
     var transmittance = 1.0;
-    for (var i = 0u; i < STEPS; i++) {
+    for (var i = 0u; i < steps; i++) {
         let s = sample(o + t * d, time);
         let absorb = exp(-s.extinction * ds);
         light += transmittance * s.emission * ds;

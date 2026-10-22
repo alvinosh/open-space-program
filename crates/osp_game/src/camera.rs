@@ -1,11 +1,22 @@
 //! Orbit camera around the active vessel (flight view) or its parent body (map view).
+//!
+//! The view goes to the window, or to an image for scripted captures ([`ViewOutput`]).
+//! Below 100% render scale (see `settings`) it renders into an image that much smaller,
+//! and a 2D camera stretches that over the output under the UI, which stays at full
+//! resolution.
 
 use bevy::{
-    camera::{Exposure, Hdr},
+    anti_alias::fxaa::Fxaa,
+    camera::{Exposure, Hdr, ImageRenderTarget, RenderTarget, visibility::RenderLayers},
     input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit},
     math::DVec3,
     post_process::bloom::Bloom,
     prelude::*,
+    render::{
+        render_resource::TextureFormat,
+        view::{Msaa, Tonemapping},
+    },
+    window::PrimaryWindow,
 };
 
 use osp_ui::PointerOverUi;
@@ -14,18 +25,35 @@ use crate::{
     FrameSet,
     controls::InputLocked,
     frame::{RenderFrame, to_render},
+    settings::{Antialiasing, GraphicsSettings},
     sim::Sim,
 };
+
+/// Render layer of the scaled view's composite (keeps gizmos and the scene out of it).
+const COMPOSITE_LAYER: usize = 8;
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CameraRig>()
+            .init_resource::<ViewOutput>()
             .add_systems(Startup, spawn_camera)
-            .add_systems(Update, update_camera.in_set(FrameSet::Camera));
+            .add_systems(Update, update_camera.in_set(FrameSet::Camera))
+            .add_systems(
+                Update,
+                (
+                    apply_view_settings.run_if(resource_changed::<GraphicsSettings>),
+                    apply_render_scale,
+                )
+                    .in_set(FrameSet::Render),
+            );
     }
 }
+
+/// Where the view and the UI end up: the primary window, or an image (scripted captures).
+#[derive(Resource, Default)]
+pub struct ViewOutput(pub Option<Handle<Image>>);
 
 #[derive(Component)]
 pub struct MainCamera;
@@ -92,13 +120,160 @@ fn spawn_camera(mut commands: Commands) {
             ..default()
         }),
         Exposure::SUNLIGHT,
-        // Glow around what is much brighter than the scene: plumes, the sun on metal.
-        Bloom {
-            intensity: 0.08,
-            ..Bloom::NATURAL
-        },
         Transform::default(),
     ));
+}
+
+/// Anti-aliasing and bloom.
+fn apply_view_settings(
+    mut commands: Commands,
+    settings: Res<GraphicsSettings>,
+    camera: Single<Entity, With<MainCamera>>,
+) {
+    let mut camera = commands.entity(*camera);
+    match settings.antialiasing {
+        Antialiasing::Off => camera.insert(Msaa::Off).remove::<Fxaa>(),
+        Antialiasing::Fxaa => camera.insert((Msaa::Off, Fxaa::default())),
+        Antialiasing::Msaa => camera.insert(Msaa::Sample4).remove::<Fxaa>(),
+    };
+    if settings.bloom {
+        // Glow around what is much brighter than the scene: plumes, the sun on metal.
+        camera.insert(Bloom {
+            intensity: 0.08,
+            ..Bloom::NATURAL
+        });
+    } else {
+        camera.remove::<Bloom>();
+    }
+}
+
+/// The 2D camera and sprite that show the scaled view on the window.
+#[derive(Component)]
+struct ViewComposite;
+
+/// Point the camera at the output, or at an image `render_scale` of its size shown by
+/// [`ViewComposite`]. The image target's scale factor makes its logical size the output's,
+/// so cursor positions and projected points stay in window coordinates. The UI goes with
+/// whichever camera draws the output.
+#[allow(clippy::too_many_arguments)]
+fn apply_render_scale(
+    mut commands: Commands,
+    settings: Res<GraphicsSettings>,
+    output: Res<ViewOutput>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    mut camera: Single<
+        (
+            Entity,
+            &mut RenderTarget,
+            &mut Projection,
+            Has<IsDefaultUiCamera>,
+        ),
+        With<MainCamera>,
+    >,
+    mut sprites: Query<&mut Sprite, With<ViewComposite>>,
+    composite: Query<Entity, (With<ViewComposite>, With<Camera>)>,
+    composite_parts: Query<Entity, With<ViewComposite>>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    // The output's size in physical and logical pixels.
+    let (output_target, physical, logical) = match &output.0 {
+        Some(image) => {
+            let size = images.get(image).map_or(UVec2::ZERO, Image::size);
+            (RenderTarget::from(image.clone()), size, size.as_vec2())
+        }
+        None => (
+            RenderTarget::default(),
+            window.physical_size(),
+            window.size(),
+        ),
+    };
+    let size = (physical.as_vec2() * settings.render_scale as f32 / 100.0)
+        .round()
+        .as_uvec2();
+    let (main_camera, target, projection, has_ui) = &mut *camera;
+    // Bevy recomputes a camera's size when its target resizes or its projection changes,
+    // not when the target is swapped for another; touching the projection makes it.
+    if settings.render_scale >= 100 || size.min_element() == 0 {
+        let at_output = match (&**target, &output_target) {
+            // Only ever the primary window.
+            (RenderTarget::Window(_), RenderTarget::Window(_)) => true,
+            (RenderTarget::Image(a), RenderTarget::Image(b)) => a == b,
+            _ => false,
+        };
+        if !at_output {
+            **target = output_target;
+            projection.set_changed();
+        }
+        if !*has_ui {
+            commands.entity(*main_camera).insert(IsDefaultUiCamera);
+        }
+        for entity in &composite_parts {
+            commands.entity(entity).despawn();
+        }
+        return;
+    }
+    let scale_factor = size.x as f32 / logical.x.max(1.0);
+    let current = match &**target {
+        RenderTarget::Image(target) => images
+            .get(&target.handle)
+            .filter(|image| image.size() == size && target.scale_factor == scale_factor)
+            .map(|_| target.handle.clone()),
+        _ => None,
+    };
+    let handle = match current {
+        Some(handle) => handle,
+        None => {
+            let handle = images.add(Image::new_target_texture(
+                size.x,
+                size.y,
+                TextureFormat::Rgba8UnormSrgb,
+                None,
+            ));
+            **target = RenderTarget::Image(ImageRenderTarget {
+                handle: handle.clone(),
+                scale_factor,
+            });
+            projection.set_changed();
+            handle
+        }
+    };
+    if *has_ui {
+        commands.entity(*main_camera).remove::<IsDefaultUiCamera>();
+    }
+    if composite.is_empty() {
+        commands.spawn((
+            ViewComposite,
+            Camera2d,
+            Camera {
+                order: 1,
+                ..default()
+            },
+            output_target,
+            IsDefaultUiCamera,
+            Msaa::Off,
+            Tonemapping::None,
+            RenderLayers::layer(COMPOSITE_LAYER),
+        ));
+        commands.spawn((
+            ViewComposite,
+            Sprite {
+                image: handle,
+                custom_size: Some(logical),
+                ..default()
+            },
+            RenderLayers::layer(COMPOSITE_LAYER),
+            Pickable::IGNORE,
+        ));
+        return;
+    }
+    for mut sprite in &mut sprites {
+        if sprite.image != handle {
+            sprite.image = handle.clone();
+        }
+        if sprite.custom_size != Some(logical) {
+            sprite.custom_size = Some(logical);
+        }
+    }
 }
 
 fn update_camera(

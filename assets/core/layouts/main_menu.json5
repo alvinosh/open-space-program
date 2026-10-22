@@ -2,6 +2,11 @@
 // (`game.resume`), or quit. The game opens on it unless OSP_SCENARIO picks a scenario; Esc
 // (`game.menu`) brings it back. Scenarios are listed from `menu.scenarios` (id, name,
 // description), in load order.
+//
+// The Graphics page (`menu.page:graphics`) sets the graphics: a preset
+// (`graphics.preset:<low|medium|high|ultra>`), the one recommended for the GPU
+// (`graphics.detect`), or each setting (`graphics.set:<key>:<value>`, current values in
+// `graphics.<key>`). The frame rate below it updates live over the scene behind the menu.
 {
   id: "main_menu",
   visible: false,
@@ -14,21 +19,164 @@
         class: "menu",
         children: [
           { widget: "label", class: "menu_title", text: "Open Space Program" },
-          { widget: "label", class: "dim", text: "Choose a scenario" },
+          {
+            widget: "row",
+            style: { gap: 4 },
+            children: [
+              { widget: "button", class: "menu_tab", text: "Scenarios", action: "menu.page:scenarios", active: "menu.page == scenarios" },
+              { widget: "button", class: "menu_tab", text: "Graphics", action: "menu.page:graphics", active: "menu.page == graphics" },
+            ],
+          },
           {
             widget: "column",
-            class: "menu_list",
-            repeat: "menu.scenarios",
+            class: "menu_page",
+            visible: "menu.page == scenarios",
             children: [
+              { widget: "label", class: "dim", text: "Choose a scenario" },
               {
-                widget: "button",
-                class: "menu_item",
-                action: "game.start:{item.id}",
+                widget: "column",
+                class: "menu_list",
+                repeat: "menu.scenarios",
                 children: [
-                  { widget: "label", class: "menu_item_name", text: "{item.name}" },
-                  { widget: "label", class: "dim", text: "{item.description}", visible: "item.description" },
+                  {
+                    widget: "button",
+                    class: "menu_item",
+                    action: "game.start:{item.id}",
+                    children: [
+                      { widget: "label", class: "menu_item_name", text: "{item.name}" },
+                      { widget: "label", class: "dim", text: "{item.description}", visible: "item.description" },
+                    ],
+                  },
                 ],
               },
+            ],
+          },
+          {
+            id: "graphics",
+            widget: "column",
+            class: "menu_page menu_list",
+            visible: "menu.page == graphics",
+            children: [
+              { widget: "label", class: "dim", text: "GPU: {perf.gpu}" },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Preset" },
+                  { widget: "button", class: "menu_option", text: "Low", action: "graphics.preset:low", active: "graphics.preset == low" },
+                  { widget: "button", class: "menu_option", text: "Medium", action: "graphics.preset:medium", active: "graphics.preset == medium" },
+                  { widget: "button", class: "menu_option", text: "High", action: "graphics.preset:high", active: "graphics.preset == high" },
+                  { widget: "button", class: "menu_option", text: "Ultra", action: "graphics.preset:ultra", active: "graphics.preset == ultra" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "dim", style: { grow: 1 }, text: "Recommended for this GPU: {graphics.recommended|upper}" },
+                  { widget: "label", class: "dim", visible: "graphics.preset == custom", text: "(custom)" },
+                  { widget: "button", class: "menu_option", text: "Use recommended", action: "graphics.detect" },
+                ],
+              },
+              { widget: "label", class: "section", text: "RENDERING" },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Render scale" },
+                  { widget: "button", class: "menu_option", text: "50%", action: "graphics.set:render_scale:50", active: "graphics.render_scale == 50" },
+                  { widget: "button", class: "menu_option", text: "67%", action: "graphics.set:render_scale:67", active: "graphics.render_scale == 67" },
+                  { widget: "button", class: "menu_option", text: "75%", action: "graphics.set:render_scale:75", active: "graphics.render_scale == 75" },
+                  { widget: "button", class: "menu_option", text: "85%", action: "graphics.set:render_scale:85", active: "graphics.render_scale == 85" },
+                  { widget: "button", class: "menu_option", text: "100%", action: "graphics.set:render_scale:100", active: "graphics.render_scale == 100" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Anti-aliasing" },
+                  { widget: "button", class: "menu_option", text: "Off", action: "graphics.set:antialiasing:off", active: "graphics.antialiasing == off" },
+                  { widget: "button", class: "menu_option", text: "FXAA", action: "graphics.set:antialiasing:fxaa", active: "graphics.antialiasing == fxaa" },
+                  { widget: "button", class: "menu_option", text: "MSAA 4x", action: "graphics.set:antialiasing:msaa", active: "graphics.antialiasing == msaa" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Shadows" },
+                  { widget: "button", class: "menu_option", text: "Off", action: "graphics.set:shadows:off", active: "graphics.shadows == off" },
+                  { widget: "button", class: "menu_option", text: "Low", action: "graphics.set:shadows:low", active: "graphics.shadows == low" },
+                  { widget: "button", class: "menu_option", text: "Medium", action: "graphics.set:shadows:medium", active: "graphics.shadows == medium" },
+                  { widget: "button", class: "menu_option", text: "High", action: "graphics.set:shadows:high", active: "graphics.shadows == high" },
+                  { widget: "button", class: "menu_option", text: "Ultra", action: "graphics.set:shadows:ultra", active: "graphics.shadows == ultra" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Bloom" },
+                  { widget: "button", class: "menu_option", text: "Off", action: "graphics.set:bloom:off", active: "graphics.bloom == off" },
+                  { widget: "button", class: "menu_option", text: "On", action: "graphics.set:bloom:on", active: "graphics.bloom == on" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Sky, haze and plumes" },
+                  { widget: "button", class: "menu_option", text: "Low", action: "graphics.set:effects:low", active: "graphics.effects == low" },
+                  { widget: "button", class: "menu_option", text: "Medium", action: "graphics.set:effects:medium", active: "graphics.effects == medium" },
+                  { widget: "button", class: "menu_option", text: "High", action: "graphics.set:effects:high", active: "graphics.effects == high" },
+                  { widget: "button", class: "menu_option", text: "Ultra", action: "graphics.set:effects:ultra", active: "graphics.effects == ultra" },
+                ],
+              },
+              { widget: "label", class: "section", text: "WORLD" },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Terrain detail" },
+                  { widget: "button", class: "menu_option", text: "Low", action: "graphics.set:terrain:low", active: "graphics.terrain == low" },
+                  { widget: "button", class: "menu_option", text: "Medium", action: "graphics.set:terrain:medium", active: "graphics.terrain == medium" },
+                  { widget: "button", class: "menu_option", text: "High", action: "graphics.set:terrain:high", active: "graphics.terrain == high" },
+                  { widget: "button", class: "menu_option", text: "Ultra", action: "graphics.set:terrain:ultra", active: "graphics.terrain == ultra" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Trees" },
+                  { widget: "button", class: "menu_option", text: "Off", action: "graphics.set:trees:off", active: "graphics.trees == off" },
+                  { widget: "button", class: "menu_option", text: "Low", action: "graphics.set:trees:low", active: "graphics.trees == low" },
+                  { widget: "button", class: "menu_option", text: "Medium", action: "graphics.set:trees:medium", active: "graphics.trees == medium" },
+                  { widget: "button", class: "menu_option", text: "High", action: "graphics.set:trees:high", active: "graphics.trees == high" },
+                  { widget: "button", class: "menu_option", text: "Ultra", action: "graphics.set:trees:ultra", active: "graphics.trees == ultra" },
+                ],
+              },
+              { widget: "label", class: "section", text: "DISPLAY" },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "VSync" },
+                  { widget: "button", class: "menu_option", text: "Off", action: "graphics.set:vsync:off", active: "graphics.vsync == off" },
+                  { widget: "button", class: "menu_option", text: "On", action: "graphics.set:vsync:on", active: "graphics.vsync == on" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Frame rate cap" },
+                  { widget: "button", class: "menu_option", text: "None", action: "graphics.set:fps_limit:0", active: "graphics.fps_limit == 0" },
+                  { widget: "button", class: "menu_option", text: "30", action: "graphics.set:fps_limit:30", active: "graphics.fps_limit == 30" },
+                  { widget: "button", class: "menu_option", text: "60", action: "graphics.set:fps_limit:60", active: "graphics.fps_limit == 60" },
+                  { widget: "button", class: "menu_option", text: "120", action: "graphics.set:fps_limit:120", active: "graphics.fps_limit == 120" },
+                ],
+              },
+              {
+                widget: "row",
+                style: { margin: [8, 0, 0, 0] },
+                children: [
+                  { widget: "label", class: "title", text: "{perf.fps|int} fps" },
+                  { widget: "label", class: "dim", style: { grow: 1 }, text: "{perf.frame_ms|fixed:1} ms, limited by {perf.bound}" },
+                  { widget: "button", class: "menu_option", text: "Details (F10)", action: "ui.toggle:perf", active: "ui.shown.perf" },
+                ],
+              },
+              { widget: "label", class: "dim", text: "Render scale and anti-aliasing matter most when the GPU limits the frame rate. Changes apply at once and are saved." },
             ],
           },
           {

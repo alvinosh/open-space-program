@@ -9,6 +9,8 @@ use bevy::{
     shader::{ShaderRef, load_shader_library},
 };
 
+use crate::{atmosphere::view_steps, settings::GraphicsSettings};
+
 pub type TerrainMaterial = ExtendedMaterial<StandardMaterial, TerrainExtension>;
 
 pub struct TerrainMaterialPlugin;
@@ -17,7 +19,30 @@ impl Plugin for TerrainMaterialPlugin {
     fn build(&self, app: &mut App) {
         load_shader_library!(app, "shaders/atmosphere.wesl");
         embedded_asset!(app, "shaders/terrain.wesl");
-        app.add_plugins(MaterialPlugin::<TerrainMaterial>::default());
+        app.add_plugins(MaterialPlugin::<TerrainMaterial>::default())
+            .add_systems(
+                Update,
+                apply_effects_setting.run_if(resource_changed::<GraphicsSettings>),
+            );
+    }
+}
+
+/// The haze's steps on every chunk (new chunks get them when they spawn).
+fn apply_effects_setting(
+    settings: Res<GraphicsSettings>,
+    mut materials: ResMut<Assets<TerrainMaterial>>,
+) {
+    let steps = view_steps(settings.effects) as f32;
+    // Only the ones that differ: `iter_mut` would mark every chunk's material modified.
+    let stale: Vec<_> = materials
+        .iter()
+        .filter(|(_, m)| m.extension.params.quality.x != steps)
+        .map(|(id, _)| id)
+        .collect();
+    for id in stale {
+        if let Some(mut material) = materials.get_mut(id) {
+            material.extension.params.quality.x = steps;
+        }
     }
 }
 
@@ -30,6 +55,8 @@ pub struct TerrainParams {
     /// x: chunk level, y: colour data level, z: cover data level, w: 1 for an Earth-like
     /// atmosphere.
     pub levels: Vec4,
+    /// x: ray-marching steps for the haze (`atmosphere::view_steps`).
+    pub quality: Vec4,
 }
 
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]

@@ -14,7 +14,7 @@ import osp::shaders::atmosphere::{
     scatter, sphere_hits, origin_sun_transmittance, luminance, THICKNESS, SKY_MESH_SCALE,
 };
 
-/// x: planet mean radius.
+/// x: planet mean radius, y: ray-marching steps.
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: vec4<f32>;
 
 @fragment
@@ -46,7 +46,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     let sun = lights.directional_lights[0].direction_to_light;
     let sun_color = lights.directional_lights[0].color.rgb
         / origin_sun_transmittance(center, sun, radius);
-    let s = scatter(eye, ray, t0, t1, sun, sun_color, radius);
+    let s = scatter(eye, ray, t0, t1, sun, sun_color, radius, i32(params.y));
     let coverage = clamp(1.0 - luminance(s.transmittance), 0.0, 1.0);
     return vec4<f32>(s.inscatter * view.exposure, coverage);
 }

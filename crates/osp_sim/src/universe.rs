@@ -9,7 +9,7 @@
 //! The game picks physics ticks for low warp and rails for high warp. Because coasting is
 //! analytic and every event lands on an exact tick in both paths, switching warp rate never
 //! changes the outcome. The same goes for a vessel's free rotation; with SAS on, rails hold
-//! the attitude exactly where physics ticks would steer to it.
+//! a steady attitude exactly where physics ticks would keep it.
 
 use std::sync::Arc;
 

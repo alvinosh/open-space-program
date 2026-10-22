@@ -30,15 +30,16 @@ use crate::{
     frame::{RenderFrame, to_render},
     meshgen::MeshBuilder,
     planet::{PlaceAnchored, Planet, SurfaceAnchor},
+    settings::{GraphicsSettings, Quality},
     sim::Sim,
     surface::Surface,
 };
 
 /// Quadtree level of tree cells (~305 m on Earth).
 const CELL_LEVEL: u8 = 15;
-/// Trees are shown within this distance of the camera, m.
+/// Trees are shown within this distance of the camera, m (at High).
 const RADIUS: f64 = 2_500.0;
-/// Within this distance cells get detailed trees, m.
+/// Within this distance cells get detailed trees, m (at High).
 const DETAIL_RADIUS: f64 = 900.0;
 /// Cells keep their trees, and their detail, this far past [`RADIUS`] and
 /// [`DETAIL_RADIUS`], m. More than the camera moves orbiting the vessel at the default
@@ -90,12 +91,28 @@ impl CellState {
     }
 }
 
+/// ([`RADIUS`], [`DETAIL_RADIUS`]) for each `trees` setting; none when trees are off.
+fn reach(quality: Quality) -> Option<(f64, f64)> {
+    match quality {
+        Quality::Off => None,
+        Quality::Low => Some((1_000.0, 350.0)),
+        Quality::Medium => Some((1_700.0, 600.0)),
+        Quality::High => Some((RADIUS, DETAIL_RADIUS)),
+        Quality::Ultra => Some((3_500.0, 1_300.0)),
+    }
+}
+
 /// Whether a cell `distance` from the camera should have trees, and whether detailed
-/// ones; `current` is the detail of the trees it has (or is building), if any.
-fn wanted_detail(distance: f64, current: Option<bool>) -> Option<bool> {
+/// ones; `current` is the detail of the trees it has (or is building), if any, and
+/// `(radius, detail_radius)` the setting's [`reach`].
+fn wanted_detail(
+    distance: f64,
+    current: Option<bool>,
+    (radius, detail_radius): (f64, f64),
+) -> Option<bool> {
     let slack = |kept: bool| if kept { HYSTERESIS } else { 0.0 };
-    (distance < RADIUS + slack(current.is_some()))
-        .then(|| distance < DETAIL_RADIUS + slack(current == Some(true)))
+    (distance < radius + slack(current.is_some()))
+        .then(|| distance < detail_radius + slack(current == Some(true)))
 }
 
 /// Cells within `reach` of `camera` (body-fixed, m) on a sphere of `radius`, with their
@@ -163,6 +180,7 @@ fn update_trees(
     frame: Res<RenderFrame>,
     rig: Res<CameraRig>,
     planets: Query<&Planet>,
+    settings: Res<GraphicsSettings>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     let trees = &mut *trees;
@@ -192,12 +210,13 @@ fn update_trees(
     // Wanted cells and whether each should be detailed.
     let mut wanted: HashMap<TileKey, bool> = HashMap::default();
     if let Some(surface) = &surface
+        && let Some(reach) = reach(settings.trees)
         && altitude < MAX_ALTITUDE
         && !rig.map_view
     {
-        for (key, distance) in cells_near(camera_fixed, surface.radius, RADIUS + HYSTERESIS) {
+        for (key, distance) in cells_near(camera_fixed, surface.radius, reach.0 + HYSTERESIS) {
             let current = trees.cells.get(&key).map(CellState::detailed);
-            if let Some(detailed) = wanted_detail(distance, current) {
+            if let Some(detailed) = wanted_detail(distance, current, reach) {
                 wanted.insert(key, detailed);
             }
         }
@@ -612,27 +631,35 @@ mod tests {
 
     use super::*;
 
+    const HIGH: (f64, f64) = (RADIUS, DETAIL_RADIUS);
+
     #[test]
     fn new_cells_use_the_plain_radii() {
-        assert_eq!(wanted_detail(DETAIL_RADIUS - 1.0, None), Some(true));
-        assert_eq!(wanted_detail(DETAIL_RADIUS + 1.0, None), Some(false));
-        assert_eq!(wanted_detail(RADIUS + 1.0, None), None);
+        assert_eq!(wanted_detail(DETAIL_RADIUS - 1.0, None, HIGH), Some(true));
+        assert_eq!(wanted_detail(DETAIL_RADIUS + 1.0, None, HIGH), Some(false));
+        assert_eq!(wanted_detail(RADIUS + 1.0, None, HIGH), None);
     }
 
     #[test]
     fn shown_cells_keep_their_trees_and_detail_past_the_radii() {
         let near = DETAIL_RADIUS + HYSTERESIS - 1.0;
-        assert_eq!(wanted_detail(near, Some(true)), Some(true));
-        assert_eq!(wanted_detail(near, Some(false)), Some(false));
-        assert_eq!(wanted_detail(DETAIL_RADIUS - 1.0, Some(false)), Some(true));
+        assert_eq!(wanted_detail(near, Some(true), HIGH), Some(true));
+        assert_eq!(wanted_detail(near, Some(false), HIGH), Some(false));
         assert_eq!(
-            wanted_detail(DETAIL_RADIUS + HYSTERESIS + 1.0, Some(true)),
+            wanted_detail(DETAIL_RADIUS - 1.0, Some(false), HIGH),
+            Some(true)
+        );
+        assert_eq!(
+            wanted_detail(DETAIL_RADIUS + HYSTERESIS + 1.0, Some(true), HIGH),
             Some(false)
         );
 
         let far = RADIUS + HYSTERESIS - 1.0;
-        assert_eq!(wanted_detail(far, Some(false)), Some(false));
-        assert_eq!(wanted_detail(RADIUS + HYSTERESIS + 1.0, Some(false)), None);
+        assert_eq!(wanted_detail(far, Some(false), HIGH), Some(false));
+        assert_eq!(
+            wanted_detail(RADIUS + HYSTERESIS + 1.0, Some(false), HIGH),
+            None
+        );
     }
 
     #[test]

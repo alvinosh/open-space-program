@@ -34,6 +34,7 @@ use crate::{
     atmosphere::TransmittanceLuts,
     camera::CameraRig,
     frame::{RenderFrame, rotation_to_render, to_render},
+    settings::{GraphicsSettings, Quality},
     sim::{Sim, WorldData},
     surface::Surface,
     terrain_material::{TerrainExtension, TerrainMaterial, TerrainParams},
@@ -42,8 +43,8 @@ use crate::{
 /// Quads per chunk edge. Each quad spans `TILE_CELLS / CHUNK_RESOLUTION` texture cells.
 const CHUNK_RESOLUTION: usize = 32;
 const STRIDE: usize = TILE_CELLS / CHUNK_RESOLUTION;
-/// A chunk splits when the camera is closer than this many chunk widths. Each level then
-/// has about 40 chunks around the camera.
+/// A chunk splits when the camera is closer than this many chunk widths (at High terrain
+/// detail). Each level then has about 40 chunks around the camera.
 const SPLIT_DISTANCE: f64 = 2.0;
 /// Smallest chunk edge length, m. Bounds the quadtree depth (~76 m chunks, 2.4 m quads on
 /// Earth).
@@ -155,26 +156,37 @@ fn spawn_bodies(
     }
 }
 
+/// The split distance (see [`SPLIT_DISTANCE`]) for each `terrain` setting.
+fn split_distance(quality: Quality) -> f64 {
+    match quality {
+        Quality::Off | Quality::Low => 1.3,
+        Quality::Medium => 1.6,
+        Quality::High => SPLIT_DISTANCE,
+        Quality::Ultra => 2.6,
+    }
+}
+
 /// Quadtree leaves wanted around the camera, and every internal node above them.
 fn wanted_chunks(
     radius: f64,
     camera_fixed: DVec3,
     max_level: u8,
+    split: f64,
 ) -> (HashSet<TileKey>, HashSet<TileKey>) {
     fn visit(
         radius: f64,
         camera: DVec3,
-        max_level: u8,
+        (max_level, split): (u8, f64),
         key: TileKey,
         leaves: &mut HashSet<TileKey>,
         internal: &mut HashSet<TileKey>,
     ) {
         let center = key.center_dir() * radius;
         let size = key.edge_length(radius);
-        if key.level < max_level && camera.distance(center) < size * SPLIT_DISTANCE {
+        if key.level < max_level && camera.distance(center) < size * split {
             internal.insert(key);
             for child in key.children() {
-                visit(radius, camera, max_level, child, leaves, internal);
+                visit(radius, camera, (max_level, split), child, leaves, internal);
             }
         } else {
             leaves.insert(key);
@@ -185,7 +197,7 @@ fn wanted_chunks(
         visit(
             radius,
             camera_fixed,
-            max_level,
+            (max_level, split),
             TileKey::root(face),
             &mut leaves,
             &mut internal,
@@ -204,18 +216,21 @@ fn update_lod(
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<TerrainMaterial>>,
     luts: Res<TransmittanceLuts>,
+    settings: Res<GraphicsSettings>,
     mut visibility: Query<&mut Visibility, With<PlanetChunk>>,
 ) {
     if frame.origin_body.is_none() {
         return;
     }
+    let split = split_distance(settings.terrain);
     let pool = AsyncComputeTaskPool::get();
     for mut planet in &mut planets {
         let planet = &mut *planet;
         let body = sim.universe.system.body(planet.body);
         let camera_from_center = rig.position - frame.body_offset(planet.body);
         let camera_fixed = body.orientation(frame.time).inverse() * camera_from_center;
-        let (leaves, internal) = wanted_chunks(body.radius, camera_fixed, planet.max_level);
+        let (leaves, internal) =
+            wanted_chunks(body.radius, camera_fixed, planet.max_level, split);
         let keep = |key: &TileKey| {
             leaves.contains(key) || (key.level <= FALLBACK_LEVEL && internal.contains(key))
         };
@@ -235,7 +250,7 @@ fn update_lod(
             let entity = built.spawn(
                 &mut commands,
                 planet.body,
-                luts.texture(planet.body),
+                (luts.texture(planet.body), &settings),
                 &mut meshes,
                 &mut images,
                 &mut materials,
@@ -397,14 +412,15 @@ struct BuiltChunk {
 
 impl BuiltChunk {
     fn spawn(
-        self,
+        mut self,
         commands: &mut Commands,
         body: BodyId,
-        transmittance: Handle<Image>,
+        (transmittance, settings): (Handle<Image>, &GraphicsSettings),
         meshes: &mut Assets<Mesh>,
         images: &mut Assets<Image>,
         materials: &mut Assets<TerrainMaterial>,
     ) -> Entity {
+        self.params.quality.x = crate::atmosphere::view_steps(settings.effects) as f32;
         let material = materials.add(TerrainMaterial {
             base: StandardMaterial {
                 base_color: Color::WHITE,
@@ -638,6 +654,8 @@ fn build_chunk(surface: &Surface, key: TileKey) -> BuiltChunk {
             data_level(&cover_view),
             if surface.earthlike { 1.0 } else { 0.0 },
         ),
+        // Set when the chunk spawns.
+        quality: Vec4::ZERO,
     };
     BuiltChunk {
         mesh,

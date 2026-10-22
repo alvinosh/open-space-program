@@ -18,7 +18,7 @@
 //!   deviation from a conic, not the distance from the origin.
 //! - **Rotation** ([`attitude`]): torque-free spin is exact like coasting, torque from
 //!   gimbal, reaction wheels, RCS ([`rcs`]) and the air is integrated on the tick, and SAS
-//!   holds exactly on rails.
+//!   holds a steady attitude exactly on rails.
 //! - **Aerodynamics** ([`aero`]): FAR-style, the vessel cut into sections along its axis,
 //!   each pushed by the air it meets, so lift, drag, stability and damping follow the shape.
 //! - **Planning**: burns ([`plan`]) are predicted as impulses with the same event code, and

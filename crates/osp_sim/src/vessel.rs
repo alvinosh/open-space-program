@@ -14,8 +14,8 @@
 //! A vessel's position is its centre of mass, which it rotates about. Rotation follows the
 //! same idea as translation ([`crate::attitude`]): without torque it is exact at any time,
 //! and torque from the engine gimbal, reaction wheels, RCS or the air ([`crate::aero`]) is
-//! integrated on the physics tick. During time warp on rails, SAS holds its attitude exactly
-//! instead of steering.
+//! integrated on the physics tick. During time warp on rails nothing steers: a turning
+//! vessel keeps turning, and with SAS on a steady one holds its attitude exactly.
 //!
 //! Engines that need ullage only light while the propellant is settled, i.e. while
 //! something pushes the vessel forward: thrust still running (hot staging), or RCS
@@ -855,11 +855,11 @@ impl Vessel {
         });
     }
 
-    /// Time warp is about to skip physics from `time`. With SAS on, the vessel holds its
-    /// attitude exactly (relative to the navigation frame for direction modes, snapping
-    /// onto the target) instead of steering; with SAS off it keeps rotating freely.
+    /// Time warp is about to skip physics from `time`. Nothing steers on rails, so a vessel
+    /// that is turning keeps turning freely, SAS or not. With SAS on, a steady vessel holds
+    /// the attitude it has (relative to the navigation frame for direction modes, so
+    /// prograde stays prograde) where physics ticks would keep it.
     pub fn enter_rails(&mut self, system: &SolarSystem, time: SimTime) {
-        // Nothing steers on rails.
         self.flight.control = DVec3::ZERO;
         rcs::idle(&mut self.propulsion);
         self.ullage_push = false;
@@ -867,36 +867,27 @@ impl Vessel {
             return;
         }
         let state = self.attitude_state(system, time);
-        let basis = self.nav_basis(system, time);
-        let turn = |direction: DVec3| {
-            (DQuat::from_rotation_arc(state.nose(), direction) * state.orientation).normalize()
-        };
-        let inertial = matches!(
-            self.sas.mode(),
-            SasMode::Burn | SasMode::Target | SasMode::AntiTarget
-        ) || self.nav_frame == NavFrame::Target;
-        let (orientation, hold) = if inertial {
-            // A burn points a fixed inertial way; the target hardly moves across the sky
-            // during a warp, so the attitude is held where it is now.
-            let body = system.body(self.parent);
-            let aim = self.sas_direction(system, body, &self.state_at(system, time), time);
-            (aim.map_or(state.orientation, turn), Hold::Inertial)
-        } else {
-            match (basis.and_then(|b| self.sas.mode().direction(&b)), basis) {
-                (Some(direction), Some(basis)) => (
-                    turn(direction),
-                    Hold::Tracking {
-                        frame: self.nav_frame,
-                        basis: basis.matrix(),
-                    },
-                ),
-                _ => (state.orientation, Hold::Inertial),
+        if state.angular_velocity.length() >= attitude::CAPTURE_RATE {
+            return;
+        }
+        // A burn points a fixed inertial way and the target hardly moves across the sky
+        // during a warp, so those (and stability) hold still.
+        let hold = match self.nav_basis(system, time) {
+            Some(basis)
+                if self.nav_frame != NavFrame::Target
+                    && self.sas.mode().direction(&basis).is_some() =>
+            {
+                Hold::Tracking {
+                    frame: self.nav_frame,
+                    basis: basis.matrix(),
+                }
             }
+            _ => Hold::Inertial,
         };
         self.attitude = AttitudeTrack {
             epoch: time,
             state: Attitude {
-                orientation,
+                orientation: state.orientation,
                 angular_velocity: DVec3::ZERO,
             },
             inertia: self.mass.inertia,
@@ -2731,16 +2722,19 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn rails_hold_the_sas_direction() {
+    fn rails_hold_a_steady_attitude_and_keep_a_turn() {
         let system = rss();
-        let (mut v, t) = leo_vessel(&system);
+        let (mut v, mut t) = leo_vessel(&system);
         v.set_sas_mode(&system, t, SasMode::RadialOut);
         v.enter_rails(&system, t);
         let target = |v: &Vessel, t| v.nav_basis(&system, t).unwrap().radial_out;
-        // It snaps onto the target, then follows it around the orbit.
-        for minutes in [0.0, 13.0, 47.0, 400.0] {
+        // It does not snap onto the target, but keeps its angle to it around the orbit.
+        let off = nose(&v, &system, t).angle_between(target(&v, t));
+        assert!(off > 0.1, "{off}");
+        for minutes in [13.0, 47.0, 400.0] {
             let at = t.add_seconds(minutes * 60.0);
-            assert!(nose(&v, &system, at).angle_between(target(&v, at)) < 1e-6);
+            let now = nose(&v, &system, at).angle_between(target(&v, at));
+            assert!((now - off).abs() < 1e-6, "{now} vs {off}");
         }
         // Stability holds still, whatever the warp.
         let mut v = leo_vessel(&system).0;
@@ -2748,5 +2742,17 @@ pub(crate) mod tests {
         v.enter_rails(&system, t);
         let later = t.add_seconds(86_400.0);
         assert_eq!(v.attitude_at(&system, later), v.attitude_at(&system, t));
+        // Still turning when the warp starts: it keeps turning, SAS or not.
+        let mut v = leo_vessel(&system).0;
+        v.set_sas_mode(&system, t, SasMode::Prograde);
+        v.rotation_input = DVec3::new(0.4, -0.2, 1.0);
+        run(&mut v, &system, &mut t, 1.0);
+        v.rotation_input = DVec3::ZERO;
+        let free = v.clone();
+        v.enter_rails(&system, t);
+        let later = t.add_seconds(600.0);
+        let spin = v.attitude_state(&system, later);
+        assert_eq!(spin, free.attitude_state(&system, later));
+        assert!(spin.angular_velocity.length() > 0.01);
     }
 }

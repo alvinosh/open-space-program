@@ -7,7 +7,6 @@
 use std::path::PathBuf;
 
 use bevy::{
-    camera::RenderTarget,
     math::DVec3,
     prelude::*,
     render::{
@@ -21,7 +20,7 @@ use osp_ui::UiAction;
 
 use crate::{
     FrameSet,
-    camera::{CameraRig, MainCamera},
+    camera::{CameraRig, ViewOutput},
     controls::InputLocked,
     sim::{Sim, TimeWarp},
 };
@@ -84,6 +83,8 @@ impl Plugin for SmokeTestPlugin {
                 GLIDER_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MENU").is_some() {
                 MENU_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_GRAPHICS").is_some() {
+                GRAPHICS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_RUNWAY").is_some() {
                 RUNWAY_SCRIPT.to_vec()
             } else if in_orbit {
@@ -122,17 +123,15 @@ fn render_offscreen(
     mut commands: Commands,
     mut script: ResMut<Script>,
     mut images: ResMut<Assets<Image>>,
-    camera: Single<Entity, With<MainCamera>>,
     mut locked: ResMut<InputLocked>,
 ) {
     locked.0 = true;
     let (width, height) = capture_size();
     let image = Image::new_target_texture(width, height, TextureFormat::Rgba8UnormSrgb, None);
     script.target = images.add(image);
-    // UI follows the camera into the image, so captures include the HUD.
-    commands
-        .entity(*camera)
-        .insert((RenderTarget::from(script.target.clone()), IsDefaultUiCamera));
+    // The view and the UI go into the image instead of the window (see `camera`), so
+    // captures include the HUD and the render scale.
+    commands.insert_resource(ViewOutput(Some(script.target.clone())));
 }
 
 #[derive(Clone, Copy)]
@@ -202,6 +201,22 @@ const MENU_SCRIPT: &[(f64, Action)] = &[
     (26.0, Action::Steer(DVec3::ZERO)),
     (30.0, Action::Capture("climb.png")),
     (31.5, Action::Exit),
+];
+
+/// `OSP_CAPTURE_GRAPHICS=1`: the main menu's Graphics page with the performance overlay,
+/// then the Low preset and back to High.
+const GRAPHICS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::Ui("menu.page:graphics")),
+    (1.2, Action::Ui("ui.show:perf")),
+    (4.0, Action::Capture("graphics.png")),
+    (4.2, Action::Ui("graphics.preset:low")),
+    (7.0, Action::Capture("graphics_low.png")),
+    (7.2, Action::Ui("graphics.preset:high")),
+    (7.4, Action::Ui("game.resume")),
+    (10.0, Action::Capture("graphics_flight.png")),
+    (10.5, Action::Exit),
 ];
 
 /// `OSP_SCENARIO=runway OSP_CAPTURE_RUNWAY=1`: the rocket plane at the threshold, its

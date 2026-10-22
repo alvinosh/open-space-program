@@ -20,6 +20,8 @@ mod navball;
 mod orbit_lines;
 mod planet;
 mod plume;
+mod profiler;
+mod settings;
 mod sim;
 mod smoke_test;
 mod surface;
@@ -64,6 +66,12 @@ fn main() -> AppExit {
                     }),
                     ..default()
                 })
+                .set(bevy::log::LogPlugin {
+                    // `--features profile`: time every system for the profiler.
+                    #[cfg(feature = "profile")]
+                    custom_layer: profiler::spans::layer,
+                    ..default()
+                })
                 .set(AssetPlugin {
                     file_path: content::asset_root().to_string_lossy().into_owned(),
                     ..default()
@@ -101,6 +109,7 @@ fn main() -> AppExit {
         )
         // Content first: everything else is built from the loaded mods.
         .add_plugins(content::ContentPlugin)
+        .add_plugins((settings::SettingsPlugin, profiler::ProfilerPlugin))
         .add_plugins((
             sim::SimPlugin,
             frame::FramePlugin,

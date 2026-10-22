@@ -476,8 +476,9 @@ impl SasMode {
     }
 }
 
-/// Turn rate, rad/s, below which stability assist locks the current attitude.
-const CAPTURE_RATE: f64 = 0.005;
+/// Turn rate, rad/s, below which stability assist locks the current attitude (and time
+/// warp holds it, see [`crate::vessel::Vessel::enter_rails`]).
+pub const CAPTURE_RATE: f64 = 0.005;
 /// Time constant of the rate loop, s.
 const RESPONSE: f64 = 0.25;
 /// Commanded rate per radian of error close to the target, 1/s.

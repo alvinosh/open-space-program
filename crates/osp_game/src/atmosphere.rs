@@ -35,6 +35,7 @@ use crate::{
     FrameSet,
     camera::{CameraRig, MainCamera},
     frame::{RenderFrame, Sunlight},
+    settings::{GraphicsSettings, Quality},
     sim::Sim,
     surface::Surface,
 };
@@ -102,6 +103,10 @@ impl Plugin for AtmospherePlugin {
             .add_systems(Startup, spawn_skies)
             .add_systems(
                 Update,
+                apply_effects_setting.run_if(resource_changed::<GraphicsSettings>),
+            )
+            .add_systems(
+                Update,
                 (place_skies, dim_sunlight)
                     .after(crate::frame::update_sunlight)
                     .in_set(FrameSet::Render),
@@ -109,9 +114,20 @@ impl Plugin for AtmospherePlugin {
     }
 }
 
+/// Ray-marching steps through the air, for the sky and the haze over the ground, at each
+/// `effects` setting.
+pub fn view_steps(quality: Quality) -> u32 {
+    match quality {
+        Quality::Off | Quality::Low => 6,
+        Quality::Medium => 8,
+        Quality::High => 12,
+        Quality::Ultra => 16,
+    }
+}
+
 #[derive(Asset, AsBindGroup, TypePath, Debug, Clone)]
 pub struct SkyMaterial {
-    /// x: planet mean radius.
+    /// x: planet mean radius, y: ray-marching steps.
     #[uniform(0)]
     params: Vec4,
     /// The body's [`TransmittanceLut`].
@@ -169,6 +185,7 @@ fn spawn_skies(
             Sky(body.id),
             Mesh3d(mesh.clone()),
             MeshMaterial3d(materials.add(SkyMaterial {
+                // The steps are set by `apply_effects_setting`.
                 params: Vec4::new(body.radius as f32, 0.0, 0.0, 0.0),
                 transmittance: luts.texture(body.id),
             })),
@@ -178,6 +195,23 @@ fn spawn_skies(
             NoFrustumCulling,
             Name::new(format!("{} sky", body.name)),
         ));
+    }
+}
+
+fn apply_effects_setting(
+    settings: Res<GraphicsSettings>,
+    mut materials: ResMut<Assets<SkyMaterial>>,
+) {
+    let steps = view_steps(settings.effects) as f32;
+    let stale: Vec<_> = materials
+        .iter()
+        .filter(|(_, m)| m.params.y != steps)
+        .map(|(id, _)| id)
+        .collect();
+    for id in stale {
+        if let Some(mut material) = materials.get_mut(id) {
+            material.params.y = steps;
+        }
     }
 }
 

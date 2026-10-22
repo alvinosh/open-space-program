@@ -25,9 +25,10 @@ use crate::{
     hull::stage_hull,
     meshgen::MeshBuilder,
     plume::{
-        AXIS_LAG, PlumeDef, PlumeMaterial, PlumeParams, PlumeShape, plume_axes, plume_axis,
-        plume_lumens,
+        AXIS_LAG, PlumeDef, PlumeMaterial, PlumeParams, PlumeShape, march_steps, plume_axes,
+        plume_axis, plume_lumens,
     },
+    settings::GraphicsSettings,
     sim::{Sim, SimRestarted},
 };
 
@@ -694,8 +695,10 @@ fn update_engines(
     >,
     mut lights: Query<(&PlumeLight, &mut PointLight, &mut Transform), Without<EnginePivot>>,
     mut materials: ResMut<Assets<PlumeMaterial>>,
+    settings: Res<GraphicsSettings>,
 ) {
     let system = &sim.universe.system;
+    let steps = march_steps(settings.effects);
     let engine = |vessel: usize, engine: usize| {
         sim.universe.vessels[vessel]
             .propulsion
@@ -779,7 +782,7 @@ fn update_engines(
             .with_rotation(rotation)
             .with_scale(Vec3::new(end, shape.length, end));
         if let Some(mut material) = materials.get_mut(&material.0) {
-            material.params = PlumeParams::new(&shape, &plume.look, level, plume.seed);
+            material.params = PlumeParams::new(&shape, &plume.look, level, plume.seed, steps);
         }
         let lumens = plume_lumens(&shape, &plume.look, level);
         let middle = exit + axis * (0.5 * shape.fade).min(shape.ground - 1.0).max(0.0);

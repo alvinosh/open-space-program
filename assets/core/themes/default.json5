@@ -88,7 +88,11 @@
       border_color: [1, 1, 1, 0.11],
     },
     menu_title: { font_size: 26, color: "#f2f7fa" },
+    menu_tab: { padding: [5, 14] },
+    menu_page: { gap: 6, shrink: 1, min_height: 0 },
     menu_list: { gap: 6, scroll: true, shrink: 1, min_height: 0 },
+    // A choice in a row of them (graphics settings); the selected one is `active`.
+    menu_option: { min_width: 52, padding: [3, 6], font_size: 12 },
     menu_item: {
       direction: "column",
       align_items: "start",

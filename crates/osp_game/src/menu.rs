@@ -3,7 +3,8 @@
 //! Without `OSP_SCENARIO` the game opens on it, over the default scenario standing still;
 //! Esc (`game.menu`) brings it back in flight. While it is open time stands still, the
 //! flight UI is hidden and the pilot's controls do nothing. Picking a scenario starts it
-//! afresh in the same solar system (`game.start:<id>`).
+//! afresh in the same solar system (`game.start:<id>`). Its Graphics page
+//! (`menu.page:graphics`) sets the graphics (see `settings`).
 
 use bevy::prelude::*;
 use osp_sim::data::ScenarioDef;
@@ -26,6 +27,7 @@ impl Plugin for MenuPlugin {
         app.insert_resource(Menu {
             open: false,
             playing: !open,
+            page: "scenarios".into(),
         })
         .add_systems(
             Startup,
@@ -49,6 +51,8 @@ pub struct Menu {
     pub open: bool,
     /// A scenario is being flown, so the menu can go back to it.
     pub playing: bool,
+    /// The page showing: `scenarios` or `graphics`.
+    page: String,
 }
 
 impl Menu {
@@ -66,8 +70,8 @@ impl Menu {
     }
 }
 
-/// `menu.scenarios` (id, name, description, in the order the records load) and
-/// `menu.playing`.
+/// `menu.scenarios` (id, name, description, in the order the records load),
+/// `menu.playing` and `menu.page`.
 fn publish_scenarios(content: Res<GameContent>, menu: Res<Menu>, mut data: ResMut<UiData>) {
     if content.is_changed() {
         let scenarios: Vec<_> = content
@@ -88,6 +92,7 @@ fn publish_scenarios(content: Res<GameContent>, menu: Res<Menu>, mut data: ResMu
     }
     if menu.is_changed() {
         data.set("menu.playing", menu.playing);
+        data.set("menu.page", menu.page.as_str());
     }
 }
 
@@ -108,6 +113,11 @@ fn menu_actions(
             "game.menu" if menu.open && menu.playing => menu.show(false, &mut sim, &mut ui),
             "game.menu" if !menu.open => menu.show(true, &mut sim, &mut ui),
             "game.resume" if menu.playing => menu.show(false, &mut sim, &mut ui),
+            "menu.page" => {
+                if let Some(page) = action.arg() {
+                    menu.page = page.to_owned();
+                }
+            }
             "game.start" => {
                 let Some(id) = action.arg() else { continue };
                 match crate::content::restart(&content.0, &mut sim.universe, id) {
