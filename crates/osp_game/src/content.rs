@@ -52,14 +52,20 @@ impl Plugin for ContentPlugin {
 #[derive(Resource)]
 pub struct GameContent(pub Content);
 
-/// Root containing `assets/` and `mods/`: the working directory for shipped builds, the
-/// workspace when run through cargo. Absolute, because Bevy resolves a relative asset root
-/// against the crate directory when run through cargo.
+/// Root containing `assets/` and `mods/`: the working directory or the executable's directory
+/// for shipped builds, the workspace when run through cargo. Absolute, because Bevy resolves
+/// a relative asset root against the crate directory when run through cargo.
 pub fn game_root() -> PathBuf {
     if Path::new("assets/core").is_dir()
         && let Ok(dir) = std::env::current_dir()
     {
         return dir;
+    }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+        && dir.join("assets/core").is_dir()
+    {
+        return dir.to_path_buf();
     }
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }

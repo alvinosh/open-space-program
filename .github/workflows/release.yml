@@ -1,0 +1,82 @@
+# Builds the game for Windows and publishes it as a GitHub release.
+# Push a tag (git tag v0.1.0 && git push origin v0.1.0), or run it by hand with a tag name.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to release (created on the selected commit if it does not exist)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Earth's terrain is generated, not checked in. The packs are little-endian, so baking on
+  # Linux works for every platform.
+  terrain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .bake-cache
+          key: bake-sources-${{ hashFiles('crates/osp_bake/src/sources.rs') }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo run -p osp_bake --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terrain
+          path: assets/core/terrain/earth
+          retention-days: 1
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p osp_game
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: target/release/osp.exe
+          retention-days: 1
+
+  release:
+    needs: [terrain, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: terrain
+          path: assets/core/terrain/earth
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows
+          path: bin
+      - name: Package
+        run: |
+          dir="open-space-program-$TAG-windows-x64"
+          mkdir "$dir"
+          cp bin/osp.exe README.md "$dir/"
+          cp -r assets mods "$dir/"
+          zip -qr "$dir.zip" "$dir"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          zip="open-space-program-$TAG-windows-x64.zip"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$zip" --clobber
+          else
+            gh release create "$TAG" "$zip" --target "$GITHUB_SHA" --title "$TAG" \
+              --notes "Windows build. Unzip and run osp.exe."
+          fi
