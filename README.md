@@ -29,6 +29,29 @@ of the stills, and `OSP_CAPTURE_SIZE=1280x720` sets the size of the stills (1600
 
 The toolchain is pinned in `rust-toolchain.toml` (Bevy 0.20 needs Rust 1.97.1+).
 
+## Scenarios
+
+The main menu lists these; `OSP_SCENARIO=<id>` starts one straight away.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/pad.jpg" alt="Pathfinder climbing over the coast"><br><b>Launch from the Cape</b> (<code>pad</code>): Pathfinder off LC-39A with a 15 t payload under its fairing.</td>
+<td width="50%"><img src="docs/screenshots/crew.jpg" alt="Crewed Pathfinder clearing the tower"><br><b>Crewed launch from the Cape</b> (<code>crew</code>): Pathfinder with a four-person capsule on top.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/runway.jpg" alt="Comet lifting off the runway"><br><b>Rocket plane on the runway</b> (<code>runway</code>): the Comet lifting off the Shuttle Landing Facility.</td>
+<td><img src="docs/screenshots/glider.jpg" alt="Glider banking over the Cape"><br><b>Glider over the Cape</b> (<code>glider</code>): a sailplane released at 1500 m, here banking into a turn.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/sounder.jpg" alt="Finned sounding rocket over the coast"><br><b>Suborbital hop</b> (<code>sounder</code>): a finned single stage with a one-person capsule.</td>
+<td><img src="docs/screenshots/rendezvous.jpg" alt="Map view with the station targeted"><br><b>Rendezvous in low Earth orbit</b> (<code>rendezvous</code>): below a station on a slightly tilted orbit, with its plane crossings and closest approach.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/moon_plane.jpg" alt="Transfer planner porkchop plot to the Moon"><br><b>Low Earth orbit in the Moon's plane</b> (<code>moon_plane</code>): one burn reaches the Moon; the transfer planner finds it.</td>
+<td><img src="docs/screenshots/leo.jpg" alt="Upper stage in orbit over Earth"><br><b>Low Earth orbit</b> (<code>leo</code>): an upper stage parked in a 300 km circular orbit.</td>
+</tr>
+</table>
+
 ## Controls
 
 Default bindings (all rebindable in `assets/core/keybindings/default.json5`):
