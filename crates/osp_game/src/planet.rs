@@ -46,6 +46,10 @@ const STRIDE: usize = TILE_CELLS / CHUNK_RESOLUTION;
 /// A chunk splits when the camera is closer than this many chunk widths (at High terrain
 /// detail). Each level then has about 40 chunks around the camera.
 const SPLIT_DISTANCE: f64 = 2.0;
+/// Ground seen edge-on splits as if farther, up to twice as far at this sine of the
+/// camera's elevation above it and below: its triangles would be slivers on screen, and
+/// GPUs shade pixels in 2x2 blocks, so slivers cost several times their area.
+const GRAZING_FLOOR: f64 = 0.25;
 /// Smallest chunk edge length, m. Bounds the quadtree depth (~76 m chunks, 2.4 m quads on
 /// Earth).
 const MIN_CHUNK_SIZE: f64 = 70.0;
@@ -183,7 +187,11 @@ fn wanted_chunks(
     ) {
         let center = key.center_dir() * radius;
         let size = key.edge_length(radius);
-        if key.level < max_level && camera.distance(center) < size * split {
+        let offset = camera - center;
+        let distance = offset.length();
+        let elevation = offset.dot(center) / (distance * radius).max(1e-9);
+        let effective = distance / elevation.max(GRAZING_FLOOR).sqrt();
+        if key.level < max_level && effective < size * split {
             internal.insert(key);
             for child in key.children() {
                 visit(radius, camera, (max_level, split), child, leaves, internal);
@@ -229,8 +237,7 @@ fn update_lod(
         let body = sim.universe.system.body(planet.body);
         let camera_from_center = rig.position - frame.body_offset(planet.body);
         let camera_fixed = body.orientation(frame.time).inverse() * camera_from_center;
-        let (leaves, internal) =
-            wanted_chunks(body.radius, camera_fixed, planet.max_level, split);
+        let (leaves, internal) = wanted_chunks(body.radius, camera_fixed, planet.max_level, split);
         let keep = |key: &TileKey| {
             leaves.contains(key) || (key.level <= FALLBACK_LEVEL && internal.contains(key))
         };

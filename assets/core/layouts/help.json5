@@ -23,6 +23,7 @@
       { widget: "row", children: [{ widget: "label", class: "key", text: "F2" }, { widget: "label", text: "mods & diagnostics" }] },
       { widget: "row", children: [{ widget: "label", class: "key", text: "F3" }, { widget: "label", text: "hide / show the flight UI" }] },
       { widget: "row", children: [{ widget: "label", class: "key", text: "F5" }, { widget: "label", text: "reload mods & UI" }] },
+      { widget: "row", children: [{ widget: "label", class: "key", text: "F10" }, { widget: "label", text: "performance overlay (graphics settings: Esc, Graphics)" }] },
       { widget: "row", children: [{ widget: "label", class: "key", text: "F12" }, { widget: "label", text: "data inspector (for modders)" }] },
       { widget: "label", class: "dim", style: { margin: [8, 0, 0, 0] }, text: "The buttons at the top right open and close the flight windows. Click the speed above the navball to switch between surface and orbit speed." },
       { widget: "label", class: "dim", style: { margin: [4, 0, 0, 0] }, text: "Engines that need ullage only light while the propellant is settled. After a coast, turn RCS on and hold H while throttling up." },

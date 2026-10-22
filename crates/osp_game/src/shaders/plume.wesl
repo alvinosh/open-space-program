@@ -41,6 +41,10 @@ struct PlumeParams {
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: PlumeParams;
 
 const TAU: f32 = 6.2831853;
+/// March step as a share of the jet's width where the ray crosses it, and the fewest steps:
+/// a ray across the plume needs a dozen or so, one along it all of the setting's.
+const STEP_WIDTH: f32 = 0.3;
+const MIN_STEPS: u32 = 12u;
 
 fn hash(p: vec3<f32>) -> f32 {
     let q = fract(p * 0.3183099 + vec3<f32>(0.1, 0.2, 0.3));
@@ -210,7 +214,11 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     if t1 <= t0 {
         discard;
     }
-    let steps = max(u32(params.quality.x), 1u);
+    let most = max(u32(params.quality.x), 1u);
+    let middle = clamp((o + 0.5 * (t0 + t1) * d).y, 0.0, params.shape.y);
+    let width = params.shape.x + middle * params.glow.y;
+    let path = (t1 - t0) * length(d);
+    let steps = clamp(u32(ceil(path / (STEP_WIDTH * width))), min(MIN_STEPS, most), most);
     let dt = (t1 - t0) / f32(steps);
     let ds = dt * length(d);
     let time = globals.time;

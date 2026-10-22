@@ -8,7 +8,7 @@
 //!
 //! The first run picks a preset from the GPU (see [`recommended`]). The settings live in
 //! `settings.json` in the platform's config directory (`OSP_SETTINGS=<file>` overrides it).
-//! `OSP_GRAPHICS=<preset>[,<key>=<value>...]` (e.g. `low` or `high,shadows=off,msaa=1`)
+//! `OSP_GRAPHICS=<preset>[,<key>=<value>...]` (e.g. `low` or `high,shadows=off,trees=low`)
 //! starts with those settings without saving them; scripted captures (`OSP_CAPTURE`) use it
 //! or High and never touch the file, so they stay reproducible.
 
@@ -34,7 +34,7 @@ impl Plugin for SettingsPlugin {
             .add_systems(
                 Update,
                 (
-                    detect.run_if(resource_exists::<RenderAdapterInfo>),
+                    detect.run_if(resource_exists::<RenderAdapterInfo>.and_then(run_once)),
                     actions.in_set(FrameSet::Input),
                     (apply_window, publish).run_if(resource_changed::<GraphicsSettings>),
                 ),
@@ -171,7 +171,10 @@ impl GraphicsSettings {
             _ => Err(format!("`{v}` is not on or off")),
         };
         let quality = |v: &str| Quality::parse(v).ok_or_else(|| format!("unknown level `{v}`"));
-        let number = |v: &str| v.parse::<u32>().map_err(|_| format!("`{v}` is not a number"));
+        let number = |v: &str| {
+            v.parse::<u32>()
+                .map_err(|_| format!("`{v}` is not a number"))
+        };
         match key {
             "render_scale" => self.render_scale = number(value)?.clamp(25, 100),
             "antialiasing" => {
@@ -311,16 +314,30 @@ fn save(settings: &GraphicsSettings, source: &SettingsSource) {
     }
 }
 
-/// The preset for a GPU: discrete GPUs and Apple's get High, other integrated GPUs Medium,
-/// and software or virtual adapters Low.
+/// The preset for a GPU: discrete GPUs get High, Apple's M3 and later (and any Pro, Max
+/// or Ultra) High and earlier ones Medium, other integrated GPUs and software or virtual
+/// adapters Low. Measured on the pad at 2560x1440 on an M5: High 12 ms, Medium 6, Low 4.
 pub fn recommended(adapter: &RenderAdapterInfo) -> Quality {
     // wgpu's `DeviceType`, which Bevy does not re-export.
     match format!("{:?}", adapter.device_type).as_str() {
         "DiscreteGpu" => Quality::High,
-        "IntegratedGpu" if adapter.name.starts_with("Apple") => Quality::High,
-        "IntegratedGpu" => Quality::Medium,
+        "IntegratedGpu" => match apple_generation(&adapter.name) {
+            Some((generation, big)) if generation >= 3 || big => Quality::High,
+            Some(_) => Quality::Medium,
+            None => Quality::Low,
+        },
         _ => Quality::Low,
     }
+}
+
+/// "Apple M2 Pro" -> (2, true): the generation, and whether it is a Pro, Max or Ultra.
+fn apple_generation(name: &str) -> Option<(u32, bool)> {
+    let rest = name.strip_prefix("Apple M")?;
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    let big = ["Pro", "Max", "Ultra"]
+        .iter()
+        .any(|tier| rest.contains(tier));
+    Some((digits.parse().ok()?, big))
 }
 
 /// First run: once the GPU is known, start from its preset and save it.
@@ -453,7 +470,10 @@ mod tests {
             let settings = GraphicsSettings::preset(preset);
             assert_eq!(settings.matching_preset(), Some(preset));
             let text = serde_json::to_string(&settings).unwrap();
-            assert_eq!(serde_json::from_str::<GraphicsSettings>(&text).unwrap(), settings);
+            assert_eq!(
+                serde_json::from_str::<GraphicsSettings>(&text).unwrap(),
+                settings
+            );
         }
         let mut custom = GraphicsSettings::preset(Quality::High);
         custom.set("shadows", "off").unwrap();
@@ -463,6 +483,14 @@ mod tests {
         capped.set("fps_limit", "30").unwrap();
         capped.set("vsync", "off").unwrap();
         assert_eq!(capped.matching_preset(), Some(Quality::Low));
+    }
+
+    #[test]
+    fn apple_generations() {
+        assert_eq!(apple_generation("Apple M1"), Some((1, false)));
+        assert_eq!(apple_generation("Apple M2 Max"), Some((2, true)));
+        assert_eq!(apple_generation("Apple M5"), Some((5, false)));
+        assert_eq!(apple_generation("Intel(R) Iris(R) Xe Graphics"), None);
     }
 
     #[test]

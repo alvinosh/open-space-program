@@ -26,6 +26,8 @@ times. With `OSP_CAPTURE`, `OSP_CAPTURE_QUICK=1` takes a single still, and
 `OSP_CAPTURE_AT=20,30` launches (SAS on, a small pitch kick at 10 s, the Vessel,
 Attitude and Structure windows open) and takes stills at those times. `OSP_CAPTURE_HIDE_UI=1` leaves the flight UI out
 of the stills, and `OSP_CAPTURE_SIZE=1280x720` sets the size of the stills (1600x900 by default).
+`OSP_CAPTURE_GRAPHICS=1` captures the Graphics page with the performance overlay, then the Low
+preset.
 
 The toolchain is pinned in `rust-toolchain.toml` (Bevy 0.20 needs Rust 1.97.1+).
 
@@ -76,6 +78,7 @@ Default bindings (all rebindable in `assets/core/keybindings/default.json5`):
 | Right-drag, wheel | Orbit / zoom camera |
 | F1 / F2 / F3 | Help / mods & diagnostics / hide the flight UI |
 | F5 | Reload mods and UI |
+| F10 | Performance overlay: frame rate, what limits it, CPU and GPU time |
 | F12 | Data inspector (every value the UI can bind to) |
 
 ## Flight UI
@@ -124,6 +127,47 @@ departure is the best moment in its parking orbit, which is what finds the cheap
 departures to a moon on another plane. Create burn plans the departure; in the Flight plan
 window, Aim Pe then adjusts it against the full patched-conic prediction for a chosen
 periapsis at the target, and Circ Pe plans the capture there.
+
+## Graphics settings
+
+The main menu's Graphics page (Esc, then Graphics) picks a preset (Low, Medium, High,
+Ultra) or each setting on its own: render scale (the 3D view at 50 to 100% of the window's
+resolution, with the UI kept sharp), anti-aliasing (off, FXAA or 4x MSAA), shadows, bloom,
+the sky's, haze's and plumes' ray-marching steps, terrain detail, how far trees reach,
+vsync and a frame rate cap. Changes apply at once and the frame rate under the menu updates
+live. The first run picks a preset for the GPU; the settings are saved in `settings.json`
+in the platform's config directory (on macOS `~/Library/Application Support/OpenSpaceProgram`).
+
+Measured on the pad at 2560x1440 on an Apple M5: Low 3.7 ms, Medium 5.9 ms, High 12.2 ms,
+Ultra 14.4 ms a frame. When the GPU sets the pace, render scale and anti-aliasing matter
+most; on Apple GPUs MSAA is especially expensive.
+
+## Profiling
+
+F10 shows the performance overlay: frames per second, the worst frame, how long the main
+thread and the render thread take, how long the render thread waits for the GPU, and from
+that what limits the frame rate (GPU, main thread or render thread), with the meshes and
+triangles drawn.
+
+```sh
+cargo run --release --features profile             # also times every system (overlay lists the slowest)
+OSP_PROFILE=report.md OSP_UNCAPPED=1 \
+  OSP_SCENARIO=pad OSP_CAPTURE=/tmp/shots OSP_CAPTURE_QUICK=1 cargo run --release
+OSP_GRAPHICS=high,shadows=off cargo run           # start with these settings, without saving them
+cargo run --release --features bevy/trace_tracy   # stream a timeline to the Tracy profiler
+```
+
+`OSP_PROFILE=<file>` writes a report on exit: frame time percentiles, a per-second timeline
+(frame, main thread, render thread, GPU wait), the worst frames and what was in the world;
+built with `--features profile` it adds every schedule's and system's mean and worst time
+and, for the slowest main-thread frames, the systems that took longest in them. Combined with
+a scripted capture (`OSP_CAPTURE`) and `OSP_UNCAPPED=1` it gives repeatable numbers to
+compare settings or changes: the static pad view (`OSP_CAPTURE_QUICK=1`) is steady to about
+a millisecond while nothing else uses the GPU (run each case twice). Captures use
+`OSP_GRAPHICS` (or High) and never read or write the saved settings. `OSP_PROFILE_SECONDS=<s>`
+instead plays in the window for that long and exits, writing the report. On Vulkan and DX12 the
+`profile` build also times each render pass on the GPU; on macOS use Instruments' Metal
+System Trace (`xcrun xctrace record --template 'Metal System Trace' --attach <pid>`).
 
 ## Layout
 

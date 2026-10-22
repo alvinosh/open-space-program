@@ -14,7 +14,8 @@
 //!
 //! `OSP_PROFILE=<file>` writes a report there on exit: frame time percentiles, a timeline
 //! per second, the worst frames and, with `profile`, every system's mean and worst time.
-//! Combine it with `OSP_CAPTURE` (and `OSP_UNCAPPED=1`) for a repeatable scripted run.
+//! Combine it with `OSP_CAPTURE` (and `OSP_UNCAPPED=1`) for a repeatable scripted run, or
+//! with `OSP_PROFILE_SECONDS=<s>` to play in the window for that long and exit.
 
 use std::{
     fmt::Write as _,
@@ -37,7 +38,7 @@ use bevy::{
 };
 use osp_ui::{UiData, record};
 
-use crate::settings::GraphicsSettings;
+use crate::{camera::ViewOutput, settings::GraphicsSettings};
 
 /// The overlay is refreshed this often, s.
 const PUBLISH_PERIOD: f64 = 0.5;
@@ -58,9 +59,23 @@ impl Plugin for ProfilerPlugin {
                 report: std::env::var_os("OSP_PROFILE").map(PathBuf::from),
                 ..default()
             })
+            .init_resource::<MeshTriangles>()
             .add_systems(First, begin_main)
-            .add_systems(Last, (end_frame, publish).chain())
+            .add_systems(Last, (count_triangles, end_frame, publish).chain())
             .add_systems(Last, write_report.run_if(on_message::<AppExit>));
+        if let Some(seconds) = std::env::var("OSP_PROFILE_SECONDS")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok())
+        {
+            app.add_systems(
+                Update,
+                move |time: Res<Time<Real>>, mut exit: MessageWriter<AppExit>| {
+                    if time.elapsed_secs_f64() > seconds {
+                        exit.write(AppExit::Success);
+                    }
+                },
+            );
+        }
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .insert_resource(shared)
@@ -164,7 +179,7 @@ struct FrameSample {
     main: f32,
     render: f32,
     /// Waiting for the GPU: for a swapchain image, or to submit.
-    acquire: f32,
+    gpu_wait: f32,
 }
 
 #[derive(Resource, Default)]
@@ -186,7 +201,41 @@ struct Counts {
     entities: u32,
     meshes: u32,
     visible_meshes: u32,
+    /// In the visible meshes, each counted once (shadow casters are drawn again into each
+    /// cascade they reach).
+    visible_triangles: u64,
     lights: u32,
+}
+
+/// Triangles per mesh, counted when each is added or changed: meshes kept only in the
+/// render world lose their data in the main world once extracted.
+#[derive(Resource, Default)]
+struct MeshTriangles(bevy::platform::collections::HashMap<AssetId<Mesh>, u32>);
+
+fn count_triangles(
+    mut events: MessageReader<AssetEvent<Mesh>>,
+    meshes: Res<Assets<Mesh>>,
+    mut counts: ResMut<MeshTriangles>,
+) {
+    for event in events.read() {
+        match *event {
+            AssetEvent::Added { id } | AssetEvent::Modified { id } => {
+                let Some(mesh) = meshes.get(id) else { continue };
+                let corners = match mesh.try_indices_option() {
+                    Ok(Some(indices)) => indices.len(),
+                    Ok(None) => mesh
+                        .try_attribute(Mesh::ATTRIBUTE_POSITION)
+                        .map_or(0, |positions| positions.len()),
+                    Err(_) => continue,
+                };
+                counts.0.insert(id, (corners / 3) as u32);
+            }
+            AssetEvent::Removed { id } | AssetEvent::Unused { id } => {
+                counts.0.remove(&id);
+            }
+            AssetEvent::LoadedWithDependencies { .. } => {}
+        }
+    }
 }
 
 fn begin_main(mut profile: ResMut<Profile>) {
@@ -202,7 +251,7 @@ fn end_frame(time: Res<Time<Real>>, times: Res<RenderTimes>, mut profile: ResMut
         frame: time.delta_secs() * 1000.0,
         main,
         render: times.load(RenderTimes::RENDER),
-        acquire: times.load(RenderTimes::ACQUIRE) + times.load(RenderTimes::SUBMIT),
+        gpu_wait: times.load(RenderTimes::ACQUIRE) + times.load(RenderTimes::SUBMIT),
     };
     if profile.report.is_some() && profile.frames.len() < MAX_FRAMES {
         profile.frames.push(sample);
@@ -219,7 +268,7 @@ struct Summary {
     worst: f32,
     main: f32,
     render: f32,
-    acquire: f32,
+    gpu_wait: f32,
 }
 
 impl Summary {
@@ -231,7 +280,7 @@ impl Summary {
             worst: samples.iter().map(|s| s.frame).fold(0.0, f32::max),
             main: mean(|s| s.main),
             render: mean(|s| s.render),
-            acquire: mean(|s| s.acquire),
+            gpu_wait: mean(|s| s.gpu_wait),
         }
     }
 
@@ -239,12 +288,12 @@ impl Summary {
     /// or to submit, when the GPU (or vsync) is behind; otherwise the slower of the two CPU
     /// threads sets the pace (they run in parallel, a frame apart).
     fn bound(&self, vsync: bool) -> &'static str {
-        let cpu = self.main.max(self.render - self.acquire);
-        if self.acquire > 2.0 && self.acquire > 0.25 * self.frame {
+        let render_cpu = self.render - self.gpu_wait;
+        if self.gpu_wait > 2.0 && self.gpu_wait > 0.25 * self.frame {
             if vsync { "GPU or vsync" } else { "GPU" }
-        } else if cpu < 0.6 * self.frame {
+        } else if self.main.max(render_cpu) < 0.6 * self.frame {
             "GPU or frame cap"
-        } else if self.main >= self.render - self.acquire {
+        } else if self.main >= render_cpu {
             "CPU (main thread)"
         } else {
             "CPU (render thread)"
@@ -261,7 +310,8 @@ fn publish(
     settings: Res<GraphicsSettings>,
     adapter: Option<Res<RenderAdapterInfo>>,
     entities: Query<()>,
-    meshes: Query<&ViewVisibility, With<Mesh3d>>,
+    meshes: Query<(&Mesh3d, &ViewVisibility)>,
+    triangles: Res<MeshTriangles>,
     lights: Query<(), Or<(With<PointLight>, With<SpotLight>, With<DirectionalLight>)>>,
 ) {
     profile.since_publish += time.delta_secs_f64();
@@ -271,10 +321,15 @@ fn publish(
     profile.since_publish = 0.0;
     let window = std::mem::take(&mut profile.window);
     let summary = Summary::of(&window);
+    let visible = || meshes.iter().filter(|(_, v)| v.get());
     let counts = Counts {
         entities: entities.iter().len() as u32,
         meshes: meshes.iter().len() as u32,
-        visible_meshes: meshes.iter().filter(|v| v.get()).count() as u32,
+        visible_meshes: visible().count() as u32,
+        visible_triangles: visible()
+            .filter_map(|(mesh, _)| triangles.0.get(&mesh.id()))
+            .map(|&n| u64::from(n))
+            .sum(),
         lights: lights.iter().len() as u32,
     };
     profile.counts = counts;
@@ -284,11 +339,12 @@ fn publish(
     data.set("perf.worst_ms", summary.worst);
     data.set("perf.main_ms", summary.main);
     data.set("perf.render_ms", summary.render);
-    data.set("perf.gpu_wait_ms", summary.acquire);
-    data.set("perf.bound", summary.bound(settings.vsync));
+    data.set("perf.gpu_wait_ms", summary.gpu_wait);
+    data.set("perf.bound", summary.bound(vsync(&settings)));
     data.set("perf.entities", counts.entities);
     data.set("perf.meshes", counts.meshes);
     data.set("perf.visible_meshes", counts.visible_meshes);
+    data.set("perf.triangles_m", counts.visible_triangles as f64 / 1e6);
     data.set("perf.lights", counts.lights);
     if let Some(adapter) = adapter {
         data.set("perf.gpu", gpu_description(&adapter));
@@ -363,6 +419,11 @@ fn publish(
     );
 }
 
+/// Whether vsync paces the frames (`OSP_UNCAPPED` turns it off whatever the setting).
+fn vsync(settings: &GraphicsSettings) -> bool {
+    settings.vsync && std::env::var_os("OSP_UNCAPPED").is_none()
+}
+
 fn gpu_description(adapter: &RenderAdapterInfo) -> String {
     format!(
         "{} ({:?}, {:?})",
@@ -395,12 +456,12 @@ fn percentile(sorted: &[f32], p: f32) -> f32 {
     sorted[i.min(sorted.len() - 1)]
 }
 
-#[allow(clippy::too_many_arguments)]
 fn write_report(
     profile: Res<Profile>,
     settings: Res<GraphicsSettings>,
     adapter: Option<Res<RenderAdapterInfo>>,
     window: Option<Single<&Window>>,
+    (output, images): (Res<ViewOutput>, Res<Assets<Image>>),
 ) {
     let Some(path) = &profile.report else { return };
     // The first second is loading: shaders compile and the ground streams in.
@@ -416,16 +477,32 @@ fn write_report(
     if let Some(adapter) = &adapter {
         let _ = writeln!(out, "GPU: {}", gpu_description(adapter));
     }
-    if let Some(window) = window {
-        let _ = writeln!(
-            out,
-            "Window: {}x{} px (scale {})",
-            window.physical_width(),
-            window.physical_height(),
-            window.scale_factor()
-        );
+    match output.0.as_ref().and_then(|image| images.get(image)) {
+        Some(image) => {
+            let _ = writeln!(
+                out,
+                "View: {}x{} px (capture)",
+                image.width(),
+                image.height()
+            );
+        }
+        None => {
+            if let Some(window) = window {
+                let _ = writeln!(
+                    out,
+                    "View: {}x{} px (window, scale {})",
+                    window.physical_width(),
+                    window.physical_height(),
+                    window.scale_factor()
+                );
+            }
+        }
     }
-    let _ = writeln!(out, "Scenario: {}", std::env::var("OSP_SCENARIO").unwrap_or_default());
+    let _ = writeln!(
+        out,
+        "Scenario: {}",
+        std::env::var("OSP_SCENARIO").unwrap_or_default()
+    );
     let _ = writeln!(out, "Graphics: {}", settings.describe());
     let _ = writeln!(
         out,
@@ -460,9 +537,9 @@ fn write_report(
     let _ = writeln!(
         out,
         "main world (CPU) mean {:.2} ms; render world (CPU) mean {:.2} ms, of which {:.2} ms waiting for the GPU",
-        summary.main, summary.render, summary.acquire
+        summary.main, summary.render, summary.gpu_wait
     );
-    let _ = writeln!(out, "limited by: {}", summary.bound(settings.vsync));
+    let _ = writeln!(out, "limited by: {}", summary.bound(vsync(&settings)));
     let over = |ms: f32| sorted.iter().filter(|&&f| f > ms).count();
     let _ = writeln!(
         out,
@@ -496,7 +573,7 @@ fn write_report(
                 s.worst,
                 s.main,
                 s.render,
-                s.acquire
+                s.gpu_wait
             );
         }
         start = i;
@@ -510,19 +587,26 @@ fn write_report(
         let _ = writeln!(
             out,
             "t {:>7.2} s  frame {:>7.2} ms  main {:>7.2}  render {:>7.2}  wait {:>7.2}",
-            f.at, f.frame, f.main, f.render, f.acquire
+            f.at, f.frame, f.main, f.render, f.gpu_wait
         );
     }
 
     let counts = profile.counts;
     let _ = writeln!(
         out,
-        "\n## World (at exit)\n\nentities {}, meshes {} ({} visible), lights {}",
-        counts.entities, counts.meshes, counts.visible_meshes, counts.lights
+        "\n## World (at exit)\n\nentities {}, meshes {} ({} visible, {} triangles), lights {}",
+        counts.entities,
+        counts.meshes,
+        counts.visible_meshes,
+        counts.visible_triangles,
+        counts.lights
     );
 
     if !profile.passes.is_empty() {
-        let _ = writeln!(out, "\n## Render passes (mean ms; GPU only on Vulkan/DX12)\n");
+        let _ = writeln!(
+            out,
+            "\n## Render passes (mean ms; GPU only on Vulkan/DX12)\n"
+        );
         let mut passes: Vec<_> = profile
             .passes
             .iter()
@@ -553,7 +637,10 @@ fn write_report(
         for (kind, title) in [
             (spans::Kind::Schedule, "Schedules"),
             (spans::Kind::System, "Systems"),
-            (spans::Kind::Commands, "Commands (applying spawns, inserts, despawns)"),
+            (
+                spans::Kind::Commands,
+                "Commands (applying spawns, inserts, despawns)",
+            ),
         ] {
             let _ = writeln!(
                 out,
@@ -656,7 +743,7 @@ pub mod spans {
                 .filter(|(i, e)| e.current > 0 && table.names[*i].0 == Kind::System)
                 .map(|(i, e)| (i, e.current))
                 .collect();
-            systems.sort_by(|a, b| b.1.cmp(&a.1));
+            systems.sort_by_key(|s| std::cmp::Reverse(s.1));
             systems.truncate(HITCH_SYSTEMS);
             table.hitches.push((at, main_ms, systems));
             table.hitches.sort_by(|a, b| b.1.total_cmp(&a.1));

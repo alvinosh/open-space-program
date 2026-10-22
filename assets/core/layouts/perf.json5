@@ -25,6 +25,7 @@
           { widget: "row", children: [{ widget: "label", class: "key", text: "Render thread (CPU)" }, { widget: "label", text: "{perf.render_ms|fixed:2} ms" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "  waiting for GPU" }, { widget: "label", text: "{perf.gpu_wait_ms|fixed:2} ms" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "Meshes drawn" }, { widget: "label", text: "{perf.visible_meshes} of {perf.meshes}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Triangles drawn" }, { widget: "label", text: "{perf.triangles_m|fixed:2} M" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "Entities" }, { widget: "label", text: "{perf.entities}" }] },
           { widget: "label", class: "dim", text: "{perf.gpu}" },
           { widget: "label", class: "dim", text: "Graphics {graphics.summary}" },

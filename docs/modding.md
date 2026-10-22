@@ -577,6 +577,10 @@ The flight UI is a set of modules, each its own layout in the `flight` group:
 | `structure_info` | Every tank and fin set: make-up, strength, current load | `#parts` |
 | `log` | Flight log | `#log` |
 
+Outside the flight group: `main_menu` (scenarios, and the Graphics page with node id
+`#graphics`) and `perf`, the performance overlay (F10, node ids `#perf`, `#systems`,
+`#passes`).
+
 To add a window to the launcher, insert a button into `#toolbar.children` (see
 `mods/example_mod/patches/ui.json5`).
 
@@ -653,6 +657,14 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `mods.count`, `mods.errors`, `mods.warnings` | |
 | `mods.list[]` | `id`, `name`, `version`, `authors`, `description` |
 | `mods.problems[]` | `error` (bool), `text` |
+| `menu.scenarios[]`, `menu.playing`, `menu.page` | Main menu: `id`, `name`, `description`; a scenario is being flown; the page showing (`scenarios`, `graphics`) |
+| `graphics.preset`, `graphics.recommended`, `graphics.summary` | The preset the settings match (`low`, `medium`, `high`, `ultra` or `custom`); the one for this GPU; every setting on one line |
+| `graphics.render_scale`, `graphics.antialiasing`, `graphics.shadows`, `graphics.terrain`, `graphics.trees`, `graphics.effects`, `graphics.bloom`, `graphics.vsync`, `graphics.fps_limit` | Each setting as text: percent; `off`, `fxaa`, `msaa`; a level (`off`, `low`, `medium`, `high`, `ultra`); `on` / `off`; frames per second (`0` for none) |
+| `perf.fps`, `perf.frame_ms`, `perf.worst_ms` | Over the last half second: frame rate, mean and worst frame time (ms) |
+| `perf.main_ms`, `perf.render_ms`, `perf.gpu_wait_ms`, `perf.bound` | Main and render thread time (ms), the render thread's wait for the GPU, and what limits the frame rate |
+| `perf.gpu`, `perf.entities`, `perf.meshes`, `perf.visible_meshes`, `perf.triangles_m` | Adapter name, backend and type; entity and mesh counts; triangles in the visible meshes (millions) |
+| `perf.systems_traced`, `perf.systems[]` | Built with `--features profile`: the slowest systems, `name`, `ms`, `max_ms` |
+| `perf.gpu_timed`, `perf.passes[]` | Render passes timed on the GPU (`profile` build, Vulkan and DX12): `name`, `cpu_ms`, `gpu_ms` |
 
 ## Reference: actions
 
@@ -684,6 +696,10 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `ui.toggle:<layout>`, `ui.show:<layout>`, `ui.hide:<layout>` | |
 | `ui.toggle_group:<group>`, `ui.show_group:<group>`, `ui.hide_group:<group>` | Every layout in a group |
 | `game.reload` | Reload all mods and rebuild the UI |
+| `game.menu`, `game.resume`, `game.start:<scenario>`, `game.quit` | Main menu |
+| `menu.page:<scenarios|graphics>` | Switch the main menu's page |
+| `graphics.preset:<low|medium|high|ultra>`, `graphics.detect` | Apply a preset; apply the one recommended for this GPU (both keep vsync and the frame cap) |
+| `graphics.set:<setting>:<value>` | Change one setting (`render_scale:75`, `antialiasing:fxaa`, `shadows:off`, `vsync:on`, ...); saved at once |
 
 ## Troubleshooting
 
