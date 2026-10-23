@@ -44,10 +44,15 @@ pub fn jacobi(u: f64, m: f64) -> (f64, f64, f64, f64) {
     (phi, sn, cn, (1.0 - m * sn * sn).sqrt())
 }
 
+/// Duplication steps before giving up. Each step brings the arguments four times closer
+/// together, so valid ones converge long before this even when they start 1e30 apart;
+/// non-finite ones never do, and get NaN back rather than a hang.
+const MAX_STEPS: usize = 100;
+
 /// Carlson's R_F(x, y, z), at most one argument zero.
 fn rf(x: f64, y: f64, z: f64) -> f64 {
     let (mut x, mut y, mut z) = (x, y, z);
-    loop {
+    for _ in 0..MAX_STEPS {
         let (sx, sy, sz) = (x.sqrt(), y.sqrt(), z.sqrt());
         let lambda = sx * (sy + sz) + sy * sz;
         x = 0.25 * (x + lambda);
@@ -60,12 +65,13 @@ fn rf(x: f64, y: f64, z: f64) -> f64 {
             return (1.0 + (e2 / 24.0 - 0.1 - 3.0 / 44.0 * e3) * e2 + e3 / 14.0) / mean.sqrt();
         }
     }
+    f64::NAN
 }
 
 /// Carlson's R_C(x, y), y > 0.
 fn rc(x: f64, y: f64) -> f64 {
     let (mut x, mut y) = (x, y);
-    loop {
+    for _ in 0..MAX_STEPS {
         let lambda = 2.0 * x.sqrt() * y.sqrt() + y;
         x = 0.25 * (x + lambda);
         y = 0.25 * (y + lambda);
@@ -76,6 +82,7 @@ fn rc(x: f64, y: f64) -> f64 {
             return series / mean.sqrt();
         }
     }
+    f64::NAN
 }
 
 /// Carlson's R_J(x, y, z, p), p > 0, at most one of x, y, z zero.
@@ -86,7 +93,7 @@ fn rj(x: f64, y: f64, z: f64, p: f64) -> f64 {
     const C4: f64 = 3.0 / 26.0;
     let (mut x, mut y, mut z, mut p) = (x, y, z, p);
     let (mut sum, mut factor) = (0.0, 1.0);
-    loop {
+    for _ in 0..MAX_STEPS {
         let (sx, sy, sz) = (x.sqrt(), y.sqrt(), z.sqrt());
         let lambda = sx * (sy + sz) + sy * sz;
         let alpha = (p * (sx + sy + sz) + sx * sy * sz).powi(2);
@@ -118,6 +125,7 @@ fn rj(x: f64, y: f64, z: f64, p: f64) -> f64 {
             return 3.0 * sum + factor * series / (mean * mean.sqrt());
         }
     }
+    f64::NAN
 }
 
 #[cfg(test)]
@@ -151,6 +159,12 @@ mod tests {
         }
         assert!((complete(0.0, 0.0).0 - PI / 2.0).abs() < 1e-15);
         assert!((complete(0.5, 0.0).0 - 1.854_074_677_301_372).abs() < 1e-14);
+    }
+
+    #[test]
+    fn non_finite_arguments_give_nan() {
+        assert!(incomplete(f64::NAN, 0.5, -0.1).0.is_nan());
+        assert!(complete(0.5, f64::NAN).1.is_nan());
     }
 
     #[test]

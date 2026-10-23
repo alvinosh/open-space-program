@@ -123,7 +123,12 @@ impl Earth {
         match self.region_at(lat, lon) {
             Some((region, w)) => {
                 let r = &region.height;
-                let local = r.bilinear(r.level_for(texel), lat, lon, |v| [v])[0];
+                let mut local = r.bilinear(r.level_for(texel), lat, lon, |v| [v])[0];
+                // The regional data is a surface model, which over the sea is the sea
+                // surface: keep the global data's depth there.
+                if local <= 0.0 {
+                    local = local.min(global);
+                }
                 global + (local - global) * w as f32
             }
             None => global,

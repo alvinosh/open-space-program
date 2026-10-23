@@ -184,13 +184,15 @@ fn load_region(cache: &Path, spec: &RegionSpec) -> io::Result<Region> {
     let worldcover_path =
         fetch(cache, &worldcover_tile(corner.0, corner.1), false)?.expect("required download");
     let (cover_geo, cover) = load_worldcover(&worldcover_path, corner, spec.lat, spec.lon)?;
+    // Water bodies (80), and the open sea: WorldCover maps all land and leaves the sea far
+    // from it as no data (0).
     let water = Raster::new(
         cover.width,
         cover.height,
         cover
             .data
             .iter()
-            .map(|&c| if c == 80 { 255 } else { 0 })
+            .map(|&c| if c == 80 || c == 0 { 255 } else { 0 })
             .collect(),
     );
     Ok(Region {

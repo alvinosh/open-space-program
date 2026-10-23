@@ -51,6 +51,8 @@ const DETAIL_PERIOD: f32 = 4096.0;
 const SKYLIGHT: f32 = 0.103;
 const SKY_LOW: vec3<f32> = vec3<f32>(1.15, 0.95, 1.05);
 const SKY_HIGH: vec3<f32> = vec3<f32>(0.51, 1.04, 2.02);
+/// Colour of sunlit shallows over sand.
+const SHALLOW_WATER: vec3<f32> = vec3<f32>(0.05, 0.16, 0.15);
 
 fn hash(p: vec3<u32>) -> f32 {
     var h = (p.x * 1664525u) ^ (p.y * 1013904223u) ^ (p.z * 2654435761u);
@@ -154,6 +156,58 @@ fn bump(normal: vec3<f32>, position: vec3<f32>, height: f32) -> vec3<f32> {
     return normalize(bumped);
 }
 
+/// The sea: 16 wind waves from 80 m down to 0.6 m long, each this steep (peak slope), which
+/// together give about the slope spread Cox and Munk measured for a 7 m/s wind.
+const WAVE_COUNT: i32 = 16;
+const LONGEST_WAVE: f32 = 80.0;
+const WAVE_SHRINK: f32 = 0.72;
+const WAVE_STEEPNESS: f32 = 0.06;
+/// Where the wind blows from, body-fixed; the waves run within a cone about it.
+const WIND: vec3<f32> = vec3<f32>(0.70, 0.20, 0.69);
+/// GGX roughness of the ripples too small to model.
+const RIPPLE_ALPHA: f32 = 0.03;
+
+struct Sea {
+    /// Slope of the resolved waves (body-fixed axes).
+    slope: vec3<f32>,
+    /// GGX α² of everything finer than a pixel.
+    alpha2: f32,
+};
+
+/// The sea surface at `p` (body-fixed, m) with `up` the local vertical (body-fixed axes) and
+/// `footprint` the size of a pixel. Each wave is a plane wave in body-fixed space with a
+/// whole number of cycles per DETAIL_PERIOD along each axis, so it is continuous across
+/// chunks, travelling at the deep-water speed for its length; slow noise bends the crests
+/// so they never line up into a grid. Waves too short for the pixel fade out and widen the
+/// reflections instead: from orbit the sun's glint spreads over a wide patch of sea.
+fn sea(p: vec3<f32>, up: vec3<f32>, t: f32, footprint: f32) -> Sea {
+    var out: Sea;
+    out.slope = vec3<f32>(0.0);
+    out.alpha2 = RIPPLE_ALPHA * RIPPLE_ALPHA;
+    let wind = normalize(WIND);
+    let across = normalize(cross(wind, vec3<f32>(0.0, 1.0, 0.0)));
+    let over = cross(wind, across);
+    let bend = 2.5 * noise(p, 256.0) + 1.2 * noise(p, 64.0);
+    let cycle = 2.0 * PI / DETAIL_PERIOD;
+    var wavelength = LONGEST_WAVE;
+    for (var i = 0; i < WAVE_COUNT; i++) {
+        let fi = f32(i);
+        let around = 2.399963 * fi;
+        let spread = 0.25 + 0.55 * fract(fi * 0.618034);
+        let direction = normalize(wind + spread * (cos(around) * across + sin(around) * over));
+        let k = round(direction * DETAIL_PERIOD / wavelength) * cycle;
+        let along = k - up * dot(k, up);
+        let resolved = 1.0 - smoothstep(0.15 * wavelength, 0.6 * wavelength, footprint);
+        let omega = sqrt(9.81 * length(k));
+        let phase = dot(k, p) - omega * t + 1.7 * fi + bend * (1.0 + 0.15 * fi);
+        out.slope += along / max(length(k), 1e-6) * WAVE_STEEPNESS * cos(phase) * resolved;
+        // GGX α² is about twice the slope variance.
+        out.alpha2 += WAVE_STEEPNESS * WAVE_STEEPNESS * (1.0 - resolved);
+        wavelength *= WAVE_SHRINK;
+    }
+    return out;
+}
+
 @fragment
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     var pbr_input = pbr_input_from_standard_material(in, is_front);
@@ -187,6 +241,8 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let p = params.detail_origin.xyz + local;
     let d = distance_to_camera;
     let near = 1.0 - smoothstep(300.0, 6000.0, d);
+    // Size of a pixel on the ground, m.
+    let footprint = max(length(dpdx(position)), length(dpdy(position)));
     let o1 = weighted_noise(p, 32.0, octave_fade(32.0, d));
     let o2 = weighted_noise(p, 8.0, octave_fade(8.0, d));
     let o3 = weighted_noise(p, 2.0, octave_fade(2.0, d));
@@ -194,10 +250,6 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     // Large-scale variation for colour, small-scale for relief.
     let n_color = clamp(0.55 * o1 + 0.3 * o2 + 0.15 * o3, -1.0, 1.0);
     let n_relief = 0.15 * o1 + 0.3 * o2 + 0.35 * o3 + 0.2 * o4;
-    // Slowly drifting ripples on water.
-    let t = globals.time;
-    let wave = weighted_noise(p + vec3<f32>(t * 1.1, t * 0.4, -t * 0.7), 6.0, octave_fade(6.0, d))
-        + 0.5 * weighted_noise(p + vec3<f32>(-t * 0.9, t * 1.3, t * 0.5), 1.5, octave_fade(1.5, d));
 
     // Land-cover classes, blended bilinearly between the four nearest samples.
     let st = uv * CELLS;
@@ -223,32 +275,42 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     // The palette is a touch darker than the imagery it replaces; match it.
     palette = vec4<f32>(palette.rgb * 1.25, palette.a);
 
-    // Imagery far away; class colours where the cover data is much finer than the imagery.
+    // Imagery (about 2 km per sample) from afar; class colours where the land cover is
+    // detailed (around the Cape it goes to 10 m: it keeps up with the chunk, or is finer
+    // than about 100 m anyway) and the pixels are small enough to show it. The blend follows
+    // the size of a pixel on the ground, not the chunk, so it never steps at chunk edges,
+    // and coarse cover stretched over fine chunks (the 2 km global layer) never shows as
+    // blocks.
     let imagery = color.rgb;
-    let regional = clamp((params.levels.z - params.levels.y - 1.0) / 3.0, 0.0, 1.0);
-    var land = mix(imagery, palette.rgb, regional);
-    land *= 1.0 + 0.25 * n_color * near * (1.0 - regional) + 0.15 * (o3 + 0.5 * o4) * near;
-    var roughness = mix(0.9, palette.a, max(regional, near));
+    let cover_keeps_up = max(
+        1.0 - smoothstep(0.5, 2.5, params.levels.x - params.levels.z),
+        smoothstep(9.0, 10.5, params.levels.z),
+    );
+    let classes_show = (1.0 - smoothstep(8.0, 80.0, footprint)) * cover_keeps_up;
+    var land = mix(imagery, palette.rgb, classes_show);
+    land *= 1.0 + 0.25 * n_color * near * (1.0 - classes_show) + 0.15 * (o3 + 0.5 * o4) * near;
+    var roughness = mix(0.9, palette.a, max(classes_show, near));
 
-    // Water: crisp edge with a noisy shoreline, coloured by depth.
+    // Water: crisp edge with a noisy shoreline; the imagery's colour, turning turquoise
+    // over shallows.
     let water = smoothstep(0.42, 0.58, surface.w + 0.12 * o2 * near);
     let depth = max(-surface.z, 0.0);
-    let shallow = vec3<f32>(0.03, 0.075, 0.065);
-    let deep = vec3<f32>(0.006, 0.018, 0.04);
-    let modelled = mix(shallow, deep, 1.0 - exp(-depth / 25.0));
-    // Imagery already shows open-ocean colour well; use the model where it is unresolved.
-    let water_albedo = mix(imagery * 0.85, modelled, max(regional, near));
-    let water_roughness = mix(0.06, 0.28, smoothstep(2000.0, 400000.0, d));
+    // Shallows are told by depth below sea level, so lakes up in the hills don't count.
+    let shallows = exp(-depth / 8.0) * (1.0 - smoothstep(2.0, 10.0, surface.z));
+    let water_albedo = mix(imagery * 0.85, SHALLOW_WATER, 0.6 * shallows);
 
     let albedo = mix(land, water_albedo, water);
-    roughness = mix(roughness, water_roughness, water);
 
-    // Normal: baked terrain normal, then fine relief or ripples.
+    // Normal: baked terrain normal, then fine relief on land and waves on water.
     let tangent = surface.xy;
     let normal_up = sqrt(max(1.0 - dot(tangent, tangent), 0.0));
     var normal = normalize(east * tangent.x + north * tangent.y + up * normal_up);
-    let detail_height = mix(n_relief * relief, wave * 0.05, water);
-    normal = bump(normal, position, detail_height);
+    normal = bump(normal, position, n_relief * relief * (1.0 - water));
+    let up_fixed = normalize((local_from_world * vec4<f32>(up, 0.0)).xyz);
+    let waves = sea(p, up_fixed, globals.time, footprint);
+    let slope = (world_from_local * vec4<f32>(waves.slope, 0.0)).xyz * water;
+    normal = normalize(normal - (slope - dot(slope, normal) * normal));
+    roughness = mix(roughness, sqrt(sqrt(waves.alpha2)), water);
 
     pbr_input.N = normal;
     pbr_input.material.base_color = vec4<f32>(albedo, 1.0);
@@ -294,13 +356,25 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
         out.color = vec4<f32>(out.color.rgb + albedo / PI * irradiance * view.exposure, out.color.a);
     }
 
-    // Skylight reflected by water.
-    let view_dir = normalize(camera - position);
-    let n_dot_v = max(dot(normal, view_dir), 0.0);
-    let fresnel = 0.02 + 0.98 * pow(1.0 - n_dot_v, 5.0);
-    let skylight = vec3<f32>(0.32, 0.5, 0.95) * 0.035 * luminance(sun_color * sun_here)
-        * smoothstep(-0.1, 0.2, sun_up);
-    out.color = vec4<f32>(out.color.rgb + skylight * fresnel * water * view.exposure, out.color.a);
+    // The sky reflected in the water: the same scattering as the sky itself, along the
+    // reflected ray (kept above the horizon), weighted by Fresnel. The sun's glint comes
+    // from the lighting above, spread by the wave roughness.
+    if earthlike && water > 0.0 {
+        let view_dir = normalize(camera - position);
+        var reflected = reflect(-view_dir, normal);
+        reflected = normalize(reflected + up * max(0.02 - dot(reflected, up), 0.0));
+        let origin = from_center + up * 2.0;
+        let exit = sphere_hits(origin, reflected, radius + THICKNESS).y;
+        let sky = scatter(
+            origin, reflected, 0.0, max(exit, 0.0), sun, sun_color, radius, i32(params.quality.x),
+        );
+        let fresnel = 0.02 + 0.98 * pow(1.0 - max(dot(normal, view_dir), 0.0), 5.0);
+        out.color = vec4<f32>(
+            out.color.rgb + sky.inscatter * fresnel * water * pbr_input.specular_occlusion
+                * view.exposure,
+            out.color.a,
+        );
+    }
 
     // Aerial perspective while the camera is inside the sky mesh (from outside it, the
     // mesh's near side does it), over the part of the ray inside the atmosphere.

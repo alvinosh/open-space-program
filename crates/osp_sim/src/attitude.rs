@@ -255,7 +255,12 @@ pub fn coast(state: Attitude, inertia: Inertia, dt: f64) -> Attitude {
     if moments.x <= 0.0 || l.cross(rates).length() <= 1e-12 * l.length() * rates.length() {
         return steady;
     }
-    let (l2, e2) = (l.length_squared(), rates.dot(l));
+    let l2 = l.length_squared();
+    // 2E·I − L² = Σ Iᵢωᵢ²(I − Iᵢ), summed that way: spinning nearly about one axis, the
+    // difference of the products is lost to rounding, and can even come out the wrong sign.
+    let excess = |inertias: DVec3, rates: DVec3, i: f64| {
+        (inertias * rates * rates).dot(DVec3::splat(i) - inertias)
+    };
     // The polhode runs round axis c, of the largest moment or the smallest; a is the other
     // extreme and b the middle one, in a right-handed frame.
     let around_largest = if moments.y == moments.z {
@@ -263,7 +268,7 @@ pub fn coast(state: Attitude, inertia: Inertia, dt: f64) -> Attitude {
     } else if moments.x == moments.y {
         true
     } else {
-        l2 > e2 * moments.y
+        excess(moments, rates, moments.y) < 0.0
     };
     let (frame, [ia, ib, ic]) = if around_largest {
         (DMat3::IDENTITY, moments.to_array())
@@ -273,16 +278,23 @@ pub fn coast(state: Attitude, inertia: Inertia, dt: f64) -> Attitude {
     };
     let body = principal * frame;
     let w0 = body.transpose() * w;
+    // 2E·Ic − L² and L² − 2E·Ia.
+    let inertias = DVec3::new(ia, ib, ic);
+    let (above, below) = (excess(inertias, w0, ic), -excess(inertias, w0, ia));
     // ωa = Aa cn τ, ωb = sb Ab sn τ, ωc = sc Ac dn τ, with τ = τ0 + rate · t. dn stays
     // positive, so ωc keeps its sign, and Euler's equations then fix sb.
     let root = |x: f64| x.max(0.0).sqrt();
     let amplitude = DVec3::new(
-        root((e2 * ic - l2) / (ia * (ic - ia))),
-        root((e2 * ic - l2) / (ib * (ic - ib))),
-        root((l2 - e2 * ia) / (ic * (ic - ia))),
+        root(above / (ia * (ic - ia))),
+        root(above / (ib * (ic - ib))),
+        root(below / (ic * (ic - ia))),
     );
-    let rate = root((ic - ib) * (l2 - e2 * ia) / (ia * ib * ic));
-    let m = ((ib - ia) * (e2 * ic - l2) / ((ic - ib) * (l2 - e2 * ia))).clamp(0.0, 1.0 - 1e-12);
+    let rate = root((ic - ib) * below / (ia * ib * ic));
+    // So close to steady that the polhode is lost to rounding: steady it is.
+    if !(amplitude.min_element() > 0.0 && rate > 0.0) {
+        return steady;
+    }
+    let m = ((ib - ia) * above / ((ic - ib) * below)).clamp(0.0, 1.0 - 1e-12);
     let sc = w0.z.signum();
     let sb = sc * (ic - ib).signum();
     let am0 = (sb * w0.y / amplitude.y).atan2(w0.x / amplitude.x);
@@ -298,7 +310,7 @@ pub fn coast(state: Attitude, inertia: Inertia, dt: f64) -> Attitude {
         sb * amplitude.y * sn,
         sc * amplitude.z * dn,
     );
-    let turn = l2.sqrt() / ia * (dt - (l2 - e2 * ia) / (rate * across) * (pi1 - pi0));
+    let turn = l2.sqrt() / ia * (dt - below / (rate * across) * (pi1 - pi0));
     // L's direction in the body goes to L's in space, and the body's axis a, seen across L,
     // turns by `turn` about it.
     let frame_of = |rates: DVec3| {
@@ -309,9 +321,14 @@ pub fn coast(state: Attitude, inertia: Inertia, dt: f64) -> Attitude {
     let space = DMat3::from_quat(state.orientation) * body * frame_of(w0);
     let about = DMat3::from_axis_angle(space.x_axis, turn);
     let turned = about * space * frame_of(w1).transpose() * body.transpose();
-    Attitude {
+    let coasted = Attitude {
         orientation: DQuat::from_mat3(&turned).normalize(),
         angular_velocity: body * w1,
+    };
+    if coasted.orientation.is_finite() && coasted.angular_velocity.is_finite() {
+        coasted
+    } else {
+        steady
     }
 }
 
@@ -917,6 +934,28 @@ mod tests {
             assert!((before - after).length() < 1e-9 * before.length());
             let energy = |s: Attitude| s.angular_velocity.dot(inertia.tensor * s.angular_velocity);
             assert!(close(energy(later), energy(state), 1e-12));
+        }
+    }
+
+    #[test]
+    fn a_nearly_symmetric_body_spinning_about_one_axis_keeps_spinning() {
+        // A slender rocket pitching: pitch and yaw moments a hair apart, a whisker of yaw.
+        // 2E·Ic − L² is then far below the rounding of either product.
+        for apart in [1e-3, 1e-6, 1e-10] {
+            let inertia = Inertia::about_axes(2.0e8, 2.0e8 * (1.0 + apart), 8.6e5);
+            let state = Attitude {
+                orientation: DQuat::IDENTITY,
+                angular_velocity: DVec3::new(1e-9, 0.03, 0.0),
+            };
+            for dt in [0.004, 1.0, 600.0] {
+                let later = coast(state, inertia, dt);
+                assert!(later.orientation.is_finite() && later.angular_velocity.is_finite());
+                let (before, after) = (momentum(inertia, state), momentum(inertia, later));
+                assert!(
+                    (before - after).length() < 1e-9 * before.length(),
+                    "{apart} {dt}"
+                );
+            }
         }
     }
 

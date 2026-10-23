@@ -174,7 +174,10 @@ radial boosters and part damage all need a tree of parts.
       from its thrust level and exit/ambient pressure, shock diamonds, ground splash, plume
       light, bloom, bending from the gimballed nozzle onto a smoothed axis that trails the
       airflow. Still to do: refraction, merging, trails, pad smoke.)
-- [ ] FFT ocean (JONSWAP, foam, refraction, underwater).
+- [ ] FFT ocean (JONSWAP, foam, refraction, underwater). (Done: wind waves from 80 m to
+      0.6 m with deep-water speeds, roughness from what a pixel can't resolve so the sun's
+      glint spreads realistically from orbit, the atmosphere's sky reflected with Fresnel,
+      turquoise shallows. Still to do: FFT spectrum, foam, refraction, underwater.)
 - [ ] GPU particles (launch debris), engine heat glow, thin-film colour on hot metal.
       (Done: heat-tint oxide films on nozzles that shift colour with the viewing angle, and
       procedural paint, composite, metal and char finishes on every vessel surface. Still
