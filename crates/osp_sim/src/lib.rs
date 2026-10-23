@@ -21,6 +21,8 @@
 //!   holds a steady attitude exactly on rails.
 //! - **Aerodynamics** ([`aero`]): FAR-style, the vessel cut into sections along its axis,
 //!   each pushed by the air it meets, so lift, drag, stability and damping follow the shape.
+//! - **Parts** ([`parts`]): a vessel is a tree of parts joined by connectors, and splits
+//!   where a decoupler lets go.
 //! - **Planning**: burns ([`plan`]) are predicted as impulses with the same event code, and
 //!   flown as finite burns by the executor ([`autopilot`]).
 
@@ -36,6 +38,7 @@ pub mod gear;
 pub mod integrator;
 pub mod kepler;
 pub mod orbit;
+pub mod parts;
 pub mod plan;
 pub mod prediction;
 pub mod propulsion;

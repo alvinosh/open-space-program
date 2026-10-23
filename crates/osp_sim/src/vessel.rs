@@ -1051,7 +1051,8 @@ impl Vessel {
     ) -> Vessel {
         let name = format!("{} ({})", released.stages[0].name, self.name);
         let half = released.stages[0].fairing.as_ref().and_then(|f| f.half);
-        let propulsion = Propulsion::from_stages(released.stages);
+        let height = released.base;
+        let propulsion = Propulsion::from_released(released);
         let mut debris = Vessel::assemble(
             name,
             propulsion,
@@ -1061,7 +1062,7 @@ impl Vessel {
             time,
         );
         let com = debris.mass.center_of_mass;
-        let arm = attitude.nose() * (released.base + com - self.mass.center_of_mass);
+        let arm = attitude.nose() * (height + com - self.mass.center_of_mass);
         let mut velocity = state.velocity
             + attitude.angular_velocity_inertial().cross(arm)
             + attitude.nose() * push;
@@ -1073,7 +1074,7 @@ impl Vessel {
         }
         debris.motion = match self.motion {
             Motion::Landed { base, attitude } if half.is_none() => Motion::Landed {
-                base: base + attitude * DVec3::Z * released.base,
+                base: base + attitude * DVec3::Z * height,
                 attitude,
             },
             _ => {
@@ -1550,12 +1551,11 @@ impl Vessel {
             .copied()
             .collect();
         for load in failed {
-            let stage = &mut self.propulsion.stages[load.stage];
-            let name = stage.name.clone();
+            let name = self.propulsion.stages[load.stage].name.clone();
             let percent = load.fraction * 100.0;
             match load.part {
                 Part::Fins => {
-                    stage.fins = None;
+                    self.propulsion.tear_off_fins(load.stage);
                     self.record(
                         time,
                         format!("{name}: fins torn off at {percent:.0}% of their strength"),
@@ -1810,8 +1810,8 @@ fn air_at(body: &Body, state: &StateVector) -> AtmosphereSample {
 pub(crate) mod tests {
     use super::*;
     use crate::{
-        data::ScenarioDef, data::StartDef, propulsion::FAIRING_HALVES, system::tests::rss,
-        time::Ticks,
+        data::ScenarioDef, data::StartDef, parts::PartKind, propulsion::FAIRING_HALVES,
+        system::tests::rss, time::Ticks,
     };
 
     use crate::test_data::records;
@@ -2528,6 +2528,8 @@ pub(crate) mod tests {
         // Thirty degrees off: the fins go, the rest of the rocket holds.
         fly_at(&mut v, 600.0, 30f64.to_radians());
         assert!(v.propulsion.stages[0].fins.is_none());
+        let parts = v.propulsion.parts().parts();
+        assert!(!parts.iter().any(|p| matches!(p.kind, PartKind::Fins(_))));
         assert!(v.log.iter().any(|e| e.message.contains("fins torn off")));
         assert!(!v.is_destroyed());
     }

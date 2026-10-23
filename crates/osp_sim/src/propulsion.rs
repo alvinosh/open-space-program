@@ -1,9 +1,10 @@
 //! Stages and RO-style engines: pressure-dependent Isp, limited ignitions, ullage
 //! requirements, throttle limits and thrust that spools up after ignition, follows the
-//! throttle at a limited rate and tails off after cutoff. Tanks, fins, RCS blocks and
-//! fairings are part of their stage too; sizing tanks and fins is in [`crate::structure`],
-//! firing RCS in [`crate::rcs`]. What the stage key does is a list of activation sequences
-//! ([`crate::staging`]), carried out here.
+//! throttle at a limited rate and tails off after cutoff. Stages are gathered from the
+//! vessel's part tree ([`crate::parts`]): tanks, fins, RCS blocks and fairings are part of
+//! their stage too; sizing tanks and fins is in [`crate::structure`], firing RCS in
+//! [`crate::rcs`]. What the stage key does is a list of activation sequences
+//! ([`crate::staging`]), carried out here by releasing joints on the tree.
 
 use std::collections::BTreeMap;
 
@@ -12,10 +13,8 @@ use thiserror::Error;
 
 use crate::{
     constants::{ATM, G0},
-    data::{
-        CraftDef, EngineDef, GearDef, PartCatalog, PodDef, RcsDef, StageAppearance, TankShape,
-        WingDef,
-    },
+    data::{CraftDef, EngineDef, GearDef, PartCatalog, PodDef, RcsDef, StageAppearance, WingDef},
+    parts::{PartKind, PartTree},
     staging::{Activation, Sequences},
     structure::{FinSet, Tank},
 };
@@ -214,6 +213,106 @@ pub struct Stage {
 }
 
 impl Stage {
+    /// Craft stage `id` as its parts on `tree` make it, with full tanks and nothing armed.
+    pub fn gather(tree: &PartTree, id: usize) -> Self {
+        let mut stage = Stage {
+            id,
+            name: String::new(),
+            active: false,
+            engines: Vec::new(),
+            tanks: Vec::new(),
+            tank_mass: 0.0,
+            fins: None,
+            wings: Vec::new(),
+            gear: Vec::new(),
+            structure_mass: 0.0,
+            wheel_torque: 0.0,
+            rcs: Vec::new(),
+            pod: None,
+            fairing: None,
+            propellants: Vec::new(),
+            diameter: 0.0,
+            length: 0.0,
+            appearance: StageAppearance::default(),
+        };
+        for part in tree.stage(id) {
+            match &part.kind {
+                PartKind::Hull {
+                    structure_mass,
+                    diameter,
+                    length,
+                    appearance,
+                } => {
+                    stage.name = part.name.clone();
+                    stage.structure_mass += structure_mass;
+                    stage.diameter = *diameter;
+                    stage.length = *length;
+                    stage.appearance = appearance.clone();
+                }
+                PartKind::Decoupler => {}
+                PartKind::Tank(tank) => {
+                    stage.tank_mass += tank.dry_mass;
+                    stage.tanks.push(tank.clone());
+                }
+                PartKind::Engine(def) => stage.engines.push(Engine {
+                    def: def.clone(),
+                    running: false,
+                    ignitions_left: def.ignitions,
+                    mount: part.position.truncate(),
+                    thrust: 0.0,
+                    level: 0.0,
+                    spooling: None,
+                    deflection: DVec2::ZERO,
+                }),
+                PartKind::Rcs(def) => {
+                    stage.structure_mass += def.mass;
+                    stage.rcs.push(RcsBlock {
+                        def: def.clone(),
+                        mount: part.position.truncate(),
+                        firing: [0.0; 4],
+                    });
+                }
+                PartKind::ReactionWheel(def) => {
+                    stage.structure_mass += def.mass;
+                    stage.wheel_torque += def.torque;
+                }
+                PartKind::Pod(def) => {
+                    stage.structure_mass += def.mass;
+                    stage.pod = Some(def.clone());
+                }
+                PartKind::Fins(fins) => stage.fins = Some(fins.clone()),
+                PartKind::Wing(def) => stage.wings.push(def.clone()),
+                PartKind::Gear(def) => stage.gear.push(def.clone()),
+                PartKind::FairingHalf { mass, .. } => {
+                    let fairing = stage.fairing.get_or_insert(Fairing {
+                        mass: 0.0,
+                        attached: true,
+                        half: None,
+                    });
+                    fairing.mass += mass;
+                }
+            }
+        }
+        for content in stage.tanks.iter().flat_map(|t| &t.contents) {
+            match stage
+                .propellants
+                .iter_mut()
+                .find(|p| p.name == content.resource)
+            {
+                Some(p) => {
+                    p.amount += content.capacity;
+                    p.capacity += content.capacity;
+                }
+                None => stage.propellants.push(Propellant {
+                    name: content.resource.clone(),
+                    amount: content.capacity,
+                    capacity: content.capacity,
+                }),
+            }
+        }
+        stage
+    }
+
     pub fn propellant_mass(&self) -> f64 {
         self.propellants.iter().map(|p| p.amount).sum()
     }
@@ -357,6 +456,7 @@ pub const FAIRING_HALVES: [f64; 2] = [0.0, std::f64::consts::PI];
 pub struct Released {
     /// Bottom first, as they were on the vessel.
     pub stages: Vec<Stage>,
+    pub parts: PartTree,
     /// Height of its base above the vessel's base before the sequence fired, m.
     pub base: f64,
 }
@@ -385,9 +485,12 @@ pub struct StageInfo {
     pub start_mass: f64,
 }
 
-/// The stack of stages, the activation sequences, and throttle and ignition state.
+/// The parts, the stack of stages gathered from them, the activation sequences, and
+/// throttle and ignition state.
 #[derive(Debug, Clone)]
 pub struct Propulsion {
+    /// What the vessel is made of. Staging releases joints on it, and the stages follow.
+    parts: PartTree,
     /// Stages from the bottom of the stack; index 0 is the current bottom stage.
     pub stages: Vec<Stage>,
     /// What the stage key does next; the player can rearrange them.
@@ -398,191 +501,16 @@ pub struct Propulsion {
 
 impl Propulsion {
     pub fn from_craft(craft: &CraftDef, catalog: &PartCatalog) -> Result<Self, CraftError> {
-        if craft.stages.is_empty() {
-            return Err(CraftError::NoStages);
-        }
-        let stages = craft
-            .stages
-            .iter()
-            .enumerate()
-            .map(|(id, def)| {
-                let mut tank_mass = 0.0;
-                let mut structure_mass = def.structure_mass;
-                let mut wheel_torque = 0.0;
-                let mut engines = Vec::new();
-                for name in &def.engines {
-                    let mut engine_def = catalog
-                        .engines
-                        .iter()
-                        .find(|e| &e.id == name)
-                        .cloned()
-                        .ok_or_else(|| CraftError::UnknownEngine(name.clone()))?;
-                    let total: f64 = engine_def.propellants.values().sum();
-                    for ratio in engine_def.propellants.values_mut() {
-                        *ratio /= total;
-                    }
-                    engines.push(Engine {
-                        ignitions_left: engine_def.ignitions,
-                        def: engine_def,
-                        running: false,
-                        mount: DVec2::ZERO,
-                        thrust: 0.0,
-                        level: 0.0,
-                        spooling: None,
-                        deflection: DVec2::ZERO,
-                    });
-                }
-                let mounts = engine_layout(engines.len(), def.diameter / 2.0);
-                for (engine, mount) in engines.iter_mut().zip(mounts) {
-                    engine.mount = mount;
-                }
-                for name in &def.reaction_wheels {
-                    let wheel = catalog
-                        .reaction_wheels
-                        .iter()
-                        .find(|w| &w.id == name)
-                        .ok_or_else(|| CraftError::UnknownReactionWheel(name.clone()))?;
-                    structure_mass += wheel.mass;
-                    wheel_torque += wheel.torque;
-                }
-                let mut rcs = Vec::new();
-                for (i, name) in def.rcs.iter().enumerate() {
-                    let mut block_def = catalog
-                        .rcs
-                        .iter()
-                        .find(|b| &b.id == name)
-                        .cloned()
-                        .ok_or_else(|| CraftError::UnknownRcs(name.clone()))?;
-                    let total: f64 = block_def.propellants.values().sum();
-                    for ratio in block_def.propellants.values_mut() {
-                        *ratio /= total;
-                    }
-                    structure_mass += block_def.mass;
-                    let angle = std::f64::consts::TAU * i as f64 / def.rcs.len() as f64;
-                    rcs.push(RcsBlock {
-                        def: block_def,
-                        mount: DVec2::from_angle(angle) * def.diameter / 2.0,
-                        firing: [0.0; 4],
-                    });
-                }
-                let bad = |problem: String| CraftError::BadStage {
-                    stage: def.name.clone(),
-                    problem,
-                };
-                let pod = def
-                    .pod
-                    .as_ref()
-                    .map(|name| {
-                        catalog
-                            .pods
-                            .iter()
-                            .find(|p| &p.id == name)
-                            .cloned()
-                            .ok_or_else(|| CraftError::UnknownPod(name.clone()))
-                    })
-                    .transpose()?;
-                if let Some(pod) = &pod {
-                    if pod.height > def.length {
-                        return Err(bad(format!(
-                            "the {} pod is {} m tall, the stage only {} m",
-                            pod.id, pod.height, def.length
-                        )));
-                    }
-                    structure_mass += pod.mass;
-                }
-                let fins = def
-                    .fins
-                    .as_ref()
-                    .map(|f| FinSet::new(f, catalog))
-                    .transpose()?;
-                for wing in &def.wings {
-                    check_wing(wing)?;
-                }
-                for leg in &def.gear {
-                    if leg.length <= 0.0 || leg.wheel_radius <= 0.0 || leg.stroke <= 0.0 {
-                        return Err(bad(format!(
-                            "gear `{}`: length, wheel radius and stroke must be positive",
-                            leg.name
-                        )));
-                    }
-                    if leg.load <= 0.0 || leg.mass < 0.0 {
-                        return Err(bad(format!(
-                            "gear `{}`: it needs a load to be sprung for, and no negative mass",
-                            leg.name
-                        )));
-                    }
-                }
-                // Cylinders stack up from the stage base; spheres sit inside, at the base.
-                let mut tanks = Vec::new();
-                let mut stacked = 0.0;
-                for tank_def in &def.tanks {
-                    let cylinder = tank_def.shape == TankShape::Cylinder;
-                    let base = if cylinder { stacked } else { 0.0 };
-                    let tank = Tank::new(tank_def, def.diameter, base, catalog)?;
-                    if 2.0 * tank.radius > def.diameter + 1e-9 {
-                        return Err(bad(format!(
-                            "a {} m tank does not fit its {} m diameter",
-                            2.0 * tank.radius,
-                            def.diameter
-                        )));
-                    }
-                    if cylinder {
-                        stacked += tank.length;
-                    }
-                    tank_mass += tank.dry_mass;
-                    tanks.push(tank);
-                }
-                if stacked > def.length + 1e-9 {
-                    return Err(bad(format!(
-                        "its tanks are {stacked} m long, the stage only {} m",
-                        def.length
-                    )));
-                }
-                let mut propellants: Vec<Propellant> = Vec::new();
-                for content in tanks.iter().flat_map(|t| &t.contents) {
-                    match propellants.iter_mut().find(|p| p.name == content.resource) {
-                        Some(p) => {
-                            p.amount += content.capacity;
-                            p.capacity += content.capacity;
-                        }
-                        None => propellants.push(Propellant {
-                            name: content.resource.clone(),
-                            amount: content.capacity,
-                            capacity: content.capacity,
-                        }),
-                    }
-                }
-                Ok(Stage {
-                    id,
-                    name: def.name.clone(),
-                    active: false,
-                    engines,
-                    tanks,
-                    tank_mass,
-                    fins,
-                    wings: def.wings.clone(),
-                    gear: def.gear.clone(),
-                    structure_mass,
-                    wheel_torque,
-                    rcs,
-                    pod,
-                    fairing: def.fairing.as_ref().map(|f| Fairing {
-                        mass: f.mass,
-                        attached: true,
-                        half: None,
-                    }),
-                    propellants,
-                    diameter: def.diameter,
-                    length: def.length,
-                    appearance: def.appearance.clone(),
-                })
-            })
-            .collect::<Result<Vec<_>, CraftError>>()?;
+        let parts = PartTree::from_craft(craft, catalog)?;
+        let stages: Vec<Stage> = (0..craft.stages.len())
+            .map(|id| Stage::gather(&parts, id))
+            .collect();
         let sequences = match &craft.sequences {
             Some(def) => Sequences::parse(def, &stages).map_err(CraftError::BadSequence)?,
             None => Sequences::default_for(&stages),
         };
         Ok(Self {
+            parts,
             stages,
             sequences,
             throttle: 0.0,
@@ -590,15 +518,21 @@ impl Propulsion {
         })
     }
 
-    /// Stages that came loose from a vessel, as one of their own: nothing left to stage,
-    /// throttle closed (engines that were running tail off).
-    pub fn from_stages(stages: Vec<Stage>) -> Self {
+    /// What came loose from a vessel, as one of its own: nothing left to stage, throttle
+    /// closed (engines that were running tail off).
+    pub fn from_released(released: Released) -> Self {
         Self {
-            stages,
+            parts: released.parts,
+            stages: released.stages,
             sequences: Sequences::default(),
             throttle: 0.0,
             ignition_pending: false,
         }
+    }
+
+    /// What the vessel is made of.
+    pub fn parts(&self) -> &PartTree {
+        &self.parts
     }
 
     pub fn mass(&self) -> f64 {
@@ -673,11 +607,20 @@ impl Propulsion {
                 continue;
             };
             match activation {
-                Activation::Decoupler(_) => {
-                    if index + 1 >= self.stages.len() {
+                Activation::Decoupler(id) => {
+                    let decoupler = self
+                        .parts
+                        .stage(id)
+                        .find(|p| matches!(p.kind, PartKind::Decoupler))
+                        .map(|p| p.id);
+                    let Some(parts) = decoupler.and_then(|d| self.parts.release(d)) else {
                         continue;
-                    }
-                    let spent: Vec<Stage> = self.stages.drain(..=index).collect();
+                    };
+                    // The stages whose parts fell away: this one and those below it.
+                    let (spent, kept): (Vec<Stage>, Vec<Stage>) = std::mem::take(&mut self.stages)
+                        .into_iter()
+                        .partition(|s| parts.stage(s.id).next().is_some());
+                    self.stages = kept;
                     let base = staged.dropped_length;
                     staged.dropped_length += spent.iter().map(|s| s.length).sum::<f64>();
                     staged.mass_changed = true;
@@ -689,6 +632,7 @@ impl Propulsion {
                     self.sequences.forget(&gone);
                     staged.released.push(Released {
                         stages: spent,
+                        parts,
                         base,
                     });
                     // Engines armed above light as soon as they are at the bottom.
@@ -704,21 +648,27 @@ impl Propulsion {
                         self.ignition_pending = true;
                     }
                 }
-                Activation::Fairing(_) => {
-                    let stage = &self.stages[index];
-                    let Some(mass) = stage
-                        .fairing
-                        .as_ref()
-                        .filter(|f| f.attached)
-                        .map(|f| f.mass)
-                    else {
+                Activation::Fairing(id) => {
+                    let halves: Vec<_> = self
+                        .parts
+                        .stage(id)
+                        .filter_map(|p| match p.kind {
+                            PartKind::FairingHalf { mass, angle } => Some((p.id, mass, angle)),
+                            _ => None,
+                        })
+                        .collect();
+                    if halves.is_empty() {
                         continue;
-                    };
+                    }
                     let base = staged.dropped_length
                         + self.stages[..index].iter().map(|s| s.length).sum::<f64>();
-                    for angle in FAIRING_HALVES {
+                    for (half, mass, angle) in halves {
+                        let Some(parts) = self.parts.release(half) else {
+                            continue;
+                        };
                         staged.released.push(Released {
-                            stages: vec![fairing_half(stage, mass / 2.0, angle)],
+                            stages: vec![fairing_half(&self.stages[index], mass, angle)],
+                            parts,
                             base,
                         });
                     }
@@ -863,6 +813,20 @@ impl Propulsion {
         self.stages.iter().map(|s| s.length).sum()
     }
 
+    /// The fins of the stage at `index` tore off: they are gone from it and from the parts.
+    pub fn tear_off_fins(&mut self, index: usize) {
+        let stage = &mut self.stages[index];
+        stage.fins = None;
+        let fins = self
+            .parts
+            .stage(stage.id)
+            .find(|p| matches!(p.kind, PartKind::Fins(_)))
+            .map(|p| p.id);
+        if let Some(fins) = fins {
+            self.parts.break_off(fins);
+        }
+    }
+
     /// Cut the throttle and stop every engine for good (the vessel broke up).
     pub fn shut_down(&mut self) {
         self.throttle = 0.0;
@@ -925,57 +889,6 @@ fn ignite(engine: &mut Engine, settled: bool, log: &mut Vec<String>) -> bool {
     }
     engine.spooling = Some(0.0);
     true
-}
-
-/// Engine positions for a stage of the given radius, seen from behind: a single engine on
-/// the axis, small clusters on a ring, and seven or more as a ring around a central engine
-/// (like a Falcon 9 octaweb). Off-axis engines can roll the vessel by gimballing sideways.
-fn engine_layout(count: usize, radius: f64) -> Vec<DVec2> {
-    let ring = |n: usize, r: f64| {
-        (0..n).map(move |i| DVec2::from_angle(std::f64::consts::TAU * i as f64 / n as f64) * r)
-    };
-    match count {
-        0 => Vec::new(),
-        1 => vec![DVec2::ZERO],
-        2..=6 => ring(count, 0.5 * radius).collect(),
-        _ => std::iter::once(DVec2::ZERO)
-            .chain(ring(count - 1, 0.65 * radius))
-            .collect(),
-    }
-}
-
-/// A wing must have a shape, a thickness that is an airfoil's, and its control surface
-/// must fit on it.
-fn check_wing(wing: &WingDef) -> Result<(), CraftError> {
-    let bad = |problem: &str| {
-        Err(CraftError::BadWing {
-            wing: wing.name.clone(),
-            problem: problem.into(),
-        })
-    };
-    if wing.root_chord <= 0.0 || wing.tip_chord < 0.0 || wing.span <= 0.0 {
-        return bad("chords and span must be positive");
-    }
-    if !(0.0..=0.5).contains(&wing.thickness) || wing.thickness == 0.0 {
-        return bad("thickness is a share of the chord, above 0 and at most 0.5");
-    }
-    if wing.mass < 0.0 {
-        return bad("mass cannot be negative");
-    }
-    if let Some(c) = &wing.control {
-        if !(c.chord > 0.0 && c.chord <= 1.0) {
-            return bad("the control surface's chord is a share of the wing's, up to 1");
-        }
-        if !(0.0 <= c.span[0] && c.span[0] < c.span[1] && c.span[1] <= 1.0) {
-            return bad(
-                "the control surface's span runs from a share to a larger one, within 0..1",
-            );
-        }
-        if !(c.deflection > 0.0 && c.deflection <= 60.0) {
-            return bad("the control surface deflects more than 0 and at most 60 degrees");
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

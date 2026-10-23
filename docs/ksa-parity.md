@@ -69,13 +69,17 @@ makes the map view useful. It also gives later phases their test harness (burns 
 The keystone. A vessel is a stack of stages today; KSA's editor, docking, decouplers, debris,
 radial boosters and part damage all need a tree of parts.
 
-- [ ] Part tree with connectors (fixed and surface attach, typed capabilities: fluid, power,
+- [x] Part tree with connectors (fixed and surface attach, typed capabilities: fluid, power,
       solid motor case, decoupler joint); vehicle splits into new vehicles when a joint opens.
+      (Craft files still list stages: each stage becomes a hull with its parts mounted on
+      it, hanging from a decoupler under the stage above, and staging releases joints on
+      the tree. The solid motor case capability waits for solid motors.)
 - [ ] Per-part mass properties with full inertia tensors (analytic shapes: cylinder, sphere,
       dome, cone, frustum, cuboid, ogive); assembly frame vs body frame; principal axes.
 - [ ] Torque-free rotation for asymmetric bodies (Euler-Poinsot), alongside the symmetric top.
 - [ ] Port procedural tanks, fins, engines, RCS, wheels and pods to parts; existing craft
-      files become part trees.
+      files become part trees. (Started: they are parts on the tree, but the physics still
+      runs on the stages gathered from it, and craft files cannot describe a tree yet.)
 - [ ] Propellant graph per engine with flow rules (KSA has four), drain order, crossfeed.
 - [ ] Decouplers (stack and radial), interstages and fairings, size adapters. (Done for
       stacks: a decoupler at every stage joint and jettisonable fairings, as activations;
