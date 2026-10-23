@@ -1,7 +1,8 @@
 //! Orbit camera around the active vessel (flight view) or its parent body (map view), or
 //! around what the player follows instead (from the Universe Manifest): another vessel, or
 //! in map view a body. Following ends when the player flies another vessel, the followed
-//! vessel is gone, or (for a body) the map closes.
+//! vessel is gone, or (for a body) the map closes. The flight camera stays above the ground
+//! (or the sea): looking down from low, it stops at the ground instead of going under.
 //!
 //! The view goes to the window, or to an image for scripted captures ([`ViewOutput`]).
 //! Below 100% render scale (see `settings`) it renders into an image that much smaller,
@@ -35,6 +36,10 @@ use crate::{
 
 /// Render layer of the scaled view's composite (keeps gizmos and the scene out of it).
 const COMPOSITE_LAYER: usize = 8;
+/// Steepest the camera looks down or up, rad.
+const MAX_PITCH: f64 = 1.55;
+/// The flight camera stays at least this high above the ground, m.
+const GROUND_CLEARANCE: f64 = 2.0;
 
 pub struct CameraPlugin;
 
@@ -327,7 +332,7 @@ fn update_camera(
 ) {
     if !locked.0 && buttons.pressed(MouseButton::Right) {
         rig.yaw -= motion.delta.x as f64 * 0.005;
-        rig.pitch = (rig.pitch + motion.delta.y as f64 * 0.005).clamp(-1.55, 1.55);
+        rig.pitch = (rig.pitch + motion.delta.y as f64 * 0.005).clamp(-MAX_PITCH, MAX_PITCH);
     }
     let scroll_lines = match scroll.unit {
         MouseScrollUnit::Line => scroll.delta.y as f64,
@@ -383,11 +388,75 @@ fn update_camera(
     let pole = body.pole();
     let east = pole.cross(up).try_normalize().unwrap_or(DVec3::X);
     let north = up.cross(east);
-    let offset = distance
-        * (rig.pitch.cos() * (rig.yaw.cos() * north + rig.yaw.sin() * east) + rig.pitch.sin() * up);
-    rig.position = focus + offset;
+    let yaw = rig.yaw;
+    let place = |pitch: f64| {
+        focus + distance * (pitch.cos() * (yaw.cos() * north + yaw.sin() * east) + pitch.sin() * up)
+    };
+    rig.position = place(rig.pitch);
+    if !rig.map_view {
+        // Height above the ground of a point relative to the origin.
+        let to_fixed = body.orientation(frame.time).inverse();
+        let clearance = |at: DVec3| {
+            let at = frame.origin_offset + at;
+            at.length() - body.radius - body.terrain_height(to_fixed * at.normalize())
+        };
+        rig.pitch = pitch_above_ground(rig.pitch, |pitch| clearance(place(pitch)));
+        rig.position = place(rig.pitch);
+        // Nothing clears it (the vessel is down in a hole): straight up out of the ground.
+        let short = GROUND_CLEARANCE - clearance(rig.position);
+        if short > 0.0 {
+            let vertical = (frame.origin_offset + rig.position).normalize();
+            rig.position += vertical * short;
+        }
+    }
 
     let eye = to_render(rig.position);
     let target = to_render(focus);
     **camera = Transform::from_translation(eye).looking_at(target, to_render(up));
+}
+
+/// The lowest pitch from `pitch` up to [`MAX_PITCH`] at which the camera is
+/// [`GROUND_CLEARANCE`] above the ground, `clearance` giving its height above the ground at
+/// a pitch: `pitch` itself if it is high enough already, or if no pitch is.
+fn pitch_above_ground(pitch: f64, clearance: impl Fn(f64) -> f64) -> f64 {
+    if clearance(pitch) >= GROUND_CLEARANCE || clearance(MAX_PITCH) < GROUND_CLEARANCE {
+        return pitch;
+    }
+    // Bisect between too low and high enough, to a few hundredths of a degree.
+    let (mut low, mut high) = (pitch, MAX_PITCH);
+    for _ in 0..16 {
+        let middle = (low + high) / 2.0;
+        if clearance(middle) >= GROUND_CLEARANCE {
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    high
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_camera_stops_at_the_ground() {
+        // Looking at a point 10 m up from 100 m away over flat ground.
+        let clearance = |pitch: f64| 10.0 + 100.0 * pitch.sin();
+        // Above the ground already: left alone.
+        assert_eq!(pitch_above_ground(0.3, clearance), 0.3);
+        assert_eq!(pitch_above_ground(-0.05, clearance), -0.05);
+        // Below it: raised until it just clears.
+        let pitch = pitch_above_ground(-1.2, clearance);
+        let lowest = ((GROUND_CLEARANCE - 10.0) / 100.0).asin();
+        assert!(
+            pitch >= lowest && pitch - lowest < 1e-3,
+            "{pitch} vs {lowest}"
+        );
+        // In a hole nothing clears: unchanged (the caller lifts the camera instead).
+        assert_eq!(
+            pitch_above_ground(-0.4, |p: f64| -50.0 + 10.0 * p.sin()),
+            -0.4
+        );
+    }
 }
