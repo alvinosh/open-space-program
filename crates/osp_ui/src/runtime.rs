@@ -14,7 +14,7 @@ use bevy::{
         pointer::PointerButton,
     },
     prelude::*,
-    ui::UiGlobalTransform,
+    ui::{ComputedUiRenderTargetInfo, UiGlobalTransform},
 };
 
 use crate::{
@@ -145,6 +145,8 @@ pub struct BoundBar {
     pub min: f64,
     pub max: f64,
     pub vertical: bool,
+    /// Data key of the fill colour (`"#rrggbb"`); empty or missing keeps the theme's.
+    pub color: Option<String>,
 }
 
 impl BoundBar {
@@ -171,6 +173,10 @@ pub struct DragPayload(pub Template);
 /// dropped node carries.
 #[derive(Component)]
 pub struct DropAction(pub Template);
+
+/// Text shown beside a node while the pointer is over it (`tooltip`, a text template).
+#[derive(Component)]
+pub struct Tooltip(pub String);
 
 /// An image from a mod (`image`, relative to the mod root), tinted with the style's text
 /// colour. The game resolves the path through its mods and adds the `ImageNode`.
@@ -392,6 +398,11 @@ pub fn spawn_node(
             .entity(entity)
             .insert(DropAction(Template::parse(action)))
             .observe(drop_on);
+    }
+    if let Some(tip) = text("tooltip") {
+        commands
+            .entity(entity)
+            .insert((Tooltip(tip.to_owned()), Hovered::default()));
     }
     let builder = widgets.get(&def.widget);
     let children_parent = builder(&mut WidgetContext {
@@ -669,8 +680,17 @@ pub fn update_visibility(
     }
 }
 
-pub fn update_bars(data: Res<UiData>, mut bars: Query<(&BoundBar, &mut Node)>) {
-    for (bar, mut node) in &mut bars {
+pub fn update_bars(
+    data: Res<UiData>,
+    mut bars: Query<(&BoundBar, &mut Node, Option<&mut BackgroundColor>)>,
+) {
+    for (bar, mut node, background) in &mut bars {
+        if let (Some(key), Some(mut background)) = (&bar.color, background)
+            && let Some(UiValue::Text(color)) = data.get(key)
+            && !color.is_empty()
+        {
+            background.set_if_neq(BackgroundColor(ColorDef::Hex(color.clone()).to_color()));
+        }
         let value = data
             .get(&bar.key)
             .and_then(UiValue::as_number)
@@ -723,6 +743,83 @@ pub fn update_states(
         let color = colors.0[usize::from(data.condition(&active.0))];
         text.set_if_neq(TextColor(color));
     }
+}
+
+/// Gap between a node and its tooltip, px.
+const TOOLTIP_GAP: f32 = 6.0;
+
+/// Show the tooltip of the node under the pointer beside it, on the side towards the middle
+/// of the screen and centred on it (class `tooltip`); it follows the node if the layout
+/// moves it. `shown` is the node and its tooltip.
+pub fn update_tooltip(
+    mut commands: Commands,
+    widgets: Res<WidgetRegistry>,
+    docs: Res<UiDocuments>,
+    sources: Query<(
+        Entity,
+        &Tooltip,
+        &Hovered,
+        &ComputedNode,
+        &UiGlobalTransform,
+        &ComputedUiRenderTargetInfo,
+    )>,
+    mut rows: Query<&mut Node>,
+    mut shown: Local<Option<(Entity, Entity)>>,
+) {
+    // Not before the node has been laid out.
+    let hovered = sources
+        .iter()
+        .find(|(_, _, hovered, computed, ..)| hovered.get() && computed.size().x > 0.0);
+    if let Some((source, tip)) = *shown
+        && hovered.is_none_or(|(e, ..)| e != source)
+    {
+        commands.entity(tip).try_despawn();
+        *shown = None;
+    }
+    let Some((source, tooltip, _, computed, transform, target)) = hovered else {
+        return;
+    };
+    let scale = computed.inverse_scale_factor;
+    let (centre, size) = (transform.translation * scale, computed.size() * scale);
+    let screen = target.physical_size().as_vec2() * scale;
+    // A zero-height row through the node's middle, so the label centres on it.
+    let (left, right) = if centre.x > screen.x / 2.0 {
+        let right = screen.x - (centre.x - size.x / 2.0) + TOOLTIP_GAP;
+        (Val::Auto, Val::Px(right))
+    } else {
+        (Val::Px(centre.x + size.x / 2.0 + TOOLTIP_GAP), Val::Auto)
+    };
+    let top = Val::Px(centre.y);
+    if let Some((_, tip)) = *shown {
+        if let Ok(mut row) = rows.get_mut(tip)
+            && (row.left, row.right, row.top) != (left, right, top)
+        {
+            (row.left, row.right, row.top) = (left, right, top);
+        }
+        return;
+    }
+    let label = NodeDef {
+        widget: "label".into(),
+        class: "tooltip".into(),
+        text: Some(tooltip.0.clone()),
+        ..default()
+    };
+    let text = spawn_node(&mut commands, &widgets, &docs.theme, "", &label, None);
+    commands.entity(text).insert(Pickable::IGNORE);
+    let row = Node {
+        position_type: PositionType::Absolute,
+        left,
+        right,
+        top,
+        height: Val::Px(0.0),
+        align_items: AlignItems::Center,
+        ..default()
+    };
+    let tip = commands
+        .spawn((row, GlobalZIndex(i32::MAX - 1), Pickable::IGNORE))
+        .add_child(text)
+        .id();
+    *shown = Some((source, tip));
 }
 
 pub fn click_action(
@@ -956,6 +1053,7 @@ mod tests {
             min,
             max,
             vertical: false,
+            color: None,
         }
     }
 

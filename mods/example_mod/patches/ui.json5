@@ -22,9 +22,11 @@
     value: {
       widget: "button",
       class: "launcher_button",
-      text: "Clock",
+      tooltip: "Mission clock (F6)",
       action: "ui.toggle:example_clock",
       active: "ui.shown.example_clock",
+      // From this mod's folder.
+      children: [{ widget: "image", class: "launcher_icon", image: "icons/clock.png" }],
     },
   },
   // Restyle: a different fuel/throttle bar colour.

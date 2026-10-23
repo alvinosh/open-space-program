@@ -7,7 +7,7 @@
   root: {
     widget: "window",
     title: "Performance (F10)",
-    style: { right: 120, bottom: 12, width: 340, z_index: 60 },
+    style: { right: 54, bottom: 12, width: 340, z_index: 60 },
     children: [
       {
         id: "perf",

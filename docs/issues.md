@@ -26,21 +26,3 @@ https://kittenspaceagency.wiki.gg/wiki/Version_2026.6.9.4750,
 https://kittenspaceagency.wiki.gg/wiki/Version_2026.7.4.4860,
 https://kittenspaceagency.wiki.gg/wiki/Controls, https://areweksayet.com/ (unofficial).
 
-## 4. Trees glitch near the ground
-
-Reported 2026-10-22 (seen before the aerodynamics work too), most visible flying low and
-fast, e.g. the rocket plane's takeoff roll. Fixed 2026-10-22: trees loading and
-unloading as the camera orbits (no hysteresis on the radii, and cells dropped with their
-old mesh when their detail flipped mid-build). Fixed again 2026-10-22 (reported as trees
-appearing and disappearing with camera angle and position): cells were found by probing a
-grid one cell apart around the camera, which missed ~12% of them at the Cape, and a
-different set as the camera moved; they are now found by walking the quadtree.
-Remaining suspects, from reading `crates/osp_game/src/trees.rs`:
-
-- When a rebuilt cell lands, the old mesh stays for three more frames (`retiring`) on top
-  of the new one, so detailed and cheap trees overlap for those frames.
-- Trees stand on the finest terrain height (`surface.terrain.height`), while the terrain
-  under them is drawn at its current LOD, so they float or sink until the chunk splits.
-
-To look at it: `OSP_SCENARIO=runway OSP_CAPTURE_RUNWAY=1 OSP_CAPTURE=<dir> cargo run`
-saves six frames 0.1 s apart during the takeoff roll.

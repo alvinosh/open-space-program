@@ -6,7 +6,7 @@
   root: {
     id: "time",
     widget: "panel",
-    style: { width: 270 },
+    style: { width: 230 },
     children: [
       {
         widget: "row",

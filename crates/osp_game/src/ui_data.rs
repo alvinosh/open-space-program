@@ -304,13 +304,14 @@ fn publish_flight(
     data.set("attitude.rcs", rcs.x);
 
     let stages = &vessel.propulsion.stages;
+    let stage_info = vessel.propulsion.stage_info();
     let rows: Vec<_> = stages
         .iter()
-        .zip(vessel.propulsion.stage_info())
+        .zip(&stage_info)
         .enumerate()
         .map(|(i, (stage, info))| {
             record([
-                ("name", info.name.into()),
+                ("name", info.name.as_str().into()),
                 ("active", (i == 0 && stage.active).into()),
                 ("delta_v", info.delta_v_vac.into()),
                 ("burn_time", info.burn_time.into()),
@@ -327,15 +328,11 @@ fn publish_flight(
     data.set("vessel.stage_count", rows.len());
     data.set(
         "vessel.delta_v",
-        vessel
-            .propulsion
-            .stage_info()
-            .iter()
-            .map(|s| s.delta_v_vac)
-            .sum::<f64>(),
+        stage_info.iter().map(|s| s.delta_v_vac).sum::<f64>(),
     );
     data.set("vessel.stages", rows);
     publish_sequences(&mut data, vessel, mass * local_g);
+    publish_resources(&mut data, stages);
 
     // Procedural tanks and fins: what each is made of and how hard it is working.
     data.set("vessel.destroyed", vessel.is_destroyed());
@@ -564,6 +561,7 @@ fn publish_sequences(data: &mut UiData, vessel: &osp_sim::vessel::Vessel, weight
                         ("multiple", (count > 1).into()),
                         ("fuel", fuel.into()),
                         ("has_fuel", fuel.is_some().into()),
+                        ("color", stage.map_or("", |s| stage_color(s.id)).into()),
                     ])
                 })
                 .collect();
@@ -578,6 +576,26 @@ fn publish_sequences(data: &mut UiData, vessel: &osp_sim::vessel::Vessel, weight
         .collect();
     data.set("vessel.sequence_count", rows.len());
     data.set("vessel.sequences", rows);
+    // A fired sequence leaves the list, but the engines it lit keep burning: they stay
+    // under the stack, with the propellant they have left, until their stage falls away.
+    let armed: Vec<_> = stages
+        .iter()
+        .filter(|s| s.active && !s.engines.is_empty())
+        .map(|s| {
+            let fuel = s.fuel_fraction();
+            record([
+                ("stage", s.name.as_str().into()),
+                ("count", s.engines.len().into()),
+                ("multiple", (s.engines.len() > 1).into()),
+                ("fuel", fuel.into()),
+                ("has_fuel", fuel.is_some().into()),
+                ("color", stage_color(s.id).into()),
+            ])
+        })
+        .collect();
+    data.set("vessel.armed_count", armed.len());
+    data.set("vessel.armed", armed);
+    data.set("vessel.armed_number", sequences.number(0) - 1);
     let pressure = vessel.flight.static_pressure;
     let full: f64 = stages.first().map_or(0.0, |s| {
         s.engines
@@ -589,4 +607,53 @@ fn publish_sequences(data: &mut UiData, vessel: &osp_sim::vessel::Vessel, weight
         "vessel.stage_twr",
         if weight > 0.0 { full / weight } else { 0.0 },
     );
+}
+
+/// Bar colours that tell stages apart, by [`osp_sim::propulsion::Stage::id`] so a stage keeps
+/// its colour as the ones below fall away: its propellant in the Resources window and its
+/// fuel bars in the sequence stack.
+const STAGE_COLORS: [&str; 6] = [
+    "#5fb8ff", "#ffa45c", "#b98cff", "#4fd6c4", "#ff7aa8", "#e6d35a",
+];
+
+fn stage_color(id: usize) -> &'static str {
+    STAGE_COLORS[id % STAGE_COLORS.len()]
+}
+
+/// Every propellant on board, a row per stage that holds it, top of the stack first
+/// (`vessel.resources`): how much is left, whether the stage's engines or RCS burn it, and
+/// the stage's colour.
+fn publish_resources(data: &mut UiData, stages: &[osp_sim::propulsion::Stage]) {
+    let rows: Vec<_> = stages
+        .iter()
+        .enumerate()
+        .rev()
+        .flat_map(|(i, stage)| {
+            stage.propellants.iter().map(move |p| {
+                let engines = stage
+                    .engines
+                    .iter()
+                    .any(|e| e.def.propellants.contains_key(&p.name));
+                let rcs = stage
+                    .rcs
+                    .iter()
+                    .any(|b| b.def.propellants.contains_key(&p.name));
+                record([
+                    ("name", p.name.as_str().into()),
+                    ("stage", stage.name.as_str().into()),
+                    ("color", stage_color(stage.id).into()),
+                    ("bottom", (i == 0).into()),
+                    ("amount", p.amount.into()),
+                    ("capacity", p.capacity.into()),
+                    ("fraction", (p.amount / p.capacity.max(1e-9)).into()),
+                    ("engines", engines.into()),
+                    ("rcs", rcs.into()),
+                    // Marks RCS-only propellant in the window.
+                    ("tag", if rcs && !engines { "RCS" } else { "" }.into()),
+                ])
+            })
+        })
+        .collect();
+    data.set("vessel.resource_count", rows.len());
+    data.set("vessel.resources", rows);
 }

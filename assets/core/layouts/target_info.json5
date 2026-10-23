@@ -10,7 +10,7 @@
   root: {
     widget: "window",
     title: "Target - {target.name}",
-    style: { width: 330 },
+    style: { width: 290 },
     children: [
       { widget: "label", class: "dim", visible: "!target.has", text: "No target. Shift+click a body or vessel in map view (M), or pick one in the Universe Manifest (F11)." },
       {

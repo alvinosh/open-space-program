@@ -8,7 +8,7 @@
   root: {
     widget: "window",
     title: "Vessel - {vessel.name}",
-    style: { width: 300 },
+    style: { width: 250 },
     children: [
       {
         id: "propulsion",

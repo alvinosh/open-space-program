@@ -84,16 +84,16 @@ Default bindings (all rebindable in `assets/core/keybindings/default.json5`):
 ## Flight UI
 
 The flight screen is split into modules, as in KSP: time warp and clocks (top left),
-altimeter (top centre), the app launcher (down the right edge), the sequence stack (bottom
-left), and the navball with throttle, SAS modes and control inputs (bottom centre). The
-launcher opens and closes the windows; each button lights up while its window is open.
-Instrument windows (Flight, Vessel, Target on the left; Orbit, Plan, Attitude on the right)
-stack into docks beside the screen edges, so they line up and never cover each other or the
-vessel; a dock scrolls with the mouse wheel when they do not fit. Drag a window's title to
-pop it out, close it to put it back. Large windows (Structure, Log, Manifest, Transfer
-planner) open in the middle, in front. F3 hides the whole flight UI and brings it back as it
-was. Every module is an ordinary layout record, so mods can move, restyle, replace, dock or
-add to any of them.
+altimeter (top centre), the app launcher (icons down the right edge, named when hovered),
+the sequence stack (bottom left), and the navball with throttle, SAS modes and control
+inputs (bottom centre). The launcher opens and closes the windows; each button lights up
+while its window is open. Instrument windows (Flight, Vessel, Target on the left; Orbit,
+Resources, Plan, Attitude on the right) stack into docks beside the screen edges, so they
+line up and never cover each other or the vessel; a dock scrolls with the mouse wheel when
+they do not fit. Drag a window's title to pop it out, close it to put it back. Large
+windows (Structure, Log, Manifest, Transfer planner) open in the middle, in front. F3 hides
+the whole flight UI and brings it back as it was. Every module is an ordinary layout
+record, so mods can move, restyle, replace, dock or add to any of them.
 
 **Staging.** As in Kitten Space Agency, staging is a list of sequences, separate from the
 stages themselves. Space fires the next sequence; each holds activations shown as icons:
@@ -101,7 +101,10 @@ engines (with their count and fuel), a decoupler, a fairing, RCS. The default Pa
 order is booster ignition; separation with upper stage ignition and RCS; fairing; payload
 separation. Rearrange it in flight in the sequence stack (F8): drag an icon onto another
 sequence, or onto + for a new one; drag a sequence's number to reorder; x removes an empty
-one. A jettisoned fairing takes its mass with it and shows the payload.
+one. A jettisoned fairing takes its mass with it and shows the payload. Engines that are lit
+stay in a row under the stack with their fuel draining. The Resources window lists every
+propellant on board, coloured by stage (the same colour as that stage's fuel bars in the
+stack; hover a row for its stage).
 
 **Flight plan.** Plan burns (maneuver nodes) in the Plan window or by clicking the trajectory
 in map view; the prediction runs through every planned burn, and legs after one are drawn

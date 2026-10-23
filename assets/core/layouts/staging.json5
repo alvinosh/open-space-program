@@ -1,9 +1,11 @@
 // The sequence stack (bottom of the left dock), as in KSA: each numbered row is a sequence
 // the stage key fires, the next one at the bottom and highlighted. Each holds an icon per
-// activation: engines (with how many and their fuel), decoupler, fairing, RCS. Drag an
+// activation: engines (with how many and their fuel, the bar in the stage's colour, as in
+// the Resources window), decoupler, fairing, RCS. Drag an
 // icon onto another row to move it there, or onto + to give it a new sequence; drag a
 // row's number onto another row to reorder; + alone adds an empty sequence, x removes one.
-// F8 shows and hides it.
+// Under the stack, numbered after the last sequence fired, are the engines already lit,
+// their fuel bars draining, until their stage falls away. F8 shows and hides it.
 {
   id: "staging",
   group: "flight",
@@ -11,7 +13,7 @@
   root: {
     id: "staging",
     widget: "panel",
-    style: { width: 330 },
+    style: { width: 270 },
     children: [
       {
         widget: "row",
@@ -53,13 +55,39 @@
                       { widget: "image", class: "seq_icon", image: "icons/fairing.png", visible: "item.is_fairing" },
                       { widget: "image", class: "seq_icon", image: "icons/rcs.png", visible: "item.is_rcs" },
                       { widget: "label", class: "seq_count", text: "{item.count}", visible: "item.multiple" },
-                      { widget: "bar", class: "seq_fuel", value: "item.fuel", visible: "item.has_fuel" },
+                      { widget: "bar", class: "seq_fuel", value: "item.fuel", color: "item.color", visible: "item.has_fuel" },
                     ],
                   },
                 ],
               },
               { widget: "spacer" },
               { widget: "button", class: "step_button", text: "x", visible: "item.empty", action: "staging.remove:{item.index}" },
+            ],
+          },
+        ],
+      },
+      {
+        id: "armed",
+        widget: "row",
+        class: "seq_row seq_armed",
+        visible: "vessel.armed_count",
+        style: { margin: [3, 0, 0, 0] },
+        children: [
+          { widget: "label", class: "seq_number", text: "{vessel.armed_number}" },
+          {
+            widget: "row",
+            repeat: "vessel.armed",
+            style: { gap: 6 },
+            children: [
+              {
+                widget: "column",
+                class: "seq_item",
+                children: [
+                  { widget: "image", class: "seq_icon", image: "icons/engine.png" },
+                  { widget: "label", class: "seq_count", text: "{item.count}", visible: "item.multiple" },
+                  { widget: "bar", class: "seq_fuel", value: "item.fuel", color: "item.color", visible: "item.has_fuel" },
+                ],
+              },
             ],
           },
         ],

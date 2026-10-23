@@ -10,7 +10,7 @@
   root: {
     widget: "window",
     title: "Mission clock",
-    style: { width: 260 },
+    style: { width: 200 },
     children: [
       { widget: "label", class: "title", text: "{time.ut|clock}" },
       { widget: "label", class: "dim", text: "{time.ut|date}" },

@@ -1,4 +1,5 @@
-// Rotational dynamics: mass distribution, control authority and rates.
+// Rotational dynamics: mass distribution, control authority and rates. P / Y / R are pitch,
+// yaw and roll; MoI the moments of inertia; CoM the centre of mass, above the base.
 {
   id: "attitude_info",
   visible: false,
@@ -7,24 +8,23 @@
   dock_order: 30,
   root: {
     widget: "window",
-    title: "Attitude control",
-    style: { width: 350 },
+    title: "Attitude",
+    style: { width: 270 },
     children: [
       {
         id: "attitude",
         widget: "column",
         children: [
           { widget: "row", children: [{ widget: "label", class: "key", text: "SAS" }, { widget: "label", text: "{vessel.sas_mode_label} ({nav.frame})" }] },
-          { widget: "row", children: [{ widget: "label", class: "key", text: "Centre of mass" }, { widget: "label", text: "{attitude.com|fixed:2} m above base" }] },
-          { widget: "row", children: [{ widget: "label", class: "key", text: "Inertia pitch" }, { widget: "label", text: "{attitude.moi_pitch|sci:2} kg m2" }] },
-          { widget: "row", children: [{ widget: "label", class: "key", text: "Inertia yaw" }, { widget: "label", text: "{attitude.moi_yaw|sci:2} kg m2" }] },
-          { widget: "row", children: [{ widget: "label", class: "key", text: "Inertia roll" }, { widget: "label", text: "{attitude.moi_roll|sci:2} kg m2" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "CoM" }, { widget: "label", text: "{attitude.com|fixed:2} m" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "MoI P / Y" }, { widget: "label", text: "{attitude.moi_pitch|sci:2} / {attitude.moi_yaw|sci:2}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "MoI R" }, { widget: "label", text: "{attitude.moi_roll|sci:2} kg m2" }] },
           { widget: "label", class: "section", text: "AUTHORITY" },
-          { widget: "row", children: [{ widget: "label", class: "key", text: "Pitch / yaw" }, { widget: "label", text: "{attitude.torque_pitch|torque}, {attitude.accel_pitch|fixed:2} deg/s2" }] },
-          { widget: "row", children: [{ widget: "label", class: "key", text: "Roll" }, { widget: "label", text: "{attitude.torque_roll|torque}, {attitude.accel_roll|fixed:2} deg/s2" }] },
-          { widget: "row", children: [{ widget: "label", class: "key", text: "Gimbal" }, { widget: "label", text: "{attitude.gimbal|fixed:2} of {attitude.gimbal_range} deg" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "P / Y" }, { widget: "label", text: "{attitude.torque_pitch|torque}  {attitude.accel_pitch|fixed:2} deg/s2" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "R" }, { widget: "label", text: "{attitude.torque_roll|torque}  {attitude.accel_roll|fixed:2} deg/s2" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Gimbal" }, { widget: "label", text: "{attitude.gimbal|fixed:2} / {attitude.gimbal_range} deg" }] },
           { widget: "row", children: [{ widget: "label", class: "key", text: "Wheels" }, { widget: "label", text: "{attitude.wheels|torque}" }] },
-          { widget: "row", visible: "vessel.has_rcs", children: [{ widget: "label", class: "key", text: "RCS" }, { widget: "label", text: "{attitude.rcs|torque}" }, { widget: "label", class: "dim", text: "(off)", visible: "!vessel.rcs" }] },
+          { widget: "row", visible: "vessel.has_rcs", children: [{ widget: "label", class: "key", text: "RCS" }, { widget: "label", text: "{attitude.rcs|torque}" }, { widget: "label", class: "dim", text: "off", visible: "!vessel.rcs" }] },
           { widget: "label", class: "section", text: "RATES" },
           { widget: "row", children: [{ widget: "label", class: "key", text: "P / Y / R" }, { widget: "label", text: "{attitude.rate_pitch|fixed:2} / {attitude.rate_yaw|fixed:2} / {attitude.rate_roll|fixed:2} deg/s" }] },
         ],

@@ -7,7 +7,7 @@
 //
 // One look throughout: dark glass surfaces with a hairline border, cool white text, dimmer
 // keys with their values lined up on the right, and one green accent for what is on.
-// Spacing is on a 4 px grid; screen edges and gaps between modules are 12 and 8 px.
+// Compact: small type, tight padding; screen edges and gaps between modules are 12 and 6 px.
 {
   id: "default",
   classes: {
@@ -15,23 +15,23 @@
     column: { gap: 2 },
     row: { gap: 8, align_items: "center" },
     spacer: { grow: 1 },
-    label: { color: "#e3eaef", font_size: 13 },
+    label: { color: "#e3eaef", font_size: 12 },
     button: {
-      padding: [4, 10],
+      padding: [3, 8],
       background: "#1d2a36",
       hover_background: "#2b3e4f",
       active_background: "#2a7350",
       active_color: "#ffffff",
       radius: 4,
       color: "#e8f0f6",
-      font_size: 13,
+      font_size: 12,
       align_items: "center",
       justify_content: "center",
     },
     bar: { height: 6, min_width: 60, grow: 1, background: [1, 1, 1, 0.07], radius: 3, clip: true },
     bar_fill: { background: "#5fd38a" },
     panel: {
-      padding: [8, 10],
+      padding: [6, 8],
       gap: 2,
       background: [0.035, 0.05, 0.065, 0.9],
       radius: 6,
@@ -40,7 +40,7 @@
     },
     window: {
       position: "absolute",
-      min_width: 240,
+      min_width: 180,
       background: [0.035, 0.05, 0.065, 0.93],
       radius: 6,
       border: 1,
@@ -49,14 +49,14 @@
     window_title: {
       direction: "row",
       gap: 6,
-      padding: [5, 6, 5, 10],
+      padding: [3, 4, 3, 8],
       align_items: "center",
       background: [1, 1, 1, 0.04],
       border: [0, 0, 1, 0],
       border_color: [1, 1, 1, 0.07],
     },
-    window_title_text: { color: [1, 1, 1, 0.92], font_size: 13 },
-    window_content: { padding: [8, 10, 10, 10], gap: 3 },
+    window_title_text: { color: [1, 1, 1, 0.92], font_size: 12 },
+    window_content: { padding: [5, 8, 6, 8], gap: 1 },
     window_close: {
       padding: [0, 6],
       background: [0, 0, 0, 0],
@@ -107,7 +107,7 @@
     // --- docks (see layouts/docks.json5) ---
     // Every `dock` node stacks what is docked into it; `dock_root` places a dock column on
     // the screen.
-    dock: { gap: 8 },
+    dock: { gap: 6 },
     dock_root: { position: "absolute" },
     // Takes the dock's free height and scrolls when its windows do not fit.
     dock_scroll: { grow: 1, shrink: 1, min_height: 0, scroll: true },
@@ -122,26 +122,37 @@
       top: 12,
       direction: "column",
       gap: 2,
-      padding: 4,
-      width: 96,
+      padding: 3,
+      width: 36,
       background: [0.035, 0.05, 0.065, 0.9],
       radius: 6,
       border: 1,
       border_color: [1, 1, 1, 0.09],
     },
     launcher_button: {
-      padding: [4, 8],
-      font_size: 12,
+      width: 30,
+      height: 30,
+      padding: 0,
       background: [0, 0, 0, 0],
       hover_background: [1, 1, 1, 0.08],
       active_background: "#2a7350",
-      align_items: "start",
     },
-    launcher_divider: { height: 1, margin: [3, 2], background: [1, 1, 1, 0.1] },
+    launcher_icon: { width: 18, height: 18, color: "#e3eaef" },
+    launcher_divider: { height: 1, margin: [3, 4], background: [1, 1, 1, 0.1] },
+    // Shown beside a node with a `tooltip` while the pointer is over it.
+    tooltip: {
+      padding: [3, 8],
+      background: [0.035, 0.05, 0.065, 0.96],
+      radius: 4,
+      border: 1,
+      border_color: [1, 1, 1, 0.14],
+      color: "#e3eaef",
+      font_size: 12,
+    },
     readout: { color: "#ffffff", font_size: 26 },
     caption: { color: [1, 1, 1, 0.5], font_size: 11 },
     housing: {
-      padding: [8, 12],
+      padding: [6, 10],
       background: [0.035, 0.05, 0.065, 0.9],
       radius: 10,
       border: 1,
@@ -165,20 +176,25 @@
       font_size: 15,
       radius: 3,
     },
-    sas_button: { min_width: 62, padding: [3, 4], font_size: 12 },
+    sas_button: { min_width: 56, padding: [2, 4], font_size: 12 },
     // Small +/- and step buttons (flight plan).
-    step_button: { min_width: 30, padding: [2, 6], font_size: 12 },
+    step_button: { min_width: 26, padding: [1, 5], font_size: 12 },
     value: { min_width: 86, font_size: 13 },
     vbar: { width: 10, min_width: 10, height: 150, grow: 0 },
     thin: { width: 4, min_width: 4 },
     ibar: { width: 84, min_width: 84, grow: 0, height: 5 },
-    // RCS propellant gauge under the SAS buttons, as wide as the control bars.
-    rcs_bar: { width: 84, min_width: 84, grow: 0 },
+    // The Resources window (layouts/resources.json5): a row per propellant and stage, bars in
+    // the stage's colour, the bottom stage's names lit.
+    res_row: { gap: 6, padding: [1, 2], radius: 3, hover_background: [1, 1, 1, 0.05] },
+    res_name: { min_width: 66, shrink: 0, color: [1, 1, 1, 0.55], active_color: "#ffffff", font_size: 12 },
+    res_amount: { min_width: 72, shrink: 0, font_size: 12 },
+    res_bar: { min_width: 30 },
+    res_tag: { min_width: 22, shrink: 0 },
     // The sequence stack (layouts/staging.json5).
     seq_row: {
-      padding: [3, 6],
+      padding: [2, 6],
       gap: 8,
-      min_height: 42,
+      min_height: 36,
       radius: 4,
       border: 1,
       border_color: [0, 0, 0, 0],
@@ -188,25 +204,27 @@
     },
     seq_number: { min_width: 18, font_size: 15, color: [1, 1, 1, 0.5], active_color: "#ffffff" },
     seq_item: {
-      width: 32,
+      width: 28,
       padding: [2, 0],
       gap: 2,
       align_items: "center",
       radius: 4,
       hover_background: [1, 1, 1, 0.1],
     },
-    seq_icon: { width: 26, height: 26, color: "#e3eaef" },
+    seq_icon: { width: 22, height: 22, color: "#e3eaef" },
     seq_count: {
       position: "absolute",
       right: -3,
-      top: 15,
+      top: 12,
       padding: [0, 2],
       radius: 3,
       background: [0, 0, 0, 0.65],
       font_size: 10,
       color: "#ffffff",
     },
-    seq_fuel: { width: 26, min_width: 26, height: 3, grow: 0 },
+    seq_fuel: { width: 22, min_width: 22, height: 3, grow: 0 },
+    // Under the stack: the engines already lit.
+    seq_armed: { background: [1, 0.66, 0.3, 0.06], border_color: [1, 0.66, 0.3, 0.35] },
     stage_row: {
       padding: [4, 6],
       radius: 4,
@@ -218,10 +236,10 @@
 
     // --- named classes ---
     title: { color: "#ffffff", font_size: 17 },
-    section: { color: "#7fb8e0", font_size: 11, margin: [8, 0, 2, 0] },
+    section: { color: "#7fb8e0", font_size: 11, margin: [5, 0, 1, 0] },
     dim: { color: [1, 1, 1, 0.55], font_size: 12 },
     // Key of a key/value row: it takes the free width, so values line up on the right.
-    key: { color: [1, 1, 1, 0.55], min_width: 112, grow: 1 },
+    key: { color: [1, 1, 1, 0.55], min_width: 64, grow: 1 },
     narrow: { min_width: 104, shrink: 0 },
     nowrap: { shrink: 0 },
     warning: { color: "#ffcc44" },

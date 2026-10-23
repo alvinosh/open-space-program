@@ -151,7 +151,8 @@ fn button(ctx: &mut WidgetContext) -> Entity {
 }
 
 /// A filled bar. Extra properties: `min` and `max` (default 0 and 1; with `min` below
-/// zero the fill grows either way from zero) and `vertical` (fill upwards).
+/// zero the fill grows either way from zero), `vertical` (fill upwards) and `color` (a data
+/// key holding the fill colour, instead of the theme's).
 fn bar(ctx: &mut WidgetContext) -> Entity {
     let number = |key: &str| ctx.def.extra.get(key).and_then(|v| v.as_f64());
     let bound = ctx.def.value.as_ref().map(|key| BoundBar {
@@ -159,6 +160,12 @@ fn bar(ctx: &mut WidgetContext) -> Entity {
         min: number("min").unwrap_or(0.0),
         max: number("max").unwrap_or(1.0),
         vertical: ctx.def.extra.get("vertical").and_then(|v| v.as_bool()) == Some(true),
+        color: ctx
+            .def
+            .extra
+            .get("color")
+            .and_then(|v| v.as_str())
+            .map(str::to_owned),
     });
     let (fill, _) = ctx.child(ctx.entity, "bar_fill", "");
     let mut e = ctx.commands.entity(fill);

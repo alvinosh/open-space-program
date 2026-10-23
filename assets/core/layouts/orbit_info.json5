@@ -7,24 +7,24 @@
   root: {
     widget: "window",
     title: "Orbit - {vessel.body}",
-    style: { width: 290 },
+    style: { width: 210 },
     children: [
       {
         id: "orbit",
         widget: "column",
         children: [
-          { widget: "row", visible: "!orbit.escape", children: [{ widget: "label", class: "key", text: "Apoapsis" }, { widget: "label", text: "{orbit.apoapsis|distance}" }] },
-          { widget: "row", visible: "orbit.escape", children: [{ widget: "label", class: "key", text: "Apoapsis" }, { widget: "label", text: "escape trajectory" }] },
-          { widget: "row", children: [{ widget: "label", class: "key", text: "Periapsis" }, { widget: "label", text: "{orbit.periapsis|distance}" }] },
-          { widget: "row", children: [{ widget: "label", class: "key", text: "Inclination" }, { widget: "label", text: "{orbit.inclination|degrees}" }] },
-          { widget: "row", children: [{ widget: "label", class: "key", text: "Eccentricity" }, { widget: "label", text: "{orbit.eccentricity|fixed:4}" }] },
+          { widget: "row", visible: "!orbit.escape", children: [{ widget: "label", class: "key", text: "Ap" }, { widget: "label", text: "{orbit.apoapsis|distance}" }] },
+          { widget: "row", visible: "orbit.escape", children: [{ widget: "label", class: "key", text: "Ap" }, { widget: "label", text: "escape" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Pe" }, { widget: "label", text: "{orbit.periapsis|distance}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Inc" }, { widget: "label", text: "{orbit.inclination|degrees}" }] },
+          { widget: "row", children: [{ widget: "label", class: "key", text: "Ecc" }, { widget: "label", text: "{orbit.eccentricity|fixed:4}" }] },
           { widget: "row", visible: "orbit.period", children: [{ widget: "label", class: "key", text: "Period" }, { widget: "label", text: "{orbit.period|duration}" }] },
           {
             id: "warp_to",
             widget: "row",
             style: { gap: 4, margin: [4, 0, 0, 0] },
             children: [
-              { widget: "label", class: "dim", text: "Warp to" },
+              { widget: "label", class: "caption", text: "WARP" },
               { widget: "button", class: "step_button", text: "Ap", action: "warp.to:ap", visible: "!orbit.escape" },
               { widget: "button", class: "step_button", text: "Pe", action: "warp.to:pe" },
               { widget: "button", class: "step_button", text: "SOI", action: "warp.to:soi", visible: "orbit.events" },

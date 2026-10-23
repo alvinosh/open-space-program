@@ -80,6 +80,7 @@ impl Plugin for UiPlugin {
                     runtime::update_visibility,
                     runtime::update_bars,
                     runtime::update_states,
+                    runtime::update_tooltip,
                     runtime::update_scroll_thumbs,
                 )
                     .chain()
