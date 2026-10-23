@@ -18,7 +18,7 @@ import bevy_pbr::render::{
 };
 import osp::shaders::atmosphere::{
     scatter, sun_transmittance, origin_sun_transmittance, luminance, sphere_hits, THICKNESS,
-    SKY_MESH_SCALE,
+    SKY_MESH_SCALE, PI,
 };
 
 struct TerrainParams {
@@ -44,6 +44,13 @@ const CELLS: f32 = 128.0;
 /// Detail noise repeats every this many metres along each body-fixed axis, so it can be
 /// evaluated in f32 anywhere on a planet (see `planet::DETAIL_PERIOD`).
 const DETAIL_PERIOD: f32 = 4096.0;
+
+/// Skylight on level ground with the sun overhead, as a share of the sunlight above the
+/// air, and its colour (unit luminance) with the sun at the horizon and high up. Fitted to
+/// `atmosphere::scatter` integrated over the sky.
+const SKYLIGHT: f32 = 0.103;
+const SKY_LOW: vec3<f32> = vec3<f32>(1.15, 0.95, 1.05);
+const SKY_HIGH: vec3<f32> = vec3<f32>(0.51, 1.04, 2.02);
 
 fn hash(p: vec3<u32>) -> f32 {
     var h = (p.x * 1664525u) ^ (p.y * 1013904223u) ^ (p.z * 2654435761u);
@@ -275,7 +282,19 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     var out: FragmentOutput;
     out.color = apply_pbr_lighting(pbr_input);
 
-    // Skylight reflected by water (there is no environment map).
+    // Light from the sky dome over this point (the camera's environment map is the sky at
+    // the vessel, see `crate::sky_light`): it fades through twilight and turns from grey
+    // to blue as the sun climbs; slopes facing away from the sky get less.
+    if earthlike {
+        let level = 1.0 - exp(-max(sun_up + 0.06, 0.0) / 0.2);
+        let tint = mix(SKY_LOW, SKY_HIGH, 1.0 - exp(-max(sun_up, 0.0) / 0.17));
+        let facing = 0.5 + 0.5 * dot(normal, up);
+        // Occluded like the rest of the indirect light (ambient occlusion, if on).
+        let irradiance = sun_color * SKYLIGHT * level * tint * facing * pbr_input.diffuse_occlusion;
+        out.color = vec4<f32>(out.color.rgb + albedo / PI * irradiance * view.exposure, out.color.a);
+    }
+
+    // Skylight reflected by water.
     let view_dir = normalize(camera - position);
     let n_dot_v = max(dot(normal, view_dir), 0.0);
     let fresnel = 0.02 + 0.98 * pow(1.0 - n_dot_v, 5.0);

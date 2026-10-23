@@ -65,8 +65,6 @@ const LUT_SIZE: (usize, usize) = (256, 64);
 const LUT_STEPS: usize = 128;
 /// Lower bound of the light's dimming, so the shaders can divide it back out.
 const MIN_TRANSMITTANCE: f64 = 1e-4;
-/// Ambient light in full daylight (and in sunlit space).
-const AMBIENT: f32 = 1_500.0;
 /// Camera exposure (EV100) in daylight and in darkness: the view adapts like an eye or an
 /// auto-exposure camera, so night scenes show floodlights and city lights.
 const DAY_EV: f32 = 15.0;
@@ -398,8 +396,8 @@ impl TransmittanceLut {
     }
 }
 
-/// Dim the sun (and the ambient light) for the air above the floating origin, and adapt
-/// the exposure to how much light there is.
+/// Dim the sun for the air above the floating origin, and adapt the exposure to how much
+/// light there is. The sky's own light comes from `sky_light`.
 fn dim_sunlight(
     sim: Res<Sim>,
     frame: Res<RenderFrame>,
@@ -408,13 +406,11 @@ fn dim_sunlight(
     mut exposure: Single<&mut Exposure, With<MainCamera>>,
     rig: Res<CameraRig>,
     luts: Res<TransmittanceLuts>,
-    mut ambient: ResMut<GlobalAmbientLight>,
 ) {
     let Some(origin_body) = frame.origin_body else {
         return;
     };
     let system = &sim.universe.system;
-    let body = system.body(origin_body);
     let to_sun = frame.body_offset(system.root()).normalize();
     let origin = -frame.body_offset(origin_body);
     let transmittance = luts.get(origin_body).map_or([1.0; 3], |lut| {
@@ -424,16 +420,8 @@ fn dim_sunlight(
     let [r, g, b] = transmittance.map(|t| t as f32);
     light.color = Color::linear_rgb(r, g, b);
     light.illuminance = lux::RAW_SUNLIGHT;
-    // Skylight fades through twilight; in space only direct sunlight lights things.
     let up = origin.normalize_or(DVec3::Z);
     let daylight = smoothstep(-0.12, 0.1, up.dot(to_sun)) as f32;
-    let lit = (0.2126 * r + 0.7152 * g + 0.0722 * b).clamp(0.0, 1.0);
-    let level = if Surface::is_earthlike(body) && origin.length() < body.radius + THICKNESS {
-        daylight
-    } else {
-        lit
-    };
-    ambient.brightness = AMBIENT * (0.008 + 0.992 * level);
 
     // Expose for the ground below: the sunlit disc in the map view, otherwise day or night
     // where the vessel is (in orbit over the night side, that shows the city lights).

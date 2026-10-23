@@ -176,8 +176,16 @@ radial boosters and part damage all need a tree of parts.
       airflow. Still to do: refraction, merging, trails, pad smoke.)
 - [ ] FFT ocean (JONSWAP, foam, refraction, underwater).
 - [ ] GPU particles (launch debris), engine heat glow, thin-film colour on hot metal.
+      (Done: heat-tint oxide films on nozzles that shift colour with the viewing angle, and
+      procedural paint, composite, metal and char finishes on every vessel surface. Still
+      to do: glow while firing, particles.)
 - [ ] Distant bodies and vessels as sprites, glints, Milky Way, Sun surface, Hapke lighting.
 - [ ] Atmosphere reflections on vessels, point-light shadows, ambient occlusion, better AA.
+      (Done: sky light, a per-frame cubemap of the sky and ground at the vessel that lights
+      and is reflected by every PBR surface near it; the terrain gets its own skylight. TAA
+      and screen-space ambient occlusion on High and Ultra. Still to do: reflections of
+      nearby objects (Bevy's SSR needs deferred rendering, which the terrain, haze and sky
+      don't use yet), point-light shadows.)
 - [ ] Secondary viewports (docking camera, picture in picture).
 - [ ] Ray-traced IVA (Bevy Solari is the likely route).
 

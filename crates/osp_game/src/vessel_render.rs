@@ -34,6 +34,7 @@ use crate::{
     },
     settings::GraphicsSettings,
     sim::Sim,
+    vessel_material::{Finish, PartModel, VesselMaterial, VesselMaterialPlugin},
 };
 
 /// How far below a stage's forward rim its RCS blocks sit, m.
@@ -56,20 +57,22 @@ pub struct VesselRenderPlugin;
 
 impl Plugin for VesselRenderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_vessel_visuals).add_systems(
-            Update,
-            (
-                sync_visuals,
-                rebuild_on_change,
-                place_vessels,
-                update_engines,
-                update_control_surfaces,
-                update_gear,
-                update_rcs_plumes,
-            )
-                .chain()
-                .in_set(FrameSet::Render),
-        );
+        app.add_plugins(VesselMaterialPlugin)
+            .add_systems(Startup, spawn_vessel_visuals)
+            .add_systems(
+                Update,
+                (
+                    sync_visuals,
+                    rebuild_on_change,
+                    place_vessels,
+                    update_engines,
+                    update_control_surfaces,
+                    update_gear,
+                    update_rcs_plumes,
+                )
+                    .chain()
+                    .in_set(FrameSet::Render),
+            );
     }
 }
 
@@ -146,63 +149,94 @@ struct RcsPlume {
 #[derive(Resource)]
 struct VesselMaterials {
     /// Stand-ins for missing models.
-    hull: [Handle<StandardMaterial>; 2],
+    hull: [Handle<VesselMaterial>; 2],
     /// Hull meshes' vertex colours under glossy paint, matte composite and bare metal.
-    paint: Handle<StandardMaterial>,
-    matte: Handle<StandardMaterial>,
-    metal: Handle<StandardMaterial>,
-    engine: Handle<StandardMaterial>,
+    paint: Handle<VesselMaterial>,
+    matte: Handle<VesselMaterial>,
+    metal: Handle<VesselMaterial>,
+    engine: Handle<VesselMaterial>,
     rcs_plume: Handle<StandardMaterial>,
     /// White, so the fins' vertex colours show.
-    fins: Handle<StandardMaterial>,
+    fins: Handle<VesselMaterial>,
 }
 
-fn spawn_vessel_visuals(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>) {
+fn spawn_vessel_visuals(
+    mut commands: Commands,
+    mut standard: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<VesselMaterial>>,
+) {
+    let mut add = |finish: Finish, base: StandardMaterial| {
+        materials.add(VesselMaterial {
+            base,
+            extension: finish.extension(),
+        })
+    };
     commands.insert_resource(VesselMaterials {
         hull: [
-            materials.add(StandardMaterial {
-                base_color: Color::srgb(0.92, 0.92, 0.9),
-                perceptual_roughness: 0.6,
-                ..default()
-            }),
-            materials.add(StandardMaterial {
-                base_color: Color::srgb(0.25, 0.25, 0.28),
-                perceptual_roughness: 0.6,
-                ..default()
-            }),
+            add(
+                Finish::Paint,
+                StandardMaterial {
+                    base_color: Color::srgb(0.92, 0.92, 0.9),
+                    perceptual_roughness: 0.6,
+                    ..default()
+                },
+            ),
+            add(
+                Finish::Paint,
+                StandardMaterial {
+                    base_color: Color::srgb(0.25, 0.25, 0.28),
+                    perceptual_roughness: 0.6,
+                    ..default()
+                },
+            ),
         ],
-        paint: materials.add(StandardMaterial {
-            perceptual_roughness: 0.42,
-            clearcoat: 0.6,
-            clearcoat_perceptual_roughness: 0.25,
-            ..default()
-        }),
-        matte: materials.add(StandardMaterial {
-            perceptual_roughness: 0.68,
-            reflectance: 0.35,
-            ..default()
-        }),
-        metal: materials.add(StandardMaterial {
-            metallic: 0.85,
-            perceptual_roughness: 0.48,
-            ..default()
-        }),
-        engine: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.15, 0.13, 0.12),
-            metallic: 0.8,
-            perceptual_roughness: 0.4,
-            ..default()
-        }),
+        paint: add(
+            Finish::Paint,
+            StandardMaterial {
+                perceptual_roughness: 0.42,
+                clearcoat: 0.6,
+                clearcoat_perceptual_roughness: 0.25,
+                ..default()
+            },
+        ),
+        matte: add(
+            Finish::Composite,
+            StandardMaterial {
+                perceptual_roughness: 0.68,
+                reflectance: 0.35,
+                ..default()
+            },
+        ),
+        metal: add(
+            Finish::Metal,
+            StandardMaterial {
+                metallic: 0.85,
+                perceptual_roughness: 0.48,
+                ..default()
+            },
+        ),
+        engine: add(
+            Finish::HeatTint(20.0, 90.0),
+            StandardMaterial {
+                base_color: Color::srgb(0.15, 0.13, 0.12),
+                metallic: 0.8,
+                perceptual_roughness: 0.4,
+                ..default()
+            },
+        ),
+        fins: add(
+            Finish::Paint,
+            StandardMaterial {
+                perceptual_roughness: 0.5,
+                metallic: 0.3,
+                ..default()
+            },
+        ),
         // Faint and unlit, so a firing nozzle shows on the night side too.
-        rcs_plume: materials.add(StandardMaterial {
+        rcs_plume: standard.add(StandardMaterial {
             base_color: Color::linear_rgba(0.55, 0.6, 0.65, 0.5),
             alpha_mode: AlphaMode::Add,
             unlit: true,
-            ..default()
-        }),
-        fins: materials.add(StandardMaterial {
-            perceptual_roughness: 0.5,
-            metallic: 0.3,
             ..default()
         }),
     });
@@ -466,7 +500,11 @@ fn rebuild_on_change(
                     pivot.with_children(|pivot| match model(&engine.def.model) {
                         Some(scene) => {
                             let scale = engine.def.model_scale as f32;
-                            pivot.spawn((scene, Transform::from_scale(Vec3::splat(scale))));
+                            pivot.spawn((
+                                scene,
+                                PartModel,
+                                Transform::from_scale(Vec3::splat(scale)),
+                            ));
                         }
                         None => {
                             pivot.spawn((
@@ -522,7 +560,7 @@ fn rebuild_on_change(
                     let at = Transform::from_xyz(0.0, y + hull, 0.0);
                     match model(&pod.model) {
                         Some(scene) => {
-                            parent.spawn((scene, at));
+                            parent.spawn((scene, PartModel, at));
                         }
                         None => {
                             let r = (pod.diameter / 2.0) as f32;
@@ -603,7 +641,7 @@ fn rebuild_on_change(
                     }
                     match model(&block.def.model) {
                         Some(scene) => {
-                            parent.spawn((scene, at));
+                            parent.spawn((scene, PartModel, at));
                         }
                         None => {
                             parent.spawn((

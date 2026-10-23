@@ -95,6 +95,7 @@
                   { widget: "button", class: "menu_option", text: "Off", action: "graphics.set:antialiasing:off", active: "graphics.antialiasing == off" },
                   { widget: "button", class: "menu_option", text: "FXAA", action: "graphics.set:antialiasing:fxaa", active: "graphics.antialiasing == fxaa" },
                   { widget: "button", class: "menu_option", text: "MSAA 4x", action: "graphics.set:antialiasing:msaa", active: "graphics.antialiasing == msaa" },
+                  { widget: "button", class: "menu_option", text: "TAA", action: "graphics.set:antialiasing:taa", active: "graphics.antialiasing == taa" },
                 ],
               },
               {
@@ -106,6 +107,17 @@
                   { widget: "button", class: "menu_option", text: "Medium", action: "graphics.set:shadows:medium", active: "graphics.shadows == medium" },
                   { widget: "button", class: "menu_option", text: "High", action: "graphics.set:shadows:high", active: "graphics.shadows == high" },
                   { widget: "button", class: "menu_option", text: "Ultra", action: "graphics.set:shadows:ultra", active: "graphics.shadows == ultra" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Ambient occlusion" },
+                  { widget: "button", class: "menu_option", text: "Off", action: "graphics.set:ambient_occlusion:off", active: "graphics.ambient_occlusion == off" },
+                  { widget: "button", class: "menu_option", text: "Low", action: "graphics.set:ambient_occlusion:low", active: "graphics.ambient_occlusion == low" },
+                  { widget: "button", class: "menu_option", text: "Medium", action: "graphics.set:ambient_occlusion:medium", active: "graphics.ambient_occlusion == medium" },
+                  { widget: "button", class: "menu_option", text: "High", action: "graphics.set:ambient_occlusion:high", active: "graphics.ambient_occlusion == high" },
+                  { widget: "button", class: "menu_option", text: "Ultra", action: "graphics.set:ambient_occlusion:ultra", active: "graphics.ambient_occlusion == ultra" },
                 ],
               },
               {

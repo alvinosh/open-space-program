@@ -10,13 +10,16 @@
 //! resolution.
 
 use bevy::{
-    anti_alias::fxaa::Fxaa,
+    anti_alias::{fxaa::Fxaa, taa::TemporalAntiAliasing},
     camera::{Exposure, Hdr, ImageRenderTarget, RenderTarget, visibility::RenderLayers},
+    core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass},
     input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit},
     math::DVec3,
+    pbr::{ScreenSpaceAmbientOcclusion, ScreenSpaceAmbientOcclusionQualityLevel},
     post_process::bloom::Bloom,
     prelude::*,
     render::{
+        camera::{MipBias, TemporalJitter},
         render_resource::TextureFormat,
         view::{Msaa, Tonemapping},
     },
@@ -30,7 +33,7 @@ use crate::{
     FrameSet,
     controls::InputLocked,
     frame::{RenderFrame, to_render},
-    settings::{Antialiasing, GraphicsSettings},
+    settings::{Antialiasing, GraphicsSettings, Quality},
     sim::Sim,
 };
 
@@ -40,6 +43,8 @@ const COMPOSITE_LAYER: usize = 8;
 const MAX_PITCH: f64 = 1.55;
 /// The flight camera stays at least this high above the ground, m.
 const GROUND_CLEARANCE: f64 = 2.0;
+/// How far ambient occlusion looks for occluders, m: about a landing leg's gap to the hull.
+const AO_RADIUS: f32 = 1.2;
 
 pub struct CameraPlugin;
 
@@ -52,7 +57,8 @@ impl Plugin for CameraPlugin {
             .add_systems(
                 Update,
                 (
-                    apply_view_settings.run_if(resource_changed::<GraphicsSettings>),
+                    apply_view_settings,
+                    reset_history_on_cuts,
                     apply_render_scale,
                 )
                     .in_set(FrameSet::Render),
@@ -167,18 +173,66 @@ fn spawn_camera(mut commands: Commands) {
     ));
 }
 
-/// Anti-aliasing and bloom.
+/// Anti-aliasing, ambient occlusion and bloom. The map view uses FXAA instead of TAA: its
+/// orbit lines are a pixel wide, and TAA would smear them as the camera turns. Ambient
+/// occlusion needs multisampling off.
+///
+/// No contact shadows: on the faceted scenery they shadow the next facet over wherever the
+/// sun grazes it, and the shadow maps are fine enough near the vessel anyway.
 fn apply_view_settings(
     mut commands: Commands,
     settings: Res<GraphicsSettings>,
+    rig: Res<CameraRig>,
     camera: Single<Entity, With<MainCamera>>,
+    mut applied_for_map: Local<Option<bool>>,
 ) {
+    if !settings.is_changed() && *applied_for_map == Some(rig.map_view) {
+        return;
+    }
+    *applied_for_map = Some(rig.map_view);
+    let mut antialiasing = settings.antialiasing;
+    if rig.map_view && antialiasing == Antialiasing::Taa {
+        antialiasing = Antialiasing::Fxaa;
+    }
+    let msaa = antialiasing == Antialiasing::Msaa;
+
     let mut camera = commands.entity(*camera);
-    match settings.antialiasing {
-        Antialiasing::Off => camera.insert(Msaa::Off).remove::<Fxaa>(),
-        Antialiasing::Fxaa => camera.insert((Msaa::Off, Fxaa::default())),
-        Antialiasing::Msaa => camera.insert(Msaa::Sample4).remove::<Fxaa>(),
+    // Start from none of it: removing TAA or AO leaves behind the jitter and prepasses they
+    // brought in.
+    camera.remove::<(
+        Fxaa,
+        TemporalAntiAliasing,
+        TemporalJitter,
+        MipBias,
+        ScreenSpaceAmbientOcclusion,
+        DepthPrepass,
+        NormalPrepass,
+        MotionVectorPrepass,
+    )>();
+    camera.insert(if msaa { Msaa::Sample4 } else { Msaa::Off });
+    match antialiasing {
+        Antialiasing::Fxaa => {
+            camera.insert(Fxaa::default());
+        }
+        Antialiasing::Taa => {
+            camera.insert(TemporalAntiAliasing::default());
+        }
+        Antialiasing::Off | Antialiasing::Msaa => {}
+    }
+    let ao_level = match settings.ambient_occlusion {
+        Quality::Off => None,
+        Quality::Low => Some(ScreenSpaceAmbientOcclusionQualityLevel::Low),
+        Quality::Medium => Some(ScreenSpaceAmbientOcclusionQualityLevel::Medium),
+        Quality::High => Some(ScreenSpaceAmbientOcclusionQualityLevel::High),
+        Quality::Ultra => Some(ScreenSpaceAmbientOcclusionQualityLevel::Ultra),
     };
+    if let Some(quality_level) = ao_level.filter(|_| !msaa) {
+        camera.insert(ScreenSpaceAmbientOcclusion {
+            quality_level,
+            radius: AO_RADIUS,
+            ..default()
+        });
+    }
     if settings.bloom {
         // Glow around what is much brighter than the scene: plumes, the sun on metal.
         camera.insert(Bloom {
@@ -187,6 +241,23 @@ fn apply_view_settings(
         });
     } else {
         camera.remove::<Bloom>();
+    }
+}
+
+/// Start TAA's history afresh after a cut, when what's in view jumps: another vessel, a
+/// followed body, or the origin moving to another body.
+fn reset_history_on_cuts(
+    sim: Res<Sim>,
+    rig: Res<CameraRig>,
+    frame: Res<RenderFrame>,
+    mut taa: Query<&mut TemporalAntiAliasing, With<MainCamera>>,
+    mut last: Local<Option<(VesselId, Option<Follow>, Option<BodyId>)>>,
+) {
+    let view = (sim.active_id(), rig.follow, frame.origin_body);
+    if last.replace(view).is_some_and(|last| last != view) {
+        for mut taa in &mut taa {
+            taa.reset = true;
+        }
     }
 }
 

@@ -24,6 +24,7 @@ mod plume;
 mod profiler;
 mod settings;
 mod sim;
+mod sky_light;
 mod smoke_test;
 mod surface;
 mod targeting;
@@ -31,6 +32,7 @@ mod terrain_material;
 mod transfer_planner;
 mod trees;
 mod ui_data;
+mod vessel_material;
 mod vessel_render;
 
 use bevy::{
@@ -118,7 +120,7 @@ fn main() -> AppExit {
             controls::ControlsPlugin,
             terrain_material::TerrainMaterialPlugin,
             planet::PlanetPlugin,
-            atmosphere::AtmospherePlugin,
+            (atmosphere::AtmospherePlugin, sky_light::SkyLightPlugin),
             trees::TreesPlugin,
             launch_site::LaunchSitePlugin,
             plume::PlumePlugin,

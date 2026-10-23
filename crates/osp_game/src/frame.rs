@@ -35,9 +35,11 @@ impl Plugin for FramePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RenderFrame>()
             .insert_resource(ClearColor(Color::BLACK))
+            // Starlight and airglow: all that keeps the night side from going black. The
+            // sky's and the ground's light comes from `sky_light`.
             .insert_resource(GlobalAmbientLight {
                 color: Color::WHITE,
-                brightness: 1_500.0,
+                brightness: 12.0,
                 ..default()
             })
             .add_systems(Startup, spawn_sunlight)

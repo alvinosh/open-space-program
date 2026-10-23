@@ -3,10 +3,13 @@
 
 use bevy::{
     asset::embedded_asset,
-    pbr::{ExtendedMaterial, MaterialExtension},
+    mesh::MeshVertexBufferLayoutRef,
+    pbr::{ExtendedMaterial, MaterialExtension, MaterialExtensionKey, MaterialExtensionPipeline},
     prelude::*,
-    render::render_resource::{AsBindGroup, ShaderType},
-    shader::{ShaderRef, load_shader_library},
+    render::render_resource::{
+        AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
+    },
+    shader::{ShaderDefVal, ShaderRef, load_shader_library},
 };
 
 use crate::{atmosphere::view_steps, settings::GraphicsSettings};
@@ -83,5 +86,21 @@ pub struct TerrainExtension {
 impl MaterialExtension for TerrainExtension {
     fn fragment_shader() -> ShaderRef {
         "embedded://osp/shaders/terrain.wesl".into()
+    }
+
+    fn specialize(
+        _pipeline: &MaterialExtensionPipeline,
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayoutRef,
+        _key: MaterialExtensionKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        // The camera's environment map is the sky as seen from the vessel (`sky_light`);
+        // the terrain reaches far beyond it and works out its own skylight.
+        if let Some(fragment) = &mut descriptor.fragment {
+            fragment.shader_defs.retain(
+                |def| !matches!(def, ShaderDefVal::Bool(name, _) if name == "ENVIRONMENT_MAP"),
+            );
+        }
+        Ok(())
     }
 }

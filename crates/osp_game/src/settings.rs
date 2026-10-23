@@ -1,8 +1,8 @@
 //! Graphics settings: a preset (Low to Ultra) or each setting picked by hand on the main
 //! menu's Graphics page, saved between runs.
 //!
-//! Each setting is applied by the module it tunes (render scale, anti-aliasing and bloom in
-//! `camera`, shadows in `frame`, terrain detail in `planet`, trees in `trees`, the sky's and
+//! Each setting is applied by the module it tunes (render scale, anti-aliasing, ambient
+//! occlusion and bloom in `camera`, shadows in `frame`, terrain detail in `planet`, trees in `trees`, the sky's and
 //! plumes' ray-marching steps in `atmosphere` and `plume`); this module owns the values,
 //! vsync and the frame cap.
 //!
@@ -85,8 +85,13 @@ pub enum Antialiasing {
     Off,
     /// A cheap post-process pass that softens edges (and a little of everything else).
     Fxaa,
-    /// 4x multisampling: sharp, but costs memory bandwidth on every pass.
+    /// 4x multisampling: sharp, but costs memory bandwidth on every pass, and rules out
+    /// ambient occlusion.
     Msaa,
+    /// Temporal: each frame is jittered by a fraction of a pixel and blended with the last
+    /// few, which smooths edges, specular sparkle and the noise of screen-space effects. Can
+    /// smear a little in fast motion.
+    Taa,
 }
 
 impl Antialiasing {
@@ -95,6 +100,7 @@ impl Antialiasing {
             Antialiasing::Off => "off",
             Antialiasing::Fxaa => "fxaa",
             Antialiasing::Msaa => "msaa",
+            Antialiasing::Taa => "taa",
         }
     }
 }
@@ -106,6 +112,8 @@ pub struct GraphicsSettings {
     pub render_scale: u32,
     pub antialiasing: Antialiasing,
     pub shadows: Quality,
+    /// Screen-space darkening of creases and contacts, where the sky's light can't reach.
+    pub ambient_occlusion: Quality,
     /// How far out the terrain keeps its finer chunks.
     pub terrain: Quality,
     /// How far out trees are drawn, and drawn in detail.
@@ -130,18 +138,23 @@ pub const PRESETS: [Quality; 4] = [Quality::Low, Quality::Medium, Quality::High,
 impl GraphicsSettings {
     /// A preset's settings; vsync on and no frame cap.
     pub fn preset(preset: Quality) -> Self {
-        use Antialiasing::{Fxaa, Msaa};
+        use Antialiasing::{Fxaa, Taa};
         use Quality::*;
         let (render_scale, antialiasing, shadows, terrain, trees, effects, bloom) = match preset {
             Off | Low => (50, Fxaa, Off, Low, Low, Low, false),
             Medium => (75, Fxaa, Low, Medium, Medium, Medium, true),
-            High => (100, Msaa, High, High, High, High, true),
-            Ultra => (100, Msaa, Ultra, Ultra, Ultra, Ultra, true),
+            High => (100, Taa, High, High, High, High, true),
+            Ultra => (100, Taa, Ultra, Ultra, Ultra, Ultra, true),
+        };
+        let ambient_occlusion = match preset {
+            Off | Low => Off,
+            other => other,
         };
         Self {
             render_scale,
             antialiasing,
             shadows,
+            ambient_occlusion,
             terrain,
             trees,
             effects,
@@ -182,10 +195,12 @@ impl GraphicsSettings {
                     "off" => Antialiasing::Off,
                     "fxaa" => Antialiasing::Fxaa,
                     "msaa" => Antialiasing::Msaa,
-                    _ => return Err(format!("`{value}` is not off, fxaa or msaa")),
+                    "taa" => Antialiasing::Taa,
+                    _ => return Err(format!("`{value}` is not off, fxaa, msaa or taa")),
                 }
             }
             "shadows" => self.shadows = quality(value)?,
+            "ambient_occlusion" => self.ambient_occlusion = quality(value)?,
             "terrain" => self.terrain = quality(value)?.max(Quality::Low),
             "trees" => self.trees = quality(value)?,
             "effects" => self.effects = quality(value)?.max(Quality::Low),
@@ -200,11 +215,12 @@ impl GraphicsSettings {
     /// One line for logs and profiles.
     pub fn describe(&self) -> String {
         format!(
-            "{} (render scale {}%, anti-aliasing {}, shadows {}, terrain {}, trees {}, effects {}, bloom {}, vsync {}, fps limit {})",
+            "{} (render scale {}%, anti-aliasing {}, shadows {}, ambient occlusion {}, terrain {}, trees {}, effects {}, bloom {}, vsync {}, fps limit {})",
             self.matching_preset().map_or("custom", Quality::name),
             self.render_scale,
             self.antialiasing.name(),
             self.shadows.name(),
+            self.ambient_occlusion.name(),
             self.terrain.name(),
             self.trees.name(),
             self.effects.name(),
@@ -419,6 +435,10 @@ fn publish(settings: Res<GraphicsSettings>, mut data: ResMut<UiData>) {
     data.set("graphics.render_scale", settings.render_scale.to_string());
     data.set("graphics.antialiasing", settings.antialiasing.name());
     data.set("graphics.shadows", settings.shadows.name());
+    data.set(
+        "graphics.ambient_occlusion",
+        settings.ambient_occlusion.name(),
+    );
     data.set("graphics.terrain", settings.terrain.name());
     data.set("graphics.trees", settings.trees.name());
     data.set("graphics.effects", settings.effects.name());
@@ -498,6 +518,10 @@ mod tests {
         let mut s = GraphicsSettings::default();
         assert!(s.set("shadows", "lots").is_err());
         assert!(s.set("nope", "on").is_err());
+        s.set("antialiasing", "taa").unwrap();
+        assert_eq!(s.antialiasing, Antialiasing::Taa);
+        s.set("ambient_occlusion", "ultra").unwrap();
+        assert_eq!(s.ambient_occlusion, Quality::Ultra);
         s.set("render_scale", "5").unwrap();
         assert_eq!(s.render_scale, 25);
         s.set("terrain", "off").unwrap();
