@@ -22,6 +22,7 @@ mod orbit_lines;
 mod planet;
 mod plume;
 mod profiler;
+mod recorder;
 mod settings;
 mod sim;
 mod sky_light;
@@ -112,7 +113,11 @@ fn main() -> AppExit {
         )
         // Content first: everything else is built from the loaded mods.
         .add_plugins(content::ContentPlugin)
-        .add_plugins((settings::SettingsPlugin, profiler::ProfilerPlugin))
+        .add_plugins((
+            settings::SettingsPlugin,
+            profiler::ProfilerPlugin,
+            recorder::RecorderPlugin,
+        ))
         .add_plugins((
             sim::SimPlugin,
             frame::FramePlugin,

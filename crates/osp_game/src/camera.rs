@@ -402,7 +402,7 @@ fn update_camera(
     mut camera: Single<&mut Transform, With<MainCamera>>,
 ) {
     if !locked.0 && buttons.pressed(MouseButton::Right) {
-        rig.yaw -= motion.delta.x as f64 * 0.005;
+        rig.yaw += motion.delta.x as f64 * 0.005;
         rig.pitch = (rig.pitch + motion.delta.y as f64 * 0.005).clamp(-MAX_PITCH, MAX_PITCH);
     }
     let scroll_lines = match scroll.unit {

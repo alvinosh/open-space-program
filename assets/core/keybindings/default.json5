@@ -38,6 +38,7 @@
     { key: "F2", action: "ui.toggle:mods" },
     { key: "F3", action: "ui.toggle_group:flight" },
     { key: "F5", action: "game.reload" },
+    { key: "KeyG", action: "debug.mark" },
     { key: "F10", action: "ui.toggle:perf" },
     { key: "F4", action: "ui.toggle:transfer_planner" },
     { key: "F11", action: "ui.toggle:manifest" },

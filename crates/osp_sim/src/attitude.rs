@@ -228,10 +228,11 @@ const SYMMETRIC: f64 = 1e-9;
 /// Torque-free rotation for `dt` seconds, exact (Euler–Poinsot). The angular momentum L
 /// stays fixed in space and the rotational energy E is kept, so in principal axes L runs
 /// round a closed curve (the polhode) about the axis of largest or of smallest moment: the
-/// rates are Jacobi elliptic functions of time (sines and cosines for a symmetric body),
-/// and the body turns about L by an angle that is an elliptic integral of the third kind.
-/// Turning about a principal axis, it keeps turning steadily. Like a coasting orbit it is
-/// evaluated for any `dt` without stepping, so time warp cannot change it.
+/// rates are Jacobi elliptic functions of time, and the body turns about L by an angle
+/// that is an elliptic integral of the third kind. A symmetric body's rates turn steadily
+/// about its axis of symmetry instead. Turning about a principal axis, it keeps turning
+/// steadily. Like a coasting orbit it is evaluated for any `dt` without stepping, so time
+/// warp cannot change it.
 pub fn coast(state: Attitude, inertia: Inertia, dt: f64) -> Attitude {
     let w = state.angular_velocity;
     if dt == 0.0 || w == DVec3::ZERO {
@@ -250,9 +251,35 @@ pub fn coast(state: Attitude, inertia: Inertia, dt: f64) -> Attitude {
         (moments.y, moments.z) = ((moments.y + moments.z) / 2.0, (moments.y + moments.z) / 2.0);
     }
     let principal = DMat3::from_quat(axes);
+    if moments.x <= 0.0 {
+        return steady;
+    }
+    // A symmetric body turns steadily about L and at the same time about its axis of
+    // symmetry, at a rate set by its spin about that axis: in closed form, exact however
+    // slight the spin. (A rocket pitching with a whisker of roll would send the elliptic
+    // parameters below off to 10¹³ and lose its attitude to rounding.)
+    let symmetry = if moments.y == moments.z {
+        Some((principal.x_axis, moments.x, moments.y))
+    } else if moments.x == moments.y {
+        Some((principal.z_axis, moments.z, moments.x))
+    } else {
+        None
+    };
+    if let Some((axis, axial, transverse)) = symmetry {
+        let spin = w.dot(axis);
+        let momentum = transverse * w + (axial - transverse) * spin * axis;
+        let about_axis =
+            DQuat::from_axis_angle(axis, (transverse - axial) / transverse * spin * dt);
+        let about_momentum =
+            DQuat::from_scaled_axis(state.orientation * momentum * (dt / transverse));
+        return Attitude {
+            orientation: (about_momentum * state.orientation * about_axis).normalize(),
+            angular_velocity: about_axis.inverse() * w,
+        };
+    }
     let rates = principal.transpose() * w;
     let l = moments * rates;
-    if moments.x <= 0.0 || l.cross(rates).length() <= 1e-12 * l.length() * rates.length() {
+    if l.cross(rates).length() <= 1e-12 * l.length() * rates.length() {
         return steady;
     }
     let l2 = l.length_squared();
@@ -263,13 +290,7 @@ pub fn coast(state: Attitude, inertia: Inertia, dt: f64) -> Attitude {
     };
     // The polhode runs round axis c, of the largest moment or the smallest; a is the other
     // extreme and b the middle one, in a right-handed frame.
-    let around_largest = if moments.y == moments.z {
-        false
-    } else if moments.x == moments.y {
-        true
-    } else {
-        excess(moments, rates, moments.y) < 0.0
-    };
+    let around_largest = excess(moments, rates, moments.y) < 0.0;
     let (frame, [ia, ib, ic]) = if around_largest {
         (DMat3::IDENTITY, moments.to_array())
     } else {
@@ -934,6 +955,30 @@ mod tests {
             assert!((before - after).length() < 1e-9 * before.length());
             let energy = |s: Attitude| s.angular_velocity.dot(inertia.tensor * s.angular_velocity);
             assert!(close(energy(later), energy(state), 1e-12));
+        }
+    }
+
+    #[test]
+    fn a_rocket_pitching_with_a_whisker_of_roll_coasts_smoothly() {
+        // The Pathfinder near max-Q, pitched over by the pilot: pitch and yaw moments equal,
+        // roll 200 times smaller, and a roll rate down at rounding level. Drawn between
+        // physics ticks, it once jittered by a tenth of a degree.
+        let inertia = Inertia::about_axes(1.288e8, 1.288e8, 6.53e5);
+        let state = Attitude {
+            orientation: DQuat::from_euler(glam::EulerRot::XYZ, 0.3, -0.7, 1.1),
+            angular_velocity: DVec3::new(-0.0446, -0.0002, 3e-8),
+        };
+        for dt in [0.004f64, 0.012, 0.02, 600.0] {
+            let mut numeric = state;
+            let steps = (dt / 0.002).ceil();
+            for _ in 0..steps as usize {
+                numeric = integrate(numeric, inertia, DVec3::ZERO, dt / steps);
+            }
+            let exact = coast(state, inertia, dt);
+            let off = angle(exact.orientation, numeric.orientation);
+            assert!(off < 1e-10, "{dt}: {off}");
+            let rates = (exact.angular_velocity - numeric.angular_velocity).length();
+            assert!(rates < 1e-12, "{dt}: {rates}");
         }
     }
 
