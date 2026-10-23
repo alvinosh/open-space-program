@@ -6,3 +6,5 @@
 /assets/core/terrain/*/
 # Python caches from the Blender model scripts.
 __pycache__/
+
+*.txt

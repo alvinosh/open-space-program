@@ -1,7 +1,8 @@
 //! Text labels pinned to points in the 3D view (map markers: apsides, nodes, closest
 //! approaches). Systems push labels into [`MapLabels`] during `FrameSet::Render`; at the end
 //! of the frame they are projected to the screen and drawn as UI text under the windows.
-//! Labels on points hidden behind a planet are left out.
+//! Labels on points hidden behind a planet are left out, and labels keep off areas reserved
+//! for body markers.
 
 use bevy::prelude::*;
 
@@ -25,12 +26,22 @@ impl Plugin for MapLabelsPlugin {
 
 /// Labels to draw this frame.
 #[derive(Resource, Default)]
-pub struct MapLabels(Vec<(Vec3, String, Color)>);
+pub struct MapLabels {
+    labels: Vec<(Vec3, String, Color)>,
+    /// Screen areas labels keep off (logical pixels).
+    reserved: Vec<Rect>,
+}
 
 impl MapLabels {
     /// Label the render-space point `at`.
     pub fn add(&mut self, at: Vec3, text: impl Into<String>, color: Color) {
-        self.0.push((at, text.into(), color));
+        self.labels.push((at, text.into(), color));
+    }
+
+    /// Keep labels off `area` (logical pixels), such as a body's marker. Reserve during
+    /// `FrameSet::Render`.
+    pub fn reserve(&mut self, area: Rect) {
+        self.reserved.push(area);
     }
 }
 
@@ -42,11 +53,12 @@ const LINE: f32 = 15.0;
 struct LabelNode;
 
 fn clear(mut labels: ResMut<MapLabels>) {
-    labels.0.clear();
+    labels.labels.clear();
+    labels.reserved.clear();
 }
 
 /// Whether a body's sphere hides `point` from `eye` (render space, render-space spheres).
-fn hidden(eye: Vec3, point: Vec3, spheres: &[(Vec3, f32)]) -> bool {
+pub fn hidden(eye: Vec3, point: Vec3, spheres: &[(Vec3, f32)]) -> bool {
     let to = point - eye;
     let length = to.length();
     let direction = to / length.max(1e-6);
@@ -78,11 +90,11 @@ fn place(
         Vec::new()
     };
     let eye = to_render(rig.position);
-    // Just right of and above each point, nudged down until it clears the ones placed
-    // before it.
-    let mut placed: Vec<Rect> = Vec::new();
+    // Just right of and above each point, nudged right past reserved areas and down past
+    // the labels placed before it.
+    let mut placed: Vec<Rect> = labels.reserved.clone();
     let positioned: Vec<_> = labels
-        .0
+        .labels
         .iter()
         .filter(|(at, _, _)| !hidden(eye, *at, &spheres))
         .filter_map(|(at, text, color)| {
@@ -91,10 +103,11 @@ fn place(
             let mut corner = Vec2::new(screen.x + 8.0, screen.y - 18.0);
             for _ in 0..8 {
                 let rect = Rect::from_corners(corner, corner + Vec2::new(width, LINE));
-                if placed.iter().all(|r| r.intersect(rect).is_empty()) {
-                    break;
+                match placed.iter().position(|r| !r.intersect(rect).is_empty()) {
+                    None => break,
+                    Some(i) if i < labels.reserved.len() => corner.x = placed[i].max.x + 4.0,
+                    Some(_) => corner.y += LINE,
                 }
-                corner.y += LINE;
             }
             placed.push(Rect::from_corners(corner, corner + Vec2::new(width, LINE)));
             Some((corner, text, color))

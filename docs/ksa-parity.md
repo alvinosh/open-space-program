@@ -33,6 +33,8 @@ Everything here runs on today's vessel model, is testable headless in `osp_sim`,
 makes the map view useful. It also gives later phases their test harness (burns to fly).
 
 - [x] Targets: any body or vessel; distance, relative velocity, relative inclination.
+- [x] Body markers in map view: a box and name on each body; click to centre the map on it,
+      Shift+click to target it. (Vessel markers still to do.)
 - [x] Orbit markers: Ap/Pe on every patch, AN/DN against the target, closest approach with
       distance and time, hover readouts.
 - [ ] Same-time marker on the target's orbit; SOI bubbles at closest approach.

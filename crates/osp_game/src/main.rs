@@ -6,6 +6,7 @@
 //! origin and publishes state for the UI.
 
 mod atmosphere;
+mod body_markers;
 mod camera;
 mod content;
 mod controls;
@@ -140,6 +141,7 @@ fn main() -> AppExit {
             orbit_lines::OrbitLinesPlugin,
             flight_plan::FlightPlanPlugin,
             map_labels::MapLabelsPlugin,
+            body_markers::BodyMarkersPlugin,
             targeting::TargetingPlugin,
             manifest::ManifestPlugin,
             transfer_planner::TransferPlannerPlugin,

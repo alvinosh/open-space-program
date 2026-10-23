@@ -72,7 +72,8 @@ Default bindings (all rebindable in `assets/core/keybindings/default.json5`):
 | `,` `.` `/` | Time warp down / up / stop |
 | M | Map view with predicted trajectory |
 | Click trajectory, drag arrows | Map view: add a burn there; shape it (drag its marker to move it in time) |
-| Shift+click | Map view: target a body or vessel |
+| Click a body's box | Map view: centre the map on that body |
+| Shift+click | Map view: target a body or vessel (a targeted body's box again: drop it) |
 | `]` / `[` | Fly the next / previous vessel |
 | F4 | Transfer planner: porkchop plot to the target |
 | F11 | Universe Manifest: every body and vessel, target or fly them |
@@ -116,7 +117,8 @@ window's warp-to buttons) warps there, slowing on the way in; rails warp always 
 time for an engaged burn.
 
 **Targets and rendezvous.** Target a body or another vessel (Shift+click in map view, or the
-Universe Manifest). The Target window shows distance and relative speed, the closest
+Universe Manifest). In map view every body has a box and its name; click it to centre the
+map there. The Target window shows distance and relative speed, the closest
 approaches along the planned trajectory (solved to the microsecond, and drawn on the map),
 the relative inclination and the next plane crossings; Match planes plans the burn there.
 SAS can point at or away from the target, and the navball's target frame shows the velocity

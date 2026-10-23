@@ -94,7 +94,7 @@ pub struct CameraRig {
     pitch: f64,
     flight_distance: f64,
     /// Map distance as a multiple of the focused body's radius.
-    map_distance: f64,
+    pub map_distance: f64,
     /// Flight view: look at this height above the base of the stack instead of its middle
     /// (debugging, `OSP_CAMERA`).
     focus_height: Option<f64>,

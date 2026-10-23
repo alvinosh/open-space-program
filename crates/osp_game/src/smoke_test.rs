@@ -87,6 +87,8 @@ impl Plugin for SmokeTestPlugin {
                 TRANSFER_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MANIFEST").is_some() {
                 MANIFEST_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_MARKERS").is_some() {
+                MARKERS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_DEBRIS").is_some() {
                 DEBRIS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_STAGING").is_some() {
@@ -163,6 +165,8 @@ enum Action {
     /// Fire a UI action, e.g. to open a window.
     Ui(&'static str),
     MapView(bool),
+    /// Map camera distance, in radii of the body it looks at.
+    MapDistance(f64),
     /// Index into `WARP_RATES`.
     Warp(usize),
     Exit,
@@ -357,6 +361,24 @@ const DEBRIS_SCRIPT: &[(f64, Action)] = &[
 /// In LEO (`OSP_CAPTURE_MANIFEST=1`): shed three pieces of debris (vessels 1 to 3), then in
 /// the Universe Manifest hide the bodies, follow the spent upper stage, destroy a fairing
 /// half, clear the rest of the debris and follow the Moon.
+/// In LEO (`OSP_CAPTURE_MARKERS=1`): body markers in map view with the Moon targeted, close
+/// to Earth and then zoomed out past the Moon; untargeted, far enough out that the Moon's
+/// marker tucks into Earth's; and around the Sun.
+const MARKERS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(true)),
+    (0.6, Action::Ui("target.body:Moon")),
+    (3.0, Action::Capture("markers.png")),
+    (3.2, Action::MapDistance(150.0)),
+    (5.0, Action::Capture("markers_moon.png")),
+    (5.2, Action::Ui("target.clear")),
+    (5.2, Action::MapDistance(4000.0)),
+    (7.0, Action::Capture("markers_crowded.png")),
+    (7.2, Action::Ui("manifest.follow_body:Sun")),
+    (7.2, Action::MapDistance(800.0)),
+    (9.0, Action::Capture("markers_sun.png")),
+    (9.5, Action::Exit),
+];
+
 const MANIFEST_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (0.6, Action::Warp(7)),
@@ -465,6 +487,7 @@ fn run_script(
             ui.write(UiAction(action.into()));
         }
         Action::MapView(on) => rig.map_view = on,
+        Action::MapDistance(radii) => rig.map_distance = radii,
         Action::Warp(index) => warp.set_index(index, &sim, time.elapsed_secs_f64()),
         Action::Exit => {
             let system = &sim.universe.system;

@@ -131,6 +131,11 @@ impl Default for WindowStack {
 #[derive(Resource, Default, Debug, PartialEq, Eq)]
 pub struct PointerOverUi(pub bool);
 
+/// A node drawn over the 3D view (map markers): it takes clicks, but the pointer over it
+/// still counts as over the view for [`PointerOverUi`], so the wheel zooms the camera.
+#[derive(Component)]
+pub struct ViewOverlay;
+
 #[derive(Component)]
 pub struct BoundText(pub Template);
 
@@ -597,7 +602,7 @@ fn raise_on_press(
 
 pub fn track_pointer_over_ui(
     hover: Option<Res<HoverMap>>,
-    nodes: Query<(), With<Node>>,
+    nodes: Query<(), (With<Node>, Without<ViewOverlay>)>,
     mut over: ResMut<PointerOverUi>,
 ) {
     let any = hover.is_some_and(|hover| {
