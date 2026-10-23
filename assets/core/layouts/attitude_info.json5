@@ -9,7 +9,7 @@
   root: {
     widget: "window",
     title: "Attitude",
-    style: { width: 270 },
+    style: { width: 290 },
     children: [
       {
         id: "attitude",

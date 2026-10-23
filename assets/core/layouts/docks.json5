@@ -4,7 +4,7 @@
 // the `dock_scroll` class scrolls with the mouse wheel when its windows do not fit.
 //
 // Left: clocks on top, the stage stack at the bottom, windows in between. Right: beside the
-// launcher's icon strip, above the navball's corner. Mods add docks of their own with any `dock`
+// launcher's icon strip, top to bottom (the navball is narrow enough to stay clear). Mods add docks of their own with any `dock`
 // node that has an id.
 [
   {
@@ -27,7 +27,7 @@
     root: {
       widget: "dock",
       class: "dock_root",
-      style: { right: 54, top: 12, bottom: 290 },
+      style: { right: 54, top: 12, bottom: 12 },
       children: [{ id: "right", widget: "dock", class: "dock_scroll" }],
     },
   },

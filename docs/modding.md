@@ -567,7 +567,7 @@ The flight UI is a set of modules, each its own layout in the `flight` group:
 | `time` | Warp buttons, UT and mission time (top of the left dock) | `#time` |
 | `altimeter` | Altitude, vessel and situation (top centre) | `#altimeter` |
 | `messages` | Latest event, warp notices and lag warning | `#messages` |
-| `navball` | Navball, speed, throttle, SAS modes, control inputs (bottom centre) | `#navball`, `#throttle`, `#ball`, `#sas`, `#inputs` |
+| `navball` | Navball, speed, throttle, SAS switches and mode buttons (the navball's markers as icons), control inputs (bottom centre) | `#navball`, `#throttle`, `#ball`, `#sas`, `#sas_modes`, `#inputs` |
 | `staging` | Sequence stack (bottom of the left dock, F8), with the lit engines under it | `#staging`, `#sequences`, `#armed` |
 | `resources` | Every propellant on board, a row per stage coloured by stage, and the RCS delta-v | `#rcs_supply`, `#list` |
 | `flight_info` | Speeds, Mach, pressures | `#flight` |
