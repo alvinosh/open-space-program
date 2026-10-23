@@ -6,7 +6,10 @@
 //! leave along its gimballed nozzle (see [`crate::plume`]), the light they cast, and puffs
 //! from every RCS nozzle that fires.
 
-use std::f32::consts::{FRAC_PI_2, TAU};
+use std::{
+    collections::{HashMap, HashSet},
+    f32::consts::{FRAC_PI_2, TAU},
+};
 
 use bevy::{light::NotShadowCaster, prelude::*};
 use osp_sim::{
@@ -16,6 +19,7 @@ use osp_sim::{
     propulsion::{Engine, Stage},
     structure::FinSet,
     time::SimTime,
+    vessel::VesselId,
 };
 
 use crate::{
@@ -29,7 +33,7 @@ use crate::{
         plume_axis, plume_lumens,
     },
     settings::GraphicsSettings,
-    sim::{Sim, SimRestarted},
+    sim::Sim,
 };
 
 /// How far below a stage's forward rim its RCS blocks sit, m.
@@ -55,7 +59,7 @@ impl Plugin for VesselRenderPlugin {
         app.add_systems(Startup, spawn_vessel_visuals).add_systems(
             Update,
             (
-                respawn_on_restart,
+                sync_visuals,
                 rebuild_on_change,
                 place_vessels,
                 update_engines,
@@ -71,7 +75,7 @@ impl Plugin for VesselRenderPlugin {
 
 #[derive(Component)]
 struct VesselVisual {
-    index: usize,
+    id: VesselId,
     /// The stages it was built from, bottom first: id, fins, fairing on (`None`: not built
     /// yet). A change (a stage falls away, fins tear off, the fairing goes) rebuilds it.
     built: Option<Vec<(usize, bool, bool)>>,
@@ -80,7 +84,7 @@ struct VesselVisual {
 /// Pivot of an engine of the bottom stage, at its mount on the stage base.
 #[derive(Component)]
 struct EnginePivot {
-    vessel: usize,
+    vessel: VesselId,
     engine: usize,
 }
 
@@ -88,7 +92,7 @@ struct EnginePivot {
 /// axes) by its deflection.
 #[derive(Component)]
 struct ControlSurfaceVisual {
-    vessel: usize,
+    vessel: VesselId,
     stage: usize,
     wing: usize,
     panel: usize,
@@ -98,7 +102,7 @@ struct ControlSurfaceVisual {
 /// A gear leg's strut or wheel, placed each frame where the strut's give puts it.
 #[derive(Component)]
 struct GearVisual {
-    vessel: usize,
+    vessel: VesselId,
     leg: usize,
     wheel: bool,
 }
@@ -109,7 +113,7 @@ struct GearVisual {
 /// start follows the nozzle.
 #[derive(Component)]
 struct Plume {
-    vessel: usize,
+    vessel: VesselId,
     engine: usize,
     mount: Vec3,
     exit: f32,
@@ -125,14 +129,14 @@ struct Plume {
 /// The light a vessel's plumes cast, at their middle.
 #[derive(Component)]
 struct PlumeLight {
-    vessel: usize,
+    vessel: VesselId,
 }
 
 /// The puff from one RCS nozzle. `base` puts the nozzle exit at the origin with the gas
 /// leaving along −Y.
 #[derive(Component)]
 struct RcsPlume {
-    vessel: usize,
+    vessel: VesselId,
     stage: usize,
     block: usize,
     nozzle: usize,
@@ -153,11 +157,7 @@ struct VesselMaterials {
     fins: Handle<StandardMaterial>,
 }
 
-fn spawn_vessel_visuals(
-    mut commands: Commands,
-    sim: Res<Sim>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
+fn spawn_vessel_visuals(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>) {
     commands.insert_resource(VesselMaterials {
         hull: [
             materials.add(StandardMaterial {
@@ -206,13 +206,6 @@ fn spawn_vessel_visuals(
             ..default()
         }),
     });
-    for index in 0..sim.universe.vessels.len() {
-        commands.spawn((
-            VesselVisual { index, built: None },
-            Transform::default(),
-            Visibility::default(),
-        ));
-    }
 }
 
 /// Exit radius and length of an engine's bell. Engines without real dimensions get a bell
@@ -433,7 +426,9 @@ fn rebuild_on_change(
         ))
     };
     for (entity, mut visual) in &mut visuals {
-        let stages = &sim.universe.vessels[visual.index].propulsion.stages;
+        let Some(stages) = sim.universe.vessel(visual.id).map(|v| &v.propulsion.stages) else {
+            continue;
+        };
         let shape: Vec<_> = stages
             .iter()
             .map(|s| (s.id, s.fins.is_some(), s.fairing_mass() > 0.0))
@@ -442,7 +437,7 @@ fn rebuild_on_change(
             continue;
         }
         visual.built = Some(shape);
-        let vessel = visual.index;
+        let vessel = visual.id;
 
         let puff = meshes.add(Cone::new(1.0, 1.0));
         // From the nozzle exit (y = 0) down to y = −1, scaled to each plume's bounds.
@@ -670,7 +665,9 @@ fn place_vessels(
     }
     let system = &sim.universe.system;
     for (visual, mut transform) in &mut visuals {
-        let vessel = &sim.universe.vessels[visual.index];
+        let Some(vessel) = sim.universe.vessel(visual.id) else {
+            continue;
+        };
         let base = vessel.base_at(system, frame.time);
         transform.translation = frame.to_render(vessel.parent(), base);
         transform.rotation = rotation_to_render(vessel.attitude_at(system, frame.time));
@@ -699,8 +696,9 @@ fn update_engines(
 ) {
     let system = &sim.universe.system;
     let steps = march_steps(settings.effects);
-    let engine = |vessel: usize, engine: usize| {
-        sim.universe.vessels[vessel]
+    let engine = |vessel: VesselId, engine: usize| {
+        sim.universe
+            .vessel(vessel)?
             .propulsion
             .stages
             .first()
@@ -713,7 +711,7 @@ fn update_engines(
     }
     // Per vessel, in vessel render axes: height of the base above the ground, m, the local
     // vertical, and the air's velocity past the vessel, m/s.
-    let around: Vec<(f64, Vec3, Vec3)> = sim
+    let around: HashMap<VesselId, (f64, Vec3, Vec3)> = sim
         .universe
         .vessels
         .iter()
@@ -725,16 +723,16 @@ fn update_engines(
             let into = v.attitude_at(system, frame.time).inverse();
             let state = v.state_at(system, frame.time);
             let airflow = body.surface_velocity(state.position) - state.velocity;
-            (
+            let around = (
                 height,
                 to_render(into * base.normalize()).normalize(),
                 to_render(into * airflow),
-            )
+            );
+            (v.id(), around)
         })
         .collect();
     // Per vessel: lumens, and lumen-weighted colour and position.
-    let mut glow: Vec<(f32, Vec3, Vec3)> =
-        vec![(0.0, Vec3::ZERO, Vec3::ZERO); sim.universe.vessels.len()];
+    let mut glow: HashMap<VesselId, (f32, Vec3, Vec3)> = HashMap::new();
     for (mut plume, material, mut transform, mut visibility) in &mut plumes {
         let Some(engine) = engine(plume.vessel, plume.engine) else {
             continue;
@@ -746,7 +744,11 @@ fn update_engines(
             continue;
         }
         *visibility = Visibility::Inherited;
-        let vessel = &sim.universe.vessels[plume.vessel];
+        let (Some(vessel), Some(&(height, up, airflow))) =
+            (sim.universe.vessel(plume.vessel), around.get(&plume.vessel))
+        else {
+            continue;
+        };
         let nozzle = nozzle_axis(engine);
         let exhaust = match plume.exhaust {
             Some((last, at)) => {
@@ -757,7 +759,6 @@ fn update_engines(
             None => nozzle,
         };
         plume.exhaust = Some((exhaust, frame.time));
-        let (height, up, airflow) = around[plume.vessel];
         let jet = engine.thrust as f32 / (std::f32::consts::PI * plume.radius * plume.radius);
         let axis = plume_axis(exhaust, airflow, vessel.flight.dynamic_pressure as f32, jet);
         let (rotation, bend) = plume_axes(axis, nozzle);
@@ -786,13 +787,13 @@ fn update_engines(
         }
         let lumens = plume_lumens(&shape, &plume.look, level);
         let middle = exit + axis * (0.5 * shape.fade).min(shape.ground - 1.0).max(0.0);
-        let (sum, color, at) = &mut glow[plume.vessel];
+        let (sum, color, at) = glow.entry(plume.vessel).or_default();
         *sum += lumens;
         *color += lumens * Vec3::from(plume.look.flame);
         *at += lumens * middle;
     }
     for (light, mut point, mut transform) in &mut lights {
-        let (lumens, color, at) = glow[light.vessel];
+        let (lumens, color, at) = glow.get(&light.vessel).copied().unwrap_or_default();
         point.intensity = lumens;
         if lumens > 0.0 {
             let c = color / lumens;
@@ -802,25 +803,28 @@ fn update_engines(
     }
 }
 
-/// A scenario started afresh: every vessel is new, so are their visuals.
-fn respawn_on_restart(
-    mut commands: Commands,
-    mut restarted: MessageReader<SimRestarted>,
-    sim: Res<Sim>,
-    visuals: Query<Entity, With<VesselVisual>>,
-) {
-    if restarted.read().count() == 0 {
-        return;
+/// One visual per vessel: vessels that are new (debris, a scenario started afresh) get
+/// theirs, and the visuals of vessels that are gone go with them.
+fn sync_visuals(mut commands: Commands, sim: Res<Sim>, visuals: Query<(Entity, &VesselVisual)>) {
+    let mut shown = HashSet::new();
+    for (entity, visual) in &visuals {
+        if sim.universe.vessel(visual.id).is_some() {
+            shown.insert(visual.id);
+        } else {
+            commands.entity(entity).despawn();
+        }
     }
-    for entity in &visuals {
-        commands.entity(entity).despawn();
-    }
-    for index in 0..sim.universe.vessels.len() {
-        commands.spawn((
-            VesselVisual { index, built: None },
-            Transform::default(),
-            Visibility::default(),
-        ));
+    for vessel in &sim.universe.vessels {
+        if !shown.contains(&vessel.id()) {
+            commands.spawn((
+                VesselVisual {
+                    id: vessel.id(),
+                    built: None,
+                },
+                Transform::default(),
+                Visibility::default(),
+            ));
+        }
     }
 }
 
@@ -828,7 +832,9 @@ fn respawn_on_restart(
 /// and its wheel on the axle, turned by the steering.
 fn update_gear(sim: Res<Sim>, mut parts: Query<(&GearVisual, &mut Transform)>) {
     for (visual, mut transform) in &mut parts {
-        let vessel = &sim.universe.vessels[visual.vessel];
+        let Some(vessel) = sim.universe.vessel(visual.vessel) else {
+            continue;
+        };
         let legs = osp_sim::gear::legs(&vessel.propulsion.stages);
         let Some(leg) = legs.get(visual.leg) else {
             continue;
@@ -861,7 +867,9 @@ fn update_control_surfaces(
     mut surfaces: Query<(&ControlSurfaceVisual, &mut Transform)>,
 ) {
     for (visual, mut transform) in &mut surfaces {
-        let vessel = &sim.universe.vessels[visual.vessel];
+        let Some(vessel) = sim.universe.vessel(visual.vessel) else {
+            continue;
+        };
         let stages = &vessel.propulsion.stages;
         let Some(stage) = stages.get(visual.stage) else {
             continue;
@@ -899,10 +907,10 @@ fn update_rcs_plumes(
     mut plumes: Query<(&RcsPlume, &mut Transform, &mut Visibility)>,
 ) {
     for (plume, mut transform, mut visibility) in &mut plumes {
-        let firing = sim.universe.vessels[plume.vessel]
-            .propulsion
-            .stages
-            .get(plume.stage)
+        let firing = sim
+            .universe
+            .vessel(plume.vessel)
+            .and_then(|v| v.propulsion.stages.get(plume.stage))
             .and_then(|s| s.rcs.get(plume.block))
             .map_or(0.0, |b| b.firing[plume.nozzle]) as f32;
         if firing <= 0.0 {

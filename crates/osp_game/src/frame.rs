@@ -1,11 +1,12 @@
 //! Floating origin and the mapping from simulation space to render space.
 //!
 //! The simulation works in f64, Z-up, body-relative frames. Bevy renders in f32, Y-up.
-//! Each frame we choose an origin: the active vessel, expressed as (body, offset) rather
-//! than in heliocentric coordinates. Every body's centre is then computed relative to that
-//! origin through the frame tree, in f64, and only the final small differences are
-//! converted to f32. Precision near the camera is therefore the same at Earth, Neptune or
-//! anywhere in between.
+//! Each frame we choose an origin: the vessel the camera looks at (the active one unless
+//! another is followed), expressed as (body, offset) rather than in heliocentric
+//! coordinates. Every body's centre is then computed relative to that origin through the
+//! frame tree, in f64, and only the final small differences are converted to f32.
+//! Precision near the camera is therefore the same at Earth, Neptune or anywhere in
+//! between.
 //!
 //! The sky itself is drawn by `atmosphere`; the clear colour is black space.
 
@@ -23,6 +24,7 @@ use osp_sim::{body::BodyId, time::SimTime};
 
 use crate::{
     FrameSet,
+    camera::CameraRig,
     settings::{GraphicsSettings, Quality},
     sim::Sim,
 };
@@ -89,10 +91,10 @@ pub fn rotation_to_render(q: DQuat) -> Quat {
     (basis * q * basis.inverse()).as_quat()
 }
 
-fn update_frame(sim: Res<Sim>, mut frame: ResMut<RenderFrame>) {
+fn update_frame(sim: Res<Sim>, rig: Res<CameraRig>, mut frame: ResMut<RenderFrame>) {
     let time = sim.render_time;
     let system = &sim.universe.system;
-    let vessel = sim.active_vessel();
+    let vessel = rig.viewed_vessel(&sim);
     let origin_body = vessel.parent();
     let origin_offset = vessel.state_at(system, time).position;
 

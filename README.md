@@ -286,7 +286,6 @@ Problems are reported in game (F2) instead of crashing. See [docs/modding.md](do
 ## Roadmap
 
 - Scripting layer for mods (actions, part modules, autopilots) on top of the record and action system
-- Debris vessels from jettisoned stages; vessel switching
 - Aerodynamic normal force and moments (angle of attack, centre of pressure)
 - Maneuver nodes on the patched-conic predictor
 - Terrain data for the Moon and planets; more high-resolution regions on Earth

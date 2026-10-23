@@ -13,7 +13,6 @@ RCS stageable, reorder and regroup, decoupling apart from ignition) landed 2026-
 - No right-click "add a sequence above / below"; + adds one at the end and numbers are
   dragged to reorder.
 - One fuel bar per engine group, not per engine.
-- Stages and fairings that are released just vanish (no debris yet).
 - Drag and drop in the panel is covered by tests of each piece and the scripted capture
   (`OSP_SCENARIO=leo OSP_CAPTURE_STAGING=1`), but not tried by hand yet.
 

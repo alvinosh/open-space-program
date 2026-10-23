@@ -18,8 +18,8 @@ use crate::{
     format::Template,
     layout::NodeDef,
     runtime::{
-        ActionSource, ActiveText, BoundActive, BoundBar, BoundText, Dock, UiImage, WindowDrag,
-        click_action, drag_window, insert_state_colors, spawn_box,
+        ActionSource, ActiveText, ActiveTint, BoundActive, BoundBar, BoundText, Dock, UiImage,
+        WindowDrag, click_action, drag_window, insert_state_colors, spawn_box,
     },
     style::{StyleDef, ThemeDef},
 };
@@ -107,12 +107,19 @@ fn container(ctx: &mut WidgetContext) -> Entity {
     ctx.entity
 }
 
+/// The picture is tinted with the style's `color`, and `active_color` while the node's
+/// `active` condition holds.
 fn image(ctx: &mut WidgetContext) -> Entity {
     if let Some(path) = ctx.def.extra.get("image").and_then(|v| v.as_str()) {
-        ctx.commands.entity(ctx.entity).insert(UiImage {
+        let tint = ctx.style.text_color();
+        let mut e = ctx.commands.entity(ctx.entity);
+        e.insert(UiImage {
             path: path.to_owned(),
-            tint: ctx.style.text_color(),
+            tint,
         });
+        if let (Some(_), Some(active)) = (&ctx.def.active, &ctx.style.active_color) {
+            e.insert(ActiveTint([tint, active.to_color()]));
+        }
     }
     ctx.entity
 }

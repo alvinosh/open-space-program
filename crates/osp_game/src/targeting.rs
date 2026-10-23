@@ -4,8 +4,8 @@
 //!
 //! | Action | Effect |
 //! | --- | --- |
-//! | `target.body:<id>`, `target.vessel:<index>`, `target.clear` | Choose or drop the target |
-//! | `vessel.fly:<index>` | Fly another vessel |
+//! | `target.body:<id>`, `target.vessel:<key>`, `target.clear` | Choose or drop the target |
+//! | `vessel.fly:<key>` | Fly another vessel (`key` as in `manifest.items`) |
 //! | `plan.match_plane` | Plan a burn at the next node that matches the target's plane |
 //! | `warp.to:approach` | Warp to the first closest approach |
 
@@ -20,7 +20,7 @@ use osp_sim::{
     time::SimTime,
     vessel::VesselId,
 };
-use osp_ui::{UiAction, UiData, record};
+use osp_ui::{UiAction, UiData};
 
 use crate::{
     FrameSet,
@@ -107,19 +107,17 @@ fn target_actions(
             }
             "target.vessel" => {
                 let id = arg
-                    .parse::<usize>()
+                    .parse()
                     .ok()
-                    .filter(|&i| i != sim.active_index())
-                    .and_then(|i| sim.universe.vessels.get(i))
-                    .map(|v| v.id());
+                    .map(VesselId)
+                    .filter(|&id| id != sim.active_id() && sim.universe.vessel(id).is_some());
                 if let Some(id) = id {
                     sim.active_vessel_mut().target = Some(Target::Vessel(id));
                 }
             }
             "vessel.fly" => {
-                if let Ok(index) = arg.parse::<usize>() {
-                    let step = index as isize - sim.active_index() as isize;
-                    sim.switch_vessel(step);
+                if let Ok(id) = arg.parse() {
+                    sim.fly(VesselId(id));
                     plan_ui.selected = None;
                 }
             }
@@ -434,77 +432,4 @@ fn publish_target(sim: Res<Sim>, info: Res<TargetInfo>, mut data: ResMut<UiData>
             .and_then(|n| n.descending)
             .map(|t| t.seconds_since(now)),
     );
-
-    // The Universe Manifest: every body and vessel.
-    let origin = own.position;
-    let parent = vessel.parent();
-    let distance_to = |body: BodyId, at: DVec3| {
-        (system
-            .transform(
-                osp_sim::orbit::StateVector::new(at, DVec3::ZERO),
-                body,
-                parent,
-                now,
-            )
-            .position
-            - origin)
-            .length()
-    };
-    let mut rows = Vec::new();
-    for body in system.bodies() {
-        let apsides = body.orbit.map(|o| (o.apoapsis(), o.periapsis()));
-        rows.push(record([
-            ("name", body.name.as_str().into()),
-            ("kind", "body".into()),
-            ("key", body.name.as_str().into()),
-            (
-                "parent",
-                body.parent
-                    .map_or("-".to_owned(), |p| system.body(p).name.clone())
-                    .into(),
-            ),
-            ("apoapsis", apsides.and_then(|a| a.0).into()),
-            ("periapsis", apsides.map(|a| a.1).into()),
-            ("distance", distance_to(body.id, DVec3::ZERO).into()),
-            ("is_target", (target == Some(Target::Body(body.id))).into()),
-            ("is_active", false.into()),
-            ("target_body", (body.id != parent).into()),
-            ("target_vessel", false.into()),
-            ("can_fly", false.into()),
-        ]));
-    }
-    for (i, other) in sim.universe.vessels.iter().enumerate() {
-        let body = system.body(other.parent());
-        let orbit = (!other.is_landed()).then(|| other.orbit(system, now));
-        rows.push(record([
-            ("name", other.name.as_str().into()),
-            ("kind", "vessel".into()),
-            ("key", i.into()),
-            ("parent", body.name.as_str().into()),
-            (
-                "apoapsis",
-                orbit
-                    .and_then(|o| o.apoapsis())
-                    .map(|a| a - body.radius)
-                    .into(),
-            ),
-            (
-                "periapsis",
-                orbit.map(|o| o.periapsis() - body.radius).into(),
-            ),
-            (
-                "distance",
-                distance_to(other.parent(), other.state_at(system, now).position).into(),
-            ),
-            (
-                "is_target",
-                (target == Some(Target::Vessel(other.id()))).into(),
-            ),
-            ("is_active", (i == active).into()),
-            ("target_body", false.into()),
-            ("target_vessel", (i != active).into()),
-            ("can_fly", (i != active).into()),
-        ]));
-    }
-    data.set("manifest.items", rows);
 }

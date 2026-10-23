@@ -98,11 +98,14 @@ fn apply_actions(
                 sim.switch_vessel(-1);
                 continue;
             }
+            "vessel.stage" => {
+                sim.stage_active();
+                continue;
+            }
             _ => {}
         }
         let (vessel, system) = sim.active_vessel_in_system();
         match action.name() {
-            "vessel.stage" => vessel.activate_next_stage(system, ut),
             "vessel.throttle_full" => {
                 vessel.disengage_burn(ut);
                 vessel.set_throttle(1.0);
@@ -118,6 +121,13 @@ fn apply_actions(
             }
             "vessel.sas_mode" => match action.arg().and_then(SasMode::from_id) {
                 Some(mode) => {
+                    // Selecting the current mode again goes back to holding attitude.
+                    let sas = vessel.sas();
+                    let mode = if sas.enabled() && sas.mode() == mode {
+                        SasMode::Stability
+                    } else {
+                        mode
+                    };
                     if mode != SasMode::Burn {
                         vessel.disengage_burn(ut);
                     }

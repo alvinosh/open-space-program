@@ -1,4 +1,7 @@
-//! Orbit camera around the active vessel (flight view) or its parent body (map view).
+//! Orbit camera around the active vessel (flight view) or its parent body (map view), or
+//! around what the player follows instead (from the Universe Manifest): another vessel, or
+//! in map view a body. Following ends when the player flies another vessel, the followed
+//! vessel is gone, or (for a body) the map closes.
 //!
 //! The view goes to the window, or to an image for scripted captures ([`ViewOutput`]).
 //! Below 100% render scale (see `settings`) it renders into an image that much smaller,
@@ -19,6 +22,7 @@ use bevy::{
     window::PrimaryWindow,
 };
 
+use osp_sim::{body::BodyId, vessel::Vessel, vessel::VesselId};
 use osp_ui::PointerOverUi;
 
 use crate::{
@@ -58,9 +62,21 @@ pub struct ViewOutput(pub Option<Handle<Image>>);
 #[derive(Component)]
 pub struct MainCamera;
 
+/// What the camera looks at instead of the active vessel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Follow {
+    Vessel(VesselId),
+    /// In map view only.
+    Body(BodyId),
+}
+
 #[derive(Resource)]
 pub struct CameraRig {
     pub map_view: bool,
+    /// Looking at something other than the active vessel.
+    pub follow: Option<Follow>,
+    /// The active vessel when following started.
+    flown: Option<VesselId>,
     /// Radians around the local vertical.
     yaw: f64,
     /// Elevation above the local horizon, radians.
@@ -80,6 +96,8 @@ impl Default for CameraRig {
     fn default() -> Self {
         let mut rig = Self {
             map_view: false,
+            follow: None,
+            flown: None,
             // South of the vessel: the sun is behind the camera for northern launch sites.
             yaw: std::f64::consts::PI,
             pitch: 0.15,
@@ -103,6 +121,26 @@ impl Default for CameraRig {
             }
         }
         rig
+    }
+}
+
+impl CameraRig {
+    /// The vessel the view is centred on: the one followed, or else the active one.
+    pub fn viewed_vessel<'a>(&self, sim: &'a Sim) -> &'a Vessel {
+        match self.follow {
+            Some(Follow::Vessel(id)) => sim.universe.vessel(id),
+            _ => None,
+        }
+        .unwrap_or_else(|| sim.active_vessel())
+    }
+
+    /// Follow `what` (`None`: the active vessel again); following a body opens the map.
+    pub fn set_follow(&mut self, what: Option<Follow>, sim: &Sim) {
+        self.follow = what.filter(|&f| f != Follow::Vessel(sim.active_id()));
+        self.flown = Some(sim.active_id());
+        if matches!(what, Some(Follow::Body(_))) {
+            self.map_view = true;
+        }
     }
 }
 
@@ -302,18 +340,31 @@ fn update_camera(
         0.88f64.powf(scroll_lines)
     };
 
+    let follow_ends = match rig.follow {
+        Some(Follow::Vessel(id)) => sim.universe.vessel(id).is_none(),
+        Some(Follow::Body(_)) => !rig.map_view,
+        None => false,
+    };
+    if follow_ends || rig.flown != Some(sim.active_id()) {
+        rig.follow = None;
+        rig.flown = Some(sim.active_id());
+    }
     let Some(origin_body) = frame.origin_body else {
         return;
     };
     let system = &sim.universe.system;
-    let vessel = sim.active_vessel();
-    let body = system.body(origin_body);
+    let vessel = rig.viewed_vessel(&sim);
+    let centre = match rig.follow {
+        Some(Follow::Body(body)) if rig.map_view => body,
+        _ => origin_body,
+    };
+    let body = system.body(centre);
 
     // Positions here are relative to the render origin (the vessel), in f64.
     let (focus, up, distance) = if rig.map_view {
         rig.map_distance = (rig.map_distance * zoom).clamp(1.2, 5_000.0);
         (
-            frame.body_offset(origin_body),
+            frame.body_offset(centre),
             DVec3::Z,
             rig.map_distance * body.radius,
         )

@@ -82,10 +82,13 @@ radial boosters and part damage all need a tree of parts.
       radial decouplers and size adapters wait for the part tree.)
 - [x] Activation sequences separate from resource groups; drag and drop in flight
       (activations per stage, not per part, until the part tree).
-- [ ] Debris vessels from jettisoned parts.
+- [x] Debris vessels from jettisoned parts (stages and fairing halves; crashed debris is
+      removed, and rails warp leaves behind debris that needs physics).
 - [x] Vessel switching (`]`/`[`), several vessels per scenario, Universe Manifest window
       (all objects, target, fly).
-- [ ] Manifest filters, follow, recover, destroy, clear debris.
+- [x] Manifest filters, follow, recover, destroy, clear debris (follow: the camera looks at
+      a vessel, or a body in map view, and distances are from it; no hierarchy dropdowns
+      or column choice yet).
 - [ ] Control-module requirement and "control from here".
 - [ ] Part highlighting and part action windows in flight (pinnable).
 - [ ] Multi-vessel physics: nearby vessels share a solver; separate islands in parallel.

@@ -177,12 +177,39 @@
       font_size: 13,
       radius: 3,
     },
-    // SAS and RCS switches, and the SAS mode buttons with the navball's markers on them.
-    sas_toggle: { min_width: 42, padding: [2, 4], font_size: 11 },
+    // SAS and RCS switches: triangles in the navball's top corners, green while on. The
+    // button is a transparent box; the triangle is an image tinted by its `active` state.
+    nav_corner: {
+      position: "absolute",
+      top: 0,
+      width: 42,
+      height: 42,
+      padding: 0,
+      radius: 0,
+      background: [0, 0, 0, 0],
+      hover_background: [0, 0, 0, 0],
+      active_background: [0, 0, 0, 0],
+    },
+    nav_corner_shape: {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: "100%",
+      height: "100%",
+      color: "#2a3846",
+      active_color: "#2a7350",
+    },
+    nav_corner_text: { position: "absolute", top: 4, font_size: 10, color: [1, 1, 1, 0.55], active_color: "#ffffff" },
+    // The SAS mode buttons, with the navball's markers on them.
     sas_button: { width: 26, height: 26, padding: 0 },
     sas_icon: { width: 20, height: 20, color: "#ffffff" },
     // Small +/- and step buttons (flight plan).
     step_button: { min_width: 26, padding: [1, 5], font_size: 12 },
+    // Buttons that take something out of the game, and recovery (Universe Manifest).
+    danger_button: { color: "#ff9a9a", hover_background: "#5a2a2e" },
+    recover_button: { color: "#7dff9a", hover_background: "#24503a" },
+    // A manifest row's name; debris is dimmer.
+    manifest_name: { min_width: 180, active_color: [1, 1, 1, 0.55] },
     value: { min_width: 86, font_size: 13 },
     vbar: { width: 8, min_width: 8, height: 170, grow: 0 },
     thin: { width: 3, min_width: 3 },

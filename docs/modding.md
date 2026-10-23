@@ -318,6 +318,15 @@ stage above and switch on its RCS together (so an engine that needs ullage light
 the propellant is still settled); jettison a fairing right after the stage below it is lit;
 release a stage without engines (a payload) on its own.
 
+What falls away flies on as **debris**, a vessel of its own named after the stage and the
+vessel, e.g. `Booster (Pathfinder)`: a decoupler pushes the two sides apart at 1 m/s (on
+the ground the spent stage stays standing), and a fairing comes off in two halves that
+swing open about their base. Debris falls through the air, coasts on rails and shows in the
+Universe Manifest (which can clear it all) and the map, and it can be targeted and flown.
+Unless it is being flown, debris that crashes is removed, and it never holds up time warp:
+whatever of it needs physics when rails warp starts (in the air, low over the ground) is
+left behind, as in KSP.
+
 ### Stage appearance
 
 Hulls are drawn from the stage itself: its tanks are painted barrels with weld seams; the
@@ -465,7 +474,7 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 | Field | Meaning |
 | --- | --- |
 | `widget` | `column` (default), `row`, `panel`, `spacer`, `label`, `button`, `bar`, `window`, `dock`, `image`, `navball`. Unknown names act as containers. |
-| `image` | `image` only: a picture relative to the mod root (`"icons/engine.png"`), from the highest-priority mod that has it, tinted with the style's `color`; size it with `width` and `height`. |
+| `image` | `image` only: a picture relative to the mod root (`"icons/engine.png"`), from the highest-priority mod that has it, tinted with the style's `color` (`active_color` while its `active` condition holds); size it with `width` and `height`. |
 | `drag`, `drop` | Drag and drop: a node with `drag` can be picked up and carries that text (a template); dropping it on a node with `drop` fires the `drop` action with `$drag` replaced by what it carried, e.g. `drop: "staging.drop:$drag:{item.index}"`. |
 | `tooltip` | Text (a template) shown beside the node while the pointer is over it, styled by the `tooltip` class; icon buttons use it for their name. |
 | `id` | Optional; lets patches address the node with `#id`. |
@@ -567,14 +576,14 @@ The flight UI is a set of modules, each its own layout in the `flight` group:
 | `time` | Warp buttons, UT and mission time (top of the left dock) | `#time` |
 | `altimeter` | Altitude, vessel and situation (top centre) | `#altimeter` |
 | `messages` | Latest event, warp notices and lag warning | `#messages` |
-| `navball` | Navball, speed, throttle, SAS switches and mode buttons (the navball's markers as icons), control inputs (bottom centre) | `#navball`, `#throttle`, `#ball`, `#sas`, `#sas_modes`, `#inputs` |
+| `navball` | Navball, speed, throttle, SAS and RCS switches (triangles in the navball's top corners), SAS mode buttons (the navball's markers as icons), control inputs (bottom centre) | `#navball`, `#throttle`, `#ball`, `#bezel`, `#sas`, `#sas_modes`, `#inputs` |
 | `staging` | Sequence stack (bottom of the left dock, F8), with the lit engines under it | `#staging`, `#sequences`, `#armed` |
 | `resources` | Every propellant on board, a row per stage coloured by stage, and the RCS delta-v | `#rcs_supply`, `#list` |
 | `flight_info` | Speeds, Mach, pressures | `#flight` |
 | `orbit_info` | Apsides, inclination, period, warp-to buttons, predicted events | `#orbit`, `#warp_to`, `#events` |
 | `flight_plan` | Planned burns, the selected burn's editor, the burn executor | `#burns`, `#editor`, `#executor` |
 | `target_info` | Target distance, relative speed, closest approaches, plane crossings | `#target` |
-| `manifest` | Universe Manifest (F11): every body and vessel, with Target and Fly | `#items` |
+| `manifest` | Universe Manifest (F11): every body and vessel, filtered by kind, with Follow, Target, Fly, Recover or Destroy, and Clear debris | `#items` |
 | `transfer_planner` | Transfer planner (F4): porkchop plot (`widget: "porkchop"`) and the picked transfer | `#plot` |
 | `vessel_info` | Thrust, TWR, mass, delta-v | `#propulsion` |
 | `attitude_info` | Centre of mass, inertia, control authority, rates | `#attitude` |
@@ -660,7 +669,9 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `transfer.window_from`, `transfer.window_to`, `transfer.tof_min`, `transfer.tof_max`, `transfer.best_total` | The plot's departure window (s from now), flight times (s), cheapest total (m/s) |
 | `transfer.picked`, `transfer.departure_in`, `transfer.tof`, `transfer.depart_dv`, `transfer.arrive_dv`, `transfer.total` | The picked transfer |
 | `burn.arrival_periapsis`, `burn.targets_body` | Periapsis altitude at the targeted body after the selected burn (m) |
-| `manifest.items[]` | `name`, `kind` (`body`, `vessel`), `key` (action argument), `parent`, `apoapsis`, `periapsis`, `distance` (from the active vessel), `is_target`, `is_active`, `target_body`, `target_vessel`, `can_fly` |
+| `manifest.items[]` | The rows the filters let through: `name`, `kind` (`body`, `vessel`, `debris`), `is_body`, `is_debris`, `key` (action argument), `parent`, `apoapsis`, `periapsis`, `distance` and `speed` (from what the camera follows), `is_target`, `is_active`, `is_followed`, `target_body`, `target_vessel`, `can_fly`, `can_recover` (landed on a world with a launch site), `can_destroy`, `confirming` (asking whether to remove it), `confirm_text` |
+| `manifest.show_bodies`, `manifest.show_vessels`, `manifest.show_debris` | The manifest's filters |
+| `manifest.debris_count`, `manifest.confirm_clear`, `manifest.following` | Debris that Clear debris would remove; it is asking whether to; the name of what the camera follows instead of the active vessel (empty if nothing) |
 | `mods.count`, `mods.errors`, `mods.warnings` | |
 | `mods.list[]` | `id`, `name`, `version`, `authors`, `description` |
 | `mods.problems[]` | `error` (bool), `text` |
@@ -683,12 +694,16 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `staging.drop_new:<dragged>`, `staging.add`, `staging.remove:<sequence>` | Give an activation a new last sequence (or move a sequence to the end); add an empty sequence at the end; remove an empty one |
 | `vessel.throttle_up`, `vessel.throttle_down` | hold |
 | `vessel.pitch_up`, `vessel.pitch_down`, `vessel.yaw_left`, `vessel.yaw_right`, `vessel.roll_left`, `vessel.roll_right` | hold |
-| `vessel.sas_toggle`, `vessel.sas_mode:<mode>` | SAS on/off; select a mode (switches SAS on) |
+| `vessel.sas_toggle`, `vessel.sas_mode:<mode>` | SAS on/off; select a mode (switches SAS on; the selected mode again goes back to `stability`) |
 | `vessel.rcs_toggle` | RCS on/off |
 | `vessel.translate_forward`, `vessel.translate_back`, `vessel.translate_left`, `vessel.translate_right`, `vessel.translate_up`, `vessel.translate_down` | hold; RCS translation |
 | `nav.toggle_frame` | Cycle prograde and speed through surface, orbit and (with a target) target |
-| `vessel.next`, `vessel.previous`, `vessel.fly:<index>` | Fly another vessel |
-| `target.body:<id>`, `target.vessel:<index>`, `target.clear` | Choose or drop the target (also Shift+click in map view) |
+| `vessel.next`, `vessel.previous`, `vessel.fly:<key>` | Fly another vessel (`key` from `manifest.items`) |
+| `manifest.filter:<bodies\|vessels\|debris>` | Show or hide that kind of row in the Universe Manifest |
+| `manifest.follow:<key>`, `manifest.follow_body:<name>` | Point the camera at a vessel (the active one: back to it) or, in map view, a body; flying another vessel, the map closing or the vessel going ends it |
+| `manifest.remove:<key>`, `manifest.clear_debris` | Ask to recover (landed on a world with a launch site) or destroy a vessel other than the active one, or to remove all debris |
+| `manifest.confirm`, `manifest.cancel` | Answer that question |
+| `target.body:<id>`, `target.vessel:<key>`, `target.clear` | Choose or drop the target (also Shift+click in map view) |
 | `plan.match_plane` | Plan a burn at the next plane crossing that matches the target's plane |
 | `warp.increase`, `warp.decrease`, `warp.stop` | |
 | `warp.to:<ap|pe|soi|burn|approach>` | Warp to the next apoapsis, periapsis, SOI change, burn start or closest approach, slowing on the way in |

@@ -5,10 +5,11 @@
 //! interstage (dark composite around the next stage's engines, tapering if the next stage
 //! is narrower) or more hull. A stage with a fairing is the fairing until it is jettisoned,
 //! then the payload inside shows; a top stage without tanks, engines, pod or fairing looks
-//! like one too. The top of the stack gets a tangent-ogive nose. Engine stages get a dark base
-//! ring and heat shield. Optional extras: folded landing legs, stowed grid fins and a cable
-//! raceway. Parts come out as three vertex-coloured meshes, one per material: glossy paint,
-//! matte composite and bare metal.
+//! like one too; a jettisoned fairing half on its own is half the shell, open inside. The
+//! top of the stack gets a tangent-ogive nose. Engine stages get a dark base ring and heat
+//! shield. Optional extras: folded landing legs, stowed grid fins and a cable raceway. Parts
+//! come out as three vertex-coloured meshes, one per material: glossy paint, matte composite
+//! and bare metal.
 //!
 //! Coordinates are the stage's: `y` up from its base; vessel X/Y map to render X/−Z like
 //! the engine and RCS layouts, so angle `a` points along `(cos a, 0, −sin a)`.
@@ -31,6 +32,8 @@ const SOLAR_CELLS: [f32; 3] = [0.03, 0.05, 0.14];
 const BARREL_SECTION: f32 = 6.0;
 /// Nose length as a multiple of the diameter (the air sees the same nose).
 const NOSE_FINENESS: f32 = osp_sim::aero::NOSE_FINENESS as f32;
+/// How thick a fairing's composite shell looks, m.
+const FAIRING_WALL: f32 = 0.05;
 
 /// A stage's hull, by material.
 #[derive(Default)]
@@ -56,27 +59,49 @@ fn out(a: f32) -> Vec3 {
 /// A surface of revolution through `profile` points `(radius, y)` from bottom to top,
 /// smooth-shaded, open at both ends.
 fn revolve(mesh: &mut MeshBuilder, profile: &[(f32, f32)], color: LinearRgba) {
+    revolve_span(mesh, profile, color, 0.0, TAU, false);
+}
+
+/// Like [`revolve`], over angles `from..to` only, and facing inwards if `inward`.
+fn revolve_span(
+    mesh: &mut MeshBuilder,
+    profile: &[(f32, f32)],
+    color: LinearRgba,
+    from: f32,
+    to: f32,
+    inward: bool,
+) {
+    let segments = ((SEGMENTS as f32 * (to - from) / TAU).ceil() as usize).max(1);
+    let side = if inward { -1.0 } else { 1.0 };
     for w in profile.windows(2) {
         let [(r0, y0), (r1, y1)] = [w[0], w[1]];
         if (y1 - y0).abs() < 1e-5 && (r1 - r0).abs() < 1e-5 {
             continue;
         }
-        // Normal of the profile segment, pointing outwards.
+        // Normal of the profile segment, pointing outwards (or in).
         let (dr, dy) = (r1 - r0, y1 - y0);
         let len = (dr * dr + dy * dy).sqrt();
-        let (nr, ny) = (dy / len, -dr / len);
-        for k in 0..SEGMENTS {
+        let (nr, ny) = (side * dy / len, -side * dr / len);
+        for k in 0..segments {
             let (a0, a1) = (
-                TAU * k as f32 / SEGMENTS as f32,
-                TAU * (k + 1) as f32 / SEGMENTS as f32,
+                from + (to - from) * k as f32 / segments as f32,
+                from + (to - from) * (k + 1) as f32 / segments as f32,
             );
             let p = |r: f32, y: f32, a: f32| out(a) * r + Vec3::Y * y;
             let n = |a: f32| (out(a) * nr + Vec3::Y * ny).normalize();
-            let (a, b) = (p(r0, y0, a0), p(r0, y0, a1));
-            let (c, d) = (p(r1, y1, a1), p(r1, y1, a0));
-            mesh.triangle_smooth([(a, n(a0)), (b, n(a1)), (c, n(a1))], color);
+            let (a, b) = ((p(r0, y0, a0), n(a0)), (p(r0, y0, a1), n(a1)));
+            let (c, d) = ((p(r1, y1, a1), n(a1)), (p(r1, y1, a0), n(a0)));
+            if inward {
+                mesh.triangle_smooth([a, c, b], color);
+            } else {
+                mesh.triangle_smooth([a, b, c], color);
+            }
             if r1 > 1e-4 {
-                mesh.triangle_smooth([(a, n(a0)), (c, n(a1)), (d, n(a0))], color);
+                if inward {
+                    mesh.triangle_smooth([a, d, c], color);
+                } else {
+                    mesh.triangle_smooth([a, c, d], color);
+                }
             }
         }
     }
@@ -288,6 +313,46 @@ fn grid_fin(hull: &mut Hull, radius: f32, y: f32, a: f32) {
     );
 }
 
+/// A jettisoned fairing half facing `a`, from its base up to `height` and its share of the
+/// nose: painted outside, bare composite inside and along the cut.
+fn fairing_half(hull: &mut Hull, radius: f32, height: f32, a: f32, paint: LinearRgba) {
+    let mut outside = vec![(radius, 0.0), (radius, height)];
+    let nose = nose_profile(radius, NOSE_FINENESS * 2.0 * radius, height);
+    outside.extend(nose.into_iter().skip(1));
+    let inside: Vec<_> = outside
+        .iter()
+        .map(|&(r, y)| ((r - FAIRING_WALL).max(0.0), y))
+        .collect();
+    let (from, to) = (a - FRAC_PI_2, a + FRAC_PI_2);
+    let composite = rgb(COMPOSITE);
+    revolve_span(&mut hull.paint, &outside, paint, from, to, false);
+    revolve_span(
+        &mut hull.matte,
+        &inside,
+        shade(composite, 2.0),
+        from,
+        to,
+        true,
+    );
+    revolve_span(
+        &mut hull.matte,
+        &[(radius - FAIRING_WALL, 0.0), (radius, 0.0)],
+        composite,
+        from,
+        to,
+        false,
+    );
+    // The cut faces, seen from either side.
+    for edge in [from, to] {
+        let at = |(r, y): (f32, f32)| out(edge) * r + Vec3::Y * y;
+        for (o, i) in outside.windows(2).zip(inside.windows(2)) {
+            let (o0, o1, i0, i1) = (at(o[0]), at(o[1]), at(i[0]), at(i[1]));
+            hull.matte.quad(o0, o1, i1, i0, composite);
+            hull.matte.quad(i0, i1, o1, o0, composite);
+        }
+    }
+}
+
 /// What a jettisoned fairing leaves: a separation ring and adapter cone, and a satellite in
 /// gold foil with its solar panels folded against it.
 fn payload(hull: &mut Hull, radius: f32, height: f32) {
@@ -345,6 +410,10 @@ pub fn stage_hull(stage: &Stage, above: Option<&Stage>, height: f32) -> Hull {
     let paint = rgb(look.paint.unwrap_or(WHITE));
     let interstage = rgb(look.interstage.unwrap_or(COMPOSITE));
     let radius = (stage.diameter / 2.0) as f32;
+    if let Some(a) = stage.fairing.as_ref().and_then(|f| f.half) {
+        fairing_half(&mut hull, radius, height, a as f32, paint);
+        return hull;
+    }
     let fairing = match &stage.fairing {
         Some(f) => f.attached,
         None => {

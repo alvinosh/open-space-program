@@ -56,6 +56,8 @@ const PATCH_COLORS: [Color; 3] = [
 const PLAN_COLORS: [Color; 2] = [Color::srgb(1.0, 0.55, 0.15), Color::srgb(1.0, 0.75, 0.45)];
 pub const BURN_COLOR: Color = Color::srgb(0.3, 0.65, 1.0);
 const OTHER_COLOR: Color = Color::srgba(0.7, 0.7, 0.7, 0.45);
+/// Debris, fainter still.
+const DEBRIS_COLOR: Color = Color::srgba(0.6, 0.55, 0.5, 0.25);
 const DANGER_COLOR: Color = Color::srgb(1.0, 0.25, 0.2);
 pub const TARGET_COLOR: Color = Color::srgb(0.95, 0.45, 0.85);
 
@@ -368,7 +370,10 @@ fn draw_orbits(
     let vessel = sim.active_vessel();
     let body = system.body(vessel.parent());
     gizmos.sphere(
-        frame.to_render(vessel.parent(), frame.origin_offset),
+        frame.to_render(
+            vessel.parent(),
+            vessel.state_at(system, frame.time).position,
+        ),
         (body.radius * 0.01) as f32,
         Color::WHITE,
     );
@@ -380,7 +385,13 @@ fn draw_orbits(
             continue;
         }
         let targeted = target == Some(Target::Vessel(other.id()));
-        let color = if targeted { TARGET_COLOR } else { OTHER_COLOR };
+        let color = if targeted {
+            TARGET_COLOR
+        } else if other.is_debris() {
+            DEBRIS_COLOR
+        } else {
+            OTHER_COLOR
+        };
         let parent = other.parent();
         let at = other.state_at(system, frame.time).position;
         let render = frame.to_render(parent, at);

@@ -60,6 +60,14 @@ impl Plugin for SmokeTestPlugin {
                     (3.5, Action::Launch),
                 ];
                 actions.extend_from_slice(PITCH_KICK);
+                // `OSP_CAPTURE_STAGE_AT=<s>,...`: stage at those times too.
+                let stages = std::env::var("OSP_CAPTURE_STAGE_AT").unwrap_or_default();
+                actions.extend(
+                    stages
+                        .split(',')
+                        .filter_map(|t| t.trim().parse().ok())
+                        .map(|at| (at, Action::Stage)),
+                );
                 for (k, &at) in times.iter().enumerate() {
                     let name: &'static str = Box::leak(format!("view{k}.png").into_boxed_str());
                     actions.push((at, Action::Capture(name)));
@@ -77,6 +85,10 @@ impl Plugin for SmokeTestPlugin {
                 DEORBIT_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_TRANSFER").is_some() {
                 TRANSFER_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_MANIFEST").is_some() {
+                MANIFEST_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_DEBRIS").is_some() {
+                DEBRIS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_STAGING").is_some() {
                 STAGING_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_GLIDER").is_some() {
@@ -321,6 +333,53 @@ const STAGING_SCRIPT: &[(f64, Action)] = &[
     (5.5, Action::Exit),
 ];
 
+/// In LEO (`OSP_CAPTURE_DEBRIS=1`): warp into daylight, jettison the fairing and watch the
+/// halves swing open, release the payload from the upper stage, then the Universe Manifest
+/// and the map with the debris in them.
+const DEBRIS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (0.6, Action::Warp(7)),
+    (3.0, Action::Warp(0)),
+    (4.0, Action::Stage),
+    (4.2, Action::Stage),
+    (5.2, Action::Capture("debris_fairing.png")),
+    (8.0, Action::Capture("debris_fairing_open.png")),
+    (8.2, Action::Stage),
+    (11.0, Action::Capture("debris_stage.png")),
+    (11.2, Action::Ui("ui.show:manifest")),
+    (11.6, Action::Capture("debris_manifest.png")),
+    (11.8, Action::Ui("ui.hide:manifest")),
+    (11.8, Action::MapView(true)),
+    (13.5, Action::Capture("debris_map.png")),
+    (14.0, Action::Exit),
+];
+
+/// In LEO (`OSP_CAPTURE_MANIFEST=1`): shed three pieces of debris (vessels 1 to 3), then in
+/// the Universe Manifest hide the bodies, follow the spent upper stage, destroy a fairing
+/// half, clear the rest of the debris and follow the Moon.
+const MANIFEST_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (0.6, Action::Warp(7)),
+    (3.0, Action::Warp(0)),
+    (4.0, Action::Stage),
+    (4.2, Action::Stage),
+    (4.4, Action::Stage),
+    (6.0, Action::Ui("ui.show:manifest")),
+    (6.2, Action::Ui("manifest.filter:bodies")),
+    (6.6, Action::Capture("manifest.png")),
+    (6.8, Action::Ui("manifest.follow:3")),
+    (7.0, Action::Ui("manifest.remove:1")),
+    (8.0, Action::Capture("manifest_follow.png")),
+    (8.2, Action::Ui("manifest.confirm")),
+    (8.4, Action::Ui("manifest.clear_debris")),
+    (8.8, Action::Capture("manifest_clear.png")),
+    (9.0, Action::Ui("manifest.confirm")),
+    (9.2, Action::Ui("manifest.filter:bodies")),
+    (9.4, Action::Ui("manifest.follow_body:Moon")),
+    (11.0, Action::Capture("manifest_moon.png")),
+    (11.5, Action::Exit),
+];
+
 /// Pitch a few degrees towards the east after clearing the tower, then let SAS hold.
 const PITCH_KICK: &[(f64, Action)] = &[
     (10.0, Action::Steer(DVec3::new(-0.3, 0.0, 0.0))),
@@ -328,8 +387,9 @@ const PITCH_KICK: &[(f64, Action)] = &[
 ];
 
 /// One still once the terrain has loaded (`OSP_CAPTURE_QUICK=1`), or with
-/// `OSP_CAPTURE_AT=<s>,<s>,...` a launch and stills `view<n>.png` at those times. Combine
-/// with `OSP_CAMERA=<yaw°>,<pitch°>,<distance m>` to frame them.
+/// `OSP_CAPTURE_AT=<s>,<s>,...` a launch and stills `view<n>.png` at those times (staging
+/// at `OSP_CAPTURE_STAGE_AT=<s>,...`). Combine with `OSP_CAMERA=<yaw°>,<pitch°>,<distance
+/// m>` to frame them.
 const QUICK_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (8.0, Action::Capture("view.png")),
@@ -381,13 +441,9 @@ fn run_script(
             vessel.brakes = false;
             vessel.set_throttle(1.0);
             vessel.set_sas(system, ut, true);
-            vessel.activate_next_stage(system, ut);
+            sim.stage_active();
         }
-        Action::Stage => {
-            let ut = sim.universe.time();
-            let (vessel, system) = sim.active_vessel_in_system();
-            vessel.activate_next_stage(system, ut);
-        }
+        Action::Stage => sim.stage_active(),
         Action::Sequences(action) => {
             let sequences = &mut sim.active_vessel_mut().propulsion.sequences;
             if !crate::controls::edit_sequences(sequences, &UiAction(action.into())) {

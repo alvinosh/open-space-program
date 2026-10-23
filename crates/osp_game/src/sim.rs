@@ -15,7 +15,7 @@ use osp_sim::{
     system::SolarSystem,
     time::{SimTime, TICKS_PER_SECOND},
     universe::{PHYSICS_STEP, SimEvent, Universe},
-    vessel::{Vessel, VesselEventKind},
+    vessel::{Vessel, VesselEventKind, VesselId},
 };
 
 use osp_terrain::Dataset;
@@ -77,7 +77,6 @@ impl Plugin for SimPlugin {
         let render_time = universe.time();
         app.insert_resource(Sim {
             universe,
-            active: 0,
             accumulator: 0.0,
             render_time,
             lagging: false,
@@ -100,9 +99,8 @@ pub struct WorldData {
 
 #[derive(Resource)]
 pub struct Sim {
+    /// The vessel the player flies is its `focus`.
     pub universe: Universe,
-    /// Index of the vessel the player is flying.
-    active: usize,
     /// Simulated seconds not yet consumed by a physics tick.
     accumulator: f64,
     /// The instant being rendered this frame (between physics ticks at low warp).
@@ -116,30 +114,43 @@ pub struct Sim {
 impl Sim {
     /// The vessel the player is flying.
     pub fn active_vessel(&self) -> &Vessel {
-        &self.universe.vessels[self.active]
+        &self.universe.vessels[self.active_index()]
     }
 
     pub fn active_vessel_mut(&mut self) -> &mut Vessel {
-        &mut self.universe.vessels[self.active]
+        let index = self.active_index();
+        &mut self.universe.vessels[index]
     }
 
     /// The active vessel, mutably, with the solar system it flies in (for commands that
-    /// need positions, like staging and SAS).
+    /// need positions, like SAS).
     pub fn active_vessel_in_system(&mut self) -> (&mut Vessel, &SolarSystem) {
-        (
-            &mut self.universe.vessels[self.active],
-            &self.universe.system,
-        )
+        let index = self.active_index();
+        (&mut self.universe.vessels[index], &self.universe.system)
     }
 
+    /// Where the active vessel is in `universe.vessels` (which changes as debris comes and
+    /// goes); the first vessel if the focus is not set.
     pub fn active_index(&self) -> usize {
-        self.active
+        self.universe
+            .focus
+            .and_then(|id| self.universe.find_vessel(id))
+            .unwrap_or(0)
+    }
+
+    pub fn active_id(&self) -> VesselId {
+        self.active_vessel().id()
+    }
+
+    /// Fire the active vessel's next sequence; what it sheds flies on as debris.
+    pub fn stage_active(&mut self) {
+        let index = self.active_index();
+        self.universe.activate_next_stage(index);
     }
 
     /// Fly from the start of the universe as it now is (a scenario started afresh in it):
-    /// the first vessel, at its clock.
+    /// its first vessel, at its clock.
     pub fn restarted(&mut self) {
-        self.active = 0;
         self.accumulator = 0.0;
         self.render_time = self.universe.time();
         self.lagging = false;
@@ -150,11 +161,20 @@ impl Sim {
     pub fn switch_vessel(&mut self, step: isize) {
         let count = self.universe.vessels.len() as isize;
         if count > 1 {
-            let left = self.active_vessel_mut();
-            left.rotation_input = bevy::math::DVec3::ZERO;
-            left.translation_input = bevy::math::DVec3::ZERO;
-            self.active = (self.active as isize + step).rem_euclid(count) as usize;
+            let next = (self.active_index() as isize + step).rem_euclid(count) as usize;
+            self.fly(self.universe.vessels[next].id());
         }
+    }
+
+    /// Fly vessel `id`, if it is in the game.
+    pub fn fly(&mut self, id: VesselId) {
+        if self.universe.vessel(id).is_none() {
+            return;
+        }
+        let left = self.active_vessel_mut();
+        left.rotation_input = bevy::math::DVec3::ZERO;
+        left.translation_input = bevy::math::DVec3::ZERO;
+        self.universe.focus = Some(id);
     }
 }
 

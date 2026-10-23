@@ -13,6 +13,7 @@ mod flight_plan;
 mod frame;
 mod hull;
 mod launch_site;
+mod manifest;
 mod map_labels;
 mod menu;
 mod meshgen;
@@ -133,6 +134,7 @@ fn main() -> AppExit {
             flight_plan::FlightPlanPlugin,
             map_labels::MapLabelsPlugin,
             targeting::TargetingPlugin,
+            manifest::ManifestPlugin,
             transfer_planner::TransferPlannerPlugin,
         ))
         .add_plugins(diagnostics)

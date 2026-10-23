@@ -36,7 +36,7 @@ use crate::{
     integrator::Encke,
     orbit::{Elements, Orbit, StateVector},
     plan::{Burn, FlightPlan},
-    propulsion::{CraftError, Propulsion, Stage},
+    propulsion::{CraftError, Propulsion, Released, Stage},
     rcs,
     rendezvous::Target,
     structure::{self, Conditions, Part, PartLoad},
@@ -63,6 +63,12 @@ const REST_SPEED: f64 = 0.05;
 const REST_RATE: f64 = 0.02;
 /// How far in from the end of a runway a vessel starts, m.
 const RUNWAY_START: f64 = 60.0;
+/// Speed at which a decoupler pushes the stages either side of it apart, m/s.
+const SEPARATION_SPEED: f64 = 1.0;
+/// A jettisoned fairing half swings open about its base at this rate, rad/s, and its base
+/// moves out at this speed, m/s.
+const FAIRING_SWING: f64 = 0.3;
+const FAIRING_PUSH: f64 = 0.5;
 const MAX_LOG: usize = 64;
 
 #[derive(Debug, Error)]
@@ -222,6 +228,8 @@ pub struct Vessel {
     propellant_settled: bool,
     /// Broke up: nothing works any more and it falls as wreckage.
     destroyed: bool,
+    /// Came loose from another vessel (a spent stage, a fairing half).
+    debris: bool,
     pub flight: FlightData,
     /// Load on every tank and fin set as of the last physics step.
     pub structure: Vec<PartLoad>,
@@ -248,14 +256,33 @@ impl Vessel {
         orientation: DQuat,
         time: SimTime,
     ) -> Result<Self, VesselError> {
+        let name = if craft.name.is_empty() {
+            craft.id.clone()
+        } else {
+            craft.name.clone()
+        };
         let propulsion = Propulsion::from_craft(craft, catalog)?;
+        Ok(Self::assemble(
+            name,
+            propulsion,
+            parent,
+            motion,
+            orientation,
+            time,
+        ))
+    }
+
+    fn assemble(
+        name: String,
+        propulsion: Propulsion,
+        parent: BodyId,
+        motion: Motion,
+        orientation: DQuat,
+        time: SimTime,
+    ) -> Self {
         let mass = attitude::mass_properties(&propulsion.stages);
-        Ok(Self {
-            name: if craft.name.is_empty() {
-                craft.id.clone()
-            } else {
-                craft.name.clone()
-            },
+        Self {
+            name,
             parent,
             motion,
             attitude: AttitudeTrack {
@@ -281,6 +308,7 @@ impl Vessel {
             propulsion,
             propellant_settled: false,
             destroyed: false,
+            debris: false,
             structure: Vec::new(),
             log: Vec::new(),
             plan: FlightPlan::default(),
@@ -292,7 +320,7 @@ impl Vessel {
             id: VesselId::default(),
             target: None,
             target_state: None,
-        })
+        }
     }
 
     pub fn id(&self) -> VesselId {
@@ -551,6 +579,11 @@ impl Vessel {
     /// Broke up when a tank failed; it no longer responds to anything.
     pub fn is_destroyed(&self) -> bool {
         self.destroyed
+    }
+
+    /// Came loose from another vessel when it staged.
+    pub fn is_debris(&self) -> bool {
+        self.debris
     }
 
     /// Whether the next step needs numerical integration (rails warp is impossible).
@@ -934,13 +967,14 @@ impl Vessel {
 
     /// Fire the next activation sequence (see [`crate::staging`]). What is left keeps
     /// moving as it was, so when stages fall away or a fairing goes the centre of mass (the
-    /// vessel's position) moves along the stack.
-    pub fn activate_next_stage(&mut self, system: &SolarSystem, time: SimTime) {
+    /// vessel's position) moves along the stack. What fell away comes back as debris for
+    /// the universe to add (see [`Self::shed`]).
+    pub fn activate_next_stage(&mut self, system: &SolarSystem, time: SimTime) -> Vec<Vessel> {
         if self.destroyed {
-            return;
+            return Vec::new();
         }
         let Some(staged) = self.propulsion.activate_next_sequence() else {
-            return;
+            return Vec::new();
         };
         for message in staged.messages {
             self.record(time, message);
@@ -949,17 +983,40 @@ impl Vessel {
             self.rcs = true;
         }
         if !staged.mass_changed {
-            return;
+            return Vec::new();
         }
         let dropped = staged.dropped_length;
+        let state = self.state_at(system, time);
         let attitude = self.attitude_state(system, time);
+        let rest = attitude::mass_properties(&self.propulsion.stages);
+        // Off the ground, decouplers push what is left and what fell away apart, keeping
+        // their momentum.
+        let mut recoil = 0.0;
+        let debris = staged
+            .released
+            .into_iter()
+            .map(|released| {
+                let fairing = released.stages[0].fairing.as_ref();
+                let push = if self.is_landed() || fairing.is_some_and(|f| f.half.is_some()) {
+                    0.0
+                } else {
+                    let mass: f64 = released.stages.iter().map(Stage::mass).sum();
+                    recoil += SEPARATION_SPEED * mass / (mass + rest.mass);
+                    -SEPARATION_SPEED * rest.mass / (mass + rest.mass)
+                };
+                self.shed(system, time, released, state, attitude, push)
+            })
+            .collect();
         let before = self.mass.center_of_mass;
-        self.mass = attitude::mass_properties(&self.propulsion.stages);
+        self.mass = rest;
         let offset = attitude.nose() * (dropped + self.mass.center_of_mass - before);
-        let shift = StateVector::new(offset, attitude.angular_velocity_inertial().cross(offset));
+        let shift = StateVector::new(
+            offset,
+            attitude.angular_velocity_inertial().cross(offset) + attitude.nose() * recoil,
+        );
         match &mut self.motion {
-            // TODO: with debris, the spent stage stays on the ground instead.
-            Motion::Landed { .. } => {}
+            // It now stands on what fell away.
+            Motion::Landed { base, attitude } => *base += *attitude * DVec3::Z * dropped,
             Motion::Coasting(orbit) => {
                 *orbit = Orbit::new(orbit.mu(), time, orbit.state_at(time) + shift);
             }
@@ -975,6 +1032,62 @@ impl Vessel {
                 hold: Hold::Free,
             };
         }
+        debris
+    }
+
+    /// What `released` from this vessel's stack as a vessel of its own, `state` and
+    /// `attitude` being this vessel's just before. It starts where it was on the stack,
+    /// moving and turning with it, pushed `push` m/s along the nose; a fairing half also
+    /// swings open about its base. On the ground, fallen stages stay standing where they
+    /// were.
+    fn shed(
+        &self,
+        system: &SolarSystem,
+        time: SimTime,
+        released: Released,
+        state: StateVector,
+        attitude: Attitude,
+        push: f64,
+    ) -> Vessel {
+        let name = format!("{} ({})", released.stages[0].name, self.name);
+        let half = released.stages[0].fairing.as_ref().and_then(|f| f.half);
+        let propulsion = Propulsion::from_stages(released.stages);
+        let mut debris = Vessel::assemble(
+            name,
+            propulsion,
+            self.parent,
+            self.motion.clone(),
+            attitude.orientation,
+            time,
+        );
+        let com = debris.mass.center_of_mass;
+        let arm = attitude.nose() * (released.base + com - self.mass.center_of_mass);
+        let mut velocity = state.velocity
+            + attitude.angular_velocity_inertial().cross(arm)
+            + attitude.nose() * push;
+        let mut spin = attitude.angular_velocity;
+        if let Some(angle) = half {
+            let out = DVec3::new(angle.cos(), angle.sin(), 0.0);
+            spin += DVec3::Z.cross(out) * FAIRING_SWING;
+            velocity += attitude.orientation * out * (FAIRING_SWING * com + FAIRING_PUSH);
+        }
+        debris.motion = match self.motion {
+            Motion::Landed { base, attitude } if half.is_none() => Motion::Landed {
+                base: base + attitude * DVec3::Z * released.base,
+                attitude,
+            },
+            _ => {
+                let state = StateVector::new(state.position + arm, velocity);
+                free_motion(system.body(self.parent), state, time)
+            }
+        };
+        debris.attitude.state.angular_velocity = spin;
+        debris.debris = true;
+        debris.near_surface = self.near_surface;
+        debris.nav_frame = self.nav_frame;
+        debris.propellant_settled = self.propellant_settled;
+        debris.record(time, format!("Separated from {}", self.name));
+        debris
     }
 
     /// Next trajectory event in `(after, until]`, if coasting.
@@ -1696,7 +1809,10 @@ fn air_at(body: &Body, state: &StateVector) -> AtmosphereSample {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::{data::ScenarioDef, data::StartDef, system::tests::rss, time::Ticks};
+    use crate::{
+        data::ScenarioDef, data::StartDef, propulsion::FAIRING_HALVES, system::tests::rss,
+        time::Ticks,
+    };
 
     use crate::test_data::records;
 
@@ -1911,6 +2027,92 @@ pub(crate) mod tests {
         let log = v.log.len();
         v.activate_next_stage(&system, t);
         assert_eq!(v.log.len(), log);
+    }
+
+    fn momentum(vessels: &[&Vessel], system: &SolarSystem, t: SimTime) -> DVec3 {
+        vessels
+            .iter()
+            .map(|v| v.state_at(system, t).velocity * v.mass_properties().mass)
+            .sum()
+    }
+
+    #[test]
+    fn a_released_stage_flies_on_from_where_it_was() {
+        let system = rss();
+        let (mut v, mut t) = launch(&system);
+        run(&mut v, &system, &mut t, 10.0);
+        // Turning, so the stages move apart at different speeds.
+        v.rotation_input = DVec3::new(0.0, 0.3, 0.2);
+        run(&mut v, &system, &mut t, 2.0);
+        v.rotation_input = DVec3::ZERO;
+        let (base, spin) = (v.base_at(&system, t), v.attitude_state(&system, t));
+        let before = momentum(&[&v], &system, t);
+        let debris = v.activate_next_stage(&system, t);
+        let [booster] = &debris[..] else {
+            panic!("{} pieces", debris.len())
+        };
+        assert!(booster.is_debris() && !v.is_debris());
+        assert_eq!(booster.name, "Booster (Pathfinder)");
+        assert_eq!(booster.propulsion.stages.len(), 1);
+        assert!(booster.propulsion.sequences.is_empty());
+        assert!((booster.base_at(&system, t) - base).length() < 1e-6);
+        let turning = booster.attitude_state(&system, t);
+        assert_eq!(turning.orientation, spin.orientation);
+        assert_eq!(turning.angular_velocity, spin.angular_velocity);
+        // Pushed apart along the stack, momentum kept.
+        let apart = v.state_at(&system, t).velocity - booster.state_at(&system, t).velocity;
+        let along = apart.dot(nose(&v, &system, t));
+        assert!((along - SEPARATION_SPEED).abs() < 1e-9, "{along}");
+        let after = momentum(&[&v, booster], &system, t);
+        assert!((after - before).length() < 1e-9 * before.length());
+
+        // Its engine winds down while the upper stage lights and pulls away.
+        let mut booster = booster.clone();
+        let mut tb = t;
+        run(&mut booster, &system, &mut tb, 5.0);
+        run(&mut v, &system, &mut t, 5.0);
+        assert_eq!(booster.flight.thrust, 0.0);
+        assert!(v.flight.thrust > 0.0);
+        let gap = v.base_at(&system, t) - booster.base_at(&system, t);
+        assert!(gap.length() > booster.propulsion.length() + 10.0, "{gap}");
+    }
+
+    #[test]
+    fn fairing_halves_swing_open_away_from_the_payload() {
+        let system = rss();
+        let (mut v, t) = leo_vessel(&system);
+        v.activate_next_stage(&system, t);
+        let before = momentum(&[&v], &system, t);
+        let halves = v.activate_next_stage(&system, t);
+        assert_eq!(halves.len(), 2);
+        let velocity = v.state_at(&system, t).velocity;
+        let side = v.attitude_at(&system, t) * DVec3::X;
+        let apart: Vec<_> = halves
+            .iter()
+            .map(|h| h.state_at(&system, t).velocity - velocity)
+            .collect();
+        for (h, angle) in halves.iter().zip(FAIRING_HALVES) {
+            assert!(h.is_debris());
+            assert_eq!(h.mass_properties().mass, 950.0);
+            assert_eq!(
+                h.propulsion.stages[0].fairing.as_ref().unwrap().half,
+                Some(angle)
+            );
+        }
+        // Out to either side, the pushes cancelling.
+        assert!(apart[0].dot(side) > 2.0 && apart[1].dot(side) < -2.0);
+        let after = momentum(&[&v, &halves[0], &halves[1]], &system, t);
+        assert!((after - before).length() < 1e-9 * before.length());
+        // Top first: a second later each nose leans out its own way, and its base has
+        // cleared the payload.
+        for (h, out) in halves.iter().zip([side, -side]) {
+            let (mut h, mut th) = (h.clone(), t);
+            run(&mut h, &system, &mut th, 1.0);
+            let lean = nose(&h, &system, th).dot(out);
+            assert!((lean - FAIRING_SWING.sin()).abs() < 0.01, "{lean}");
+            let base = h.base_at(&system, th) - v.base_at(&system, th);
+            assert!(base.dot(out) > FAIRING_PUSH * 0.9, "{}", base.dot(out));
+        }
     }
 
     #[test]

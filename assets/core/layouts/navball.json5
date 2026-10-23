@@ -1,7 +1,9 @@
 // Navball, throttle, SAS and control inputs (bottom centre). Click the speed display to
 // switch between surface, orbital and target speed (and the frame the navball markers and
-// SAS directions use). The SAS mode buttons carry the navball's own markers; hover one for
-// its name. Propellant, RCS included, is in the Resources window.
+// SAS directions use). The SAS and RCS switches are the triangles in the navball's top
+// corners. The SAS mode buttons carry the navball's own markers, opposites side by side;
+// hover one for its name, click the selected one again to go back to holding attitude.
+// Propellant, RCS included, is in the Resources window.
 {
   id: "navball",
   group: "flight",
@@ -38,9 +40,40 @@
         children: [
           { widget: "button", class: "speed_display", action: "nav.toggle_frame", text: "{nav.frame} {nav.speed|speed}" },
           {
+            id: "bezel",
             widget: "column",
-            class: "navball_bezel",
-            children: [{ widget: "navball", style: { width: 150, height: 150 } }],
+            style: { width: 158, height: 158 },
+            children: [
+              {
+                widget: "column",
+                class: "navball_bezel",
+                children: [{ widget: "navball", style: { width: 150, height: 150 } }],
+              },
+              {
+                widget: "button",
+                class: "nav_corner",
+                style: { left: 0 },
+                tooltip: "SAS (T)",
+                action: "vessel.sas_toggle",
+                active: "vessel.sas",
+                children: [
+                  { widget: "image", class: "nav_corner_shape", image: "icons/navball_corner_left.png", active: "vessel.sas" },
+                  { widget: "label", class: "nav_corner_text", style: { left: 4 }, text: "SAS", active: "vessel.sas" },
+                ],
+              },
+              {
+                widget: "button",
+                class: "nav_corner",
+                style: { right: 0 },
+                tooltip: "RCS (R)",
+                action: "vessel.rcs_toggle",
+                active: "vessel.rcs",
+                children: [
+                  { widget: "image", class: "nav_corner_shape", image: "icons/navball_corner_right.png", active: "vessel.rcs" },
+                  { widget: "label", class: "nav_corner_text", style: { right: 4 }, text: "RCS", active: "vessel.rcs" },
+                ],
+              },
+            ],
           },
           { widget: "label", class: "caption", tooltip: "Heading, pitch and roll", text: "H {nav.heading|heading}  P {nav.pitch|fixed:1}  R {nav.roll|fixed:1}" },
         ],
@@ -51,28 +84,51 @@
         style: { gap: 3, width: 88 },
         children: [
           {
-            widget: "row",
-            style: { gap: 3 },
-            children: [
-              { widget: "button", class: "sas_toggle", text: "SAS", tooltip: "SAS (T)", action: "vessel.sas_toggle", active: "vessel.sas" },
-              { widget: "button", class: "sas_toggle", text: "RCS", tooltip: "RCS (R)", action: "vessel.rcs_toggle", active: "vessel.rcs" },
-            ],
-          },
-          {
             id: "sas_modes",
-            widget: "row",
-            style: { gap: 3, wrap: true },
+            widget: "column",
+            style: { gap: 3, align_items: "center" },
             children: [
-              { widget: "button", class: "sas_button", tooltip: "Hold attitude", action: "vessel.sas_mode:stability", active: "vessel.sas_mode == stability", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_hold.png" }] },
-              { widget: "button", class: "sas_button", tooltip: "Prograde", action: "vessel.sas_mode:prograde", active: "vessel.sas_mode == prograde", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_prograde.png" }] },
-              { widget: "button", class: "sas_button", tooltip: "Retrograde", action: "vessel.sas_mode:retrograde", active: "vessel.sas_mode == retrograde", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_retrograde.png" }] },
-              { widget: "button", class: "sas_button", tooltip: "Normal", action: "vessel.sas_mode:normal", active: "vessel.sas_mode == normal", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_normal.png" }] },
-              { widget: "button", class: "sas_button", tooltip: "Anti-normal", action: "vessel.sas_mode:anti_normal", active: "vessel.sas_mode == anti_normal", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_anti_normal.png" }] },
-              { widget: "button", class: "sas_button", tooltip: "Radial out", action: "vessel.sas_mode:radial_out", active: "vessel.sas_mode == radial_out", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_radial_out.png" }] },
-              { widget: "button", class: "sas_button", tooltip: "Radial in", action: "vessel.sas_mode:radial_in", active: "vessel.sas_mode == radial_in", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_radial_in.png" }] },
-              { widget: "button", class: "sas_button", tooltip: "Planned burn", action: "vessel.sas_mode:burn", active: "vessel.sas_mode == burn", visible: "plan.count", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_burn.png" }] },
-              { widget: "button", class: "sas_button", tooltip: "Target", action: "vessel.sas_mode:target", active: "vessel.sas_mode == target", visible: "target.has", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_target.png" }] },
-              { widget: "button", class: "sas_button", tooltip: "Anti-target", action: "vessel.sas_mode:anti_target", active: "vessel.sas_mode == anti_target", visible: "target.has", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_anti_target.png" }] },
+              {
+                widget: "row",
+                style: { gap: 3 },
+                children: [
+                  { widget: "button", class: "sas_button", tooltip: "Prograde", action: "vessel.sas_mode:prograde", active: "vessel.sas_mode == prograde", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_prograde.png" }] },
+                  { widget: "button", class: "sas_button", tooltip: "Retrograde", action: "vessel.sas_mode:retrograde", active: "vessel.sas_mode == retrograde", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_retrograde.png" }] },
+                ],
+              },
+              {
+                widget: "row",
+                style: { gap: 3 },
+                children: [
+                  { widget: "button", class: "sas_button", tooltip: "Normal", action: "vessel.sas_mode:normal", active: "vessel.sas_mode == normal", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_normal.png" }] },
+                  { widget: "button", class: "sas_button", tooltip: "Anti-normal", action: "vessel.sas_mode:anti_normal", active: "vessel.sas_mode == anti_normal", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_anti_normal.png" }] },
+                ],
+              },
+              {
+                widget: "row",
+                style: { gap: 3 },
+                children: [
+                  { widget: "button", class: "sas_button", tooltip: "Radial out", action: "vessel.sas_mode:radial_out", active: "vessel.sas_mode == radial_out", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_radial_out.png" }] },
+                  { widget: "button", class: "sas_button", tooltip: "Radial in", action: "vessel.sas_mode:radial_in", active: "vessel.sas_mode == radial_in", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_radial_in.png" }] },
+                ],
+              },
+              {
+                widget: "row",
+                visible: "plan.count",
+                style: { gap: 3 },
+                children: [
+                  { widget: "button", class: "sas_button", tooltip: "Planned burn", action: "vessel.sas_mode:burn", active: "vessel.sas_mode == burn", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_burn.png" }] },
+                ],
+              },
+              {
+                widget: "row",
+                visible: "target.has",
+                style: { gap: 3 },
+                children: [
+                  { widget: "button", class: "sas_button", tooltip: "Target", action: "vessel.sas_mode:target", active: "vessel.sas_mode == target", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_target.png" }] },
+                  { widget: "button", class: "sas_button", tooltip: "Anti-target", action: "vessel.sas_mode:anti_target", active: "vessel.sas_mode == anti_target", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_anti_target.png" }] },
+                ],
+              },
             ],
           },
           {

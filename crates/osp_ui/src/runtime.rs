@@ -221,6 +221,10 @@ impl StateColors {
 #[derive(Component)]
 pub struct ActiveText(pub [Color; 2]);
 
+/// Tint of an `image` node with an `active` condition: normal and active.
+#[derive(Component)]
+pub struct ActiveTint(pub [Color; 2]);
+
 #[derive(Component)]
 pub struct WindowDrag {
     pub window: Entity,
@@ -730,6 +734,7 @@ pub fn update_states(
         Option<&mut BorderColor>,
     )>,
     mut texts: Query<(&ActiveText, &BoundActive, &mut TextColor)>,
+    mut images: Query<(&ActiveTint, &BoundActive, &mut ImageNode)>,
 ) {
     for (colors, active, hovered, mut background, border) in &mut nodes {
         let active = usize::from(active.is_some_and(|a| data.condition(&a.0)));
@@ -742,6 +747,12 @@ pub fn update_states(
     for (colors, active, mut text) in &mut texts {
         let color = colors.0[usize::from(data.condition(&active.0))];
         text.set_if_neq(TextColor(color));
+    }
+    for (tints, active, mut image) in &mut images {
+        let color = tints.0[usize::from(data.condition(&active.0))];
+        if image.color != color {
+            image.color = color;
+        }
     }
 }
 

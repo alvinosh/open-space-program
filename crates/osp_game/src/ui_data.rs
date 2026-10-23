@@ -95,15 +95,25 @@ fn publish_flight(
         .map(|(n, _)| n.clone());
     data.set("time.notice", notice.unwrap_or_default());
     data.set("view.map", rig.map_view);
+    let active = vessel.id();
     for SimEventMessage(event) in events.read() {
-        let text = sim.universe.vessels[event.vessel]
-            .log
-            .last()
-            .map(|entry| entry.message.clone())
-            .unwrap_or_default();
+        // Other vessels' news is named after them; debris only matters while flown.
+        let Some(from) = sim
+            .universe
+            .vessel(event.vessel)
+            .filter(|v| v.id() == active || !v.is_debris())
+        else {
+            continue;
+        };
+        let message = from.log.last().map_or("", |entry| entry.message.as_str());
+        let text = if from.id() == active {
+            message.to_owned()
+        } else {
+            format!("{}: {message}", from.name)
+        };
         data.set("sim.last_event", text);
         data.set("sim.last_event_time", event.event.time.as_seconds());
-        if event.vessel == sim.active_index() && event.event.kind == VesselEventKind::Liftoff {
+        if event.vessel == active && event.event.kind == VesselEventKind::Liftoff {
             memory.liftoff.get_or_insert(event.event.time);
         }
     }

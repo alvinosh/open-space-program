@@ -344,10 +344,25 @@ pub struct Fairing {
     pub mass: f64,
     /// Not jettisoned yet.
     pub attached: bool,
+    /// Only one half of it, flying on its own after a jettison: the angle about the stage
+    /// axis that the middle of the half faces (0 along vessel +X), rad.
+    pub half: Option<f64>,
+}
+
+/// Angles the two halves of a fairing face; their seams are a quarter turn either side.
+pub const FAIRING_HALVES: [f64; 2] = [0.0, std::f64::consts::PI];
+
+/// Something a sequence released, to fly on as debris.
+#[derive(Debug, Clone)]
+pub struct Released {
+    /// Bottom first, as they were on the vessel.
+    pub stages: Vec<Stage>,
+    /// Height of its base above the vessel's base before the sequence fired, m.
+    pub base: f64,
 }
 
 /// What firing a sequence did.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default)]
 pub struct Staged {
     /// For the flight log, one per activation.
     pub messages: Vec<String>,
@@ -357,6 +372,8 @@ pub struct Staged {
     pub mass_changed: bool,
     /// An activation switched RCS on.
     pub rcs_on: bool,
+    /// Stages that fell away and fairing halves that were jettisoned.
+    pub released: Vec<Released>,
 }
 
 /// Per-stage delta-v readout.
@@ -552,6 +569,7 @@ impl Propulsion {
                     fairing: def.fairing.as_ref().map(|f| Fairing {
                         mass: f.mass,
                         attached: true,
+                        half: None,
                     }),
                     propellants,
                     diameter: def.diameter,
@@ -570,6 +588,17 @@ impl Propulsion {
             throttle: 0.0,
             ignition_pending: false,
         })
+    }
+
+    /// Stages that came loose from a vessel, as one of their own: nothing left to stage,
+    /// throttle closed (engines that were running tail off).
+    pub fn from_stages(stages: Vec<Stage>) -> Self {
+        Self {
+            stages,
+            sequences: Sequences::default(),
+            throttle: 0.0,
+            ignition_pending: false,
+        }
     }
 
     pub fn mass(&self) -> f64 {
@@ -648,8 +677,8 @@ impl Propulsion {
                     if index + 1 >= self.stages.len() {
                         continue;
                     }
-                    // TODO: spawn what falls away as debris vessels.
                     let spent: Vec<Stage> = self.stages.drain(..=index).collect();
+                    let base = staged.dropped_length;
                     staged.dropped_length += spent.iter().map(|s| s.length).sum::<f64>();
                     staged.mass_changed = true;
                     let names: Vec<_> = spent.iter().map(|s| s.name.as_str()).collect();
@@ -658,6 +687,10 @@ impl Propulsion {
                         .push(format!("Separated {}", names.join(", ")));
                     let gone: Vec<usize> = spent.iter().map(|s| s.id).collect();
                     self.sequences.forget(&gone);
+                    staged.released.push(Released {
+                        stages: spent,
+                        base,
+                    });
                     // Engines armed above light as soon as they are at the bottom.
                     if self.throttle > 0.0 && self.stages[0].active {
                         self.ignition_pending = true;
@@ -672,13 +705,28 @@ impl Propulsion {
                     }
                 }
                 Activation::Fairing(_) => {
-                    if let Some(fairing) =
-                        self.stages[index].fairing.as_mut().filter(|f| f.attached)
-                    {
-                        fairing.attached = false;
-                        staged.mass_changed = true;
-                        staged.messages.push("Fairing jettisoned".into());
+                    let stage = &self.stages[index];
+                    let Some(mass) = stage
+                        .fairing
+                        .as_ref()
+                        .filter(|f| f.attached)
+                        .map(|f| f.mass)
+                    else {
+                        continue;
+                    };
+                    let base = staged.dropped_length
+                        + self.stages[..index].iter().map(|s| s.length).sum::<f64>();
+                    for angle in FAIRING_HALVES {
+                        staged.released.push(Released {
+                            stages: vec![fairing_half(stage, mass / 2.0, angle)],
+                            base,
+                        });
                     }
+                    if let Some(fairing) = &mut self.stages[index].fairing {
+                        fairing.attached = false;
+                    }
+                    staged.mass_changed = true;
+                    staged.messages.push("Fairing jettisoned".into());
                 }
                 Activation::Rcs(_) => {
                     staged.rcs_on = true;
@@ -825,6 +873,35 @@ impl Propulsion {
             engine.level = 0.0;
             engine.spooling = None;
         }
+    }
+}
+
+/// One half of `stage`'s fairing, of `mass`, as a stage of its own: the shell around the
+/// stage (and its nose), facing `angle`.
+fn fairing_half(stage: &Stage, mass: f64, angle: f64) -> Stage {
+    Stage {
+        id: stage.id,
+        name: "Fairing".into(),
+        active: false,
+        engines: Vec::new(),
+        tanks: Vec::new(),
+        tank_mass: 0.0,
+        fins: None,
+        wings: Vec::new(),
+        gear: Vec::new(),
+        structure_mass: 0.0,
+        wheel_torque: 0.0,
+        rcs: Vec::new(),
+        pod: None,
+        fairing: Some(Fairing {
+            mass,
+            attached: true,
+            half: Some(angle),
+        }),
+        propellants: Vec::new(),
+        diameter: stage.diameter,
+        length: stage.length,
+        appearance: stage.appearance.clone(),
     }
 }
 

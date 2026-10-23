@@ -10,6 +10,11 @@
 //! analytic and every event lands on an exact tick in both paths, switching warp rate never
 //! changes the outcome. The same goes for a vessel's free rotation; with SAS on, rails hold
 //! a steady attitude exactly where physics ticks would keep it.
+//!
+//! Debris (what vessels shed when they stage) is simulated like any vessel, with two
+//! exceptions unless it is the [`Universe::focus`]: it is removed when it crashes, and it
+//! never holds up time warp. Debris that needs physics when rails warp starts, or enters an
+//! atmosphere on rails, is left behind (removed), as Kerbal Space Program does.
 
 use std::sync::Arc;
 
@@ -43,10 +48,10 @@ pub enum UniverseError {
     UnknownTarget(String),
 }
 
-/// An event attributed to a vessel (by index).
+/// An event attributed to a vessel.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SimEvent {
-    pub vessel: usize,
+    pub vessel: VesselId,
     pub event: VesselEvent,
 }
 
@@ -61,6 +66,8 @@ pub struct RailsOutcome {
 pub struct Universe {
     pub system: SolarSystem,
     pub vessels: Vec<Vessel>,
+    /// The vessel the player flies. The debris rules never apply to it.
+    pub focus: Option<VesselId>,
     time: SimTime,
     next_id: u64,
 }
@@ -70,6 +77,7 @@ impl Universe {
         let mut universe = Self {
             system,
             vessels: Vec::new(),
+            focus: None,
             time,
             next_id: 0,
         };
@@ -91,6 +99,47 @@ impl Universe {
     /// Index of the vessel with `id`, if it is still in the game.
     pub fn find_vessel(&self, id: VesselId) -> Option<usize> {
         self.vessels.iter().position(|v| v.id() == id)
+    }
+
+    /// The vessel with `id`, if it is still in the game.
+    pub fn vessel(&self, id: VesselId) -> Option<&Vessel> {
+        self.vessels.iter().find(|v| v.id() == id)
+    }
+
+    /// Take a vessel out of the game; whoever targeted it loses the target.
+    pub fn remove_vessel(&mut self, id: VesselId) {
+        self.vessels.retain(|v| v.id() != id);
+        for vessel in &mut self.vessels {
+            if vessel.target == Some(Target::Vessel(id)) {
+                vessel.target = None;
+            }
+        }
+    }
+
+    /// Take every piece of debris out of the game except the focus; returns how many went.
+    pub fn clear_debris(&mut self) -> usize {
+        let debris: Vec<_> = self
+            .vessels
+            .iter()
+            .filter(|v| self.expendable(v))
+            .map(Vessel::id)
+            .collect();
+        for &id in &debris {
+            self.remove_vessel(id);
+        }
+        debris.len()
+    }
+
+    /// Fire vessel `index`'s next activation sequence; what it sheds flies on as debris.
+    /// Returns the debris' ids.
+    pub fn activate_next_stage(&mut self, index: usize) -> Vec<VesselId> {
+        let debris = self.vessels[index].activate_next_stage(&self.system, self.time);
+        debris.into_iter().map(|d| self.add_vessel(d)).collect()
+    }
+
+    /// Debris other than the focus: removed when it crashes, never holds up warp.
+    fn expendable(&self, vessel: &Vessel) -> bool {
+        vessel.is_debris() && self.focus != Some(vessel.id())
     }
 
     /// The conic `target` follows and the body it is relative to (a vessel's osculating
@@ -197,6 +246,7 @@ impl Universe {
         for vessel in vessels {
             self.add_vessel(vessel);
         }
+        self.focus = Some(self.vessels[0].id());
         if let Some(target) = &scenario.target {
             self.vessels[0].target = self
                 .vessels
@@ -215,11 +265,12 @@ impl Universe {
 
     /// Rails warp is possible only when every vessel is landed or coasting with engines off,
     /// and none has reached the point where it needs physics again (a burn coming up).
+    /// Debris does not count: rails leave behind what of it needs physics.
     pub fn can_use_rails(&self) -> bool {
-        !self
-            .vessels
-            .iter()
-            .any(|v| v.needs_physics() || v.attention_time().is_some_and(|t| t <= self.time))
+        !self.vessels.iter().any(|v| {
+            !self.expendable(v)
+                && (v.needs_physics() || v.attention_time().is_some_and(|t| t <= self.time))
+        })
     }
 
     /// The earliest time some vessel needs physics again, if any does, and which vessel.
@@ -242,15 +293,24 @@ impl Universe {
             vessel.set_target_state(state);
         }
         let mut events = Vec::new();
-        for (index, vessel) in self.vessels.iter_mut().enumerate() {
+        for vessel in &mut self.vessels {
             let mut local = Vec::new();
             vessel.step(&self.system, t0, t1, &mut local);
             events.extend(local.into_iter().map(|event| SimEvent {
-                vessel: index,
+                vessel: vessel.id(),
                 event,
             }));
         }
         self.time = t1;
+        for event in &events {
+            if matches!(event.event.kind, VesselEventKind::Crashed { .. })
+                && self
+                    .vessel(event.vessel)
+                    .is_some_and(|v| self.expendable(v))
+            {
+                self.remove_vessel(event.vessel);
+            }
+        }
         events
     }
 
@@ -263,11 +323,23 @@ impl Universe {
             outcome.interrupted = true;
             return outcome;
         }
+        let behind: Vec<_> = self
+            .vessels
+            .iter()
+            .filter(|v| self.expendable(v) && v.needs_physics())
+            .map(Vessel::id)
+            .collect();
+        for id in behind {
+            self.remove_vessel(id);
+        }
         for vessel in &mut self.vessels {
             vessel.enter_rails(&self.system, self.time);
         }
         // Hand over to physics where a vessel needs it.
-        let due = self.attention().filter(|(_, t)| *t <= target);
+        let due = self
+            .attention()
+            .filter(|(_, t)| *t <= target)
+            .map(|(i, t)| (self.vessels[i].id(), t));
         let target = due.map_or(target, |(_, t)| t);
         while self.time < target {
             let next = self
@@ -285,14 +357,19 @@ impl Universe {
             };
             self.time = event.time;
             let mut local = Vec::new();
-            self.vessels[index].apply_trajectory_event(&self.system, event, &mut local);
+            let vessel = &mut self.vessels[index];
+            vessel.apply_trajectory_event(&self.system, event, &mut local);
+            let id = vessel.id();
             let stop = local.iter().any(|e| e.kind.stops_warp());
-            outcome
-                .events
-                .extend(local.into_iter().map(|event| SimEvent {
-                    vessel: index,
-                    event,
-                }));
+            if stop && self.expendable(&self.vessels[index]) {
+                self.remove_vessel(id);
+                continue;
+            }
+            outcome.events.extend(
+                local
+                    .into_iter()
+                    .map(|event| SimEvent { vessel: id, event }),
+            );
             if stop {
                 outcome.interrupted = true;
                 break;
@@ -332,7 +409,7 @@ mod tests {
         system::tests::rss,
         vessel::{
             Motion, VesselEventKind,
-            tests::{catalog, leo_vessel, pathfinder},
+            tests::{catalog, leo_vessel, pad_vessel, pathfinder},
         },
     };
 
@@ -393,6 +470,104 @@ mod tests {
                 .is_err()
         );
         assert_eq!(universe.vessels[0].name, "Comet");
+    }
+
+    /// The Pathfinder on the pad, staged three times with the throttle shut: the booster
+    /// is left standing on the pad and the fairing halves fall from the top of the stack.
+    fn staged_on_the_pad() -> Universe {
+        let system = rss();
+        let (pad, t) = pad_vessel(&system);
+        let mut u = Universe::new(system, vec![pad], t);
+        u.focus = Some(u.vessels[0].id());
+        let top = |u: &Universe| u.vessels[0].base_at(&u.system, u.time());
+        let base = top(&u);
+        let booster = u.vessels[0].propulsion.stages[0].length;
+        let debris: Vec<_> = (0..3).flat_map(|_| u.activate_next_stage(0)).collect();
+        assert_eq!(debris.len(), 3);
+        assert_eq!(u.vessels.len(), 4);
+        // The upper stage stands on the booster, which stands where it stood.
+        assert!(u.vessels[0].is_landed() && u.vessels[1].is_landed());
+        assert!((u.vessels[1].base_at(&u.system, u.time()) - base).length() < 1e-6);
+        let raised = top(&u) - base;
+        assert!(
+            (raised - base.normalize() * booster).length() < 1e-6,
+            "{raised}"
+        );
+        u
+    }
+
+    #[test]
+    fn crashed_debris_is_removed_unless_it_is_flown() {
+        let mut u = staged_on_the_pad();
+        let halves = [u.vessels[2].id(), u.vessels[3].id()];
+        u.focus = Some(halves[1]);
+        let mut crashes = 0;
+        for _ in 0..(10 * 50) {
+            crashes += u
+                .step_physics()
+                .iter()
+                .filter(|e| matches!(e.event.kind, VesselEventKind::Crashed { .. }))
+                .count();
+        }
+        assert_eq!(crashes, 2);
+        assert!(u.vessel(halves[0]).is_none());
+        assert!(u.vessel(halves[1]).is_some_and(Vessel::is_landed));
+        assert_eq!(u.vessels.len(), 3);
+    }
+
+    #[test]
+    fn clearing_debris_keeps_vessels_and_the_debris_being_flown() {
+        let mut u = staged_on_the_pad();
+        let flown = u.vessels[2].id();
+        u.focus = Some(flown);
+        u.vessels[0].target = Some(Target::Vessel(u.vessels[3].id()));
+        assert_eq!(u.clear_debris(), 2);
+        let left: Vec<_> = u.vessels.iter().map(Vessel::id).collect();
+        assert_eq!(left.len(), 2);
+        assert!(!u.vessels[0].is_debris() && left.contains(&flown));
+        // Whoever targeted a cleared piece lost the target.
+        assert_eq!(u.vessels[0].target, None);
+    }
+
+    #[test]
+    fn warp_leaves_behind_debris_that_needs_physics() {
+        let mut u = staged_on_the_pad();
+        // The halves are falling, but that does not hold up warp.
+        assert!(u.vessels[2].needs_physics() && u.vessels[3].needs_physics());
+        assert!(u.can_use_rails());
+        let end = u.time().add_seconds(60.0);
+        assert!(!u.advance_rails(end).interrupted);
+        assert_eq!(u.time(), end);
+        assert_eq!(u.vessels.len(), 2);
+        // Unless one is being flown.
+        let mut u = staged_on_the_pad();
+        u.focus = Some(u.vessels[3].id());
+        assert!(!u.can_use_rails());
+    }
+
+    #[test]
+    fn debris_entering_the_air_on_rails_is_left_behind() {
+        let system = rss();
+        let earth_id = system.find("Earth").unwrap();
+        let earth = system.body(earth_id);
+        // 400 x 100 km: periapsis inside the atmosphere.
+        let (ra, rp) = (earth.radius + 400e3, earth.radius + 100e3);
+        let va = (earth.gm * (2.0 / ra - 2.0 / (ra + rp))).sqrt();
+        let low = StateVector::new(DVec3::new(ra, 0.0, 0.0), DVec3::new(0.0, va, 0.0));
+        let high = leo_state(&system);
+        let t0 = SimTime::J2000;
+        let mut u = Universe::new(system, vec![], t0);
+        let v = vessel_with(&u.system, earth_id, low, t0);
+        u.add_vessel(v);
+        u.focus = Some(u.vessels[0].id());
+        // Fairing halves, and the upper stage under the payload.
+        let debris: Vec<_> = (0..3).flat_map(|_| u.activate_next_stage(0)).collect();
+        assert_eq!(debris.len(), 3);
+        u.vessels[0].set_free_state(&u.system, earth_id, high, t0);
+        let outcome = u.advance_rails(t0.add_seconds(86_400.0));
+        assert!(!outcome.interrupted);
+        assert!(outcome.events.is_empty());
+        assert_eq!(u.vessels.len(), 1);
     }
 
     fn universe_with(state: StateVector, frame_name: &str, t: SimTime) -> Universe {
