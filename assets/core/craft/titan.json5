@@ -1,0 +1,41 @@
+// Hypergolic two-stage launcher in the Titan II mould: two A-87s (LR-87 class) under a
+// 3.05 m first stage, one on the second, and 2.5 t on top. Translucent orange plumes.
+{
+  id: "titan",
+  name: "Titan",
+  stages: [
+    {
+      name: "First Stage",
+      engines: ["A-87", "A-87"],
+      tanks: [
+        { type: "Stiffened Al 2219", length: 13.8, propellants: { Aerozine50: 1, NTO: 1.9 } },
+      ],
+      structure_mass: 5000,
+      diameter: 3.05,
+      length: 20,
+    },
+    {
+      name: "Second Stage",
+      engines: ["A-87"],
+      tanks: [
+        {
+          type: "Stiffened Al 2219",
+          length: 5,
+          design_load: 4,
+          propellants: { Aerozine50: 1, NTO: 1.9 },
+        },
+      ],
+      reaction_wheels: ["Attitude Control Unit"],
+      structure_mass: 2000,
+      diameter: 3.05,
+      length: 9,
+    },
+    {
+      name: "Payload",
+      structure_mass: 2500,
+      fairing: { mass: 500 },
+      diameter: 3.05,
+      length: 6,
+    },
+  ],
+}

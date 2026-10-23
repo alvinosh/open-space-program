@@ -1,0 +1,45 @@
+// Medium launcher: one K-19 (RD-191 class, oxygen-rich staged combustion) under a 3.8 m
+// booster, an H-10 upper stage and 3 t on top. The K-19's plume is bright and clean, with
+// crisp diamonds.
+{
+  id: "talon",
+  name: "Talon",
+  stages: [
+    {
+      name: "Booster",
+      engines: ["K-19"],
+      tanks: [
+        { type: "Isogrid Al-Li", length: 10.6, propellants: { Kerosene: 1, LqdOxygen: 2.6 } },
+      ],
+      structure_mass: 6500,
+      diameter: 3.8,
+      length: 16,
+      appearance: { raceway: true },
+    },
+    {
+      name: "Upper Stage",
+      engines: ["H-10"],
+      tanks: [
+        {
+          type: "Insulated Al-Li",
+          length: 4,
+          design_load: 4,
+          propellants: { LqdHydrogen: 1, LqdOxygen: 5.5 },
+        },
+        { type: "COPV", shape: "sphere", diameter: 1.0, propellants: { Nitrogen: 1 } },
+      ],
+      reaction_wheels: ["Attitude Control Unit"],
+      rcs: ["Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad"],
+      structure_mass: 1200,
+      diameter: 3.8,
+      length: 7,
+    },
+    {
+      name: "Payload",
+      structure_mass: 3000,
+      fairing: { mass: 900 },
+      diameter: 3.8,
+      length: 8,
+    },
+  ],
+}

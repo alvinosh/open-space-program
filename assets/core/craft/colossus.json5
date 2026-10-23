@@ -1,0 +1,48 @@
+// Moon rocket in the Saturn V mould: five K-5s (F-1 class) in a cross under a 10 m first
+// stage, five H-2s (J-2 class) on the second, and 45 t on top. The K-5s dump their turbine
+// exhaust into the nozzles, so each plume starts in a dark, sooty collar.
+{
+  id: "colossus",
+  name: "Colossus",
+  stages: [
+    {
+      name: "First Stage",
+      engines: ["K-5", "K-5", "K-5", "K-5", "K-5"],
+      tanks: [
+        {
+          type: "Stiffened Al 2219",
+          length: 27,
+          propellants: { Kerosene: 1, LqdOxygen: 2.27 },
+        },
+      ],
+      structure_mass: 90000, // thrust structure, intertank, fins and fairings
+      diameter: 10,
+      length: 42,
+    },
+    {
+      name: "Second Stage",
+      engines: ["H-2", "H-2", "H-2", "H-2", "H-2"],
+      tanks: [
+        {
+          type: "Insulated Al-Li",
+          length: 17,
+          design_load: 4,
+          propellants: { LqdHydrogen: 1, LqdOxygen: 5.5 },
+        },
+        { type: "COPV", shape: "sphere", diameter: 1.35, propellants: { Nitrogen: 1 } },
+      ],
+      reaction_wheels: ["Attitude Control Unit"],
+      rcs: ["Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad"],
+      structure_mass: 30000,
+      diameter: 10,
+      length: 25,
+    },
+    {
+      name: "Payload",
+      structure_mass: 45000,
+      fairing: { mass: 5000 },
+      diameter: 6.6,
+      length: 18,
+    },
+  ],
+}

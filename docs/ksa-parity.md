@@ -170,10 +170,15 @@ radial boosters and part damage all need a tree of parts.
 
 - [ ] Volumetric clouds with shadows and god rays; 2D cloud layers with normal maps.
 - [ ] Physics-driven plumes: expansion with pressure, shock diamonds, refraction, crossflow
-      bending, merging, persistent trails with shadows. (Done: ray-marched plume per engine
-      from its thrust level and exit/ambient pressure, shock diamonds, ground splash, plume
-      light, bloom, bending from the gimballed nozzle onto a smoothed axis that trails the
-      airflow. Still to do: refraction, merging, trails, pad smoke.)
+      bending, merging, persistent trails with shadows. (Done: one ray-marched volume per
+      engine cluster whose jets merge, from each engine's thrust level and exit/ambient
+      pressure; soot that glows as a black body at its temperature, hides what is behind
+      it and turns to smoke lit by the sun, the sky and the flame, with self-shadowing;
+      condensation haze; flowing turbulence; shock diamonds and Mach disks (the RS-25's);
+      turbine exhaust from open-cycle engines (the Merlin's pipe, the F-1's dark film);
+      looks picked by propellant; ground splash, plume light, bloom, bending from the
+      gimballed nozzle onto a smoothed axis that trails the airflow. Still to do:
+      refraction, trails, pad smoke.)
 - [ ] FFT ocean (JONSWAP, foam, refraction, underwater). (Done: wind waves from 80 m to
       0.6 m with deep-water speeds, roughness from what a pixel can't resolve so the sun's
       glint spreads realistically from orbit, the atmosphere's sky reflected with Fresnel,

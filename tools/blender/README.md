@@ -10,12 +10,22 @@ check of the result. Other scenes are left alone.
 | `k1_vacuum.py` | `models/engines/k1_vacuum.glb` |
 | `h10.py` | `models/engines/h10.glb` |
 | `a10.py` | `models/engines/a10.glb` |
+| `h25.py` | `models/engines/h25.glb` |
+| `h2.py` | `models/engines/h2.glb` |
+| `m2.py` | `models/engines/m2.glb` |
+| `m2_vacuum.py` | `models/engines/m2_vacuum.glb` |
+| `k5.py` | `models/engines/k5.glb` |
+| `k19.py` | `models/engines/k19.glb` |
+| `a87.py` | `models/engines/a87.glb` |
+| `k0.py` | `models/engines/k0.glb` |
 | `c1.py` | `models/pods/c1.glb` |
 | `c4.py` | `models/pods/c4.glb` |
 | `cold_gas_quad.py` | `models/rcs/cold_gas_quad.glb` |
 
 `osp_common.py` has the shared helpers (lathe/sweep primitives, nozzle contours, materials, export,
-checks, preview renders). `k1_common.py` is the K-1 powerhead shared by both K-1 engines.
+checks, preview renders). `k1_common.py` is the K-1 powerhead shared by both K-1 engines,
+`m2_common.py` the M-2 powerhead shared by the M-2 and M-2 Vacuum, and `k5_k19_kit.py` holds
+helpers the K-5 and K-19 share (open bands, collars, bolt circles, bellows, debug views).
 
 ## Running
 

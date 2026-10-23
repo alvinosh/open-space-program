@@ -4,8 +4,13 @@
 // run at the floor). `response` is how the thrust follows the throttle, in seconds:
 // `spool_up` from ignition to full thrust along the `startup` curve ([time share, thrust
 // share] points), `spool_down` from cutoff to 1% thrust, `throttle_time` to sweep 0 to 100%.
-// `exit_pressure` (Pa, at full thrust) shapes the plume against the ambient pressure; `plume`
-// is the id of a `plumes` record.
+// `exit_pressure` (Pa, at full thrust) shapes the plume against the ambient pressure: well
+// below it (an overexpanded sea-level engine) the jet ends its shock cells in bright Mach
+// disks. The plume looks like the `plumes` record for what the engine burns, or the one
+// `plume` names. An open-cycle (gas-generator) engine's `turbine_exhaust` leaves through a
+// pipe of its own (`{ pipe: { exit: [x, y, z], diameter } }`, the outlet's centre in the
+// model's axes from the gimbal pivot, nozzle down -y, m) or into the nozzle (`"nozzle"`),
+// and shows beside its plume.
 // `length` (gimbal pivot to nozzle exit) and `exit_diameter` in m size the engine on the
 // rocket; `model` is a glTF file relative to the mod root with its origin at the gimbal
 // pivot and the nozzle pointing down. Without a model a plain bell of that size is drawn.
@@ -25,10 +30,11 @@
       throttle_time: 2.5,
     },
     exit_pressure: 70000,
-    plume: "Kerolox",
     ignitions: 3,
     requires_ullage: true,
     gimbal_range: 5,
+    // The gas generator's exhaust leaves through a pipe beside the bell.
+    turbine_exhaust: { pipe: { exit: [0.385, -1.5, 0.0], diameter: 0.15 } },
     propellants: { Kerosene: 1.0, LqdOxygen: 2.36 },
     length: 2.5,
     exit_diameter: 0.9,
@@ -48,10 +54,11 @@
       throttle_time: 3,
     },
     exit_pressure: 4000,
-    plume: "Kerolox",
     ignitions: 4,
     requires_ullage: true,
     gimbal_range: 5,
+    // The gas generator's exhaust cools the nozzle extension.
+    turbine_exhaust: "nozzle",
     propellants: { Kerosene: 1.0, LqdOxygen: 2.36 },
     length: 4.0,
     exit_diameter: 3.0,
@@ -71,7 +78,6 @@
       spool_down: 0.5,
     },
     exit_pressure: 2500,
-    plume: "Hydrolox",
     ignitions: 15,
     requires_ullage: true,
     gimbal_range: 4,
@@ -90,7 +96,6 @@
     // Pressure-fed hypergolic: opens the valves and it is lit.
     response: { spool_up: 0.15, spool_down: 0.1 },
     exit_pressure: 1500,
-    plume: "Hypergolic",
     ignitions: 50,
     requires_ullage: false,
     gimbal_range: 6,
@@ -108,7 +113,6 @@
     min_throttle: 0.2,
     response: { spool_up: 1.0, spool_down: 0.5, throttle_time: 1.0 },
     exit_pressure: 60000,
-    plume: "Kerolox",
     ignitions: 20,
     requires_ullage: false,
     gimbal_range: 0,
@@ -118,5 +122,178 @@
     exit_diameter: 0.45,
     model: "models/engines/k1_booster.glb",
     model_scale: 0.5,
+  },
+  {
+    id: "H-25", // RS-25-class staged-combustion hydrolox: overexpanded at sea level, Mach disks
+    mass: 3530,
+    thrust_vac: 2279000,
+    isp_vac: 452,
+    isp_sl: 366,
+    min_throttle: 0.67,
+    // Staged combustion: a slow, carefully sequenced start.
+    response: {
+      spool_up: 4.0,
+      startup: [[0, 0], [0.15, 0.04], [0.35, 0.25], [0.7, 0.8], [1, 1]],
+      spool_down: 1.2,
+      throttle_time: 3.0,
+    },
+    exit_pressure: 19000,
+    ignitions: 1,
+    requires_ullage: false,
+    gimbal_range: 10,
+    propellants: { LqdHydrogen: 1.0, LqdOxygen: 6.0 },
+    length: 4.27,
+    exit_diameter: 2.3,
+    model: "models/engines/h25.glb",
+  },
+  {
+    id: "H-2", // J-2-class gas-generator hydrolox upper stage engine, turbine exhaust manifold
+    mass: 1790,
+    thrust_vac: 1033000,
+    isp_vac: 421,
+    isp_sl: 290,
+    min_throttle: 1.0,
+    response: {
+      spool_up: 3.0,
+      startup: [[0, 0], [0.2, 0.08], [0.5, 0.5], [0.8, 0.9], [1, 1]],
+      spool_down: 0.8,
+    },
+    exit_pressure: 15000,
+    ignitions: 2,
+    requires_ullage: true,
+    gimbal_range: 7,
+    turbine_exhaust: "nozzle",
+    propellants: { LqdHydrogen: 1.0, LqdOxygen: 5.5 },
+    length: 3.38,
+    exit_diameter: 1.98,
+    model: "models/engines/h2.glb",
+  },
+  {
+    id: "M-2", // Raptor-class full-flow staged-combustion methalox, sea level
+    mass: 1630,
+    thrust_vac: 2394000,
+    isp_vac: 347,
+    isp_sl: 327,
+    min_throttle: 0.4,
+    response: {
+      spool_up: 2.0,
+      startup: [[0, 0], [0.15, 0.1], [0.45, 0.5], [0.8, 0.92], [1, 1]],
+      spool_down: 0.7,
+      throttle_time: 2.0,
+    },
+    exit_pressure: 65000,
+    ignitions: 10,
+    requires_ullage: true,
+    gimbal_range: 15,
+    propellants: { LqdMethane: 1.0, LqdOxygen: 3.6 },
+    length: 3.1,
+    exit_diameter: 1.3,
+    model: "models/engines/m2.glb",
+  },
+  {
+    id: "M-2 Vacuum", // Raptor Vacuum-class: the M-2 with a big radiatively cooled extension
+    mass: 2100,
+    thrust_vac: 2530000,
+    isp_vac: 380,
+    isp_sl: 220,
+    min_throttle: 0.4,
+    response: {
+      spool_up: 2.0,
+      startup: [[0, 0], [0.15, 0.1], [0.45, 0.5], [0.8, 0.92], [1, 1]],
+      spool_down: 0.7,
+      throttle_time: 2.0,
+    },
+    exit_pressure: 9000,
+    ignitions: 10,
+    requires_ullage: true,
+    gimbal_range: 3,
+    propellants: { LqdMethane: 1.0, LqdOxygen: 3.6 },
+    length: 4.6,
+    exit_diameter: 2.3,
+    model: "models/engines/m2_vacuum.glb",
+  },
+  {
+    id: "K-5", // F-1-class gas-generator kerolox: huge, turbine exhaust cools the extension
+    mass: 8400,
+    thrust_vac: 7770000,
+    isp_vac: 304,
+    isp_sl: 263,
+    min_throttle: 1.0,
+    response: {
+      spool_up: 3.0,
+      startup: [[0, 0], [0.1, 0.1], [0.4, 0.45], [0.75, 0.88], [1, 1]],
+      spool_down: 1.0,
+    },
+    exit_pressure: 70000,
+    ignitions: 1,
+    requires_ullage: true,
+    gimbal_range: 6,
+    // The turbine exhaust cools the nozzle extension: a dark collar under each bell.
+    turbine_exhaust: "nozzle",
+    propellants: { Kerosene: 1.0, LqdOxygen: 2.27 },
+    length: 5.79,
+    exit_diameter: 3.76,
+    model: "models/engines/k5.glb",
+  },
+  {
+    id: "K-19", // RD-191-class oxygen-rich staged-combustion kerolox: a clean, bright plume
+    mass: 2200,
+    thrust_vac: 2090000,
+    isp_vac: 337,
+    isp_sl: 311,
+    min_throttle: 0.27,
+    response: {
+      spool_up: 2.5,
+      startup: [[0, 0], [0.12, 0.08], [0.4, 0.45], [0.8, 0.9], [1, 1]],
+      spool_down: 0.8,
+      throttle_time: 3.0,
+    },
+    exit_pressure: 55000,
+    plume: "Kerolox Staged",
+    ignitions: 1,
+    requires_ullage: true,
+    gimbal_range: 8,
+    propellants: { Kerosene: 1.0, LqdOxygen: 2.6 },
+    length: 4.0,
+    exit_diameter: 1.45,
+    model: "models/engines/k19.glb",
+  },
+  {
+    id: "A-87", // LR-87-class pump-fed hypergolic booster chamber
+    mass: 850,
+    thrust_vac: 1100000,
+    isp_vac: 296,
+    isp_sl: 259,
+    min_throttle: 1.0,
+    // Hypergolic: lit the moment the propellants meet; the turbopump spins up quickly.
+    response: { spool_up: 1.2, spool_down: 0.4 },
+    exit_pressure: 55000,
+    ignitions: 1,
+    requires_ullage: true,
+    gimbal_range: 5,
+    // The gas generator's exhaust runs down beside the bell in a pipe of its own.
+    turbine_exhaust: { pipe: { exit: [0.75, -3.1, 0.0], diameter: 0.156 } },
+    propellants: { Aerozine50: 1.0, NTO: 1.9 },
+    length: 3.2,
+    exit_diameter: 1.3,
+    model: "models/engines/a87.glb",
+  },
+  {
+    id: "K-0", // Rutherford-class electric-pump kerolox for small launchers
+    mass: 35,
+    thrust_vac: 26000,
+    isp_vac: 330,
+    isp_sl: 303,
+    min_throttle: 0.5,
+    // Battery-driven pumps: no turbine to spin up.
+    response: { spool_up: 0.5, spool_down: 0.2, throttle_time: 1.0 },
+    exit_pressure: 60000,
+    ignitions: 10,
+    requires_ullage: true,
+    gimbal_range: 6,
+    propellants: { Kerosene: 1.0, LqdOxygen: 2.4 },
+    length: 0.9,
+    exit_diameter: 0.3,
+    model: "models/engines/k0.glb",
   },
 ]

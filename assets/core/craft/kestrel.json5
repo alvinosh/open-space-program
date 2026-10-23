@@ -1,0 +1,49 @@
+// Methalox launcher: nine M-2s (Raptor class) under a 6 m booster, then an M-2 Vacuum upper
+// stage and a 20 t payload. Clean blue-violet plumes with orange diamonds.
+{
+  id: "kestrel",
+  name: "Kestrel",
+  stages: [
+    {
+      name: "Booster",
+      engines: ["M-2", "M-2", "M-2", "M-2", "M-2", "M-2", "M-2", "M-2", "M-2"],
+      tanks: [
+        {
+          type: "Insulated Al-Li",
+          length: 38,
+          propellants: { LqdMethane: 1, LqdOxygen: 3.6 },
+        },
+      ],
+      structure_mass: 35000,
+      diameter: 6,
+      length: 46,
+      appearance: { legs: 4, grid_fins: 4, raceway: true },
+    },
+    {
+      name: "Upper Stage",
+      engines: ["M-2 Vacuum"],
+      tanks: [
+        {
+          type: "Insulated Al-Li",
+          length: 9,
+          design_load: 4,
+          propellants: { LqdMethane: 1, LqdOxygen: 3.6 },
+        },
+        { type: "COPV", shape: "sphere", diameter: 1.35, propellants: { Nitrogen: 1 } },
+      ],
+      reaction_wheels: ["Attitude Control Unit"],
+      rcs: ["Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad"],
+      structure_mass: 6000,
+      diameter: 6,
+      length: 15,
+      appearance: { raceway: true },
+    },
+    {
+      name: "Payload",
+      structure_mass: 20000,
+      fairing: { mass: 3000 },
+      diameter: 6,
+      length: 14,
+    },
+  ],
+}

@@ -1,0 +1,41 @@
+// Small launcher: nine K-0s (Rutherford class) under a 1.3 m carbon booster, one on the
+// upper stage, and 200 kg on top.
+{
+  id: "sparrow",
+  name: "Sparrow",
+  stages: [
+    {
+      name: "Booster",
+      engines: ["K-0", "K-0", "K-0", "K-0", "K-0", "K-0", "K-0", "K-0", "K-0"],
+      tanks: [
+        { type: "Composite", length: 9.5, propellants: { Kerosene: 1, LqdOxygen: 2.4 } },
+      ],
+      structure_mass: 700, // engine mount, batteries, avionics
+      diameter: 1.3,
+      length: 12,
+    },
+    {
+      name: "Upper Stage",
+      engines: ["K-0"],
+      tanks: [
+        {
+          type: "Composite",
+          length: 2.8,
+          design_load: 6,
+          propellants: { Kerosene: 1, LqdOxygen: 2.4 },
+        },
+      ],
+      reaction_wheels: ["Attitude Control Unit"],
+      structure_mass: 250,
+      diameter: 1.3,
+      length: 3.5,
+    },
+    {
+      name: "Payload",
+      structure_mass: 200,
+      fairing: { mass: 50 },
+      diameter: 1.3,
+      length: 2.5,
+    },
+  ],
+}

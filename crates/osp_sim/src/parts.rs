@@ -691,8 +691,9 @@ fn normalise(propellants: &mut BTreeMap<String, f64>) {
 }
 
 /// Engine positions for a stage of the given radius, seen from behind: a single engine on
-/// the axis, small clusters on a ring, and seven or more as a ring around a central engine
-/// (like a Falcon 9 octaweb). Off-axis engines can roll the vessel by gimballing sideways.
+/// the axis, small clusters on a ring, five as a cross (like the Saturn V's first stages),
+/// and seven or more as a ring around a central engine (like a Falcon 9 octaweb). Off-axis
+/// engines can roll the vessel by gimballing sideways.
 fn engine_layout(count: usize, radius: f64) -> Vec<DVec2> {
     let ring = |n: usize, r: f64| {
         (0..n).map(move |i| DVec2::from_angle(std::f64::consts::TAU * i as f64 / n as f64) * r)
@@ -700,6 +701,9 @@ fn engine_layout(count: usize, radius: f64) -> Vec<DVec2> {
     match count {
         0 => Vec::new(),
         1 => vec![DVec2::ZERO],
+        5 => std::iter::once(DVec2::ZERO)
+            .chain(ring(4, 0.76 * radius))
+            .collect(),
         2..=6 => ring(count, 0.5 * radius).collect(),
         _ => std::iter::once(DVec2::ZERO)
             .chain(ring(count - 1, 0.65 * radius))

@@ -68,8 +68,8 @@ parts of it instead.
 | Collection | Contents | Notes |
 | --- | --- | --- |
 | `bodies` | Planets, moons, stars | Keplerian `orbit` (J2000 ecliptic, degrees), IAU `rotation`, optional `atmosphere`, `terrain` dataset and `max_terrain_height` (m) |
-| `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `response`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }`, `length` and `exit_diameter` (m), `exit_pressure` (Pa), `plume`, `model`, `model_scale` (draw the model this many times its size); see [Engine response and plumes](#engine-response-and-plumes) |
-| `plumes` | Exhaust looks | `core`, `flame` and `shock` colours (linear RGB), `luminance` (cd/m² per m at full thrust), `soot` (0..1) |
+| `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `response`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }`, `length` and `exit_diameter` (m), `exit_pressure` (Pa), `plume`, `turbine_exhaust`, `model`, `model_scale` (draw the model this many times its size); see [Engine response and plumes](#engine-response-and-plumes) |
+| `plumes` | Exhaust looks | `propellants` it is the exhaust of, `core`, `flame` and `shock` colours (linear RGB), `luminance` (cd/m² per m at full thrust), `soot` (0..1), `temperature` (K), `smoke` (colour), `haze` (0..1); see [Engine response and plumes](#engine-response-and-plumes) |
 | `resources` | Propellants and gases | `density` (kg/m³ as stored), storage `temperature` (K) and `pressure` (Pa) |
 | `materials` | Structural materials | `density` (kg/m³), `yield_strength` and `elastic_modulus` (Pa) |
 | `tank_types` | How procedural tanks are built | `material`, operating `pressure` (Pa), `min_gauge` (m), `stiffening`, `buckling_factor`, `insulation` (kg/m²), `min_temperature` (K), `utilization`, `safety_factor`, `design_load` (g), optional `propellants` allowlist; see [Procedural tanks and fins](#procedural-tanks-and-fins) |
@@ -289,12 +289,29 @@ The plume is drawn from the engine's state: it grows out of the nozzle as the en
 up, and shortens and dims as it throttles down. `exit_pressure` (Pa, at full thrust; scales
 with thrust) against the ambient pressure sets its shape: at or below the ambient pressure
 the jet is a narrow column with shock diamonds; as the air thins it overtakes it, the cells
-stretch and the plume fans out and fades into vacuum. Without `exit_pressure` it is guessed
-from the Isp the engine loses at sea level. `plume` names a `plumes` record for the colours
-and brightness; engines without one draw no plume. The jet leaves along the gimballed
-nozzle and bends within a few metres onto where the exhaust has been going over the last
-half second or so, leaning into the airflow the harder the air pushes against the jet, so
-quick gimbal moves do not swing the whole plume.
+stretch and the plume fans out and fades into vacuum. Well below the ambient pressure (an
+overexpanded sea-level engine such as an RS-25 at liftoff) or well above it, each cell ends
+in a bright Mach disk. Without `exit_pressure` it is guessed from the Isp the engine loses
+at sea level. The jet leaves along the gimballed nozzle and bends within a few metres onto
+where the exhaust has been going over the last half second or so, leaning into the airflow
+the harder the air pushes against the jet, so quick gimbal moves do not swing the whole
+plume. The jets of engines that share a look merge into one plume.
+
+The look comes from a `plumes` record: the one the engine's `plume` names, or else the one
+whose `propellants` the engine all burns (the one naming the most wins), so a new hydrolox
+engine looks like hydrolox without saying so. A look has the gas's own glow (`core`, `flame`
+and `shock` colours and `luminance`), the particles it carries (`soot`: they hide what is
+behind them, glow like a black body up to `temperature` and are smoke of colour `smoke` once
+cool) and the `haze` it condenses into (the white trail in the air, the sunlit cloud in thin
+air). Give an engine a look of its own when its cycle changes the flame: the stock `Kerolox
+Staged` is the cleaner, brighter flame of an oxygen-rich staged-combustion engine.
+
+An open-cycle (gas-generator) engine dumps the exhaust that drove its turbine, and
+`turbine_exhaust` says where: `{ pipe: { exit: [x, y, z], diameter } }` for a pipe of its own
+(the centre of its outlet in the model's axes from the gimbal pivot, nozzle down −y, in
+metres; it points along the nozzle), which shows as a dark, sooty streak beside the plume
+until it catches fire with the air, or `"nozzle"` where it lines the nozzle wall, a dark
+collar under the bell before the plume bursts into flame (the F-1's).
 
 ### Staging
 

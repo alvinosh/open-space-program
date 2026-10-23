@@ -1,0 +1,48 @@
+// Hydrolox core-stage launcher: four H-25s (RS-25 class) under an 8.4 m core, then an H-2
+// upper stage and a 15 t payload. At liftoff the H-25s run far below the air's pressure, so
+// their nearly clear plumes end each shock cell in a white-hot Mach disk.
+{
+  id: "heron",
+  name: "Heron",
+  stages: [
+    {
+      name: "Core Stage",
+      engines: ["H-25", "H-25", "H-25", "H-25"],
+      tanks: [
+        {
+          type: "Insulated Al-Li",
+          length: 22,
+          propellants: { LqdHydrogen: 1, LqdOxygen: 6 },
+        },
+      ],
+      structure_mass: 22000, // engine section, intertank, avionics
+      diameter: 8.4,
+      length: 32,
+    },
+    {
+      name: "Upper Stage",
+      engines: ["H-2"],
+      tanks: [
+        {
+          type: "Insulated Al-Li",
+          length: 6.5,
+          design_load: 4,
+          propellants: { LqdHydrogen: 1, LqdOxygen: 5.5 },
+        },
+        { type: "COPV", shape: "sphere", diameter: 1.35, propellants: { Nitrogen: 1 } },
+      ],
+      reaction_wheels: ["Attitude Control Unit"],
+      rcs: ["Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad", "Cold Gas Quad"],
+      structure_mass: 3000,
+      diameter: 8.4,
+      length: 12,
+    },
+    {
+      name: "Payload",
+      structure_mass: 15000,
+      fairing: { mass: 2500 },
+      diameter: 8.4,
+      length: 13,
+    },
+  ],
+}

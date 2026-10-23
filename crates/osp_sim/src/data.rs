@@ -426,9 +426,26 @@ pub struct EngineDef {
     /// if missing.
     #[serde(default)]
     pub exit_pressure: Option<f64>,
-    /// Look of the exhaust: id of a `plumes` record. Without one no plume is drawn.
+    /// Look of the exhaust: id of a `plumes` record. Without one the engine gets the look for
+    /// the propellants it burns, if there is one.
     #[serde(default)]
     pub plume: Option<String>,
+    /// Where an open-cycle (gas-generator) engine dumps the exhaust that drove its turbine,
+    /// which shows beside its plume. Closed-cycle engines burn it in the chamber.
+    #[serde(default)]
+    pub turbine_exhaust: Option<TurbineExhaust>,
+}
+
+/// Where a gas-generator engine's turbine exhaust leaves.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TurbineExhaust {
+    /// Out of a pipe of its own (the Merlin's): the centre of its outlet in the engine's
+    /// axes (from the gimbal pivot, x and z across, the nozzle down −y) and its diameter,
+    /// m, at the scale the model is drawn. It points along the nozzle.
+    Pipe { exit: [f64; 3], diameter: f64 },
+    /// Into the nozzle, where it lines the wall (the F-1's and J-2's extensions).
+    Nozzle,
 }
 
 impl EngineDef {
