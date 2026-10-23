@@ -1,11 +1,11 @@
 //! Rotational dynamics: the stack's mass properties, control torque from engine gimbal and
 //! reaction wheels (RCS is in [`crate::rcs`]), and the SAS autopilot.
 //!
-//! A vessel is a rigid, axisymmetric body: its inertia about the centre of mass is diagonal
-//! in vessel axes, with equal pitch and yaw moments. That makes torque-free rotation (a
-//! spinning stage in orbit) exactly solvable ([`coast`]), so like a coasting trajectory it
-//! is evaluated analytically at any time and time warp cannot change it. Under torque,
-//! Euler's equations are integrated on the physics tick ([`integrate`]).
+//! A vessel is a rigid body whose inertia tensor is summed from its parts ([`crate::mass`]).
+//! Torque-free rotation (a spinning stage in orbit, a tumbling plane) is solved exactly for
+//! any body, symmetric or not ([`coast`]), so like a coasting trajectory it is evaluated
+//! analytically at any time and time warp cannot change it. Under torque, Euler's equations
+//! are integrated on the physics tick ([`integrate`]).
 //!
 //! Vessel axes: +Z is the nose, +X the pilot's right and +Y the pilot's feet, so a positive
 //! rotation about +X pitches the nose up, about +Y yaws right and about +Z rolls right.
@@ -16,34 +16,55 @@ use std::{array, f64::consts::PI};
 use glam::{DMat3, DQuat, DVec2, DVec3};
 
 use crate::{
-    aero::Panel,
     body::Body,
-    gear::Leg,
+    data::TankShape,
+    elliptic,
+    mass::{self, Mass},
     orbit::StateVector,
+    parts::PartKind,
     propulsion::{Engine, Propulsion, Stage},
+    structure::Tank,
 };
 
-/// Moments of inertia about the centre of mass and the vessel axes, kg·m². The vessel is
-/// taken to be symmetric about its axis and its plane of symmetry, so these are its
-/// principal moments: equal pitch and yaw for a rocket, different for a winged vessel.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+/// The inertia tensor about the centre of mass, in vessel axes, kg·m². A rocket's is
+/// diagonal, with equal pitch and yaw moments; a tail fin or anything else to one side adds
+/// products of inertia, and the principal axes ([`Self::principal`]) tilt away from the
+/// vessel's.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Inertia {
-    /// About the pitch axis (vessel X).
-    pub pitch: f64,
-    /// About the yaw axis (vessel Y).
-    pub yaw: f64,
-    /// About the roll axis (vessel Z).
-    pub roll: f64,
+    pub tensor: DMat3,
+}
+
+impl Default for Inertia {
+    fn default() -> Self {
+        Self {
+            tensor: DMat3::ZERO,
+        }
+    }
 }
 
 impl Inertia {
-    pub fn diagonal(&self) -> DVec3 {
-        DVec3::new(self.pitch, self.yaw, self.roll)
+    /// Principal axes along the vessel's, with these moments about pitch (X), yaw (Y) and
+    /// roll (Z).
+    pub fn about_axes(pitch: f64, yaw: f64, roll: f64) -> Self {
+        Self {
+            tensor: DMat3::from_diagonal(DVec3::new(pitch, yaw, roll)),
+        }
     }
 
-    /// The mean of the pitch and yaw moments.
-    pub fn transverse(&self) -> f64 {
-        (self.pitch + self.yaw) / 2.0
+    /// The moments about the pitch, yaw and roll axes.
+    pub fn diagonal(&self) -> DVec3 {
+        DVec3::new(
+            self.tensor.x_axis.x,
+            self.tensor.y_axis.y,
+            self.tensor.z_axis.z,
+        )
+    }
+
+    /// The principal moments, smallest first, and the body frame: the rotation from the
+    /// principal axes to vessel axes.
+    pub fn principal(&self) -> (DVec3, DQuat) {
+        mass::principal_axes(&self.tensor)
     }
 }
 
@@ -55,116 +76,65 @@ pub struct MassProperties {
     pub inertia: Inertia,
 }
 
-/// Mass distribution of a stack of stages, bottom first. Each stage is a cylinder of its
-/// diameter and length: tanks are thin shells along it, structure (and payload) a uniform
-/// solid, a crew pod a solid frustum of its own shape on top (so a capsule is bottom-heavy
-/// and falls heat shield first), engines point masses at their mounts on the stage's base,
-/// fins rings of mass at their centroid, wing panels rods along their span, gear legs point
-/// masses halfway down their struts, and propellant a solid column settled at the aft end,
-/// where thrust pushes it. The centre of mass therefore
-/// moves as the tanks drain. It stays on the axis: mirrored wings balance, and a tail fin's
-/// height is left out of it (though not out of the inertia).
-pub fn mass_properties(stages: &[Stage]) -> MassProperties {
-    // Sums of m, m·z, m·z² and each element's own moments about its centre; then, for wings
-    // off the axis, Σ m x² and Σ m y².
-    let (mut mass, mut first, mut second) = (0.0, 0.0, 0.0);
-    let (mut own_transverse, mut axial) = (0.0, 0.0);
-    let (mut sideways, mut downwards) = (0.0, 0.0);
-    let mut add = |m: f64, z: f64, transverse: f64, roll: f64| {
-        mass += m;
-        first += m * z;
-        second += m * z * z;
-        own_transverse += transverse;
-        axial += roll;
-    };
-    let mut base = 0.0;
-    for stage in stages {
-        let (r2, length) = ((stage.diameter / 2.0).powi(2), stage.length);
-        let middle = base + length / 2.0;
-        let m = stage.tank_mass;
-        add(m, middle, m * (r2 / 2.0 + length * length / 12.0), m * r2);
-        let pod = stage.pod.as_ref().map_or(0.0, |p| p.mass);
-        let m = stage.structure_mass - pod;
-        add(
-            m,
-            middle,
-            m * (r2 / 4.0 + length * length / 12.0),
-            m * r2 / 2.0,
-        );
-        if let Some(p) = &stage.pod {
-            let (a, b, h) = (p.diameter / 2.0, p.top_diameter() / 2.0, p.height);
-            let centroid = h / 4.0 * (a * a + 2.0 * a * b + 3.0 * b * b) / (a * a + a * b + b * b);
-            // Moments of a cylinder of the mean radius.
-            let rm2 = ((a + b) / 2.0).powi(2);
-            add(
-                p.mass,
-                base + length - h + centroid,
-                p.mass * (rm2 / 4.0 + h * h / 12.0),
-                p.mass * rm2 / 2.0,
-            );
-        }
-        // The fairing: a thin shell around the stage.
-        let m = stage.fairing_mass();
-        add(m, middle, m * (r2 / 2.0 + length * length / 12.0), m * r2);
-        for engine in &stage.engines {
-            let (m, d2) = (engine.def.mass, engine.mount.length_squared());
-            add(m, base, m * d2 / 2.0, m * d2);
-        }
-        if let Some(fins) = &stage.fins {
-            let (out, height) = fins.centroid();
-            let (m, d2) = (fins.mass, (stage.diameter / 2.0 + out).powi(2));
-            add(m, base + height, m * d2 / 2.0, m * d2);
-        }
-        for def in &stage.gear {
-            for leg in Leg::of(def, stage.diameter / 2.0, base) {
-                let at = leg.axle(leg.length / 2.0);
-                add(leg.mass, at.z, 0.0, 0.0);
-                sideways += leg.mass * at.x * at.x;
-                downwards += leg.mass * at.y * at.y;
-            }
-        }
-        for wing in &stage.wings {
-            let panels = Panel::of(wing, stage.diameter / 2.0, base);
-            let m = wing.mass / panels.len() as f64;
-            for p in panels {
-                // A rod from mid-chord at the root to mid-chord at the tip.
-                let a = p.root - DVec3::Z * p.root_chord / 2.0;
-                let b = p.tip - DVec3::Z * p.tip_chord / 2.0;
-                let (middle, d) = ((a + b) / 2.0, b - a);
-                let chord = (p.root_chord + p.tip_chord) / 2.0;
-                add(m, middle.z, m * (d.z * d.z + chord * chord) / 12.0, 0.0);
-                sideways += m * (middle.x * middle.x + d.x * d.x / 12.0);
-                downwards += m * (middle.y * middle.y + d.y * d.y / 12.0);
-            }
-        }
-        let m = stage.propellant_mass();
-        let fill = (m / stage.propellant_capacity().max(1e-9)).clamp(0.0, 1.0);
-        let h = length * fill;
-        add(
-            m,
-            base + h / 2.0,
-            m * (r2 / 4.0 + h * h / 12.0),
-            m * r2 / 2.0,
-        );
-        base += length;
-    }
-    if mass <= 0.0 {
+/// Mass distribution of the vessel: its parts' dry mass
+/// ([`crate::parts::PartTree::dry_mass`]) and the propellant in its tanks. Tanks drain
+/// together, so each holds its share of what is left in its stage: a liquid as a solid
+/// column settled at the tank's aft end, where thrust pushes it, and a compressed gas
+/// filling the tank. The centre of mass therefore moves as the tanks drain. It is kept on
+/// the axis: a part off to one side (a tail fin) counts towards its height and the inertia
+/// about it, not towards where it is sideways.
+pub fn mass_properties(propulsion: &Propulsion) -> MassProperties {
+    let parts = propulsion.parts();
+    let propellant: Mass = propulsion
+        .stages
+        .iter()
+        .flat_map(|stage| {
+            parts
+                .stage(stage.id)
+                .filter_map(move |part| match &part.kind {
+                    PartKind::Tank(tank) => {
+                        Some(tank_contents(tank, stage).placed(part.position, part.rotation))
+                    }
+                    _ => None,
+                })
+        })
+        .sum();
+    let total = parts.dry_mass() + propellant;
+    if total.mass <= 0.0 {
         return MassProperties::default();
     }
-    let center_of_mass = first / mass;
     MassProperties {
-        mass,
-        center_of_mass,
-        inertia: {
-            // Parallel-axis theorem, summed: Σ m (z − c)² = Σ m z² − M c².
-            let along = own_transverse + (second - mass * center_of_mass * center_of_mass).max(0.0);
-            Inertia {
-                pitch: along + downwards,
-                yaw: along + sideways,
-                roll: axial + sideways + downwards,
-            }
+        mass: total.mass,
+        center_of_mass: total.center.z - parts.base(),
+        inertia: Inertia {
+            tensor: total.inertia_about(DVec3::Z * total.center.z),
         },
     }
+}
+
+/// What `tank` holds now, in its own frame, its share of `stage`'s propellant.
+fn tank_contents(tank: &Tank, stage: &Stage) -> Mass {
+    let (mut liquid, mut full, mut gas) = (0.0, 0.0, 0.0);
+    for content in &tank.contents {
+        let fill = stage
+            .propellants
+            .iter()
+            .find(|p| p.name == content.resource)
+            .map_or(0.0, |p| (p.amount / p.capacity.max(1e-9)).clamp(0.0, 1.0));
+        if content.gas {
+            gas += content.capacity * fill;
+        } else {
+            liquid += content.capacity * fill;
+            full += content.capacity;
+        }
+    }
+    let (radius, length) = (tank.radius, tank.length);
+    let gas = match tank.shape {
+        TankShape::Cylinder => Mass::cylinder(gas, radius, length),
+        TankShape::Sphere => Mass::sphere(gas, radius).placed(DVec3::Z * radius, DQuat::IDENTITY),
+    };
+    let column = length * liquid / full.max(1e-9);
+    gas + Mass::cylinder(liquid, radius, column)
 }
 
 fn bottom_engines(propulsion: &Propulsion) -> impl Iterator<Item = &Engine> {
@@ -251,28 +221,97 @@ impl Attitude {
     }
 }
 
-/// Torque-free rotation for `dt` seconds, exact (a free symmetric top): the body turns
-/// about its fixed angular momentum at |L| / I⊥ while spinning about its own axis at
-/// ωz (I⊥ − Iz) / I⊥, so the transverse rate precesses in vessel axes. A winged vessel,
-/// whose pitch and yaw moments differ, coasts like the top with their mean (its own
-/// Euler–Poinsot tumbling is not modelled yet).
+/// Principal moments closer than this share of the largest are taken as equal: the body
+/// is symmetric, and the elliptic parameters stay well conditioned.
+const SYMMETRIC: f64 = 1e-9;
+
+/// Torque-free rotation for `dt` seconds, exact (Euler–Poinsot). The angular momentum L
+/// stays fixed in space and the rotational energy E is kept, so in principal axes L runs
+/// round a closed curve (the polhode) about the axis of largest or of smallest moment: the
+/// rates are Jacobi elliptic functions of time (sines and cosines for a symmetric body),
+/// and the body turns about L by an angle that is an elliptic integral of the third kind.
+/// Turning about a principal axis, it keeps turning steadily. Like a coasting orbit it is
+/// evaluated for any `dt` without stepping, so time warp cannot change it.
 pub fn coast(state: Attitude, inertia: Inertia, dt: f64) -> Attitude {
-    let transverse = inertia.transverse();
-    if dt == 0.0 || transverse <= 0.0 {
+    let w = state.angular_velocity;
+    if dt == 0.0 || w == DVec3::ZERO {
         return state;
     }
-    let w = state.angular_velocity;
-    let spin = w.z * (transverse - inertia.roll) / transverse;
-    let symmetric = DVec3::new(transverse, transverse, inertia.roll);
-    let momentum = state.orientation * (symmetric * w);
-    let precession = match momentum.try_normalize() {
-        Some(axis) => DQuat::from_axis_angle(axis, momentum.length() / transverse * dt),
-        None => DQuat::IDENTITY,
+    let steady = Attitude {
+        orientation: (state.orientation * DQuat::from_scaled_axis(w * dt)).normalize(),
+        angular_velocity: w,
     };
+    let (mut moments, axes) = inertia.principal();
+    let close = SYMMETRIC * moments.z;
+    if moments.y - moments.x <= close {
+        (moments.x, moments.y) = ((moments.x + moments.y) / 2.0, (moments.x + moments.y) / 2.0);
+    }
+    if moments.z - moments.y <= close {
+        (moments.y, moments.z) = ((moments.y + moments.z) / 2.0, (moments.y + moments.z) / 2.0);
+    }
+    let principal = DMat3::from_quat(axes);
+    let rates = principal.transpose() * w;
+    let l = moments * rates;
+    if moments.x <= 0.0 || l.cross(rates).length() <= 1e-12 * l.length() * rates.length() {
+        return steady;
+    }
+    let (l2, e2) = (l.length_squared(), rates.dot(l));
+    // The polhode runs round axis c, of the largest moment or the smallest; a is the other
+    // extreme and b the middle one, in a right-handed frame.
+    let around_largest = if moments.y == moments.z {
+        false
+    } else if moments.x == moments.y {
+        true
+    } else {
+        l2 > e2 * moments.y
+    };
+    let (frame, [ia, ib, ic]) = if around_largest {
+        (DMat3::IDENTITY, moments.to_array())
+    } else {
+        let flipped = DMat3::from_cols(DVec3::Z, -DVec3::Y, DVec3::X);
+        (flipped, [moments.z, moments.y, moments.x])
+    };
+    let body = principal * frame;
+    let w0 = body.transpose() * w;
+    // ωa = Aa cn τ, ωb = sb Ab sn τ, ωc = sc Ac dn τ, with τ = τ0 + rate · t. dn stays
+    // positive, so ωc keeps its sign, and Euler's equations then fix sb.
+    let root = |x: f64| x.max(0.0).sqrt();
+    let amplitude = DVec3::new(
+        root((e2 * ic - l2) / (ia * (ic - ia))),
+        root((e2 * ic - l2) / (ib * (ic - ib))),
+        root((l2 - e2 * ia) / (ic * (ic - ia))),
+    );
+    let rate = root((ic - ib) * (l2 - e2 * ia) / (ia * ib * ic));
+    let m = ((ib - ia) * (e2 * ic - l2) / ((ic - ib) * (l2 - e2 * ia))).clamp(0.0, 1.0 - 1e-12);
+    let sc = w0.z.signum();
+    let sb = sc * (ic - ib).signum();
+    let am0 = (sb * w0.y / amplitude.y).atan2(w0.x / amplitude.x);
+    // The turn about L: dφ/dt = L/Ia − (L/Ia)(L² − 2E·Ia) / (L² − Ia² ωa²), and the last
+    // term integrates to Π(n; am τ) with n = −Ia² Aa² / (Ic² Ac²).
+    let across = (ic * amplitude.z).powi(2);
+    let n = -(ia * amplitude.x).powi(2) / across;
+    let (tau0, pi0) = elliptic::incomplete(am0, m, n);
+    let (am, sn, cn, dn) = elliptic::jacobi(tau0 + rate * dt, m);
+    let (_, pi1) = elliptic::incomplete(am, m, n);
+    let w1 = DVec3::new(
+        amplitude.x * cn,
+        sb * amplitude.y * sn,
+        sc * amplitude.z * dn,
+    );
+    let turn = l2.sqrt() / ia * (dt - (l2 - e2 * ia) / (rate * across) * (pi1 - pi0));
+    // L's direction in the body goes to L's in space, and the body's axis a, seen across L,
+    // turns by `turn` about it.
+    let frame_of = |rates: DVec3| {
+        let u = (DVec3::new(ia, ib, ic) * rates).normalize();
+        let p = (DVec3::X - u * u.x).normalize();
+        DMat3::from_cols(u, p, u.cross(p))
+    };
+    let space = DMat3::from_quat(state.orientation) * body * frame_of(w0);
+    let about = DMat3::from_axis_angle(space.x_axis, turn);
+    let turned = about * space * frame_of(w1).transpose() * body.transpose();
     Attitude {
-        orientation: (precession * state.orientation * DQuat::from_rotation_z(spin * dt))
-            .normalize(),
-        angular_velocity: DQuat::from_rotation_z(-spin * dt) * w,
+        orientation: DQuat::from_mat3(&turned).normalize(),
+        angular_velocity: body * w1,
     }
 }
 
@@ -290,13 +329,14 @@ pub fn integrate_with(
     dt: f64,
     torque: impl Fn(Attitude) -> DVec3,
 ) -> Attitude {
-    let i = inertia.diagonal().max(DVec3::splat(1e-9));
+    let i = inertia.tensor + DMat3::from_diagonal(DVec3::splat(1e-9));
+    let inverse = i.inverse();
     let accel = |q: DQuat, w: DVec3| {
         let attitude = Attitude {
             orientation: q.normalize(),
             angular_velocity: w,
         };
-        (torque(attitude) - w.cross(i * w)) / i
+        inverse * (torque(attitude) - w.cross(i * w))
     };
     let turn = |q: DQuat, w: DVec3| q * DQuat::from_xyzw(w.x, w.y, w.z, 0.0) * 0.5;
     let (q0, w0) = (state.orientation, state.angular_velocity);
@@ -594,6 +634,7 @@ mod tests {
             tank_type: "Isogrid Al-Li".into(),
             shape: TankShape::Cylinder,
             length: tank,
+            position: None,
             diameter: None,
             design_load: None,
             propellants: [("Kerosene".into(), 1.0), ("LqdOxygen".into(), 2.36)].into(),
@@ -630,29 +671,35 @@ mod tests {
         (a - b).abs() <= tolerance * b.abs().max(1.0)
     }
 
+    /// The angle between two orientations, rad, good down to rounding (unlike
+    /// `DQuat::angle_between`, which cannot see below about 3e-8).
+    fn angle(a: DQuat, b: DQuat) -> f64 {
+        2.0 * (a * b.inverse()).xyz().length()
+    }
+
     #[test]
     fn solid_cylinder_inertia() {
         let p = propulsion(vec![stage(&[], 0.0, 1000.0, 2.0, 10.0)]);
-        let m = mass_properties(&p.stages);
+        let m = mass_properties(&p);
         assert!(close(m.center_of_mass, 5.0, 1e-12));
-        assert!(close(m.inertia.roll, 1000.0 * 1.0 / 2.0, 1e-12));
+        assert!(close(m.inertia.diagonal().z, 1000.0 * 1.0 / 2.0, 1e-12));
         assert!(close(
-            m.inertia.pitch,
+            m.inertia.diagonal().x,
             1000.0 * (0.25 + 100.0 / 12.0),
             1e-12
         ));
-        assert_eq!(m.inertia.pitch, m.inertia.yaw);
+        assert_eq!(m.inertia.diagonal().x, m.inertia.diagonal().y);
     }
 
     #[test]
     fn stacking_uses_the_parallel_axis_theorem() {
         let one = stage(&[], 0.0, 1000.0, 2.0, 10.0);
         let p = propulsion(vec![one.clone(), one]);
-        let m = mass_properties(&p.stages);
+        let m = mass_properties(&p);
         assert!(close(m.center_of_mass, 10.0, 1e-12));
         // Two cylinders, each 5 m from the common centre.
         let each = 1000.0 * (0.25 + 100.0 / 12.0) + 1000.0 * 25.0;
-        assert!(close(m.inertia.pitch, 2.0 * each, 1e-12));
+        assert!(close(m.inertia.diagonal().x, 2.0 * each, 1e-12));
     }
 
     #[test]
@@ -664,20 +711,87 @@ mod tests {
         };
         // Alone, the propellant left sits at the bottom of the tank.
         let mut alone = propulsion(vec![stage(&["K-1 Booster"], 38.0, 0.0, 3.7, 42.0)]);
-        let full = mass_properties(&alone.stages);
+        let full = mass_properties(&alone);
         drain(&mut alone);
-        assert!(mass_properties(&alone.stages).center_of_mass < full.center_of_mass);
+        assert!(mass_properties(&alone).center_of_mass < full.center_of_mass);
         // Under the upper stage, the stack's centre of mass climbs towards it.
         let mut stack =
             Propulsion::from_craft(&crate::vessel::tests::pathfinder(), &catalog()).unwrap();
-        let full = mass_properties(&stack.stages);
+        let full = mass_properties(&stack);
         drain(&mut stack);
-        let low = mass_properties(&stack.stages);
+        let low = mass_properties(&stack);
         assert!(
             low.center_of_mass > full.center_of_mass + 5.0,
             "{low:?} {full:?}"
         );
-        assert!(low.inertia.pitch < full.inertia.pitch);
+        assert!(low.inertia.diagonal().x < full.inertia.diagonal().x);
+    }
+
+    #[test]
+    fn propellant_settles_in_its_own_tank() {
+        // A 10 m tank at the base of a bare 40 m stage: full, the propellant fills the tank
+        // and the centre of mass is the tank's, not halfway up the stage.
+        let mut p = propulsion(vec![stage(&[], 10.0, 0.0, 3.7, 40.0)]);
+        assert!(close(mass_properties(&p).center_of_mass, 5.0, 1e-9));
+        // Half drained, what is left is a 5 m column at the bottom of the tank.
+        for prop in &mut p.stages[0].propellants {
+            prop.amount *= 0.5;
+        }
+        let (wall, left) = (p.stages[0].tank_mass, p.stages[0].propellant_mass());
+        let expected = (wall * 5.0 + left * 2.5) / (wall + left);
+        assert!(close(mass_properties(&p).center_of_mass, expected, 1e-9));
+    }
+
+    #[test]
+    fn a_compressed_gas_fills_its_bottle() {
+        let mut def = stage(&[], 0.0, 0.0, 3.7, 5.0);
+        def.tanks.push(TankDef {
+            tank_type: "COPV".into(),
+            shape: TankShape::Sphere,
+            length: 0.0,
+            position: Some(1.0),
+            diameter: Some(1.35),
+            design_load: None,
+            propellants: [("Nitrogen".into(), 1.0)].into(),
+        });
+        let mut p = propulsion(vec![def]);
+        // However much is left, the gas is a solid sphere inside the bottle's shell.
+        for share in [1.0, 0.3] {
+            for prop in &mut p.stages[0].propellants {
+                prop.amount = prop.capacity * share;
+            }
+            let m = mass_properties(&p);
+            let (wall, gas) = (p.stages[0].tank_mass, p.stages[0].propellant_mass());
+            let r2 = 0.675f64.powi(2);
+            assert!(close(m.center_of_mass, 1.675, 1e-9));
+            assert!(close(
+                m.inertia.diagonal().z,
+                (0.4 * gas + 2.0 / 3.0 * wall) * r2,
+                1e-9
+            ));
+        }
+    }
+
+    #[test]
+    fn a_tail_fin_tilts_the_principal_axes() {
+        // A rocket is symmetric about its axis: the principal axes are the vessel's, with
+        // the smallest moment about the roll axis.
+        let p = Propulsion::from_craft(&crate::vessel::tests::pathfinder(), &catalog()).unwrap();
+        let rocket = mass_properties(&p);
+        let (moments, axes) = rocket.inertia.principal();
+        assert!(close(moments.x, rocket.inertia.diagonal().z, 1e-9));
+        assert!((axes * DVec3::X).z.abs() > 1.0 - 1e-12);
+        // The Comet's fin stands on top: it couples pitch and roll, so its roll axis tips a
+        // little in the plane of symmetry, and nothing couples left and right.
+        let craft = crate::vessel::tests::comet();
+        let plane = mass_properties(&Propulsion::from_craft(&craft, &catalog()).unwrap());
+        let tensor = plane.inertia.tensor;
+        assert!(tensor.y_axis.z.abs() > 1.0, "{tensor}");
+        assert!(tensor.x_axis.y.abs() < 1e-6 && tensor.x_axis.z.abs() < 1e-6);
+        let (_, axes) = plane.inertia.principal();
+        let roll = axes * DVec3::X;
+        let tilt = roll.angle_between(DVec3::Z * roll.z.signum());
+        assert!(tilt > 1e-3 && tilt < 0.1 && roll.x.abs() < 1e-9, "{roll}");
     }
 
     #[test]
@@ -719,14 +833,7 @@ mod tests {
             orientation: DQuat::from_euler(glam::EulerRot::XYZ, 0.3, -0.7, 1.1),
             angular_velocity: DVec3::new(0.02, -0.035, 0.4),
         };
-        (
-            state,
-            Inertia {
-                pitch: 5.0e6,
-                yaw: 5.0e6,
-                roll: 4.0e5,
-            },
-        )
+        (state, Inertia::about_axes(5.0e6, 5.0e6, 4.0e5))
     }
 
     #[test]
@@ -737,8 +844,8 @@ mod tests {
             numeric = integrate(numeric, inertia, DVec3::ZERO, 0.002);
         }
         let exact = coast(state, inertia, 120.0);
-        assert!(exact.orientation.angle_between(numeric.orientation) < 1e-8);
-        assert!((exact.angular_velocity - numeric.angular_velocity).length() < 1e-10);
+        assert!(angle(exact.orientation, numeric.orientation) < 1e-11);
+        assert!((exact.angular_velocity - numeric.angular_velocity).length() < 1e-12);
     }
 
     #[test]
@@ -756,6 +863,92 @@ mod tests {
         assert!(close(energy(later), energy(state), 1e-12));
     }
 
+    /// A lopsided body, its principal axes tilted off the vessel's, and two tumbles: one
+    /// mostly about the axis of largest moment, one mostly about the smallest.
+    fn tumbling() -> (Inertia, [Attitude; 2]) {
+        let axes = DMat3::from_quat(DQuat::from_euler(glam::EulerRot::XYZ, 0.5, -0.2, 0.9));
+        let moments = DVec3::new(2.0e6, 5.0e6, 7.0e6);
+        let inertia = Inertia {
+            tensor: axes * DMat3::from_diagonal(moments) * axes.transpose(),
+        };
+        let orientation = DQuat::from_euler(glam::EulerRot::XYZ, 0.3, -0.7, 1.1);
+        let state = |principal: DVec3| Attitude {
+            orientation,
+            angular_velocity: axes * principal,
+        };
+        let states = [
+            state(DVec3::new(0.05, -0.08, 0.3)),
+            state(DVec3::new(0.4, 0.06, -0.05)),
+        ];
+        (inertia, states)
+    }
+
+    fn momentum(inertia: Inertia, s: Attitude) -> DVec3 {
+        s.orientation * (inertia.tensor * s.angular_velocity)
+    }
+
+    #[test]
+    fn a_lopsided_body_coasts_as_integration_says() {
+        let (inertia, states) = tumbling();
+        for state in states {
+            let mut numeric = state;
+            for _ in 0..(120 * 500) {
+                numeric = integrate(numeric, inertia, DVec3::ZERO, 0.002);
+            }
+            let exact = coast(state, inertia, 120.0);
+            let off = angle(exact.orientation, numeric.orientation);
+            assert!(off < 1e-11, "{off}");
+            let rates = (exact.angular_velocity - numeric.angular_velocity).length();
+            assert!(rates < 1e-12, "{rates}");
+        }
+    }
+
+    #[test]
+    fn coasting_in_pieces_is_coasting_at_once() {
+        let (inertia, states) = tumbling();
+        for state in states {
+            let pieces = coast(coast(state, inertia, 1_000.3), inertia, 52_345.7);
+            let once = coast(state, inertia, 53_346.0);
+            assert!(angle(pieces.orientation, once.orientation) < 1e-10);
+            assert!((pieces.angular_velocity - once.angular_velocity).length() < 1e-12);
+            // A year on, momentum and energy are as they were.
+            let later = coast(state, inertia, 3.0e7);
+            let (before, after) = (momentum(inertia, state), momentum(inertia, later));
+            assert!((before - after).length() < 1e-9 * before.length());
+            let energy = |s: Attitude| s.angular_velocity.dot(inertia.tensor * s.angular_velocity);
+            assert!(close(energy(later), energy(state), 1e-12));
+        }
+    }
+
+    #[test]
+    fn a_spin_about_the_middle_axis_flips_over() {
+        // The Dzhanibekov effect: spun about the axis of middle moment, a body turns itself
+        // over again and again; spun about either other axis, it keeps spinning.
+        let inertia = Inertia::about_axes(1.0e4, 2.0e4, 3.0e4);
+        let spin = |about: DVec3| Attitude {
+            orientation: DQuat::IDENTITY,
+            angular_velocity: about + DVec3::splat(1e-3),
+        };
+        let along = |state: Attitude, axis: DVec3, t: f64| {
+            coast(state, inertia, t).angular_velocity.dot(axis)
+        };
+        let middle = spin(DVec3::Y);
+        let flipped = (0..400).map(|k| along(middle, DVec3::Y, k as f64 * 0.5));
+        assert!(flipped.fold(f64::INFINITY, f64::min) < -0.99);
+        for axis in [DVec3::X, DVec3::Z] {
+            let steady = (0..400).map(|k| along(spin(axis), axis, k as f64 * 0.5));
+            assert!(steady.fold(f64::INFINITY, f64::min) > 0.99);
+        }
+        // Right through a flip it agrees with step-by-step integration.
+        let mut numeric = middle;
+        for _ in 0..(60 * 1000) {
+            numeric = integrate(numeric, inertia, DVec3::ZERO, 0.001);
+        }
+        let exact = coast(middle, inertia, 60.0);
+        assert!(angle(exact.orientation, numeric.orientation) < 1e-10);
+        assert!((exact.angular_velocity - numeric.angular_velocity).length() < 1e-10);
+    }
+
     /// Fly `sas` for `seconds` with angular acceleration `alpha` on every axis.
     fn fly(
         sas: &mut Sas,
@@ -764,11 +957,7 @@ mod tests {
         alpha: f64,
         seconds: f64,
     ) -> Attitude {
-        let inertia = Inertia {
-            pitch: 1.0,
-            yaw: 1.0,
-            roll: 1.0,
-        };
+        let inertia = Inertia::about_axes(1.0, 1.0, 1.0);
         for _ in 0..(seconds * 50.0) as usize {
             let command = sas.steer(state, DVec3::splat(alpha), target);
             assert!(command.abs().max_element() <= 1.0);

@@ -280,7 +280,7 @@ impl Vessel {
         orientation: DQuat,
         time: SimTime,
     ) -> Self {
-        let mass = attitude::mass_properties(&propulsion.stages);
+        let mass = attitude::mass_properties(&propulsion);
         Self {
             name,
             parent,
@@ -533,6 +533,7 @@ impl Vessel {
             time,
         )?;
         vessel.set_free_state(system, parent, state, time);
+        vessel.attitude.state.angular_velocity = DVec3::from_array(start.spin.map(f64::to_radians));
         vessel.near_surface = state.position.length() < body.coast_floor();
         vessel.nav_frame = if vessel.near_surface {
             NavFrame::Surface
@@ -988,7 +989,7 @@ impl Vessel {
         let dropped = staged.dropped_length;
         let state = self.state_at(system, time);
         let attitude = self.attitude_state(system, time);
-        let rest = attitude::mass_properties(&self.propulsion.stages);
+        let rest = attitude::mass_properties(&self.propulsion);
         // Off the ground, decouplers push what is left and what fell away apart, keeping
         // their momentum.
         let mut recoil = 0.0;
@@ -1166,7 +1167,7 @@ impl Vessel {
         for message in messages {
             self.record(t0, message);
         }
-        self.mass = attitude::mass_properties(&self.propulsion.stages);
+        self.mass = attitude::mass_properties(&self.propulsion);
         let mass = self.mass.mass;
 
         let near_surface = self.is_landed() || state.position.length() < body.coast_floor();
@@ -1877,6 +1878,7 @@ pub(crate) mod tests {
             plane: None,
             argument_of_periapsis: 0.0,
             mean_anomaly: 0.0,
+            spin: [0.0; 3],
         };
         let t = SimTime::J2000;
         (
@@ -2390,6 +2392,7 @@ pub(crate) mod tests {
             plane: None,
             argument_of_periapsis: 0.0,
             mean_anomaly: 1.0,
+            spin: [0.0; 3],
         };
         let station = Vessel::in_orbit(&upper_stage(), &catalog(), &system, &start, t).unwrap();
         let mut universe = crate::universe::Universe::new(system, vec![chaser, station], t);
@@ -2507,6 +2510,7 @@ pub(crate) mod tests {
             plane: None,
             argument_of_periapsis: 0.0,
             mean_anomaly: 0.0,
+            spin: [0.0; 3],
         };
         let t = SimTime::J2000;
         let mut v = Vessel::in_orbit(&craft, &catalog(), &system, &start, t).unwrap();
@@ -2556,6 +2560,7 @@ pub(crate) mod tests {
             plane: None,
             argument_of_periapsis: 0.0,
             mean_anomaly: 0.0,
+            spin: [0.0; 3],
         };
         let t = SimTime::J2000;
         let mut v = Vessel::in_orbit(&craft, &catalog(), system, &start, t).unwrap();
@@ -2856,6 +2861,7 @@ pub(crate) mod tests {
             plane: Some("Moon".into()),
             argument_of_periapsis: 0.0,
             mean_anomaly: 0.0,
+            spin: [0.0; 3],
         };
         let t = SimTime::J2000;
         let v = Vessel::in_orbit(&upper_stage(), &catalog(), &system, &start, t).unwrap();
@@ -2885,6 +2891,7 @@ pub(crate) mod tests {
             plane: None,
             argument_of_periapsis: 0.0,
             mean_anomaly: 0.0,
+            spin: [0.0; 3],
         };
         let lunar = Vessel::in_orbit(&lunar_upper(), &catalog(), &system, &start, t).unwrap();
         // Pitch acceleration with wheels and RCS, forward push from the RCS, RCS delta-v.
@@ -2898,7 +2905,11 @@ pub(crate) mod tests {
                 .flat_map(|s| &s.rcs)
                 .map(|b| b.def.thrust)
                 .sum();
-            (torque.x / m.inertia.pitch, push / m.mass, p.rcs_delta_v())
+            (
+                torque.x / m.inertia.diagonal().x,
+                push / m.mass,
+                p.rcs_delta_v(),
+            )
         };
         let stock = agility(&stock);
         let (turn, push, delta_v) = agility(&lunar);
@@ -2923,6 +2934,31 @@ pub(crate) mod tests {
         let target = v.nav_basis(&system, t).unwrap().radial_out;
         assert!(nose(&v, &system, t).angle_between(target) < 0.2f64.to_radians());
         assert!(v.attitude_state(&system, t).angular_velocity.length() < 0.002);
+    }
+
+    #[test]
+    fn the_tumbling_satellite_flips_end_over_end() {
+        let system = rss();
+        let scenarios: Vec<ScenarioDef> =
+            records(include_str!("../../../assets/core/scenarios/stock.json5"));
+        let scenario = scenarios
+            .into_iter()
+            .find(|s| s.id == "dzhanibekov")
+            .unwrap();
+        let StartDef::Orbit(start) = &scenario.start else {
+            panic!("an orbit start")
+        };
+        let craft: CraftDef =
+            records(include_str!("../../../assets/core/craft/satellite.json5")).remove(0);
+        let t = SimTime::from_seconds(scenario.start_time);
+        let v = Vessel::in_orbit(&craft, &catalog(), &system, start, t).unwrap();
+        // Roll, the bus's long axis, is its middle moment: spun about it, the satellite
+        // turns end over end, back, and over again.
+        let i = v.mass_properties().inertia.diagonal();
+        assert!(i.x < i.z && i.z < i.y, "{i}");
+        let first = nose(&v, &system, t);
+        let along = |seconds: f64| nose(&v, &system, t.add_seconds(seconds)).dot(first);
+        assert!(along(30.0) < -0.9 && along(60.0) > 0.9 && along(90.0) < -0.9);
     }
 
     #[test]

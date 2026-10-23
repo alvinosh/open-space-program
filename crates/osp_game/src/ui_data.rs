@@ -273,11 +273,12 @@ fn publish_flight(
     data.set("attitude.rate_roll", w.z.to_degrees());
     let props = vessel.mass_properties();
     let authority = vessel.flight.torque_authority;
-    let inertia = props.inertia.diagonal().max(DVec3::splat(1e-9));
+    let moments = props.inertia.diagonal();
+    let inertia = moments.max(DVec3::splat(1e-9));
     data.set("attitude.com", props.center_of_mass);
-    data.set("attitude.moi_pitch", props.inertia.pitch);
-    data.set("attitude.moi_yaw", props.inertia.yaw);
-    data.set("attitude.moi_roll", props.inertia.roll);
+    data.set("attitude.moi_pitch", moments.x);
+    data.set("attitude.moi_yaw", moments.y);
+    data.set("attitude.moi_roll", moments.z);
     data.set("attitude.torque_pitch", authority.x);
     data.set("attitude.torque_roll", authority.z);
     data.set(

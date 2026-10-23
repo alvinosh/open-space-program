@@ -155,7 +155,7 @@ mod tests {
 
     fn upper() -> (Propulsion, f64) {
         let p = Propulsion::from_craft(&upper_stage(), &catalog()).unwrap();
-        let com = mass_properties(&p.stages).center_of_mass;
+        let com = mass_properties(&p).center_of_mass;
         (p, com)
     }
 

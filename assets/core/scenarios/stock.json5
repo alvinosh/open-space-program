@@ -118,4 +118,24 @@
       inclination: 28.6,
     },
   },
+  {
+    // The Dzhanibekov effect (the tennis racket theorem): a body spins steadily about the
+    // axis of its largest moment of inertia or its smallest, not about the middle one. The
+    // satellite's long axis is its middle one. Spun about it at 36°/s with a 1°/s wobble, it
+    // turns itself end over end after about 15 s, then back every 30 s, for as long as it
+    // is left alone. RCS (R) with SAS (T) stops it.
+    id: "dzhanibekov",
+    name: "Tumbling satellite",
+    description: "A satellite spun about its middle axis of inertia, which it cannot keep spinning about: it flips end over end every 30 s (the Dzhanibekov effect). R and T stop it.",
+    start_time: 21600,
+    craft: "satellite",
+    start: {
+      type: "Orbit",
+      body: "Earth",
+      periapsis_altitude: 400000,
+      apoapsis_altitude: 400000,
+      inclination: 51.6,
+      spin: [0, 1, 36],
+    },
+  },
 ]

@@ -11,7 +11,14 @@
       name: "Fuselage",
       engines: ["R-6"],
       tanks: [
-        { type: "Stiffened Al 2219", length: 2.2, propellants: { Kerosene: 1, LqdOxygen: 2.3 } },
+        // Under the wing, near the centre of mass (as in the X-1), so the trim hardly
+        // changes as it drains; a feed line runs back to the engine.
+        {
+          type: "Stiffened Al 2219",
+          length: 2.2,
+          position: 2.4,
+          propellants: { Kerosene: 1, LqdOxygen: 2.3 },
+        },
       ],
       structure_mass: 900,
       diameter: 1.4,

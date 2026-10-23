@@ -428,6 +428,7 @@ mod tests {
             plane: None,
             argument_of_periapsis: 0.0,
             mean_anomaly: 0.0,
+            spin: [0.0; 3],
         };
         let mut v = Vessel::in_orbit(&pathfinder(), &catalog(), system, &start, t).unwrap();
         v.set_free_state(system, frame, state, t);

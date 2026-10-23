@@ -16,13 +16,14 @@
 //!   step size ([`events`]), so time warp never changes the outcome.
 //! - **Powered flight** uses Encke's method ([`integrator`]): precision scales with the
 //!   deviation from a conic, not the distance from the origin.
-//! - **Rotation** ([`attitude`]): torque-free spin is exact like coasting, torque from
-//!   gimbal, reaction wheels, RCS ([`rcs`]) and the air is integrated on the tick, and SAS
-//!   holds a steady attitude exactly on rails.
+//! - **Rotation** ([`attitude`]): torque-free spin and tumbling are exact like coasting,
+//!   for any body ([`elliptic`]), torque from gimbal, reaction wheels, RCS ([`rcs`]) and
+//!   the air is integrated on the tick, and SAS holds a steady attitude exactly on rails.
 //! - **Aerodynamics** ([`aero`]): FAR-style, the vessel cut into sections along its axis,
 //!   each pushed by the air it meets, so lift, drag, stability and damping follow the shape.
-//! - **Parts** ([`parts`]): a vessel is a tree of parts joined by connectors, and splits
-//!   where a decoupler lets go.
+//! - **Parts** ([`parts`]): a vessel is a tree of parts joined by connectors, which splits
+//!   where a decoupler lets go. Each part is a simple shape whose mass and inertia add up
+//!   to the vessel's ([`mass`]).
 //! - **Planning**: burns ([`plan`]) are predicted as impulses with the same event code, and
 //!   flown as finite burns by the executor ([`autopilot`]).
 
@@ -33,10 +34,12 @@ pub mod autopilot;
 pub mod body;
 pub mod constants;
 pub mod data;
+pub mod elliptic;
 pub mod events;
 pub mod gear;
 pub mod integrator;
 pub mod kepler;
+pub mod mass;
 pub mod orbit;
 pub mod parts;
 pub mod plan;

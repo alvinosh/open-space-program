@@ -78,7 +78,7 @@ parts of it instead.
 | `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), optional `top_diameter` (m, a third of `diameter` by default), `model` |
 | `craft` | Vessels | `stages` from the bottom: `engines`, procedural `tanks` and `fins`, `wings`, `gear`, `reaction_wheels`, `rcs`, `pod`, `fairing: { mass }`, `structure_mass`, `diameter`, `length`, `appearance`; optional `sequences`; see [Staging](#staging) and [Stage appearance](#stage-appearance) |
 | `launch_sites` | Launch sites | Position, `heading`, optional `pad`, `roads` and `runway`; see [Launch sites](#launch-sites) |
-| `scenarios` | New-game setups | `name` and `description` (shown in the main menu, which lists scenarios in load order); `start: { type: "LaunchSite", site: "<id>" }`, `{ type: "Runway", site: "<id>" }` (at the start of the site's runway, on its wheels), `{ type: "Flight", body, latitude, longitude, altitude, heading, speed, climb }` (in the air, nose along the flight path, wings level; degrees, metres and m/s) or `{ type: "Orbit", body, periapsis_altitude, apoapsis_altitude, inclination, longitude_of_ascending_node, argument_of_periapsis, mean_anomaly }` (degrees, from the body's equator; `plane: "<body>"` instead takes the plane of a body that orbits it, like the Moon); optional `others` and `target`; `OSP_SCENARIO=<id>` starts one without the menu |
+| `scenarios` | New-game setups | `name` and `description` (shown in the main menu, which lists scenarios in load order); `start: { type: "LaunchSite", site: "<id>" }`, `{ type: "Runway", site: "<id>" }` (at the start of the site's runway, on its wheels), `{ type: "Flight", body, latitude, longitude, altitude, heading, speed, climb }` (in the air, nose along the flight path, wings level; degrees, metres and m/s) or `{ type: "Orbit", body, periapsis_altitude, apoapsis_altitude, inclination, longitude_of_ascending_node, argument_of_periapsis, mean_anomaly }` (degrees, from the body's equator; `plane: "<body>"` instead takes the plane of a body that orbits it, like the Moon; `spin: [pitch, yaw, roll]` starts it turning, °/s); optional `others` and `target`; `OSP_SCENARIO=<id>` starts one without the menu |
 | `layouts` | UI windows and panels | See [User interface](#user-interface) |
 | `themes` | Style classes | All theme records merge in load order |
 | `keybindings` | Key → action | All keybinding records combine |
@@ -87,12 +87,18 @@ See the files in `assets/core` for complete, commented examples of each.
 
 ### Craft mass and control
 
-A stage's `diameter` and `length` shape its rotation as well as its looks. Each stage is
-modelled as a cylinder: tank dry mass as a thin shell along it, `structure_mass` (and
-reaction wheels and RCS blocks) as a uniform solid, the crew pod as a solid frustum from
-`diameter` to `top_diameter` on top, engines as point masses on its base, fins as rings of
-mass at their centroid, and propellant as a solid column settled at the aft end. That gives the centre of mass and the moments of inertia, which change as
-tanks drain and stages drop.
+A stage's `diameter` and `length` shape its rotation as well as its looks. Every part is a
+simple shape with its own mass and inertia, placed where it sits: `structure_mass` a solid
+cylinder through the whole stage, each tank its wall (a thin tube, or a spherical shell),
+engines points on the stage base, RCS blocks points on its forward rim, reaction wheels a
+point halfway up, the crew pod a solid frustum from `diameter` to `top_diameter` at the
+top, fins and wings flat plates, gear legs points halfway down their struts, and a fairing
+two half shells. Propellant is in the tanks: each holds its share of what is left in its
+stage, a liquid as a column settled at the tank's aft end and a compressed gas filling the
+tank. Together they give the centre of mass and the moments of inertia, which change as
+tanks drain and stages drop. A tank low in a long stage keeps its propellant low, so place
+tanks (`position`) where that mass belongs: a plane wants its propellant near the centre of
+mass, so that its trim hardly changes as the tanks drain.
 
 Control torque comes from the bottom stage's burning engines swivelling up to
 `gimbal_range`, and from reaction wheels anywhere in the stack. A single engine sits on the
@@ -116,7 +122,8 @@ from their material and what they must withstand.
 ```json5
 tanks: [
   // Cylinders stack up the stage from its base, in order, at the stage's diameter
-  // unless `diameter` is given. Length includes the √2:1 domes.
+  // unless `diameter` is given; `position` (m above the stage base) puts one higher.
+  // Length includes the √2:1 domes.
   { type: "Isogrid Al-Li", length: 9.6, design_load: 6.5,
     propellants: { Kerosene: 1, LqdOxygen: 2.36 } },          // mass ratio
   // Spheres (pressurant bottles) sit inside the stage, off the load path.

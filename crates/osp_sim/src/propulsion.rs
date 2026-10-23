@@ -653,7 +653,7 @@ impl Propulsion {
                         .parts
                         .stage(id)
                         .filter_map(|p| match p.kind {
-                            PartKind::FairingHalf { mass, angle } => Some((p.id, mass, angle)),
+                            PartKind::FairingHalf { mass, angle, .. } => Some((p.id, mass, angle)),
                             _ => None,
                         })
                         .collect();

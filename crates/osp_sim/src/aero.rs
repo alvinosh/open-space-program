@@ -1068,7 +1068,7 @@ mod tests {
     #[test]
     fn fins_put_the_centre_of_pressure_behind_the_centre_of_mass() {
         let mut p = sounder();
-        let com = crate::attitude::mass_properties(&p.stages).center_of_mass;
+        let com = crate::attitude::mass_properties(&p).center_of_mass;
         let f = flow(air(5_000.0), 0.8, 4f64.to_radians());
         // With fins, the torque pitches the nose back down into the wind (about −X).
         let stable = Shape::new(&p.stages).loads(&f, com);
@@ -1085,7 +1085,7 @@ mod tests {
     fn fins_hold_their_own_whichever_way_the_vessel_is_rolled() {
         let p = sounder();
         let shape = Shape::new(&p.stages);
-        let com = crate::attitude::mass_properties(&p.stages).center_of_mass;
+        let com = crate::attitude::mass_properties(&p).center_of_mass;
         let f = flow(air(5_000.0), 0.8, 4f64.to_radians());
         let pitch = shape.loads(&f, com);
         // The same angle in yaw (air from the left, nose to the right of the flow).
@@ -1101,7 +1101,7 @@ mod tests {
     fn rotation_is_damped() {
         let p = sounder();
         let shape = Shape::new(&p.stages);
-        let com = crate::attitude::mass_properties(&p.stages).center_of_mass;
+        let com = crate::attitude::mass_properties(&p).center_of_mass;
         let mut f = flow(air(5_000.0), 0.8, 0.0);
         f.angular_velocity = DVec3::new(0.2, -0.1, 0.0);
         let loads = shape.loads(&f, com);
@@ -1219,7 +1219,7 @@ mod tests {
 
     fn glider() -> (Propulsion, f64) {
         let p = Propulsion::from_craft(&crate::vessel::tests::glider(), &catalog()).unwrap();
-        let com = crate::attitude::mass_properties(&p.stages).center_of_mass;
+        let com = crate::attitude::mass_properties(&p).center_of_mass;
         (p, com)
     }
 
@@ -1273,9 +1273,10 @@ mod tests {
     fn a_flat_wing_obeys_the_perpendicular_axis_theorem() {
         // Mostly a flat plate in the X–Z plane: yaw ≈ pitch + roll.
         let (p, _) = glider();
-        let i = crate::attitude::mass_properties(&p.stages).inertia;
-        assert!(i.yaw > i.roll && i.roll > i.pitch, "{i:?}");
-        assert!((i.yaw - (i.pitch + i.roll)).abs() < 0.05 * i.yaw, "{i:?}");
+        let i = crate::attitude::mass_properties(&p).inertia.diagonal();
+        // Pitch, yaw and roll.
+        assert!(i.y > i.z && i.z > i.x, "{i}");
+        assert!((i.y - (i.x + i.z)).abs() < 0.05 * i.y, "{i}");
     }
 
     #[test]

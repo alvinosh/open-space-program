@@ -23,10 +23,13 @@ use std::collections::BTreeMap;
 use glam::{DQuat, DVec2, DVec3};
 
 use crate::{
+    aero::Panel,
     data::{
         CraftDef, EngineDef, GearDef, PartCatalog, PodDef, RcsDef, ReactionWheelDef,
         StageAppearance, TankShape, WingDef,
     },
+    gear::Leg,
+    mass::Mass,
     propulsion::{CraftError, FAIRING_HALVES},
     structure::{FinSet, Tank},
 };
@@ -155,10 +158,13 @@ pub enum PartKind {
     Wing(WingDef),
     /// Its origin is the strut's mount, +X outward.
     Gear(GearDef),
-    /// One half of a payload fairing, facing `angle` (rad about the axis from +X).
+    /// One half of a payload fairing, a thin shell around its stage facing `angle` (rad
+    /// about the axis from +X). Its origin is the stage base.
     FairingHalf {
         mass: f64,
         angle: f64,
+        radius: f64,
+        length: f64,
     },
 }
 
@@ -179,23 +185,6 @@ pub struct Part {
 }
 
 impl Part {
-    /// Everything but propellant, kg.
-    pub fn dry_mass(&self) -> f64 {
-        match &self.kind {
-            PartKind::Hull { structure_mass, .. } => *structure_mass,
-            PartKind::Decoupler => 0.0,
-            PartKind::Tank(tank) => tank.dry_mass,
-            PartKind::Engine(def) => def.mass,
-            PartKind::Rcs(def) => def.mass,
-            PartKind::ReactionWheel(def) => def.mass,
-            PartKind::Pod(def) => def.mass,
-            PartKind::Fins(fins) => fins.mass,
-            PartKind::Wing(def) => def.mass,
-            PartKind::Gear(def) => def.mass,
-            PartKind::FairingHalf { mass, .. } => *mass,
-        }
-    }
-
     /// Where connector `index` is in the assembly frame.
     pub fn connector_position(&self, index: usize) -> DVec3 {
         self.position + self.rotation * self.connectors[index].position
@@ -378,11 +367,19 @@ impl PartTree {
                 let kind = PartKind::Gear(leg.clone());
                 mount(leg.name.clone(), kind, strut, angle, Capabilities::NONE);
             }
-            // Cylinders stack up from the stage base; spheres sit inside, at the base.
+            // Cylinders stack up from the stage base unless placed higher, each above the
+            // one before; spheres sit inside, at the base unless placed.
             let mut stacked = 0.0;
             for tank_def in &def.tanks {
                 let cylinder = tank_def.shape == TankShape::Cylinder;
-                let at = if cylinder { stacked } else { 0.0 };
+                let at = tank_def
+                    .position
+                    .unwrap_or(if cylinder { stacked } else { 0.0 });
+                if at < 0.0 || (cylinder && at < stacked - 1e-9) {
+                    return Err(bad(format!(
+                        "a tank placed {at} m up is below the stage base or the tank before it"
+                    )));
+                }
                 let tank = Tank::new(tank_def, def.diameter, at, catalog)?;
                 if 2.0 * tank.radius > def.diameter + 1e-9 {
                     return Err(bad(format!(
@@ -391,8 +388,15 @@ impl PartTree {
                         def.diameter
                     )));
                 }
+                if at + tank.length > def.length + 1e-9 {
+                    return Err(bad(format!(
+                        "its tanks reach {} m up, the stage is only {} m long",
+                        at + tank.length,
+                        def.length
+                    )));
+                }
                 if cylinder {
-                    stacked += tank.length;
+                    stacked = at + tank.length;
                 }
                 let name = tank.tank_type.clone();
                 let bottom = DVec3::Z * (base + at);
@@ -404,16 +408,14 @@ impl PartTree {
                     Capabilities::PLUMBED,
                 );
             }
-            if stacked > def.length + 1e-9 {
-                return Err(bad(format!(
-                    "its tanks are {stacked} m long, the stage only {} m",
-                    def.length
-                )));
-            }
             if let Some(fairing) = &def.fairing {
                 for angle in FAIRING_HALVES {
-                    let mass = fairing.mass / 2.0;
-                    let kind = PartKind::FairingHalf { mass, angle };
+                    let kind = PartKind::FairingHalf {
+                        mass: fairing.mass / 2.0,
+                        angle,
+                        radius: def.diameter / 2.0,
+                        length: def.length,
+                    };
                     let release = Capabilities::RELEASE;
                     mount("Fairing".into(), kind, DVec3::Z * base, angle, release);
                 }
@@ -574,10 +576,110 @@ impl PartTree {
         groups.into_values().collect()
     }
 
-    /// Everything but propellant, kg.
-    pub fn dry_mass(&self) -> f64 {
-        self.parts.iter().map(Part::dry_mass).sum()
+    /// Where the stack stands: the base of its lowest hull (or of a fairing half on its
+    /// own), m up the assembly frame.
+    pub fn base(&self) -> f64 {
+        self.parts
+            .iter()
+            .filter(|p| matches!(p.kind, PartKind::Hull { .. } | PartKind::FairingHalf { .. }))
+            .map(|p| p.position.z)
+            .reduce(f64::min)
+            .unwrap_or(0.0)
     }
+
+    /// How everything but the propellant is spread, in the assembly frame.
+    pub fn dry_mass(&self) -> Mass {
+        self.parts.iter().map(|p| self.mass_of(p)).sum()
+    }
+
+    /// The dry mass of `part`, in the assembly frame. Each part is a simple shape: a hull a
+    /// solid cylinder, a tank its wall, an engine, RCS block or reaction wheel a point, a
+    /// pod a solid frustum, a fairing half a half shell, fins and wings flat plates and gear
+    /// legs points halfway down their struts.
+    fn mass_of(&self, part: &Part) -> Mass {
+        // What is mounted on a hull stands out from it.
+        let (hull_radius, hull_base) = match self.parent(part.id) {
+            Some(Part {
+                kind: PartKind::Hull { diameter, .. },
+                position,
+                ..
+            }) => (diameter / 2.0, position.z),
+            _ => (0.0, part.position.z),
+        };
+        let local = match &part.kind {
+            PartKind::Hull {
+                structure_mass,
+                diameter,
+                length,
+                ..
+            } => Mass::cylinder(*structure_mass, diameter / 2.0, *length),
+            PartKind::Decoupler => Mass::ZERO,
+            PartKind::Tank(tank) => match tank.shape {
+                TankShape::Cylinder => Mass::tube(tank.dry_mass, tank.radius, tank.length),
+                TankShape::Sphere => Mass::spherical_shell(tank.dry_mass, tank.radius)
+                    .placed(DVec3::Z * tank.radius, DQuat::IDENTITY),
+            },
+            PartKind::Engine(def) => Mass::point(def.mass, DVec3::ZERO),
+            PartKind::Rcs(def) => Mass::point(def.mass, DVec3::ZERO),
+            PartKind::ReactionWheel(def) => Mass::point(def.mass, DVec3::ZERO),
+            PartKind::Pod(def) => Mass::frustum(
+                def.mass,
+                def.diameter / 2.0,
+                def.top_diameter() / 2.0,
+                def.height,
+            ),
+            PartKind::FairingHalf {
+                mass,
+                radius,
+                length,
+                ..
+            } => Mass::half_tube(*mass, *radius, *length),
+            PartKind::Fins(fins) => return fin_mass(fins, hull_radius, hull_base),
+            PartKind::Wing(def) => return wing_mass(def, hull_radius, hull_base),
+            PartKind::Gear(def) => {
+                return Leg::of(def, hull_radius, hull_base)
+                    .iter()
+                    .map(|leg| Mass::point(leg.mass, leg.axle(leg.length / 2.0)))
+                    .sum();
+            }
+        };
+        local.placed(part.position, part.rotation)
+    }
+}
+
+/// A fin set's fins around a hull of `hull_radius` standing at `base`: each a plate from
+/// mid-chord at its root to mid-chord at its tip, its trailing edge along the base.
+fn fin_mass(fins: &FinSet, hull_radius: f64, base: f64) -> Mass {
+    let def = &fins.def;
+    let (out, height) = fins.centroid();
+    let chord = fins.area / def.span;
+    let rise = (def.root_chord - def.tip_chord) / 2.0 - def.sweep;
+    let each = fins.mass / def.count as f64;
+    (0..def.count)
+        .map(|k| {
+            let (s, c) = (std::f64::consts::TAU * k as f64 / def.count as f64).sin_cos();
+            let outward = DVec3::new(c, s, 0.0);
+            let center = outward * (hull_radius + out) + DVec3::Z * (base + height);
+            let span = outward * def.span + DVec3::Z * rise;
+            Mass::plate(each, center, span, DVec3::Z * chord)
+        })
+        .sum()
+}
+
+/// A wing's panels on a hull of `hull_radius` standing at `base`: plates from mid-chord at
+/// the root to mid-chord at the tip, as wide as their mean chord along the hull.
+fn wing_mass(wing: &WingDef, hull_radius: f64, base: f64) -> Mass {
+    let panels = Panel::of(wing, hull_radius, base);
+    let each = wing.mass / panels.len() as f64;
+    panels
+        .iter()
+        .map(|p| {
+            let a = p.root - DVec3::Z * p.root_chord / 2.0;
+            let b = p.tip - DVec3::Z * p.tip_chord / 2.0;
+            let chord = (p.root_chord + p.tip_chord) / 2.0;
+            Mass::plate(each, (a + b) / 2.0, b - a, DVec3::Z * chord)
+        })
+        .sum()
 }
 
 /// Mixture ratios as shares of one.
@@ -771,9 +873,36 @@ mod tests {
         for craft in stock_craft() {
             let p = Propulsion::from_craft(&craft, &catalog()).unwrap();
             let stages: f64 = p.stages.iter().map(|s| s.dry_mass()).sum();
-            let parts = p.parts().dry_mass();
+            let parts = p.parts().dry_mass().mass;
             assert!((parts - stages).abs() < 1e-9 * stages, "{}", craft.id);
         }
+    }
+
+    #[test]
+    fn a_tank_can_sit_higher_up_its_stage() {
+        let mut craft = crate::vessel::tests::comet();
+        let tree = PartTree::from_craft(&craft, &catalog()).unwrap();
+        let tank = named(&tree, "Stiffened Al 2219");
+        assert_eq!(tank.position.z, 2.4);
+        // But inside its stage, and clear of the tank before it.
+        let bad = |craft: &CraftDef| {
+            matches!(
+                PartTree::from_craft(craft, &catalog()),
+                Err(CraftError::BadStage { .. })
+            )
+        };
+        for position in [-0.1, 5.0] {
+            craft.stages[0].tanks[0].position = Some(position);
+            assert!(bad(&craft), "{position}");
+        }
+        craft.stages[0].tanks[0].position = Some(1.0);
+        let mut above = craft.stages[0].tanks[0].clone();
+        above.length = 1.0;
+        above.position = Some(3.0);
+        craft.stages[0].tanks.push(above.clone());
+        assert!(bad(&craft));
+        craft.stages[0].tanks[1].position = Some(3.2);
+        assert!(!bad(&craft));
     }
 
     #[test]

@@ -166,6 +166,11 @@ pub struct TankDef {
     /// in the order listed.
     #[serde(default)]
     pub length: f64,
+    /// Height of its base above the stage base, m, to place it higher than it would stack
+    /// (a cylinder must still clear the one before it). A sphere sits on the stage base
+    /// without it.
+    #[serde(default)]
+    pub position: Option<f64>,
     /// Outer diameter, m. Cylinders default to the stage diameter; spheres need it.
     #[serde(default)]
     pub diameter: Option<f64>,
@@ -759,6 +764,10 @@ pub struct OrbitStartDef {
     pub argument_of_periapsis: f64,
     #[serde(default)]
     pub mean_anomaly: f64,
+    /// Turning at the start, degrees per second about pitch, yaw and roll (vessel X, Y and
+    /// Z).
+    #[serde(default)]
+    pub spin: [f64; 3],
 }
 
 fn one() -> f64 {

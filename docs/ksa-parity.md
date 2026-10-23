@@ -18,7 +18,8 @@ Keep these; parity work must not regress them.
 - Integer time (µs since J2000, ±292 000 years), hierarchical frames, floating origin at the
   vessel, Encke integration for powered flight.
 - IAU rotation models for every body; real launch-site coordinates.
-- Exact torque-free rotation for symmetric bodies; SAS that holds exactly on rails.
+- Exact torque-free rotation for any rigid body (Euler–Poinsot, closed form at any warp);
+  SAS that holds exactly on rails.
 - RO-style engines (pressure-dependent Isp, ignitions, ullage, throttle floors, spool-up
   curves, throttle slew and tail-off), RCS couples, engine gimbal.
 - Procedural tanks with real wall thickness, burst and buckling, and fins that tear off.
@@ -74,9 +75,15 @@ radial boosters and part damage all need a tree of parts.
       (Craft files still list stages: each stage becomes a hull with its parts mounted on
       it, hanging from a decoupler under the stage above, and staging releases joints on
       the tree. The solid motor case capability waits for solid motors.)
-- [ ] Per-part mass properties with full inertia tensors (analytic shapes: cylinder, sphere,
+- [x] Per-part mass properties with full inertia tensors (analytic shapes: cylinder, sphere,
       dome, cone, frustum, cuboid, ogive); assembly frame vs body frame; principal axes.
-- [ ] Torque-free rotation for asymmetric bodies (Euler-Poinsot), alongside the symmetric top.
+      (Shapes so far: point, rod, plate, solid cylinder, tube, half tube, solid and hollow
+      sphere, frustum and cone; domes, boxes and ogives wait for parts shaped like them.
+      The centre of mass is still kept on the axis: a part to one side counts towards its
+      height and the inertia, not its sideways offset.)
+- [x] Torque-free rotation for asymmetric bodies (Euler-Poinsot), alongside the symmetric top.
+      (One closed form for both: Jacobi elliptic rates and the turn about the angular
+      momentum from the integral of the third kind. Under torque, the full tensor.)
 - [ ] Port procedural tanks, fins, engines, RCS, wheels and pods to parts; existing craft
       files become part trees. (Started: they are parts on the tree, but the physics still
       runs on the stages gathered from it, and craft files cannot describe a tree yet.)

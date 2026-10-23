@@ -42,6 +42,8 @@ pub struct TankContent {
     pub capacity: f64,
     /// kg/m³.
     pub density: f64,
+    /// A compressed gas: it fills the tank instead of settling in it.
+    pub gas: bool,
 }
 
 /// A procedural tank, sized for its type and contents.
@@ -142,6 +144,7 @@ impl Tank {
                 resource: name.clone(),
                 capacity: ratio / total,
                 density: resource.density,
+                gas: resource.pressure > 0.0,
             });
         }
         let utilization = kind.utilization.clamp(0.0, 1.0);
@@ -492,6 +495,7 @@ mod tests {
             tank_type: tank_type.into(),
             shape,
             length,
+            position: None,
             diameter: (shape == TankShape::Sphere).then_some(1.35),
             design_load: None,
             propellants: propellants

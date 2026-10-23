@@ -15,6 +15,7 @@ OSP_SCENARIO=crew cargo run                 # Pathfinder with a four-person caps
 OSP_SCENARIO=sounder cargo run              # finned suborbital hop with a one-person capsule
 OSP_SCENARIO=glider cargo run               # a sailplane released at 1500 m over the Cape
 OSP_SCENARIO=runway cargo run               # rocket plane on the Shuttle Landing Facility runway
+OSP_SCENARIO=dzhanibekov cargo run          # a satellite flipping end over end (Dzhanibekov effect)
 cargo run --features dev                    # faster incremental builds (Bevy dynamic linking)
 cargo test --workspace                      # physics, mod loader and UI tests (no GPU needed)
 OSP_CAPTURE=/tmp/shots cargo run            # scripted run that saves screenshots, then exits (from the pad)
