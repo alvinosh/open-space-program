@@ -1,0 +1,18 @@
+{
+  "id": "T164",
+  "title": "Rockets that fly: fix the craft that barely work",
+  "kind": "epic",
+  "status": "todo",
+  "area": "content",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "assets/core/craft",
+    "mods/realism/craft",
+    "crates/osp_sim/tests/sounding_rockets.rs"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

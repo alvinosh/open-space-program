@@ -1,0 +1,19 @@
+{
+  "id": "T163",
+  "title": "Glider rockets off the runway",
+  "kind": "feature",
+  "status": "in_progress",
+  "area": "aero",
+  "size": "M",
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "assets/core/craft/glider.json5",
+    "assets/core/engines/stock.json5",
+    "crates/osp_sim/src/vessel/glider.rs",
+    "crates/osp_sim/src/gear.rs"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

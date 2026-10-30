@@ -1,7 +1,6 @@
 // Main menu: pick a scenario, go back to the flight in progress (`game.resume`), or quit.
 // The game opens on it unless OSP_SCENARIO picks a scenario; Esc (`game.menu`) brings it
-// back. A scenario is picked in two steps: where it starts (`menu.place:<pad|runway|orbit|
-// flight>`, shown when `menu.count.<place>` scenarios start there; `menu.place` goes back),
+// back. A scenario is picked in two steps: where it starts (`menu.place:<pad|runway|orbit>`, shown when `menu.count.<place>` scenarios start there; `menu.place` goes back),
 // then the spacecraft (`game.start:<id>`), listed from `menu.scenarios` (id, craft, name,
 // description, start) in load order.
 //
@@ -98,24 +97,6 @@
                           { widget: "label", class: "menu_count", text: "{menu.count.orbit|int}" },
                         ],
                       },
-                      {
-                        widget: "button",
-                        class: "menu_item menu_place",
-                        action: "menu.place:flight",
-                        visible: "menu.count.flight",
-                        children: [
-                          { widget: "image", class: "menu_place_icon", image: "icons/in_flight.svg" },
-                          {
-                            widget: "column",
-                            class: "menu_place_text",
-                            children: [
-                              { widget: "label", class: "menu_item_name", text: "In flight" },
-                              { widget: "label", class: "dim", text: "In the air, as if dropped from a carrier aircraft." },
-                            ],
-                          },
-                          { widget: "label", class: "menu_count", text: "{menu.count.flight|int}" },
-                        ],
-                      },
                     ],
                   },
                 ],
@@ -132,7 +113,6 @@
                       { widget: "label", class: "title", text: "Launch pad", visible: "menu.place == pad" },
                       { widget: "label", class: "title", text: "Runway", visible: "menu.place == runway" },
                       { widget: "label", class: "title", text: "Orbit", visible: "menu.place == orbit" },
-                      { widget: "label", class: "title", text: "In flight", visible: "menu.place == flight" },
                       { widget: "spacer" },
                       { widget: "label", class: "dim", text: "Choose a spacecraft" },
                     ],

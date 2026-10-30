@@ -483,7 +483,7 @@ mod tests {
         // A scenario that cannot start leaves things as they were.
         assert!(
             universe
-                .restart(&sites, &catalog(), craft_of, scenario("glider"))
+                .restart(&sites, &catalog(), craft_of, scenario("glider_runway"))
                 .is_err()
         );
         assert_eq!(universe.vessels[0].name, "Comet");

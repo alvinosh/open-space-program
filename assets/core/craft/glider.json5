@@ -1,6 +1,10 @@
-// A two-part sailplane: a slim tail boom carrying the tailplane and fin, tapering up into
-// the cabin, which carries the wing. Nothing separates (`sequences: []`). Stick: pitch
-// (elevator), yaw (rudder) and roll (ailerons); trimmed to glide hands off at about 38 m/s.
+// A sailplane that rockets off a runway: a slim tail boom carrying the tailplane and fin,
+// tapering up into the cabin, which carries the wing. It takes off from a dolly of three
+// wheels (nose and main) and two solid rocket boosters either side of the tail boom, and
+// lets all three go: Space lights the boosters (they burn about eleven seconds, enough
+// for 70 m/s), the next press drops them, the one after drops the dolly. Dropped, it glides
+// hands off at about 38 m/s. Stick: pitch (elevator), yaw (rudder) and roll (ailerons); B
+// holds the brakes. Built by hand.
 {
   id: "glider",
   name: "Kestrel",
@@ -40,6 +44,7 @@
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.9 },
         { name: "top", position: [0, 0, 3], direction: [0, 0, 1], size: 0.9 },
+        { name: "belly", position: [0, 0.45, 1.5], direction: [0, 1, 0], size: 0.16 },
         {
           name: "wing_1",
           position: [0.45, 0, 1.1],
@@ -174,6 +179,8 @@
           size: 0.6,
         },
         { name: "wing_2", position: [0, -0.15, 1.1], direction: [0, -1, 0], size: 0.9 },
+        { name: "booster_right", position: [0.46, 0, 3.85], direction: [1, 0, 0], size: 0.24 },
+        { name: "booster_left", position: [-0.46, 0, 3.85], direction: [-1, 0, 0], size: 0.24 },
       ],
       paint: {
         color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
@@ -261,6 +268,163 @@
       ],
       paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
     },
+    // A RATO bottle on the tail boom's right, its nozzle just behind the wing's trailing
+    // edge and level with the centre of mass, so its thrust does not pitch the nose.
+    {
+      id: "booster_right",
+      name: "RATO booster",
+      on: "tail_boom.booster_right",
+      by: "side",
+      shape: {
+        shell: {
+          bottom_diameter: 0.24,
+          sections: [
+            { length: 0.65 },
+            { length: 0.3, top_diameter: 0, profile: "ogive" },
+          ],
+          cap_bottom: true,
+        },
+      },
+      structure: { mass: 4 },
+      components: [{ container: {} }, { decoupler: { node: "side" } }],
+      nodes: [
+        { name: "side", position: [-0.12, 0, 0.5], direction: [-1, 0, 0], size: 0.24 },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.1 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 0.24 },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    { id: "booster_right_engine", on: "booster_right.engine", by: "top", template: "S-1" },
+    {
+      id: "booster_right_grain",
+      name: "Solid Grain",
+      on: "booster_right.tank",
+      shape: { cylinder_tank: { diameter: 0.2, length: 0.35 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+    },
+    // A RATO bottle on the tail boom's left, its nozzle just behind the wing's trailing
+    // edge and level with the centre of mass, so its thrust does not pitch the nose.
+    {
+      id: "booster_left",
+      name: "RATO booster",
+      on: "tail_boom.booster_left",
+      by: "side",
+      shape: {
+        shell: {
+          bottom_diameter: 0.24,
+          sections: [
+            { length: 0.65 },
+            { length: 0.3, top_diameter: 0, profile: "ogive" },
+          ],
+          cap_bottom: true,
+        },
+      },
+      structure: { mass: 4 },
+      components: [{ container: {} }, { decoupler: { node: "side" } }],
+      nodes: [
+        { name: "side", position: [0.12, 0, 0.5], direction: [1, 0, 0], size: 0.24 },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.1 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 0.24 },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    { id: "booster_left_engine", on: "booster_left.engine", by: "top", template: "S-1" },
+    {
+      id: "booster_left_grain",
+      name: "Solid Grain",
+      on: "booster_left.tank",
+      shape: { cylinder_tank: { diameter: 0.2, length: 0.35 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+    },
+    // The dolly it rolls off the runway on, held to the cabin's belly: a slim beam with
+    // a nose wheel at its front and the main wheels, splayed to a 1.7 m track, just behind
+    // the centre of mass. Dropped once airborne, which leaves the cabin's belly to land on.
+    {
+      id: "dolly",
+      name: "Dolly",
+      on: "cabin.belly",
+      by: "side",
+      shape: {
+        shell: { bottom_diameter: 0.16, sections: [{ length: 3 }], cap_bottom: true },
+      },
+      structure: { mass: 12 },
+      components: [{ container: {} }, { decoupler: { node: "side" } }],
+      nodes: [
+        { name: "side", position: [0, -0.08, 1.6], direction: [0, -1, 0], size: 0.16 },
+        { name: "nose_gear", position: [0, 0.08, 2.7], direction: [0, 1, 0], size: 0.06 },
+        {
+          name: "main_gear",
+          position: [0.061283555450, 0.051423008775, 0.2],
+          direction: [0.766044443119, 0.642787609687, 0],
+          size: 0.06,
+        },
+        {
+          name: "main_gear_left",
+          position: [-0.061283555450, 0.051423008775, 0.2],
+          direction: [-0.766044443119, 0.642787609687, 0],
+          size: 0.06,
+        },
+      ],
+      paint: { color: [0.2, 0.2, 0.21], finish: "metal" },
+    },
+    {
+      id: "nose_gear",
+      name: "Nose wheel",
+      on: "dolly.nose_gear",
+      shape: {
+        compound: [
+          {
+            shape: { beam: { length: 0.7, section: { circle: { diameter: 0.06 } } } },
+            rotation: [180, 0, 0],
+          },
+        ],
+      },
+      components: [
+        {
+          gear: { length: 0.7, wheel_radius: 0.18, stroke: 0.15, load: 200, mass: 12, steering: 25 },
+        },
+      ],
+    },
+    {
+      id: "main_gear",
+      name: "Main wheel",
+      on: "dolly.main_gear",
+      shape: {
+        compound: [
+          {
+            shape: { beam: { length: 1.0, section: { circle: { diameter: 0.06 } } } },
+            rotation: [180, 0, 0],
+          },
+        ],
+      },
+      components: [
+        {
+          gear: { length: 1.0, wheel_radius: 0.2, stroke: 0.2, load: 300, mass: 14, brakes: true },
+        },
+      ],
+    },
+    {
+      id: "main_gear_left",
+      name: "Main wheel",
+      on: "dolly.main_gear_left",
+      shape: {
+        compound: [
+          {
+            shape: { beam: { length: 1.0, section: { circle: { diameter: 0.06 } } } },
+            rotation: [180, 0, 0],
+          },
+        ],
+      },
+      components: [
+        {
+          gear: { length: 1.0, wheel_radius: 0.2, stroke: 0.2, load: 300, mass: 14, brakes: true },
+        },
+      ],
+    },
   ],
-  sequences: [],
+  sequences: [
+    ["engines:booster_right", "engines:booster_left"],
+    ["decoupler:booster_right", "decoupler:booster_left"],
+    ["decoupler:dolly"],
+  ],
 }

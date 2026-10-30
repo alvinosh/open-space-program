@@ -468,8 +468,16 @@ up to pitch up, a canard ahead of it goes down. SAS uses them too; their authori
 with dynamic pressure. A wing's mass counts towards the stage, and the panels set the
 vessel's moments of inertia, so a winged vessel rolls, pitches and yaws differently.
 
-The `glider` craft is a worked example: it trims to glide hands off at about 38 m/s.
-Wings cannot be torn off yet.
+The `glider` craft is a worked example: let go of its boosters and wheels it trims to glide
+hands off at about 38 m/s. Wings cannot be torn off yet.
+
+The glider also takes off from a runway (`glider_runway`). Two `S-1` solid boosters (RATO
+bottles, each a radial stage on the tail boom with a `Solid Grain` tank of `HTPB`) take it
+from the runway to about 70 m/s in eleven seconds, and a dolly (a slim stage held to the
+cabin's belly, three gear legs on it) carries the wheels; three sequences light the
+boosters, let them go and let the dolly go. Throttle up before the first press: a solid
+lights with the throttle like any engine. Without the dolly a vessel has no wheels, and
+touching the ground faster than 10 m/s is a crash.
 
 A winged vessel has to be stable to fly: its centre of mass ahead of the point where the
 air's push on the whole vessel acts. A long nose ahead of the wing pushes that point
@@ -478,8 +486,9 @@ moved its wing back and grew its fin until both settled.
 
 ### Landing gear
 
-A stage's `gear` legs stand out from its hull like wings do, each a sprung, damped strut
-with a wheel at its end:
+A stage's `gear` legs stand out from its hull like wings do (from the hull of a stage
+beside the axis, if it hangs there: a dolly), each a sprung, damped strut with a wheel at
+its end:
 
 ```json5
 gear: [

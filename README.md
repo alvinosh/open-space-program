@@ -13,7 +13,7 @@ OSP_SCENARIO=leo cargo run                  # start in low Earth orbit
 OSP_SCENARIO=rendezvous cargo run           # in low Earth orbit below a station
 OSP_SCENARIO=crew cargo run                 # Pathfinder with a four-person capsule
 OSP_SCENARIO=sounder cargo run              # finned suborbital hop with a one-person capsule
-OSP_SCENARIO=glider cargo run               # a sailplane released at 1500 m over the Cape
+OSP_SCENARIO=glider_runway cargo run        # the sailplane on a dolly with two solid boosters, on the runway
 OSP_SCENARIO=runway cargo run               # rocket plane on the Shuttle Landing Facility runway
 OSP_SCENARIO=dzhanibekov cargo run          # a satellite flipping end over end (Dzhanibekov effect)
 cargo run --features dev                    # faster incremental builds (Bevy dynamic linking)
@@ -46,7 +46,7 @@ The main menu lists these; `OSP_SCENARIO=<id>` starts one straight away.
 </tr>
 <tr>
 <td><img src="docs/screenshots/runway.jpg" alt="Comet lifting off the runway"><br><b>Rocket plane on the runway</b> (<code>runway</code>): the Comet lifting off the Shuttle Landing Facility.</td>
-<td><img src="docs/screenshots/glider.jpg" alt="Glider banking over the Cape"><br><b>Glider over the Cape</b> (<code>glider</code>): a sailplane released at 1500 m, here banking into a turn.</td>
+<td><img src="docs/screenshots/glider_runway.jpg" alt="Glider rocketing off the runway"><br><b>Glider on the runway</b> (<code>glider_runway</code>): a sailplane on a wheeled dolly with two solid boosters, which put it at 70 m/s.</td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/sounder.jpg" alt="Finned sounding rocket over the coast"><br><b>Suborbital hop</b> (<code>sounder</code>): a finned single stage with a one-person capsule.</td>

@@ -102,8 +102,8 @@ impl Plugin for SmokeTestPlugin {
                 PARTS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_STAGING").is_some() {
                 STAGING_SCRIPT.to_vec()
-            } else if std::env::var_os("OSP_CAPTURE_GLIDER").is_some() {
-                GLIDER_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_GLIDER_RUNWAY").is_some() {
+                GLIDER_RUNWAY_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MENU").is_some() {
                 MENU_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_GRAPHICS").is_some() {
@@ -206,17 +206,21 @@ const ORBIT_SCRIPT: &[(f64, Action)] = &[
     (17.0, Action::Exit),
 ];
 
-/// `OSP_SCENARIO=glider OSP_CAPTURE_GLIDER=1`: the glider in flight, then with the stick
-/// back and to the right (elevator and ailerons deflected), then banked into a turn.
-const GLIDER_SCRIPT: &[(f64, Action)] = &[
+/// `OSP_SCENARIO=glider_runway OSP_CAPTURE_GLIDER_RUNWAY=1`: the glider on its dolly, the
+/// boosters lit, rotated off the runway, past burnout, then rid of boosters and wheels.
+const GLIDER_RUNWAY_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
-    (1.0, Action::Ui("ui.show:attitude_info")),
-    (3.0, Action::Capture("glider.png")),
-    (3.2, Action::Steer(DVec3::new(0.6, 0.0, 1.0))),
-    (3.7, Action::Capture("glider_controls.png")),
-    (3.9, Action::Steer(DVec3::ZERO)),
-    (9.0, Action::Capture("glider_turn.png")),
-    (9.5, Action::Exit),
+    (3.0, Action::Capture("parked.png")),
+    (3.2, Action::Launch),
+    (5.0, Action::Capture("lit.png")),
+    (7.5, Action::Steer(DVec3::new(0.12, 0.0, 0.0))),
+    (9.0, Action::Steer(DVec3::ZERO)),
+    (10.0, Action::Capture("airborne.png")),
+    (13.0, Action::Capture("burnout.png")),
+    (14.5, Action::Section),
+    (15.5, Action::Section),
+    (17.5, Action::Capture("clean.png")),
+    (18.0, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_MENU=1`: open the main menu, look at the spacecraft on the pad and in

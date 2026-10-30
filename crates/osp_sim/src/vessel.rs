@@ -1875,6 +1875,8 @@ fn air_at(body: &Body, state: &StateVector) -> AtmosphereSample {
 }
 
 #[cfg(test)]
+mod glider;
+#[cfg(test)]
 mod radial;
 
 #[cfg(test)]
@@ -2031,7 +2033,7 @@ pub(crate) mod tests {
         }
     }
 
-    fn nose(v: &Vessel, system: &SolarSystem, t: SimTime) -> DVec3 {
+    pub(super) fn nose(v: &Vessel, system: &SolarSystem, t: SimTime) -> DVec3 {
         v.attitude_at(system, t) * DVec3::Z
     }
 
@@ -2834,7 +2836,8 @@ pub(crate) mod tests {
         records(include_str!("../../../assets/core/craft/glider.json5")).remove(0)
     }
 
-    /// The glider released at `altitude` over the Cape, heading east at `speed`.
+    /// The glider released at `altitude` over the Cape, heading east at `speed`, with its
+    /// boosters and dolly already let go.
     fn glider_in_flight(system: &SolarSystem, altitude: f64, speed: f64) -> (Vessel, SimTime) {
         let start = FlightStartDef {
             body: "Earth".into(),
@@ -2846,7 +2849,14 @@ pub(crate) mod tests {
             climb: 0.0,
         };
         let t = SimTime::J2000;
-        let v = Vessel::in_flight(&glider(), &catalog(), system, &start, t).unwrap();
+        let mut def = glider();
+        def.sequences = Some(vec![vec![
+            "decoupler:booster_right".into(),
+            "decoupler:booster_left".into(),
+            "decoupler:dolly".into(),
+        ]]);
+        let mut v = Vessel::in_flight(&def, &catalog(), system, &start, t).unwrap();
+        v.activate_next_stage(system, t);
         (v, t)
     }
 
@@ -2883,7 +2893,7 @@ pub(crate) mod tests {
 
     /// Height of the centre of mass above the ground, ground speed and pitch (nose above the
     /// horizon), degrees.
-    fn on_the_ground(v: &Vessel, system: &SolarSystem, t: SimTime) -> (f64, f64, f64) {
+    pub(super) fn on_the_ground(v: &Vessel, system: &SolarSystem, t: SimTime) -> (f64, f64, f64) {
         let body = system.body(v.parent());
         let s = v.state_at(system, t);
         let up = s.position.normalize();

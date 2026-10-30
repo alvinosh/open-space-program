@@ -77,21 +77,14 @@
     start: { type: "Runway", site: "cape_slf" },
   },
   {
-    // A sailplane released at 1500 m over the Cape, heading east at 36 m/s.
-    id: "glider",
-    name: "Glider over the Cape",
-    description: "A sailplane released at 1500 m over the Cape. It glides hands off; it has no wheels.",
+    // The Kestrel sailplane on its dolly at the south-east end of the runway, with its two
+    // solid boosters.
+    id: "glider_runway",
+    name: "Glider on the runway",
+    description: "A sailplane on a wheeled dolly with two solid boosters at the end of the Shuttle Landing Facility runway. Throttle up and press Space; rotate at 40 m/s. The boosters take it to 70 m/s. Space again lets them go, and once more the wheels.",
     start_time: 21600,
     craft: "glider",
-    start: {
-      type: "Flight",
-      body: "Earth",
-      latitude: 28.6,
-      longitude: -80.6,
-      altitude: 1500,
-      heading: 90,
-      speed: 36,
-    },
+    start: { type: "Runway", site: "cape_slf" },
   },
   {
     // Finned single stage with a one-person capsule: a suborbital hop.

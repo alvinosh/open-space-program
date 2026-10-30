@@ -26,6 +26,9 @@
 //! V-2, Bumper-WAC, Viking and stock Sounder had their tanks moved up off their bases, the
 //! Scout's upper stages got peroxide jets, the Crew Dragon came in at its real size, and
 //! the Kestrel, Soyuz and Zenit tanks were built for the g their boosters reach.
+//!
+//! The glider was given two solid boosters and a wheeled dolly to take off from a runway,
+//! and so a sequence for each; the wheels of a stage beside the axis stand out from it.
 
 use std::path::Path;
 

@@ -109,12 +109,21 @@ impl Leg {
     }
 }
 
-/// Every gear leg of a stack of stages, bottom first.
+/// Every gear leg of a stack of stages, bottom first. A stage hanging beside the vessel's
+/// axis (a dolly under the belly) carries its legs out with it.
 pub fn legs(stages: &[Section]) -> Vec<Leg> {
     let mut legs = Vec::new();
     for (base, stage) in crate::propulsion::placed(stages) {
+        let offset = stage.bottom.truncate().extend(0.0);
         for def in &stage.gear {
-            legs.extend(Leg::of(def, stage.diameter / 2.0, base));
+            legs.extend(
+                Leg::of(def, stage.diameter / 2.0, base)
+                    .into_iter()
+                    .map(|leg| Leg {
+                        mount: leg.mount + offset,
+                        ..leg
+                    }),
+            );
         }
     }
     legs

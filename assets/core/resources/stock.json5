@@ -9,6 +9,7 @@
   { id: "Aerozine50", density: 903 },
   { id: "NTO", density: 1443 }, // nitrogen tetroxide
   { id: "Hydrazine", density: 1004 },
+  { id: "HTPB", density: 1770 }, // solid grain: aluminised rubber binder and ammonium perchlorate
   // Compressed gas at 300 bar (real-gas density).
   { id: "Nitrogen", density: 313, pressure: 3.0e7 },
   { id: "Helium", density: 44, pressure: 3.0e7 },

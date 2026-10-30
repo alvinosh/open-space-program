@@ -296,4 +296,26 @@
     exit_diameter: 0.3,
     model: "models/engines/k0.glb",
   },
+  {
+    id: "S-1", // a RATO bottle: a small composite solid, lit once, burning about twelve seconds
+    kind: "solid",
+    mass: 14,
+    thrust_vac: 3300,
+    isp_vac: 225,
+    isp_sl: 205,
+    min_throttle: 1.0,
+    response: { spool_up: 0.15, spool_down: 0.15 },
+    exit_pressure: 90000,
+    ignitions: 1,
+    requires_ullage: false,
+    gimbal_range: 0,
+    // Thrust rises quickly to its plateau, holds, and tails off as the grain burns out.
+    thrust_curve: [[1.0, 0.9], [0.95, 1.0], [0.15, 0.95], [0.0, 0.3]],
+    propellants: { HTPB: 1.0 },
+    // The K-0's model at a third of its size.
+    length: 0.3,
+    exit_diameter: 0.1,
+    model: "models/engines/k0.glb",
+    model_scale: 0.33,
+  },
 ]

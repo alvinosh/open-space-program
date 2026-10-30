@@ -79,4 +79,15 @@
     utilization: 0.95, // the rest is the propellant management device and ullage
     propellants: ["Aerozine50", "NTO", "Hydrazine"],
   },
+  {
+    // Propellant cast in a solid motor. The motor's case, insulation and nozzle are its
+    // engine record's mass; this adds only the grain.
+    id: "Solid Grain",
+    material: "Carbon Composite",
+    pressure: 0,
+    min_gauge: 0.0001,
+    utilization: 0.92,
+    propellants: ["HTPB"],
+    cast: true,
+  },
 ]
