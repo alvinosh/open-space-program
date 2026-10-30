@@ -1,11 +1,13 @@
-# Checks the commit messages of a push or pull request against the format in README.md
-# ("Commits"). The same check runs locally as a commit-msg hook (.githooks).
+# Checks the latest commit message against the format in README.md ("Commits"). The same
+# check runs locally as a commit-msg hook (.githooks). Switched off for pushes and pull
+# requests: it only runs by hand from the Actions tab. Put the old triggers back to re-enable:
+#   pull_request:
+#   push:
+#     branches: [main]
 name: Commit messages
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   check:

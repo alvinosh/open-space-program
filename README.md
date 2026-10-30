@@ -334,5 +334,5 @@ git config core.hooksPath .githooks    # once per clone: the commit-msg hook che
 python3 -m unittest discover -s .githooks
 ```
 
-The same check runs in CI over the commits of every push and pull request, so `--no-verify`
-only postpones it. A new top-level directory needs a scope in `.githooks/check_commit.py`.
+CI does not check pushes and pull requests any more; the workflow only runs by hand from the
+Actions tab. A new top-level directory needs a scope in `.githooks/check_commit.py`.
