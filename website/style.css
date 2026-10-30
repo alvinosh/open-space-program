@@ -88,6 +88,7 @@ code {
   text-decoration: none;
 }
 .top nav a:hover { background: var(--control); color: var(--text); }
+.top nav a[aria-current] { color: var(--text); }
 
 /* --- intro --- */
 
@@ -285,6 +286,9 @@ footer a:hover { color: var(--text); }
 @media (max-width: 680px) {
   body { font-size: 16.5px; }
   .wrap { padding: 0 16px; }
+  .top { flex-wrap: wrap; gap: 4px 16px; padding-bottom: 8px; }
+  .brand, .top nav a { white-space: nowrap; }
+  .top nav { margin-left: -10px; }
   .intro p { font-size: 18px; }
   .pair { grid-template-columns: 1fr; gap: 20px; }
   section { padding-top: 52px; }
