@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build smoke test report</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0e1116; --panel: #161b22; --panel2: #1c232c; --line: #2a333f; --text: #e6edf3; --dim: #8b98a7;
+  --green: #3fb27f; --red: #e0a43a; --grey: #8c96a3; --wrong: #f0616d; --accent: #2fb7b0;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f5f7fa; --panel: #ffffff; --panel2: #eef2f6; --line: #d5dce4; --text: #18202a; --dim: #5b6877;
+    --green: #1f8a5b; --red: #b87a12; --grey: #6b7684; --wrong: #d1303f; --accent: #12857f;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f7fa; --panel: #ffffff; --panel2: #eef2f6; --line: #d5dce4; --text: #18202a; --dim: #5b6877;
+  --green: #1f8a5b; --red: #b87a12; --grey: #6b7684; --wrong: #d1303f; --accent: #12857f;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 80px; }
+h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+h2 { font-size: 17px; margin: 36px 0 12px; }
+h2 small { color: var(--dim); font-weight: 400; margin-left: 8px; }
+p { margin: 0 0 8px; }
+.dim { color: var(--dim); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+header { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; justify-content: space-between; }
+.counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.count { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; min-width: 84px; }
+.count b { display: block; font-size: 22px; line-height: 1.1; }
+.count span { font-size: 12px; color: var(--dim); }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; border-radius: 99px; padding: 1px 9px; color: #fff; white-space: nowrap; }
+.pill.green, .pill.pass { background: var(--green); } .pill.red { background: var(--red); }
+.pill.grey, .pill.skip { background: var(--grey); } .pill.wrong, .pill.fail { background: var(--wrong); }
+.scroll { overflow-x: auto; }
+table.matrix { border-collapse: separate; border-spacing: 4px; min-width: 980px; }
+.matrix th { font-size: 12px; font-weight: 600; color: var(--dim); vertical-align: bottom; padding: 0 2px 4px; text-align: center; width: 76px; }
+.matrix th.row { text-align: right; color: var(--text); font-size: 13px; padding-right: 8px; width: 130px; white-space: nowrap; }
+.matrix td { padding: 0; }
+.matrix button { width: 100%; height: 46px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: #fff; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; line-height: 1.15; padding: 2px; }
+.matrix button.green { background: var(--green); border-color: var(--green); }
+.matrix button.red { background: var(--red); border-color: var(--red); }
+.matrix button.grey { background: var(--grey); border-color: var(--grey); }
+.matrix button.wrong { background: var(--wrong); border-color: var(--wrong); }
+.matrix button.dim { opacity: .22; }
+.matrix button.on { outline: 3px solid var(--text); outline-offset: 1px; }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 12px 0 0; font-size: 12.5px; color: var(--dim); }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.panel h3 { margin: 0 0 4px; font-size: 16px; }
+ul.checks { list-style: none; padding: 0; margin: 10px 0 0; }
+ul.checks li { display: grid; grid-template-columns: 62px 1fr; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); align-items: start; }
+ul.checks li:first-child { border-top: 0; }
+.tasks { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
+button.task { text-align: left; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-left: 4px solid var(--red); border-radius: 8px; padding: 10px 12px; font: inherit; cursor: pointer; }
+button.task:hover, button.task.on { border-color: var(--accent); border-left-color: var(--accent); }
+button.task b { font-size: 15px; }
+.checkdefs { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px 18px; margin: 0; padding: 0; list-style: none; }
+.checkdefs li { padding: 3px 0; border-top: 1px solid var(--line); }
+.banner { background: color-mix(in srgb, var(--wrong) 14%, var(--panel)); border: 1px solid var(--wrong); border-radius: 8px; padding: 10px 14px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div>
+    <h1 id="title"></h1>
+    <p class="dim" id="summary" style="max-width: 720px"></p>
+    <p class="dim mono" id="meta"></p>
+  </div>
+  <div class="counts" id="counts"></div>
+</header>
+<div id="banner"></div>
+
+<h2>The matrix <small>click a cell</small></h2>
+<div class="scroll"><table class="matrix" id="matrix"></table></div>
+<div class="legend">
+  <span><i style="background: var(--green)"></i>green: passes every check</span>
+  <span><i style="background: var(--red)"></i>red: fails until its task lands (the task is on the cell)</span>
+  <span><i style="background: var(--grey)"></i>grey: the rules say no, and the refusal names the rule</span>
+  <span><i style="background: var(--wrong)"></i>not what its rule says: the test fails</span>
+</div>
+
+<h2>The cell</h2>
+<div class="panel" id="detail"><span class="dim">Pick a cell above.</span></div>
+
+<h2>What is left, by task <small>click one to light its cells</small></h2>
+<div class="tasks" id="tasks"></div>
+
+<h2>What each cell checks</h2>
+<ul class="checkdefs" id="checkdefs"></ul>
+</main>
+<script>
+const DATA = /*DATA*/null;
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+
+$("title").textContent = DATA.mission.title;
+$("summary").textContent = DATA.mission.summary;
+$("meta").textContent = `run ${DATA.generated} · ${DATA.mission.craft}`;
+for (const [k, label] of [["green", "green"], ["red", "red"], ["grey", "grey"], ["wrong", "wrong"]]) {
+  const n = DATA.cells.filter((c) => c.status === k).length;
+  const box = el("div", "count"); const b = el("b", "", n); b.style.color = `var(--${k})`;
+  box.append(b, el("span", "", label)); $("counts").append(box);
+}
+const wrong = DATA.cells.filter((c) => c.status === "wrong");
+if (wrong.length) {
+  const b = el("div", "banner", `${wrong.length} cell${wrong.length > 1 ? "s are" : " is"} not what the rules expect. The test fails.`);
+  $("banner").append(b);
+}
+
+const cellAt = (r, c) => DATA.cells.find((x) => x.row === r && x.column === c);
+const short = (cell) => {
+  if (cell.status === "green") return "ok";
+  if (cell.status === "grey") return "rule";
+  const fails = cell.checks.filter((k) => k.result === "fail").map((k) => k.check);
+  return `${cell.task || "?"}\n${fails.join(", ")}`;
+};
+let selected = null, lit = null;
+const buttons = [];
+const head = el("tr"); head.append(el("th"));
+for (const col of DATA.columns) head.append(el("th", "", col.title));
+$("matrix").append(head);
+DATA.rows.forEach((row, r) => {
+  const tr = el("tr"); tr.append(el("th", "row", row.title));
+  DATA.columns.forEach((col, c) => {
+    const cell = cellAt(r, c); const td = el("td"); const b = el("button", cell.status);
+    b.textContent = short(cell); b.style.whiteSpace = "pre-line";
+    b.title = `${row.title} × ${col.title}`;
+    b.onclick = () => { selected = cell; show(); refresh(); };
+    buttons.push([b, cell]); td.append(b); tr.append(td);
+  });
+  $("matrix").append(tr);
+});
+
+function refresh() {
+  for (const [b, cell] of buttons) {
+    b.classList.toggle("on", cell === selected);
+    b.classList.toggle("dim", lit !== null && cell.task !== lit);
+  }
+  for (const t of document.querySelectorAll("button.task")) t.classList.toggle("on", t.dataset.id === lit);
+}
+
+function show() {
+  const cell = selected, box = $("detail"); box.textContent = "";
+  const row = DATA.rows[cell.row], col = DATA.columns[cell.column];
+  const h = el("h3", "", `${row.title} × ${col.title} `); h.append(el("span", `pill ${cell.status}`, cell.status));
+  box.append(h);
+  if (cell.task) box.append(el("p", "", `Waits for ${cell.task}${cell.why ? `: ${cell.why}.` : "."}`));
+  else if (cell.why) box.append(el("p", "", `${cell.why}.`));
+  if (cell.mismatch) box.append(el("p", "", `Not as expected: ${cell.mismatch}`));
+  if (cell.refusal) {
+    const p = el("p", "mono", `${cell.refusal.limit ? "Refused (a limit of the sim)" : "Refused (a rule)"}: ${cell.refusal.reason}`);
+    box.append(p);
+  }
+  const ul = el("ul", "checks");
+  for (const k of cell.checks) {
+    const li = el("li"); li.append(el("span", `pill ${k.result}`, k.result));
+    const d = el("div"); d.append(el("b", "", DATA.checks.find((c) => c.id === k.check).title));
+    if (k.detail) d.append(el("div", "dim", k.detail));
+    li.append(d); ul.append(li);
+  }
+  box.append(ul);
+}
+
+for (const t of DATA.tasks) {
+  const b = el("button", "task"); b.dataset.id = t.id;
+  const top = el("div"); top.append(el("b", "", t.id), el("span", "dim", `  ${t.status}`));
+  b.append(top, el("div", "", t.title), el("div", "dim", `${t.cells} cell${t.cells > 1 ? "s" : ""} wait on it`));
+  b.onclick = () => { lit = lit === t.id ? null : t.id; refresh(); };
+  $("tasks").append(b);
+}
+if (!DATA.tasks.length) $("tasks").append(el("p", "dim", "No red cells: every cell is green or grey."));
+for (const c of DATA.checks) $("checkdefs").append(el("li", "", c.title));
+</script>
+</body>
+</html>

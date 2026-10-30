@@ -1,0 +1,190 @@
+// New-game setups, in the order the main menu lists them under where they start (pad,
+// runway, orbit or in flight): by their craft's name, with `name` under it. start_time is
+// seconds since J2000 (2000-01-01 12:00 TDB); 21600 s = 18:00 UT, around midday at the
+// Cape. OSP_SCENARIO=<id> skips the menu and starts one straight away.
+[
+  {
+    id: "pad",
+    name: "Launch from the Cape",
+    description: "Pathfinder on LC-39A with a 15 t payload under its fairing. Fly it to orbit.",
+    start_time: 21600,
+    craft: "pathfinder",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
+    id: "crew",
+    name: "Crewed launch from the Cape",
+    description: "Pathfinder with a four-person capsule on top.",
+    start_time: 21600,
+    craft: "pathfinder_crew",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
+    id: "heron",
+    name: "Hydrolox core stage",
+    description: "Four RS-25-class H-25s under an 8.4 m core: nearly clear plumes with white-hot Mach disks. 15 t to orbit.",
+    start_time: 21600,
+    craft: "heron",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
+    id: "kestrel",
+    name: "Methalox",
+    description: "Nine Raptor-class M-2s and an M-2 Vacuum upper stage. 20 t to orbit.",
+    start_time: 21600,
+    craft: "kestrel",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
+    id: "colossus",
+    name: "Moon rocket",
+    description: "Five F-1-class K-5s in a cross, five J-2-class H-2s above them, 45 t on top.",
+    start_time: 21600,
+    craft: "colossus",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
+    id: "talon",
+    name: "Staged-combustion kerolox",
+    description: "One RD-191-class K-19 and an H-10 upper stage. 3 t to orbit.",
+    start_time: 21600,
+    craft: "talon",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
+    id: "sparrow",
+    name: "Small launcher",
+    description: "Nine Rutherford-class K-0s on a 1.3 m carbon booster. 200 kg to orbit.",
+    start_time: 21600,
+    craft: "sparrow",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
+    id: "titan",
+    name: "Hypergolic",
+    description: "Two LR-87-class A-87s, one more on the second stage. 2.5 t to orbit.",
+    start_time: 21600,
+    craft: "titan",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
+    // The Comet rocket plane at the south-east end of the Shuttle Landing Facility.
+    id: "runway",
+    name: "Rocket plane on the runway",
+    description: "The Comet at the end of the Shuttle Landing Facility runway. Throttle up, rotate at 75 m/s, land back on the runway.",
+    start_time: 21600,
+    craft: "comet",
+    start: { type: "Runway", site: "cape_slf" },
+  },
+  {
+    // A sailplane released at 1500 m over the Cape, heading east at 36 m/s.
+    id: "glider",
+    name: "Glider over the Cape",
+    description: "A sailplane released at 1500 m over the Cape. It glides hands off; it has no wheels.",
+    start_time: 21600,
+    craft: "glider",
+    start: {
+      type: "Flight",
+      body: "Earth",
+      latitude: 28.6,
+      longitude: -80.6,
+      altitude: 1500,
+      heading: 90,
+      speed: 36,
+    },
+  },
+  {
+    // Finned single stage with a one-person capsule: a suborbital hop.
+    id: "sounder",
+    name: "Suborbital hop",
+    description: "A finned single stage with a one-person capsule, for a suborbital hop.",
+    start_time: 21600,
+    craft: "sounder",
+    start: { type: "LaunchSite", site: "cape_canaveral" },
+  },
+  {
+    // Rendezvous practice: a station in a slightly higher, slightly tilted orbit a little
+    // ahead. Match planes at a node, then plan a transfer to meet it.
+    id: "rendezvous",
+    name: "Rendezvous in low Earth orbit",
+    description: "In low Earth orbit below a station: match planes, then plan a transfer to meet it.",
+    start_time: 21600,
+    craft: "upper_stage",
+    start: {
+      type: "Orbit",
+      body: "Earth",
+      periapsis_altitude: 300000,
+      apoapsis_altitude: 300000,
+      inclination: 28.6,
+    },
+    others: [
+      {
+        craft: "upper_stage",
+        name: "Station",
+        start: {
+          type: "Orbit",
+          body: "Earth",
+          periapsis_altitude: 340000,
+          apoapsis_altitude: 340000,
+          inclination: 29.1,
+          mean_anomaly: 25,
+        },
+      },
+    ],
+    target: "Station",
+  },
+  {
+    // The default start: a 300 km circular orbit in the Moon's plane, targeting the Moon,
+    // in an upper stage with plenty of RCS. A single prograde burn at the right moment
+    // reaches the Moon without a plane change.
+    id: "moon_plane",
+    name: "Low Earth orbit in the Moon's plane",
+    description: "An upper stage with lots of RCS in a 300 km orbit in the Moon's plane. One burn reaches the Moon.",
+    start_time: 21600,
+    craft: "lunar_upper",
+    start: {
+      type: "Orbit",
+      body: "Earth",
+      periapsis_altitude: 300000,
+      apoapsis_altitude: 300000,
+      plane: "Moon",
+    },
+    target: "Moon",
+  },
+  {
+    // Parked in a 300 km circular orbit: good for testing time warp and transfers.
+    // A ~3.1 km/s prograde burn from here reaches the Moon.
+    id: "leo",
+    name: "Low Earth orbit",
+    description: "An upper stage parked in a 300 km circular orbit.",
+    start_time: 21600,
+    craft: "upper_stage",
+    start: {
+      type: "Orbit",
+      body: "Earth",
+      periapsis_altitude: 300000,
+      apoapsis_altitude: 300000,
+      inclination: 28.6,
+    },
+  },
+  {
+    // The Dzhanibekov effect (the tennis racket theorem): a body spins steadily about the
+    // axis of its largest moment of inertia or its smallest, not about the middle one. The
+    // satellite's long axis is its middle one. Spun about it at 36°/s with a 1°/s wobble, it
+    // turns itself end over end after about 15 s, then back every 30 s, for as long as it
+    // is left alone. RCS (R) with SAS (T) stops it.
+    id: "dzhanibekov",
+    name: "Tumbling satellite",
+    description: "A satellite spun about its middle axis of inertia, which it cannot keep spinning about: it flips end over end every 30 s (the Dzhanibekov effect). R and T stop it.",
+    start_time: 21600,
+    craft: "satellite",
+    start: {
+      type: "Orbit",
+      body: "Earth",
+      periapsis_altitude: 400000,
+      apoapsis_altitude: 400000,
+      inclination: 51.6,
+      spin: [0, 1, 36],
+    },
+  },
+]

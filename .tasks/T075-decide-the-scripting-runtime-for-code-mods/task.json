@@ -1,0 +1,16 @@
+{
+  "id": "T075",
+  "title": "Decide the scripting runtime for code mods",
+  "kind": "decision",
+  "status": "todo",
+  "area": "modding",
+  "size": "S",
+  "parent": "T072",
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Decisions to make"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

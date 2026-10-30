@@ -1,0 +1,18 @@
+{
+  "id": "T051",
+  "title": "Structure: joint strength, breakup, crash tolerance",
+  "kind": "feature",
+  "status": "todo",
+  "area": "structure",
+  "size": "M",
+  "parent": "T011",
+  "depends_on": [
+    "T025"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 26)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

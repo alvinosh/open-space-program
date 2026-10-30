@@ -1,0 +1,18 @@
+{
+  "id": "T015",
+  "title": "The builder: place, remove, pattern, check, undo",
+  "kind": "feature",
+  "status": "todo",
+  "area": "builder",
+  "size": "L",
+  "parent": "T002",
+  "depends_on": [
+    "T014"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E3)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

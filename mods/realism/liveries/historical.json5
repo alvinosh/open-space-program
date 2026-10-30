@@ -1,0 +1,97 @@
+// Paint schemes of historical stages, for the stage converter (`appearance.livery`). Heights
+// are from the stage's base; turns from the stage's +X. Colours are linear RGB. The schemes
+// follow the real ones in outline; their proportions are approximate.
+[
+  {
+    id: "v2_test",
+    name: "V-2 trials pattern",
+    paint: {
+      layers: [
+        { checker: { around: 4, along: [0, 3.5, 7, 10.5, 14], color: [0.012, 0.012, 0.014] } },
+      ],
+    },
+  },
+  {
+    id: "jupiter_c",
+    name: "Jupiter-C roll pattern",
+    paint: {
+      layers: [
+        { checker: { around: 4, along: [2.0, 5.0, 8.0], color: [0.012, 0.012, 0.014] } },
+        { text: { text: "UNITED STATES", at: [0.125, 12.5], height: 0.4, vertical: true,
+                  color: [0.012, 0.012, 0.014] } },
+      ],
+    },
+  },
+  {
+    id: "mercury_redstone",
+    name: "Mercury-Redstone",
+    paint: {
+      layers: [
+        { band: { along: [0, 0.35], color: [0.012, 0.012, 0.014] } },
+        { text: { text: "UNITED STATES", at: [0.125, 9.5], height: 0.42, vertical: true,
+                  color: [0.012, 0.012, 0.014] } },
+        { image: { file: "decals/us_flag.svg", at: [0.125, 15.2], size: [0.95, 0.5] } },
+      ],
+    },
+  },
+  {
+    id: "atlas_steel",
+    name: "Atlas balloon tanks",
+    paint: { finish: "stainless" },
+  },
+  {
+    id: "saturn_s1b",
+    name: "Saturn IB first stage",
+    paint: {
+      layers: [
+        { checker: { around: 8, along: [15.5, 21.5], color: [0.012, 0.012, 0.014] } },
+        { text: { text: "UNITED STATES", at: [0.0625, 8.5], height: 0.9, vertical: true,
+                  color: [0.012, 0.012, 0.014] } },
+        { image: { file: "decals/us_flag.svg", at: [0.0625, 23.4], size: [1.9, 1.0] } },
+      ],
+    },
+  },
+  {
+    id: "saturn_s1c",
+    name: "Saturn V first stage",
+    paint: {
+      layers: [
+        { stripe: { around: [0.0, 0.06], along: [6.5, 18.5], color: [0.012, 0.012, 0.014] } },
+        { stripe: { around: [0.25, 0.31], along: [6.5, 18.5], color: [0.012, 0.012, 0.014] } },
+        { stripe: { around: [0.5, 0.56], along: [6.5, 18.5], color: [0.012, 0.012, 0.014] } },
+        { stripe: { around: [0.75, 0.81], along: [6.5, 18.5], color: [0.012, 0.012, 0.014] } },
+        { checker: { around: 4, along: [18.5, 22.5], color: [0.012, 0.012, 0.014] } },
+        { checker: { around: 4, along: [38.6, 42.1], first: true, color: [0.012, 0.012, 0.014] } },
+        { text: { text: "UNITED STATES", at: [0.125, 29.5], height: 1.5, vertical: true,
+                  color: [0.012, 0.012, 0.014] } },
+        { image: { file: "decals/us_flag.svg", at: [0.125, 37.0], size: [3.4, 1.8] } },
+        { text: { text: "USA", at: [0.625, 29.5], height: 2.2, vertical: true,
+                  color: [0.012, 0.012, 0.014] } },
+      ],
+    },
+  },
+  {
+    id: "saturn_s4b",
+    name: "Saturn S-IVB",
+    paint: {
+      layers: [
+        { checker: { around: 4, along: [0.0, 2.8], first: true, color: [0.012, 0.012, 0.014] } },
+      ],
+    },
+  },
+  {
+    id: "delta_blue",
+    name: "Delta first stage blue",
+    paint: { color: [0.02, 0.14, 0.2] },
+  },
+  {
+    id: "electron_carbon",
+    name: "Electron carbon fibre",
+    paint: { finish: "composite" },
+  },
+  {
+    id: "starship_steel",
+    name: "Starship stainless steel",
+    paint: { finish: "stainless" },
+  },
+]

@@ -1,0 +1,17 @@
+// Reaction wheels: torque without propellant, for turning while the engines are off.
+// `torque` is N·m about each axis at full command; `mass` in kg.
+[
+  {
+    // About 0.5 °/s² for a fully fuelled Pathfinder upper stage and payload: far more than
+    // its cold-gas RCS gives, so turning in orbit is quick.
+    id: "Attitude Control Unit",
+    mass: 150,
+    torque: 30000,
+  },
+  {
+    // Probe-sized.
+    id: "RW-1",
+    mass: 20,
+    torque: 500,
+  },
+]

@@ -1,0 +1,21 @@
+// A new window, closed at the start so the example mod does not crowd the flight view.
+// Toggle with F6 (see keybindings/) or the launcher button added in patches/.
+// In the "flight" group, so F3 hides it with the rest of the flight UI; docked at the end
+// of the base game's right dock, so it lines up with the other windows there.
+{
+  id: "example_clock",
+  visible: false,
+  group: "flight",
+  dock: "right",
+  dock_order: 100,
+  root: {
+    widget: "window",
+    title: "Mission clock",
+    style: { width: 200 },
+    children: [
+      { widget: "label", class: "title", text: "{time.ut|clock}" },
+      { widget: "label", class: "dim", text: "{time.ut|date}" },
+      { widget: "label", class: "warning", visible: "sim.last_event", text: "Last: {sim.last_event}" },
+    ],
+  },
+}

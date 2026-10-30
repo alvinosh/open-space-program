@@ -1,0 +1,378 @@
+// Launch pads of the historical scenarios. Coordinates of the real pads; the pad deck,
+// mount and service tower are the game's generic ones.
+[
+  {
+    "id": "peenemunde_p7",
+    "name": "Peenemünde Test Stand VII",
+    "body": "Earth",
+    "latitude": 54.1678,
+    "longitude": 13.7935,
+    "heading": 0,
+    "pad": {
+      "size": [
+        50,
+        40
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 1.5
+    }
+  },
+  {
+    "id": "white_sands_lc33",
+    "name": "White Sands LC-33",
+    "body": "Earth",
+    "latitude": 32.3876,
+    "longitude": -106.4797,
+    "heading": 0,
+    "pad": {
+      "size": [
+        50,
+        40
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 1.5
+    }
+  },
+  {
+    "id": "cape_lc5",
+    "name": "Cape Canaveral LC-5",
+    "body": "Earth",
+    "latitude": 28.44,
+    "longitude": -80.5733,
+    "heading": 0,
+    "pad": {
+      "size": [
+        50,
+        40
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 2
+    }
+  },
+  {
+    "id": "cape_lc14",
+    "name": "Cape Canaveral LC-14",
+    "body": "Earth",
+    "latitude": 28.4911,
+    "longitude": -80.5469,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "cape_lc17b",
+    "name": "Cape Canaveral LC-17B",
+    "body": "Earth",
+    "latitude": 28.4458,
+    "longitude": -80.5664,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "cape_lc18a",
+    "name": "Cape Canaveral LC-18A",
+    "body": "Earth",
+    "latitude": 28.4494,
+    "longitude": -80.5625,
+    "heading": 0,
+    "pad": {
+      "size": [
+        50,
+        40
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 2
+    }
+  },
+  {
+    "id": "cape_lc19",
+    "name": "Cape Canaveral LC-19",
+    "body": "Earth",
+    "latitude": 28.5069,
+    "longitude": -80.5544,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "cape_lc26a",
+    "name": "Cape Canaveral LC-26A",
+    "body": "Earth",
+    "latitude": 28.4433,
+    "longitude": -80.5714,
+    "heading": 0,
+    "pad": {
+      "size": [
+        50,
+        40
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 2
+    }
+  },
+  {
+    "id": "cape_lc34",
+    "name": "Cape Canaveral LC-34",
+    "body": "Earth",
+    "latitude": 28.5218,
+    "longitude": -80.5613,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "cape_slc40",
+    "name": "Cape Canaveral SLC-40",
+    "body": "Earth",
+    "latitude": 28.562,
+    "longitude": -80.5772,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "cape_slc41",
+    "name": "Cape Canaveral SLC-41",
+    "body": "Earth",
+    "latitude": 28.5833,
+    "longitude": -80.583,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "baikonur_site1",
+    "name": "Baikonur Site 1 (Gagarin's Start)",
+    "body": "Earth",
+    "latitude": 45.9203,
+    "longitude": 63.3422,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "baikonur_site45",
+    "name": "Baikonur Site 45",
+    "body": "Earth",
+    "latitude": 45.9433,
+    "longitude": 63.6533,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "baikonur_site81",
+    "name": "Baikonur Site 81",
+    "body": "Earth",
+    "latitude": 46.071,
+    "longitude": 62.985,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "baikonur_site110",
+    "name": "Baikonur Site 110",
+    "body": "Earth",
+    "latitude": 45.9647,
+    "longitude": 63.3053,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 4
+    }
+  },
+  {
+    "id": "vandenberg_lc75",
+    "name": "Vandenberg LC-75-3",
+    "body": "Earth",
+    "latitude": 34.756,
+    "longitude": -120.622,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "wallops_la3",
+    "name": "Wallops Island LA-3",
+    "body": "Earth",
+    "latitude": 37.8504,
+    "longitude": -75.4697,
+    "heading": 0,
+    "pad": {
+      "size": [
+        50,
+        40
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 1.5
+    }
+  },
+  {
+    "id": "kourou_ela1",
+    "name": "Kourou ELA-1",
+    "body": "Earth",
+    "latitude": 5.2364,
+    "longitude": -52.7754,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "kourou_ela3",
+    "name": "Kourou ELA-3",
+    "body": "Earth",
+    "latitude": 5.239,
+    "longitude": -52.7684,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "jiuquan_lc43",
+    "name": "Jiuquan LC-43/921",
+    "body": "Earth",
+    "latitude": 40.9581,
+    "longitude": 100.2915,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 3
+    }
+  },
+  {
+    "id": "mahia_lc1a",
+    "name": "Rocket Lab LC-1A, Mahia",
+    "body": "Earth",
+    "latitude": -39.2615,
+    "longitude": 177.8649,
+    "heading": 0,
+    "pad": {
+      "size": [
+        50,
+        40
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 1.5
+    }
+  },
+  {
+    "id": "starbase_olpa",
+    "name": "Starbase OLP-A",
+    "body": "Earth",
+    "latitude": 25.9968,
+    "longitude": -97.1567,
+    "heading": 0,
+    "pad": {
+      "size": [
+        90,
+        70
+      ],
+      "corner_radius": 8,
+      "slope": 0.4,
+      "mount_height": 6
+    }
+  }
+]

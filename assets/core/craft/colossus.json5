@@ -1,0 +1,417 @@
+// Moon rocket in the Saturn V mould: five K-5s (F-1 class) in a cross under a 10 m first
+// stage, five H-2s (J-2 class) on the second, and 45 t on top. The K-5s dump their turbine
+// exhaust into the nozzles, so each plume starts in a dark, sooty collar.
+{
+  id: "colossus",
+  name: "Colossus",
+  parts: [
+    {
+      id: "payload",
+      name: "Payload",
+      shape: {
+        compound: [
+          {
+            name: "adapter",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "floor",
+                    curve: { start: [0, 0], segments: [{ line: [3.3, 0] }] },
+                  },
+                  {
+                    name: "adapter",
+                    curve: {
+                      start: [3.3, 0],
+                      segments: [{ line: [3.3, 0.12] }, { line: [1.65, 0.9] }],
+                    },
+                  },
+                  {
+                    name: "deck",
+                    curve: { start: [1.65, 0.9], segments: [{ line: [0, 0.9] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 6.6, height: 18, thickness: 3.3 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 45000 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 6.6 },
+        { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 3.3 },
+        { name: "fairing_1", position: [3.3, 0, 0], direction: [0, 0, 1], size: 6.6 },
+        { name: "fairing_2", position: [-3.3, 0, 0], direction: [0, 0, 1], size: 6.6 },
+        {
+          name: "payload_1",
+          position: [0, 0, 0.9],
+          direction: [0, 0, 1],
+          size: 4.200214280248092,
+        },
+        {
+          name: "panel_1",
+          position: [1.535, 0, 1.08],
+          direction: [0, 0, 1],
+          size: 2.6734675984571052,
+        },
+        {
+          name: "panel_2",
+          position: [-1.535, 0, 1.08],
+          direction: [0, 0, 1],
+          size: 2.6734675984571052,
+        },
+        {
+          name: "antenna_1",
+          position: [0, 0, 5.45],
+          direction: [0, 0, 1],
+          size: 1.7819999999999998,
+        },
+      ],
+      paint: {
+        color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+        finish: "composite",
+      },
+    },
+    {
+      id: "payload_fairing_1",
+      name: "Fairing",
+      on: "payload.fairing_1",
+      // The fairing's nose: a tangent ogive 1.3 diameters long.
+      shape: {
+        shell: {
+          bottom_diameter: 6.6,
+          sections: [{ length: 18 }, { length: 8.58, top_diameter: 0, profile: "ogive" }],
+          span: [-90, 90],
+        },
+      },
+      structure: { mass: 2500 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "payload_fairing_2",
+      name: "Fairing",
+      on: "payload.fairing_2",
+      roll: -180,
+      shape: {
+        shell: {
+          bottom_diameter: 6.6,
+          sections: [{ length: 18 }, { length: 8.58, top_diameter: 0, profile: "ogive" }],
+          span: [-90, 90],
+        },
+      },
+      structure: { mass: 2500 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "payload_payload_1",
+      name: "Payload",
+      on: "payload.payload_1",
+      shape: { box: { size: [2.9699999999999998, 2.9699999999999998, 4.5] } },
+      paint: { color: [0.8500000238418579, 0.6200000047683716, 0.25], finish: "metal" },
+    },
+    {
+      id: "payload_panel_1",
+      name: "Solar panel",
+      on: "payload.panel_1",
+      shape: { box: { size: [0.05, 2.673, 4.140000000000001] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "payload_panel_2",
+      name: "Solar panel",
+      on: "payload.panel_2",
+      shape: { box: { size: [0.05, 2.673, 4.140000000000001] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "payload_antenna_1",
+      name: "Antenna",
+      on: "payload.antenna_1",
+      shape: {
+        shell: {
+          bottom_diameter: 1.7819999999999998,
+          sections: [{ length: 0.25, top_diameter: 0 }],
+          cap_bottom: true,
+        },
+      },
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "second_stage",
+      name: "Second Stage",
+      on: "payload.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [5, 0], segments: [{ line: [5, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [5, 0.55], segments: [{ line: [5, 3.535533906] }] },
+                  },
+                  // Narrowing to the payload's fairing.
+                  {
+                    name: "forward_skirt",
+                    curve: { start: [5, 13.464466094], segments: [{ line: [3.3, 24.94] }] },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [3.3, 24.94], segments: [{ line: [3.3, 25] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [5, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 10, height: 25, thickness: 5 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 30000 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 10 },
+        { name: "top", position: [0, 0, 25], direction: [0, 0, 1], size: 6.6 },
+        { name: "engine_1", position: [0, 0, 0], direction: [0, 0, -1], size: 1.98 },
+        { name: "engine_2", position: [3.8, 0, 0], direction: [0, 0, -1], size: 1.98 },
+        { name: "engine_3", position: [0, 3.8, 0], direction: [0, 0, -1], size: 1.98 },
+        { name: "engine_4", position: [-3.8, 0, 0], direction: [0, 0, -1], size: 1.98 },
+        { name: "engine_5", position: [0, -3.8, 0], direction: [0, 0, -1], size: 1.98 },
+        { name: "wheel_1", position: [0, 0, 12.5], direction: [0, 0, 1], size: 0.5 },
+        { name: "rcs_1", position: [5, 0, 25], direction: [1, 0, 0] },
+        { name: "rcs_2", position: [0, 5, 25], direction: [0, 1, 0] },
+        { name: "rcs_3", position: [-5, 0, 25], direction: [-1, 0, 0] },
+        { name: "rcs_4", position: [0, -5, 25], direction: [0, -1, 0] },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 10 },
+        { name: "tank_2", position: [0, 0, 0], direction: [0, 0, 1], size: 1.35 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    {
+      id: "second_stage_engine_1",
+      on: "second_stage.engine_1",
+      by: "top",
+      template: "H-2",
+    },
+    {
+      id: "second_stage_engine_2",
+      on: "second_stage.engine_2",
+      by: "top",
+      template: "H-2",
+    },
+    {
+      id: "second_stage_engine_3",
+      on: "second_stage.engine_3",
+      by: "top",
+      template: "H-2",
+    },
+    {
+      id: "second_stage_engine_4",
+      on: "second_stage.engine_4",
+      by: "top",
+      template: "H-2",
+    },
+    {
+      id: "second_stage_engine_5",
+      on: "second_stage.engine_5",
+      by: "top",
+      template: "H-2",
+    },
+    {
+      id: "second_stage_wheel_1",
+      on: "second_stage.wheel_1",
+      template: "Attitude Control Unit",
+    },
+    {
+      id: "second_stage_rcs_1",
+      on: "second_stage.rcs_1",
+      by: "mount",
+      template: "Cold Gas Quad",
+    },
+    {
+      id: "second_stage_rcs_2",
+      on: "second_stage.rcs_2",
+      by: "mount",
+      roll: -180,
+      template: "Cold Gas Quad",
+    },
+    {
+      id: "second_stage_rcs_3",
+      on: "second_stage.rcs_3",
+      by: "mount",
+      roll: -180,
+      template: "Cold Gas Quad",
+    },
+    {
+      id: "second_stage_rcs_4",
+      on: "second_stage.rcs_4",
+      by: "mount",
+      template: "Cold Gas Quad",
+    },
+    {
+      id: "second_stage_tank_1",
+      name: "Insulated Al-Li",
+      on: "second_stage.tank_1",
+      shape: { cylinder_tank: { diameter: 10, length: 17 } },
+      components: [
+        {
+          storage: {
+            type: "Insulated Al-Li",
+            contents: { LqdHydrogen: 1, LqdOxygen: 5.5 },
+            design_load: 4,
+          },
+        },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "second_stage_tank_2",
+      name: "COPV",
+      on: "second_stage.tank_2",
+      shape: { sphere: { diameter: 1.35 } },
+      components: [{ storage: { type: "COPV", contents: { Nitrogen: 1 } } }],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "first_stage",
+      name: "First Stage",
+      on: "second_stage.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [5, 0], segments: [{ line: [5, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [5, 0.55], segments: [{ line: [5, 3.535533906] }] },
+                  },
+                  {
+                    name: "interstage",
+                    curve: { start: [5, 23.464466094], segments: [{ line: [5, 41.94] }] },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [5, 41.94], segments: [{ line: [5, 42] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [5, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 10, height: 42, thickness: 5 } },
+            unseen: true,
+          },
+        ],
+      },
+      // Thrust structure, intertank, fins and fairings.
+      structure: { thickness: 0, mass: 90000 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 10 },
+        { name: "top", position: [0, 0, 42], direction: [0, 0, 1], size: 10 },
+        { name: "engine_1", position: [0, 0, 0], direction: [0, 0, -1], size: 3.76 },
+        { name: "engine_2", position: [3.8, 0, 0], direction: [0, 0, -1], size: 3.76 },
+        { name: "engine_3", position: [0, 3.8, 0], direction: [0, 0, -1], size: 3.76 },
+        { name: "engine_4", position: [-3.8, 0, 0], direction: [0, 0, -1], size: 3.76 },
+        { name: "engine_5", position: [0, -3.8, 0], direction: [0, 0, -1], size: 3.76 },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 10 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/interstage": {
+            color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+            finish: "composite",
+          },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "first_stage_engine_1", on: "first_stage.engine_1", by: "top", template: "K-5" },
+    { id: "first_stage_engine_2", on: "first_stage.engine_2", by: "top", template: "K-5" },
+    { id: "first_stage_engine_3", on: "first_stage.engine_3", by: "top", template: "K-5" },
+    { id: "first_stage_engine_4", on: "first_stage.engine_4", by: "top", template: "K-5" },
+    { id: "first_stage_engine_5", on: "first_stage.engine_5", by: "top", template: "K-5" },
+    {
+      id: "first_stage_tank_1",
+      name: "Stiffened Al 2219",
+      on: "first_stage.tank_1",
+      shape: { cylinder_tank: { diameter: 10, length: 27 } },
+      components: [
+        {
+          storage: {
+            type: "Stiffened Al 2219",
+            contents: { Kerosene: 1, LqdOxygen: 2.27 },
+          },
+        },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+  ],
+}

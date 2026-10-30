@@ -1,0 +1,16 @@
+{
+  "id": "T096",
+  "title": "Thermodynamic engine model",
+  "kind": "feature",
+  "status": "todo",
+  "area": "propulsion",
+  "size": "XL",
+  "parent": "T064",
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 5"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

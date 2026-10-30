@@ -1,0 +1,18 @@
+{
+  "id": "T098",
+  "title": "Solid motors with grain geometry",
+  "kind": "feature",
+  "status": "todo",
+  "area": "propulsion",
+  "size": "L",
+  "parent": "T064",
+  "depends_on": [
+    "T032"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 5"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

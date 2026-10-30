@@ -1,0 +1,16 @@
+{
+  "id": "T002",
+  "title": "Build editor, and the Saturn V built in it",
+  "kind": "epic",
+  "status": "todo",
+  "area": "editor",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "docs/build-editor-plan.md"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

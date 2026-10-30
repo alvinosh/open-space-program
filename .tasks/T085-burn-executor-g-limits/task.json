@@ -1,0 +1,18 @@
+{
+  "id": "T085",
+  "title": "Burn executor g-limits",
+  "kind": "feature",
+  "status": "todo",
+  "area": "propulsion",
+  "size": "S",
+  "parent": "T061",
+  "depends_on": [
+    "T027"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 1"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

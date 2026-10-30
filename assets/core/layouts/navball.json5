@@ -1,0 +1,143 @@
+// Navball, throttle, SAS and control inputs (bottom centre). The housing is one picture
+// (icons/navball_housing.svg); the ball, gauges and readouts sit on it at fixed places
+// (the `navball_*`, `gauge_*`, `speed_display`, `nav_toggle` and `plate` theme classes),
+// so a new housing comes with new positions.
+//
+// Round the ball, on the left: the thrust the engines give (the thick amber arc) and the
+// throttle setting (the thin teal one); they part while the engines spool up, throttle or
+// tail off, and below an engine's minimum the thrust stays at the floor. On the right: the
+// air pressure, full at sea level and empty in space. Click the speed tab to switch
+// between surface, orbital and target speed (and the frame the navball markers and SAS
+// directions use). RCS and SAS are the switches on the ring's upper corners. The SAS mode
+// buttons beside the housing carry the navball's own markers, opposites side by side;
+// hover one for its name, click the selected one again to go back to holding attitude.
+// Propellant, RCS included, is in the Resources window.
+{
+  id: "navball",
+  group: "flight",
+  root: {
+    id: "navball",
+    widget: "column",
+    class: "module",
+    style: { left: "50%", margin: [0, 0, 0, -136], bottom: 8, width: 272, height: 252 },
+    children: [
+      { widget: "image", class: "housing", image: "icons/navball_housing.svg" },
+      { widget: "navball", class: "navball_ball" },
+      {
+        widget: "gauge",
+        class: "gauge_thrust",
+        value: "vessel.engine_level",
+        start: 215,
+        end: 295,
+        tooltip: "Thrust {vessel.engine_level|percent}",
+      },
+      {
+        widget: "gauge",
+        class: "gauge_throttle",
+        value: "vessel.throttle",
+        start: 215,
+        end: 295,
+        tooltip: "Throttle {vessel.throttle|percent}",
+      },
+      {
+        widget: "gauge",
+        class: "gauge_atmosphere",
+        value: "vessel.static_pressure",
+        max: 101325,
+        start: 145,
+        end: 65,
+        tooltip: "Air pressure {vessel.static_pressure|pressure}",
+      },
+      {
+        id: "speed",
+        widget: "button",
+        class: "speed_display",
+        action: "nav.toggle_frame",
+        tooltip: "Speed frame: click to switch",
+        children: [
+          { widget: "label", class: "speed_frame", text: "{nav.frame}" },
+          { widget: "label", class: "speed_value", text: "{nav.speed|speed}" },
+        ],
+      },
+      { widget: "button", class: "nav_toggle", style: { left: 40 }, tooltip: "RCS (R)", action: "vessel.rcs_toggle", active: "vessel.rcs", text: "RCS" },
+      { widget: "button", class: "nav_toggle", style: { left: 192 }, tooltip: "SAS (T)", action: "vessel.sas_toggle", active: "vessel.sas", text: "SAS" },
+      {
+        id: "plate",
+        widget: "row",
+        class: "plate",
+        tooltip: "Heading {nav.heading|heading}, pitch {nav.pitch|fixed:1}°, roll {nav.roll|fixed:1}°",
+        children: [
+          { widget: "row", class: "plate_cell", children: [{ widget: "label", class: "plate_key", text: "THR" }, { widget: "label", class: "plate_value", style: { color: "#ffb340" }, text: "{vessel.throttle|percent}" }] },
+          { widget: "row", class: "plate_cell", children: [{ widget: "label", class: "plate_key", text: "HDG" }, { widget: "label", class: "plate_value", text: "{nav.heading|heading}°" }] },
+          { widget: "row", class: "plate_cell", children: [{ widget: "label", class: "plate_key", text: "PIT" }, { widget: "label", class: "plate_value", text: "{nav.pitch|fixed:1}°" }] },
+        ],
+      },
+      {
+        id: "sas",
+        widget: "column",
+        class: "sas_strip",
+        children: [
+          {
+            id: "sas_modes",
+            widget: "column",
+            style: { gap: 3, align_items: "center" },
+            children: [
+              {
+                widget: "row",
+                style: { gap: 3 },
+                children: [
+                  { widget: "button", class: "sas_button", tooltip: "Prograde", action: "vessel.sas_mode:prograde", active: "vessel.sas_mode == prograde", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_prograde.svg" }] },
+                  { widget: "button", class: "sas_button", tooltip: "Retrograde", action: "vessel.sas_mode:retrograde", active: "vessel.sas_mode == retrograde", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_retrograde.svg" }] },
+                ],
+              },
+              {
+                widget: "row",
+                style: { gap: 3 },
+                children: [
+                  { widget: "button", class: "sas_button", tooltip: "Normal", action: "vessel.sas_mode:normal", active: "vessel.sas_mode == normal", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_normal.svg" }] },
+                  { widget: "button", class: "sas_button", tooltip: "Anti-normal", action: "vessel.sas_mode:anti_normal", active: "vessel.sas_mode == anti_normal", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_anti_normal.svg" }] },
+                ],
+              },
+              {
+                widget: "row",
+                style: { gap: 3 },
+                children: [
+                  { widget: "button", class: "sas_button", tooltip: "Radial out", action: "vessel.sas_mode:radial_out", active: "vessel.sas_mode == radial_out", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_radial_out.svg" }] },
+                  { widget: "button", class: "sas_button", tooltip: "Radial in", action: "vessel.sas_mode:radial_in", active: "vessel.sas_mode == radial_in", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_radial_in.svg" }] },
+                ],
+              },
+              {
+                widget: "row",
+                visible: "plan.count",
+                style: { gap: 3 },
+                children: [
+                  { widget: "button", class: "sas_button", tooltip: "Planned burn", action: "vessel.sas_mode:burn", active: "vessel.sas_mode == burn", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_burn.svg" }] },
+                ],
+              },
+              {
+                widget: "row",
+                visible: "target.has",
+                style: { gap: 3 },
+                children: [
+                  { widget: "button", class: "sas_button", tooltip: "Target", action: "vessel.sas_mode:target", active: "vessel.sas_mode == target", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_target.svg" }] },
+                  { widget: "button", class: "sas_button", tooltip: "Anti-target", action: "vessel.sas_mode:anti_target", active: "vessel.sas_mode == anti_target", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_anti_target.svg" }] },
+                ],
+              },
+            ],
+          },
+          {
+            id: "inputs",
+            widget: "column",
+            style: { gap: 4, margin: [4, 0, 1, 0] },
+            tooltip: "Pitch, yaw and roll input",
+            children: [
+              { widget: "row", style: { gap: 4 }, children: [{ widget: "label", class: "caption", style: { min_width: 8, font_size: 9 }, text: "P" }, { widget: "bar", class: "ibar", value: "control.pitch", min: -1 }] },
+              { widget: "row", style: { gap: 4 }, children: [{ widget: "label", class: "caption", style: { min_width: 8, font_size: 9 }, text: "Y" }, { widget: "bar", class: "ibar", value: "control.yaw", min: -1 }] },
+              { widget: "row", style: { gap: 4 }, children: [{ widget: "label", class: "caption", style: { min_width: 8, font_size: 9 }, text: "R" }, { widget: "bar", class: "ibar", value: "control.roll", min: -1 }] },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

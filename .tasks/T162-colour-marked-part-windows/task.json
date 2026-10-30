@@ -1,0 +1,22 @@
+{
+  "id": "T162",
+  "title": "Colour-marked part windows: the part is tinted, the window wears the colour",
+  "kind": "feature",
+  "status": "in_progress",
+  "area": "ui",
+  "size": "M",
+  "parent": "T152",
+  "depends_on": [
+    "T157",
+    "T161"
+  ],
+  "refs": [
+    "crates/osp_game/src/part_highlight.rs",
+    "crates/osp_game/src/part_info.rs",
+    "assets/core/layouts/staging.json5",
+    "assets/core/layouts/part_info.json5"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

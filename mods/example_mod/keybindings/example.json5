@@ -1,0 +1,4 @@
+{
+  id: "example_mod",
+  bindings: [{ key: "F6", action: "ui.toggle:example_clock" }],
+}

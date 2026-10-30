@@ -1,0 +1,19 @@
+// Screen messages under the altimeter: the latest event (ignition, staging, SOI change)
+// and warp notices, for a few seconds each.
+{
+  id: "messages",
+  group: "flight",
+  root: {
+    id: "messages",
+    widget: "column",
+    class: "module",
+    style: { left: "50%", margin: [0, 0, 0, -300], top: 110, width: 600, align_items: "center", gap: 4 },
+    children: [
+      { widget: "label", class: "warning notice", style: { font_size: 16 }, text: "{screen.message}", visible: "screen.message" },
+      { widget: "label", class: "warning notice", text: "{time.notice}", visible: "time.notice" },
+      { widget: "label", class: "warning notice", text: "Simulation is lagging behind the requested warp", visible: "time.lagging" },
+      // Map view: what a click on the trajectory does (the ghost node there says when).
+      { widget: "label", class: "dim notice", text: "Click to add a manoeuvre, right-click for more", visible: "map.hovering" },
+    ],
+  },
+}

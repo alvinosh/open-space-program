@@ -1,0 +1,17 @@
+{
+  "id": "T060",
+  "title": "Staging window leftovers",
+  "kind": "chore",
+  "status": "todo",
+  "area": "sequences",
+  "size": "S",
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "old issue list, issue 3 (docs/issues.md, removed; see git history)",
+    "docs/issues.md, issue 3 (removed)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

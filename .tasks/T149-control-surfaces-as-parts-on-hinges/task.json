@@ -1,0 +1,19 @@
+{
+  "id": "T149",
+  "title": "Control surfaces as parts on hinges",
+  "kind": "feature",
+  "status": "todo",
+  "area": "aero",
+  "size": "M",
+  "parent": "T003",
+  "depends_on": [
+    "T030"
+  ],
+  "refs": [
+    "vessel overhaul plan, carry-over notes (docs/vessel-overhaul.md)",
+    "docs/systems-plan.md (the build core)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

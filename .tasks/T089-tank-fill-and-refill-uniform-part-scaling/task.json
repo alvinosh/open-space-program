@@ -1,0 +1,19 @@
+{
+  "id": "T089",
+  "title": "Tank fill and refill; uniform part scaling",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T062",
+  "depends_on": [
+    "T019",
+    "T032"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 3"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

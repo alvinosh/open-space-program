@@ -1,0 +1,18 @@
+{
+  "id": "T136",
+  "title": "Code mods: a scripting layer",
+  "kind": "feature",
+  "status": "todo",
+  "area": "modding",
+  "size": "XL",
+  "parent": "T070",
+  "depends_on": [
+    "T075"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 11"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,17 @@
+{
+  "id": "T026",
+  "title": "A sequence can cut an engine and set a throttle limit",
+  "kind": "feature",
+  "status": "todo",
+  "area": "propulsion",
+  "size": "S",
+  "parent": "T001",
+  "depends_on": [],
+  "refs": [
+    "docs/systems-plan.md (step 1)",
+    "old issue list, issue 9 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

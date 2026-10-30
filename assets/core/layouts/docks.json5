@@ -1,0 +1,34 @@
+// Docks: columns that windows stack into (a layout's `dock: "<node id>"`, in `dock_order`),
+// so they line up and never overlap each other or the middle of the screen. Dragging a
+// docked window by its title pops it out to float; closing it puts it back. A dock with
+// the `dock_scroll` class scrolls with the mouse wheel when its windows do not fit.
+//
+// Left: clocks on top, the stage stack at the bottom, windows in between. Right: beside the
+// launcher's icon strip, top to bottom (the navball is narrow enough to stay clear). Mods add docks of their own with any `dock`
+// node that has an id.
+[
+  {
+    id: "dock_left",
+    group: "flight",
+    root: {
+      widget: "dock",
+      class: "dock_root",
+      style: { left: 12, top: 12, bottom: 12 },
+      children: [
+        { id: "left_top", widget: "dock" },
+        { id: "left", widget: "dock", class: "dock_scroll" },
+        { id: "left_bottom", widget: "dock" },
+      ],
+    },
+  },
+  {
+    id: "dock_right",
+    group: "flight",
+    root: {
+      widget: "dock",
+      class: "dock_root",
+      style: { right: 64, top: 12, bottom: 12 },
+      children: [{ id: "right", widget: "dock", class: "dock_scroll" }],
+    },
+  },
+]

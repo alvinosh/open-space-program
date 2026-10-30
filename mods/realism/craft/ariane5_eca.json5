@@ -1,0 +1,513 @@
+// Ariane 5 ECA (2021).
+// The EPC core with its Vulcain 2 and two EAP solid boosters beside it, lit together;
+// the ESC-A upper stage has an HM-7B. Built from plain parts: each EAP is the `eap_p241`
+// assembly (mods/realism/assemblies/boosters.json5) placed on the core.
+{
+  id: "ariane5_eca",
+  name: "Ariane 5 ECA",
+  parts: [
+    {
+      id: "jwst",
+      name: "JWST",
+      shape: {
+        compound: [
+          {
+            name: "adapter",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "floor",
+                    curve: { start: [0, 0], segments: [{ line: [2.7, 0] }] },
+                  },
+                  {
+                    name: "adapter",
+                    curve: {
+                      start: [2.7, 0],
+                      segments: [{ line: [2.7, 0.12] }, { line: [1.35, 0.9] }],
+                    },
+                  },
+                  {
+                    name: "deck",
+                    curve: { start: [1.35, 0.9], segments: [{ line: [0, 0.9] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 5.4, height: 12, thickness: 2.7 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 6160 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 5.4 },
+        { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 2.7 },
+        { name: "fairing_1", position: [2.7, 0, 0], direction: [0, 0, 1], size: 5.4 },
+        { name: "fairing_2", position: [-2.7, 0, 0], direction: [0, 0, 1], size: 5.4 },
+        {
+          name: "payload_1",
+          position: [0, 0, 0.9],
+          direction: [0, 0, 1],
+          size: 3.436538956566621,
+        },
+        {
+          name: "panel_1",
+          position: [1.265, 0, 1.08],
+          direction: [0, 0, 1],
+          size: 2.187571484546277,
+        },
+        {
+          name: "panel_2",
+          position: [-1.265, 0, 1.08],
+          direction: [0, 0, 1],
+          size: 2.187571484546277,
+        },
+        { name: "antenna_1", position: [0, 0, 5.45], direction: [0, 0, 1], size: 1.458 },
+      ],
+      paint: {
+        color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+        finish: "composite",
+      },
+    },
+    {
+      id: "jwst_fairing_1",
+      name: "Fairing",
+      on: "jwst.fairing_1",
+      shape: {
+        shell: {
+          bottom_diameter: 5.4,
+          sections: [
+            { length: 1.293271 },
+            { length: 7.02, top_diameter: 0, profile: "ogive" },
+          ],
+          span: [-90, 90],
+        },
+      },
+      structure: { thickness: 0.04, mass: 1350 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "jwst_fairing_2",
+      name: "Fairing",
+      on: "jwst.fairing_2",
+      roll: -180,
+      shape: {
+        shell: {
+          bottom_diameter: 5.4,
+          sections: [
+            { length: 1.293271 },
+            { length: 7.02, top_diameter: 0, profile: "ogive" },
+          ],
+          span: [-90, 90],
+        },
+      },
+      structure: { thickness: 0.04, mass: 1350 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "jwst_payload_1",
+      name: "Payload",
+      on: "jwst.payload_1",
+      shape: { box: { size: [2.43, 2.43, 4.5] } },
+      paint: { color: [0.8500000238418579, 0.6200000047683716, 0.25], finish: "metal" },
+    },
+    {
+      id: "jwst_panel_1",
+      name: "Solar panel",
+      on: "jwst.panel_1",
+      shape: { box: { size: [0.05, 2.1870000000000003, 4.140000000000001] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "jwst_panel_2",
+      name: "Solar panel",
+      on: "jwst.panel_2",
+      shape: { box: { size: [0.05, 2.1870000000000003, 4.140000000000001] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "jwst_antenna_1",
+      name: "Antenna",
+      on: "jwst.antenna_1",
+      shape: {
+        shell: {
+          bottom_diameter: 1.458,
+          sections: [{ length: 0.25, top_diameter: 0 }],
+          cap_bottom: true,
+        },
+      },
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "esc_a",
+      name: "ESC-A",
+      on: "jwst.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [2.7, 0], segments: [{ line: [2.7, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [2.7, 0.55], segments: [{ line: [2.7, 4.64] }] },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [2.7, 4.64], segments: [{ line: [2.7, 4.7] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [2.7, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 5.4, height: 4.7, thickness: 2.7 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 3780 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 5.4 },
+        { name: "top", position: [0, 0, 4.7], direction: [0, 0, 1], size: 5.4 },
+        { name: "engine_1", position: [0, 0, 0], direction: [0, 0, -1], size: 1 },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 4.604 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "esc_a_engine_1", on: "esc_a.engine_1", by: "top", template: "HM-7B++" },
+    {
+      id: "esc_a_tank_1",
+      name: "Refined Al Stringer Tank",
+      on: "esc_a.tank_1",
+      shape: { sphere: { diameter: 4.604 } },
+      components: [
+        {
+          storage: {
+            type: "Refined Al Stringer Tank",
+            contents: { LqdHydrogen: 0.1707, LqdOxygen: 0.8293 },
+            design_load: 5,
+          },
+        },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "epc_core",
+      name: "EPC Core",
+      on: "esc_a.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [2.7, 0], segments: [{ line: [2.7, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [2.7, 0.55], segments: [{ line: [2.7, 1.909188] }] },
+                  },
+                  {
+                    name: "interstage",
+                    curve: {
+                      start: [2.7, 20.912346],
+                      segments: [{ line: [2.7, 28.945534] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: {
+                      start: [2.7, 28.945534],
+                      segments: [{ line: [2.7, 29.005534] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [2.7, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 5.4, height: 29.005534, thickness: 2.7 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 6298.2 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 5.4 },
+        { name: "top", position: [0, 0, 29.005534], direction: [0, 0, 1], size: 5.4 },
+        { name: "engine_1", position: [0, 0, 0], direction: [0, 0, -1], size: 0.701 },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 5.4 },
+        {
+          name: "booster_1",
+          position: [4.425, 0, 26.86],
+          direction: [0, 0, -1],
+          size: 3.05,
+        },
+        {
+          name: "booster_2",
+          position: [-4.425, 0, 26.86],
+          direction: [0, 0, -1],
+          size: 3.05,
+        },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/interstage": {
+            color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+            finish: "composite",
+          },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "epc_core_engine_1", on: "epc_core.engine_1", by: "top", template: "Vulcain-2" },
+    {
+      id: "epc_core_tank_1",
+      name: "Refined Al Stringer Tank",
+      on: "epc_core.tank_1",
+      shape: { cylinder_tank: { diameter: 5.4, length: 22.821534 } },
+      components: [
+        {
+          storage: {
+            type: "Refined Al Stringer Tank",
+            contents: { LqdHydrogen: 0.1298, LqdOxygen: 0.8702 },
+          },
+        },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "eap_1_body",
+      name: "EAP",
+      on: "epc_core.booster_1",
+      by: "attach",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [1.525, 0], segments: [{ line: [1.525, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: {
+                      start: [1.525, 0.55],
+                      segments: [{ line: [1.525, 1.078338] }],
+                    },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [1.525, 20.399493],
+                      segments: [{ line: [1.525, 27.6] }],
+                    },
+                  },
+                  {
+                    name: "nose",
+                    curve: {
+                      start: [1.525, 27.6],
+                      segments: [{ line: [0.183, 31.2] }, { line: [0, 31.6] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [1.525, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 3.05, height: 31.6, thickness: 1.525 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 0 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
+        { name: "top", position: [0, 0, 31.6], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 26.86], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 1.83 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 3.05 },
+      ],
+      paint: {
+        color: [0.8999999761581421, 0.8999999761581421, 0.8799999952316284],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/nose": {
+            color: [0.8999999761581421, 0.8999999761581421, 0.8799999952316284],
+          },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "eap_1_engine", on: "eap_1_body.engine", by: "top", template: "MPS-241" },
+    {
+      id: "eap_1_tank",
+      name: "Solid Grain",
+      on: "eap_1_body.tank",
+      shape: { cylinder_tank: { diameter: 3.01, length: 21.477831 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.8999999761581421, 0.8999999761581421, 0.8799999952316284] },
+    },
+    {
+      id: "eap_2_body",
+      name: "EAP",
+      on: "epc_core.booster_2",
+      by: "attach",
+      roll: -180,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [1.525, 0], segments: [{ line: [1.525, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: {
+                      start: [1.525, 0.55],
+                      segments: [{ line: [1.525, 1.078338] }],
+                    },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [1.525, 20.399493],
+                      segments: [{ line: [1.525, 27.6] }],
+                    },
+                  },
+                  {
+                    name: "nose",
+                    curve: {
+                      start: [1.525, 27.6],
+                      segments: [{ line: [0.183, 31.2] }, { line: [0, 31.6] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [1.525, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 3.05, height: 31.6, thickness: 1.525 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 0 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
+        { name: "top", position: [0, 0, 31.6], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 26.86], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 1.83 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 3.05 },
+      ],
+      paint: {
+        color: [0.8999999761581421, 0.8999999761581421, 0.8799999952316284],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/nose": {
+            color: [0.8999999761581421, 0.8999999761581421, 0.8799999952316284],
+          },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "eap_2_engine", on: "eap_2_body.engine", by: "top", template: "MPS-241" },
+    {
+      id: "eap_2_tank",
+      name: "Solid Grain",
+      on: "eap_2_body.tank",
+      shape: { cylinder_tank: { diameter: 3.01, length: 21.477831 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.8999999761581421, 0.8999999761581421, 0.8799999952316284] },
+    },
+  ],
+}

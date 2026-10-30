@@ -1,0 +1,16 @@
+{
+  "id": "T146",
+  "title": "Overhaul leftovers: physics accuracy",
+  "kind": "chore",
+  "status": "todo",
+  "area": "physics",
+  "size": "M",
+  "parent": "T073",
+  "depends_on": [],
+  "refs": [
+    "vessel overhaul plan, carry-over notes (docs/vessel-overhaul.md)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

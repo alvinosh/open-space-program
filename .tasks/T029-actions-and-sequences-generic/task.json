@@ -1,0 +1,19 @@
+{
+  "id": "T029",
+  "title": "Actions and sequences, generic",
+  "kind": "feature",
+  "status": "todo",
+  "area": "sequences",
+  "size": "M",
+  "parent": "T003",
+  "depends_on": [
+    "T028",
+    "T026"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 4)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,37 @@
+// Map view's context menu: right-click the trajectory for what to do at that point, or a
+// manoeuvre's node for what to do with it. Opens beside the pointer and closes on a click
+// anywhere else or once an item is chosen.
+{
+  id: "map_menu",
+  visible: false,
+  popup: true,
+  group: "flight",
+  root: {
+    widget: "column",
+    class: "context_menu",
+    children: [
+      {
+        id: "point",
+        widget: "column",
+        visible: "!map.menu_node",
+        children: [
+          { widget: "label", class: "context_title", text: "{map.menu_time_to|countdown}  ·  {map.menu_altitude|distance}" },
+          { widget: "button", class: "context_item", text: "Add manoeuvre", action: "map.add_burn" },
+          { widget: "button", class: "context_item", text: "Warp to here", action: "map.warp_here" },
+          { widget: "button", class: "context_item", text: "Match target plane", action: "plan.match_plane", visible: "target.has_plane" },
+        ],
+      },
+      {
+        id: "node",
+        widget: "column",
+        visible: "map.menu_node",
+        children: [
+          { widget: "label", class: "context_title", text: "Manoeuvre {burn.label}  ·  {burn.delta_v|speed}" },
+          { widget: "button", class: "context_item", text: "Warp to manoeuvre", action: "warp.to:burn", visible: "burn.is_next" },
+          { widget: "button", class: "context_item", text: "Reset delta-v", action: "plan.zero" },
+          { widget: "button", class: "context_item danger_button", text: "Delete", action: "plan.delete" },
+        ],
+      },
+    ],
+  },
+}

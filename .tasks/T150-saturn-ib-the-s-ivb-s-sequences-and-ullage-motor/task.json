@@ -1,0 +1,16 @@
+{
+  "id": "T150",
+  "title": "Saturn IB: the S-IVB's sequences and ullage motors",
+  "kind": "bug",
+  "status": "todo",
+  "area": "propulsion",
+  "size": "S",
+  "parent": "T073",
+  "depends_on": [],
+  "refs": [
+    "docs/issues.md, issue 8 (removed)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,16 @@
+{
+  "id": "T003",
+  "title": "Build core, systems side",
+  "kind": "epic",
+  "status": "todo",
+  "area": "physics",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "docs/systems-plan.md (The build core, Milestone 2)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

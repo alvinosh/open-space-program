@@ -1,0 +1,97 @@
+// Universe Manifest (F11): every body and vessel. Filter by kind; follow one (the camera
+// looks at it, and distances and speeds are measured from it), target it, fly it, recover
+// or destroy it; clear all debris. Removing anything asks first.
+{
+  id: "manifest",
+  visible: false,
+  group: "flight",
+  root: {
+    widget: "window",
+    icon: "icons/map.svg",
+    title: "Universe Manifest",
+    style: { left: "50%", margin: [0, 0, 0, -450], top: 150, width: 900 },
+    children: [
+      {
+        widget: "row",
+        style: { gap: 4, padding: [0, 0, 4, 0] },
+        children: [
+          { widget: "button", class: "step_button", text: "Bodies", active: "manifest.show_bodies", action: "manifest.filter:bodies" },
+          { widget: "button", class: "step_button", text: "Vessels", active: "manifest.show_vessels", action: "manifest.filter:vessels" },
+          { widget: "button", class: "step_button", text: "Debris", active: "manifest.show_debris", action: "manifest.filter:debris" },
+          { widget: "label", class: "dim", style: { margin: [0, 0, 0, 8] }, text: "Following {manifest.following}", visible: "manifest.following" },
+          { widget: "spacer" },
+          { widget: "button", class: "step_button danger_button", text: "Clear debris ({manifest.debris_count})", action: "manifest.clear_debris", visible: "manifest.debris_count" },
+        ],
+      },
+      {
+        widget: "row",
+        visible: "manifest.confirm_clear",
+        style: { gap: 4, padding: [0, 0, 4, 0] },
+        children: [
+          { widget: "label", class: "warning", text: "Remove all debris ({manifest.debris_count})?" },
+          { widget: "spacer" },
+          { widget: "button", class: "step_button danger_button", text: "Clear", action: "manifest.confirm" },
+          { widget: "button", class: "step_button", text: "Cancel", action: "manifest.cancel" },
+        ],
+      },
+      {
+        // Same padding and gaps as the rows below, so the columns line up.
+        widget: "row",
+        style: { gap: 6, padding: [0, 7] },
+        children: [
+          { widget: "label", class: "dim", style: { min_width: 180 }, text: "Name" },
+          { widget: "label", class: "dim", style: { min_width: 70 }, text: "Around" },
+          { widget: "label", class: "dim", style: { min_width: 170 }, text: "Ap / Pe" },
+          { widget: "label", class: "dim", style: { min_width: 84 }, text: "Distance" },
+          { widget: "label", class: "dim", text: "Speed" },
+        ],
+      },
+      {
+        id: "items",
+        widget: "column",
+        repeat: "manifest.items",
+        style: { gap: 1 },
+        children: [
+          {
+            widget: "row",
+            class: "stage_row",
+            active: "item.is_active",
+            style: { gap: 6 },
+            children: [
+              { widget: "label", class: "manifest_name", active: "item.is_debris", text: "{item.name}" },
+              { widget: "label", class: "dim", style: { min_width: 70 }, text: "{item.parent}" },
+              { widget: "label", class: "dim", style: { min_width: 170 }, text: "{item.apoapsis|distance} / {item.periapsis|distance}" },
+              { widget: "label", class: "dim", style: { min_width: 84 }, text: "{item.distance|distance}" },
+              { widget: "label", class: "dim", style: { min_width: 84 }, text: "{item.speed|speed}" },
+              { widget: "spacer" },
+              {
+                widget: "row",
+                style: { gap: 4 },
+                visible: "!item.confirming",
+                children: [
+                  { widget: "button", class: "step_button", text: "Follow", active: "item.is_followed", action: "manifest.follow_body:{item.key}", visible: "item.is_body" },
+                  { widget: "button", class: "step_button", text: "Follow", active: "item.is_followed", action: "manifest.follow:{item.key}", visible: "!item.is_body" },
+                  { widget: "button", class: "step_button", text: "Target", active: "item.is_target", action: "target.body:{item.key}", visible: "item.target_body" },
+                  { widget: "button", class: "step_button", text: "Target", active: "item.is_target", action: "target.vessel:{item.key}", visible: "item.target_vessel" },
+                  { widget: "button", class: "step_button", text: "Fly", action: "vessel.fly:{item.key}", visible: "item.can_fly" },
+                  { widget: "button", class: "step_button recover_button", text: "Recover", action: "manifest.remove:{item.key}", visible: "item.can_recover" },
+                  { widget: "button", class: "step_button danger_button", text: "Destroy", action: "manifest.remove:{item.key}", visible: "item.can_destroy" },
+                ],
+              },
+              {
+                widget: "row",
+                style: { gap: 4 },
+                visible: "item.confirming",
+                children: [
+                  { widget: "label", class: "warning", text: "{item.confirm_text}" },
+                  { widget: "button", class: "step_button danger_button", text: "Yes", action: "manifest.confirm" },
+                  { widget: "button", class: "step_button", text: "No", action: "manifest.cancel" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

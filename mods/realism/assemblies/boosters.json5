@@ -1,0 +1,662 @@
+// Strap-on boosters, as assemblies: placing one copies its parts into a craft,
+// held by its `attach` node (on its axis, near its top), which lets go. Each
+// hangs from a node of the core pointing down, rolled so that its −X faces the
+// core. Written by tools; the craft that use them are these placed round a core.
+[
+  {
+    id: "r7_strap_on",
+    name: "Strap-on",
+    parts: [
+      {
+        id: "body",
+        name: "Strap-on",
+        shape: {
+          compound: [
+            {
+              name: "skin",
+              shape: {
+                revolved: {
+                  walls: [
+                    {
+                      name: "engine_section",
+                      curve: { start: [1.34, 0], segments: [{ line: [1.34, 0.55] }] },
+                    },
+                    {
+                      name: "aft_skirt",
+                      curve: {
+                        start: [1.34, 0.55],
+                        segments: [{ line: [1.34, 0.947523] }],
+                      },
+                    },
+                    {
+                      name: "forward_skirt",
+                      curve: { start: [1.34, 7.334424], segments: [{ line: [1.34, 8.5] }] },
+                    },
+                    {
+                      name: "thrust_plate",
+                      curve: { start: [0, 0], segments: [{ line: [1.34, 0] }] },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              name: "nose",
+              shape: {
+                lofted: {
+                  name: "cone",
+                  section: { regular: { sides: 48, diameter: 1 } },
+                  stations: [
+                    { z: 8.5, scale: [2.68, 2.68] },
+                    { z: 19.6, offset: [-1.39, 0], scale: [0.5, 0.5] },
+                  ],
+                  fill: "cell",
+                },
+              },
+            },
+            {
+              name: "equipment",
+              shape: { ring: { diameter: 2.68, height: 19.6, thickness: 1.34 } },
+              unseen: true,
+            },
+          ],
+        },
+        structure: { thickness: 0, mass: 2080.1 },
+        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        nodes: [
+          { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
+          { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
+          { name: "attach", position: [0, 0, 17.248], direction: [0, 0, 1] },
+          { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 1.608 },
+          { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 2.68 },
+        ],
+        paint: {
+          color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+          pieces: {
+            "nose/cone": {
+              color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+            },
+            "skin/engine_section": { finish: "composite" },
+            "skin/thrust_plate": {
+              color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+              finish: "composite",
+            },
+          },
+        },
+      },
+      { id: "engine", on: "body.engine", by: "top", template: "RD-107-8D728" },
+      {
+        id: "tank",
+        name: "Al Stringer Tank",
+        on: "body.tank",
+        shape: { cylinder_tank: { diameter: 2.64, length: 8.281947 } },
+        components: [
+          {
+            storage: {
+              type: "Al Stringer Tank",
+              contents: { Kerosene: 0.28823, LqdOxygen: 0.71177 },
+            },
+          },
+        ],
+        paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
+      },
+    ],
+    free: "body.attach",
+  },
+  {
+    id: "r7_strap_on_8k72k",
+    name: "Strap-on",
+    parts: [
+      {
+        id: "body",
+        name: "Strap-on",
+        shape: {
+          compound: [
+            {
+              name: "skin",
+              shape: {
+                revolved: {
+                  walls: [
+                    {
+                      name: "engine_section",
+                      curve: { start: [1.34, 0], segments: [{ line: [1.34, 0.55] }] },
+                    },
+                    {
+                      name: "aft_skirt",
+                      curve: {
+                        start: [1.34, 0.55],
+                        segments: [{ line: [1.34, 0.947523] }],
+                      },
+                    },
+                    {
+                      name: "forward_skirt",
+                      curve: { start: [1.34, 7.334424], segments: [{ line: [1.34, 8.5] }] },
+                    },
+                    {
+                      name: "thrust_plate",
+                      curve: { start: [0, 0], segments: [{ line: [1.34, 0] }] },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              name: "nose",
+              shape: {
+                lofted: {
+                  name: "cone",
+                  section: { regular: { sides: 48, diameter: 1 } },
+                  stations: [
+                    { z: 8.5, scale: [2.68, 2.68] },
+                    { z: 19.6, offset: [-1.39, 0], scale: [0.5, 0.5] },
+                  ],
+                  fill: "cell",
+                },
+              },
+            },
+            {
+              name: "equipment",
+              shape: { ring: { diameter: 2.68, height: 19.6, thickness: 1.34 } },
+              unseen: true,
+            },
+          ],
+        },
+        structure: { thickness: 0, mass: 1999.2 },
+        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        nodes: [
+          { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
+          { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
+          { name: "attach", position: [0, 0, 17.248], direction: [0, 0, 1] },
+          { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 1.608 },
+          { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 2.68 },
+        ],
+        paint: {
+          color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+          pieces: {
+            "nose/cone": {
+              color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+            },
+            "skin/engine_section": { finish: "composite" },
+            "skin/thrust_plate": {
+              color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+              finish: "composite",
+            },
+          },
+        },
+      },
+      { id: "engine", on: "body.engine", by: "top", template: "RD-107-8D74K" },
+      {
+        id: "tank",
+        name: "Al Stringer Tank",
+        on: "body.tank",
+        shape: { cylinder_tank: { diameter: 2.64, length: 8.281947 } },
+        components: [
+          {
+            storage: {
+              type: "Al Stringer Tank",
+              contents: { Kerosene: 0.28823, LqdOxygen: 0.71177 },
+            },
+          },
+        ],
+        paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
+      },
+    ],
+    free: "body.attach",
+  },
+  {
+    id: "r7_strap_on_8k71ps",
+    name: "Strap-on",
+    parts: [
+      {
+        id: "body",
+        name: "Strap-on",
+        shape: {
+          compound: [
+            {
+              name: "skin",
+              shape: {
+                revolved: {
+                  walls: [
+                    {
+                      name: "engine_section",
+                      curve: { start: [1.34, 0], segments: [{ line: [1.34, 0.55] }] },
+                    },
+                    {
+                      name: "aft_skirt",
+                      curve: {
+                        start: [1.34, 0.55],
+                        segments: [{ line: [1.34, 0.947523] }],
+                      },
+                    },
+                    {
+                      name: "forward_skirt",
+                      curve: { start: [1.34, 7.316525], segments: [{ line: [1.34, 8.5] }] },
+                    },
+                    {
+                      name: "thrust_plate",
+                      curve: { start: [0, 0], segments: [{ line: [1.34, 0] }] },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              name: "nose",
+              shape: {
+                lofted: {
+                  name: "cone",
+                  section: { regular: { sides: 48, diameter: 1 } },
+                  stations: [
+                    { z: 8.5, scale: [2.68, 2.68] },
+                    { z: 19.6, offset: [-1.39, 0], scale: [0.5, 0.5] },
+                  ],
+                  fill: "cell",
+                },
+              },
+            },
+            {
+              name: "equipment",
+              shape: { ring: { diameter: 2.68, height: 19.6, thickness: 1.34 } },
+              unseen: true,
+            },
+          ],
+        },
+        structure: { thickness: 0, mass: 1660.1 },
+        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        nodes: [
+          { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
+          { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
+          { name: "attach", position: [0, 0, 17.248], direction: [0, 0, 1] },
+          { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 1.608 },
+          { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 2.68 },
+        ],
+        paint: {
+          color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+          pieces: {
+            "nose/cone": {
+              color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+            },
+            "skin/engine_section": { finish: "composite" },
+            "skin/thrust_plate": {
+              color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+              finish: "composite",
+            },
+          },
+        },
+      },
+      { id: "engine", on: "body.engine", by: "top", template: "RD-107-8D74PS" },
+      {
+        id: "tank",
+        name: "Al Stringer Tank",
+        on: "body.tank",
+        shape: { cylinder_tank: { diameter: 2.64, length: 8.264048 } },
+        components: [
+          {
+            storage: {
+              type: "Al Stringer Tank",
+              contents: { Kerosene: 0.28823, LqdOxygen: 0.71177 },
+            },
+          },
+        ],
+        paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
+      },
+    ],
+    free: "body.attach",
+  },
+  {
+    id: "gem_40_ground",
+    name: "GEM-40",
+    parts: [
+      {
+        id: "body",
+        name: "GEM-40",
+        shape: {
+          compound: [
+            {
+              name: "skin",
+              shape: {
+                revolved: {
+                  walls: [
+                    {
+                      name: "engine_section",
+                      curve: { start: [0.508, 0], segments: [{ line: [0.508, 0.55] }] },
+                    },
+                    {
+                      name: "aft_skirt",
+                      curve: {
+                        start: [0.508, 0.55],
+                        segments: [{ line: [0.508, 0.35921] }],
+                      },
+                    },
+                    {
+                      name: "forward_skirt",
+                      curve: {
+                        start: [0.508, 9.553979],
+                        segments: [{ line: [0.508, 11.4] }],
+                      },
+                    },
+                    {
+                      name: "nose",
+                      curve: {
+                        start: [0.508, 11.4],
+                        segments: [{ line: [0.06096, 12.84] }, { line: [0, 13] }],
+                      },
+                    },
+                    {
+                      name: "thrust_plate",
+                      curve: { start: [0, 0], segments: [{ line: [0.508, 0] }] },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              name: "equipment",
+              shape: { ring: { diameter: 1.016, height: 13, thickness: 0.508 } },
+              unseen: true,
+            },
+          ],
+        },
+        structure: { thickness: 0, mass: 0 },
+        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        nodes: [
+          { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
+          { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
+          { name: "attach", position: [0, 0, 11.05], direction: [0, 0, 1] },
+          { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.6096 },
+          { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 1.016 },
+        ],
+        paint: {
+          color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+          pieces: {
+            "skin/engine_section": { finish: "composite" },
+            "skin/nose": {
+              color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+            },
+            "skin/thrust_plate": {
+              color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+              finish: "composite",
+            },
+          },
+        },
+      },
+      { id: "engine", on: "body.engine", by: "top", template: "GEM-40/Ground" },
+      {
+        id: "tank",
+        name: "Solid Grain",
+        on: "body.tank",
+        shape: { cylinder_tank: { diameter: 0.976, length: 9.913189 } },
+        components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+        paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
+      },
+    ],
+    free: "body.attach",
+  },
+  {
+    id: "gem_40_air",
+    name: "GEM-40 (air-lit)",
+    parts: [
+      {
+        id: "body",
+        name: "GEM-40 (air-lit)",
+        shape: {
+          compound: [
+            {
+              name: "skin",
+              shape: {
+                revolved: {
+                  walls: [
+                    {
+                      name: "engine_section",
+                      curve: { start: [0.508, 0], segments: [{ line: [0.508, 0.55] }] },
+                    },
+                    {
+                      name: "aft_skirt",
+                      curve: {
+                        start: [0.508, 0.55],
+                        segments: [{ line: [0.508, 0.35921] }],
+                      },
+                    },
+                    {
+                      name: "forward_skirt",
+                      curve: {
+                        start: [0.508, 9.553979],
+                        segments: [{ line: [0.508, 11.4] }],
+                      },
+                    },
+                    {
+                      name: "nose",
+                      curve: {
+                        start: [0.508, 11.4],
+                        segments: [{ line: [0.06096, 12.84] }, { line: [0, 13] }],
+                      },
+                    },
+                    {
+                      name: "thrust_plate",
+                      curve: { start: [0, 0], segments: [{ line: [0.508, 0] }] },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              name: "equipment",
+              shape: { ring: { diameter: 1.016, height: 13, thickness: 0.508 } },
+              unseen: true,
+            },
+          ],
+        },
+        structure: { thickness: 0, mass: 0 },
+        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        nodes: [
+          { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
+          { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
+          { name: "attach", position: [0, 0, 11.05], direction: [0, 0, 1] },
+          { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.6096 },
+          { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 1.016 },
+        ],
+        paint: {
+          color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+          pieces: {
+            "skin/engine_section": { finish: "composite" },
+            "skin/nose": {
+              color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+            },
+            "skin/thrust_plate": {
+              color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+              finish: "composite",
+            },
+          },
+        },
+      },
+      { id: "engine", on: "body.engine", by: "top", template: "GEM-40/Air" },
+      {
+        id: "tank",
+        name: "Solid Grain",
+        on: "body.tank",
+        shape: { cylinder_tank: { diameter: 0.976, length: 9.913189 } },
+        components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+        paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
+      },
+    ],
+    free: "body.attach",
+  },
+  {
+    id: "ua1205",
+    name: "UA1205",
+    parts: [
+      {
+        id: "body",
+        name: "UA1205",
+        shape: {
+          compound: [
+            {
+              name: "skin",
+              shape: {
+                revolved: {
+                  walls: [
+                    {
+                      name: "engine_section",
+                      curve: { start: [1.525, 0], segments: [{ line: [1.525, 0.55] }] },
+                    },
+                    {
+                      name: "aft_skirt",
+                      curve: {
+                        start: [1.525, 0.55],
+                        segments: [{ line: [1.525, 1.078338] }],
+                      },
+                    },
+                    {
+                      name: "forward_skirt",
+                      curve: {
+                        start: [1.525, 16.18395],
+                        segments: [{ line: [1.525, 22.2] }],
+                      },
+                    },
+                    {
+                      name: "nose",
+                      curve: {
+                        start: [1.525, 22.2],
+                        segments: [{ line: [0.183, 25.53] }, { line: [0, 25.9] }],
+                      },
+                    },
+                    {
+                      name: "thrust_plate",
+                      curve: { start: [0, 0], segments: [{ line: [1.525, 0] }] },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              name: "equipment",
+              shape: { ring: { diameter: 3.05, height: 25.9, thickness: 1.525 } },
+              unseen: true,
+            },
+          ],
+        },
+        structure: { thickness: 0, mass: 0 },
+        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        nodes: [
+          { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
+          { name: "top", position: [0, 0, 25.9], direction: [0, 0, 1] },
+          { name: "attach", position: [0, 0, 22.015], direction: [0, 0, 1] },
+          { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 1.83 },
+          { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 3.05 },
+        ],
+        paint: {
+          color: [0.8799999952316284, 0.8799999952316284, 0.8600000143051147],
+          pieces: {
+            "skin/engine_section": { finish: "composite" },
+            "skin/nose": {
+              color: [0.8799999952316284, 0.8799999952316284, 0.8600000143051147],
+            },
+            "skin/thrust_plate": {
+              color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+              finish: "composite",
+            },
+          },
+        },
+      },
+      { id: "engine", on: "body.engine", by: "top", template: "UA1205" },
+      {
+        id: "tank",
+        name: "Solid Grain",
+        on: "body.tank",
+        shape: { cylinder_tank: { diameter: 3.01, length: 17.262288 } },
+        components: [{ storage: { type: "Solid Grain", contents: { PBAN: 1 } } }],
+        paint: { color: [0.8799999952316284, 0.8799999952316284, 0.8600000143051147] },
+      },
+    ],
+    free: "body.attach",
+  },
+  {
+    id: "eap_p241",
+    name: "EAP",
+    parts: [
+      {
+        id: "body",
+        name: "EAP",
+        shape: {
+          compound: [
+            {
+              name: "skin",
+              shape: {
+                revolved: {
+                  walls: [
+                    {
+                      name: "engine_section",
+                      curve: { start: [1.525, 0], segments: [{ line: [1.525, 0.55] }] },
+                    },
+                    {
+                      name: "aft_skirt",
+                      curve: {
+                        start: [1.525, 0.55],
+                        segments: [{ line: [1.525, 1.078338] }],
+                      },
+                    },
+                    {
+                      name: "forward_skirt",
+                      curve: {
+                        start: [1.525, 20.399493],
+                        segments: [{ line: [1.525, 27.6] }],
+                      },
+                    },
+                    {
+                      name: "nose",
+                      curve: {
+                        start: [1.525, 27.6],
+                        segments: [{ line: [0.183, 31.2] }, { line: [0, 31.6] }],
+                      },
+                    },
+                    {
+                      name: "thrust_plate",
+                      curve: { start: [0, 0], segments: [{ line: [1.525, 0] }] },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              name: "equipment",
+              shape: { ring: { diameter: 3.05, height: 31.6, thickness: 1.525 } },
+              unseen: true,
+            },
+          ],
+        },
+        structure: { thickness: 0, mass: 0 },
+        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        nodes: [
+          { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
+          { name: "top", position: [0, 0, 31.6], direction: [0, 0, 1] },
+          { name: "attach", position: [0, 0, 26.86], direction: [0, 0, 1] },
+          { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 1.83 },
+          { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 3.05 },
+        ],
+        paint: {
+          color: [0.8999999761581421, 0.8999999761581421, 0.8799999952316284],
+          pieces: {
+            "skin/engine_section": { finish: "composite" },
+            "skin/nose": {
+              color: [0.8999999761581421, 0.8999999761581421, 0.8799999952316284],
+            },
+            "skin/thrust_plate": {
+              color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+              finish: "composite",
+            },
+          },
+        },
+      },
+      { id: "engine", on: "body.engine", by: "top", template: "MPS-241" },
+      {
+        id: "tank",
+        name: "Solid Grain",
+        on: "body.tank",
+        shape: { cylinder_tank: { diameter: 3.01, length: 21.477831 } },
+        components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+        paint: { color: [0.8999999761581421, 0.8999999761581421, 0.8799999952316284] },
+      },
+    ],
+    free: "body.attach",
+  },
+]

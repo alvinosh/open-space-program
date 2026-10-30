@@ -1,0 +1,159 @@
+// The sequence stack (bottom of the left dock): each numbered row is a sequence
+// the stage key fires, the next one at the bottom and outlined. A row is a box of its own,
+// no wider than its parts: small tiles, four to a line, one per group of identical parts,
+// with how many and, for engines and RCS, the fuel feeding them as a thin bar in the
+// stage's colour (as in the Resources window). Engines are liquid, vacuum or solid; the
+// rest are decouplers, fairing panels and RCS. Hover a tile for what it does with its
+// thrust, Isp, burn time and fuel; hover a row's number for the whole row. The delta-v and
+// thrust-to-weight of the stage burning are in a box at the very bottom.
+//
+// Reorder by dragging: a row anywhere on it, onto another row to put it there, or onto
+// the thin strip under a row (it lights up) to put it at exactly that place. A tile
+// dragged onto a row joins it, onto a strip it makes a sequence of its own there; drag its
+// count to move just one (to light a cluster's centre engine first, say). Right-click a tile
+// for the window of its first part: the tile takes the window's colour and every part of the
+// tile is tinted in it on the rocket (see part_info.json5). The + box at the
+// top adds an empty sequence (and takes a dropped tile as a new last one), x removes an
+// empty one.
+// Under the stack, numbered after the last sequence fired, are the engines already lit,
+// their fuel draining, until their stage falls away. F8 shows and hides it.
+{
+  id: "staging",
+  group: "flight",
+  dock: "left_bottom",
+  root: {
+    id: "staging",
+    widget: "column",
+    class: "seq_stack",
+    children: [
+      // Adds a sequence; also the strip above the last row for a dropped tile.
+      {
+        widget: "row",
+        class: "seq_row seq_add",
+        drop: "staging.drop_new:$drag",
+        children: [{ widget: "button", class: "seq_glyph", text: "+", tooltip: "New sequence", action: "staging.add" }],
+      },
+      {
+        id: "sequences",
+        widget: "column",
+        class: "seq_stack",
+        repeat: "vessel.sequences",
+        style: { direction: "column_reverse" },
+        children: [
+          {
+            widget: "column",
+            class: "seq_stack",
+            children: [
+              // The strip under a row is the place before it.
+              { widget: "column", class: "seq_gap", drop: "staging.drop_at:$drag:{item.index}" },
+              {
+                widget: "row",
+                class: "seq_row",
+                active: "item.next",
+                drag: "seq:{item.index}",
+                drop: "staging.drop:$drag:{item.index}",
+                children: [
+                  { widget: "label", class: "seq_number", active: "item.next", tooltip: "{item.caption}", text: "{item.number}" },
+                  {
+                    widget: "column",
+                    class: "seq_tiles",
+                    repeat: "item.lines",
+                    children: [
+                      {
+                        widget: "row",
+                        class: "seq_line",
+                        repeat: "item.tiles",
+                        children: [
+                          {
+                            widget: "column",
+                            class: "seq_item",
+                            drag: "item:{item.seq}:{item.index}",
+                            tooltip: "{item.tip}",
+                            context: "part.group:{item.window}",
+                            accent: "item.mark",
+                            children: [
+                              { widget: "image", class: "seq_icon", image: "icons/engine.svg", visible: "item.is_engines" },
+                              { widget: "image", class: "seq_icon", image: "icons/vacuum_engine.svg", visible: "item.is_vacuum" },
+                              { widget: "image", class: "seq_icon", image: "icons/solid_motor.svg", visible: "item.is_solid" },
+                              { widget: "image", class: "seq_icon", image: "icons/decoupler.svg", visible: "item.is_decoupler" },
+                              { widget: "image", class: "seq_icon", image: "icons/fairing.svg", visible: "item.is_fairing" },
+                              { widget: "image", class: "seq_icon", image: "icons/rcs.svg", visible: "item.is_rcs" },
+                              { widget: "label", class: "seq_count", drag: "one:{item.seq}:{item.index}", text: "{item.count}", visible: "item.multiple" },
+                              { widget: "bar", class: "seq_fuel", value: "item.fuel", color: "item.color", visible: "item.has_fuel" },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  { widget: "button", class: "seq_glyph", text: "×", tooltip: "Remove", visible: "item.empty", action: "staging.remove:{item.index}" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: "armed",
+        widget: "row",
+        class: "seq_row seq_armed",
+        visible: "vessel.armed_count",
+        style: { margin: [3, 0, 0, 0] },
+        children: [
+          { widget: "label", class: "seq_number", text: "{vessel.armed_number}" },
+          {
+            widget: "column",
+            class: "seq_tiles",
+            repeat: "vessel.armed_lines",
+            children: [
+              {
+                widget: "row",
+                class: "seq_line",
+                repeat: "item.tiles",
+                children: [
+                  {
+                    widget: "column",
+                    class: "seq_item",
+                    tooltip: "{item.tip}",
+                    context: "part.group:{item.window}",
+                    accent: "item.mark",
+                    children: [
+                      { widget: "image", class: "seq_icon", image: "icons/engine.svg", visible: "item.is_engines" },
+                      { widget: "image", class: "seq_icon", image: "icons/vacuum_engine.svg", visible: "item.is_vacuum" },
+                      { widget: "image", class: "seq_icon", image: "icons/solid_motor.svg", visible: "item.is_solid" },
+                      { widget: "label", class: "seq_count", text: "{item.count}", visible: "item.multiple" },
+                      { widget: "bar", class: "seq_fuel", value: "item.fuel", color: "item.color", visible: "item.has_fuel" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      // What the stage burning gives.
+      {
+        widget: "column",
+        class: "seq_row seq_stats",
+        children: [
+          {
+            widget: "row",
+            style: { gap: 4 },
+            children: [
+              { widget: "label", class: "seq_key", style: { min_width: 24 }, text: "dV" },
+              { widget: "label", class: "seq_stat", text: "{vessel.delta_v|speed}" },
+            ],
+          },
+          {
+            widget: "row",
+            style: { gap: 4 },
+            children: [
+              { widget: "label", class: "seq_key", style: { min_width: 24 }, text: "TWR" },
+              { widget: "label", class: "seq_stat", text: "{vessel.stage_twr|fixed:2}" },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

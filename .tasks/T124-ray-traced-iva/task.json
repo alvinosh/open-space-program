@@ -1,0 +1,18 @@
+{
+  "id": "T124",
+  "title": "Ray-traced IVA",
+  "kind": "feature",
+  "status": "todo",
+  "area": "rendering",
+  "size": "XL",
+  "parent": "T067",
+  "depends_on": [
+    "T105"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 8"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

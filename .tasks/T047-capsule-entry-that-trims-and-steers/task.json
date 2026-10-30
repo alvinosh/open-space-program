@@ -1,0 +1,19 @@
+{
+  "id": "T047",
+  "title": "Capsule entry that trims and steers",
+  "kind": "feature",
+  "status": "todo",
+  "area": "aero",
+  "size": "M",
+  "parent": "T009",
+  "depends_on": [
+    "T025"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 22)",
+    "old issue list, issue 12 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

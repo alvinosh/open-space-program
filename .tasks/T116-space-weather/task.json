@@ -1,0 +1,18 @@
+{
+  "id": "T116",
+  "title": "Space weather",
+  "kind": "feature",
+  "status": "todo",
+  "area": "environment",
+  "size": "L",
+  "parent": "T066",
+  "depends_on": [
+    "T033"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 7"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

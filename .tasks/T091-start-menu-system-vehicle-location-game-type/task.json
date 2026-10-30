@@ -1,0 +1,18 @@
+{
+  "id": "T091",
+  "title": "Start menu: system, vehicle, location, game type",
+  "kind": "feature",
+  "status": "todo",
+  "area": "ui",
+  "size": "M",
+  "parent": "T062",
+  "depends_on": [
+    "T020"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 3"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

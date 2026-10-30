@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smoke tests</title>
+<style>
+:root { color-scheme: dark; --bg: #0e1116; --panel: #161b22; --line: #2a333f; --text: #e6edf3; --dim: #8b98a7; --pass: #3fb27f; --fail: #f0616d; --known: #e0a43a; --gap: #8c96a3; --bridged: #5ea2f0; --accent: #2fb7b0; }
+@media (prefers-color-scheme: light) { :root { color-scheme: light; --bg: #f5f7fa; --panel: #fff; --line: #d5dce4; --text: #18202a; --dim: #5b6877; --pass: #1f8a5b; --fail: #d1303f; --known: #b87a12; --gap: #6b7684; --bridged: #2a74cf; --accent: #12857f; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+p { color: var(--dim); margin: 0 0 24px; }
+.cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); }
+@media (max-width: 480px) { .cards { grid-template-columns: 1fr; } }
+a.card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; color: inherit; text-decoration: none; }
+a.card:hover { border-color: var(--accent); }
+a.card h2 { margin: 0 0 2px; font-size: 17px; }
+.dim { color: var(--dim); font-size: 12.5px; }
+.nums { display: flex; gap: 14px; margin: 10px 0 8px; flex-wrap: wrap; }
+.nums span b { font-size: 18px; margin-right: 4px; }
+.strip { display: flex; gap: 3px; margin-top: 8px; }
+.strip i { flex: 1; height: 6px; border-radius: 3px; background: var(--gap); opacity: .45; }
+.strip i.passed { background: var(--pass); opacity: 1; } .strip i.failed { background: var(--fail); opacity: 1; } .strip i.partial { background: var(--known); opacity: 1; }
+</style>
+</head>
+<body>
+<main>
+<h1>Smoke tests</h1>
+<p>Whole-mission flights, flown the way a player flies them. Run <code>cargo smoke</code> to refresh.</p>
+<div class="cards" id="cards"></div>
+</main>
+<script>
+const CARDS = /*CARDS*/[];
+const root = document.getElementById("cards");
+if (!CARDS.length) root.textContent = "No reports yet. Run cargo smoke.";
+for (const c of CARDS) {
+  const a = document.createElement("a"); a.className = "card"; a.href = `${c.dir}/index.html`;
+  const n = c.counts;
+  a.innerHTML = `<h2></h2><div class="dim"></div><div class="nums"></div><div class="strip"></div><div class="dim"></div>`;
+  a.children[0].textContent = c.mission.title;
+  a.children[1].textContent = c.mission.summary;
+  for (const [k, label] of [["pass", "passed"], ["fail", "failed"], ["known", "known"], ["gap", "not modelled"], ["bridged", "bridged"]]) {
+    const s = document.createElement("span"); const b = document.createElement("b"); b.textContent = n[k]; b.style.color = `var(--${k})`; s.append(b, label); a.children[2].append(s);
+  }
+  for (const p of c.phases || []) { const i = document.createElement("i"); i.className = p.outcome; i.title = `${p.title}: ${p.outcome.replace("_", " ")}`; a.children[3].append(i); }
+  a.children[4].textContent = `run ${c.generated}${c.stopped ? " · stopped early" : ""}`;
+  root.append(a);
+}
+</script>
+</body>
+</html>

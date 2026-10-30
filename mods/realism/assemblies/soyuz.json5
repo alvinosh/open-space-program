@@ -1,0 +1,174 @@
+// The Soyuz 7K-OK spacecraft, as an assembly: the instrument-assembly module with its
+// KTDU-35, propellant and solar panels, the descent module and the orbital module.
+// Written by tools; the Soyuz 11A511 carries it on its adapter.
+[
+  {
+    id: "soyuz_7k_ok",
+    name: "Soyuz 7K-OK",
+    parts: [
+      {
+        id: "pao",
+        name: "Instrument-assembly module",
+        shape: {
+          revolved: {
+            walls: [
+              {
+                name: "aggregate",
+                curve: {
+                  start: [1.36, 0],
+                  segments: [{ line: [1.36, 0.8] }, { line: [1.1, 1.1] }],
+                },
+              },
+              {
+                name: "instrument",
+                curve: { start: [1.1, 1.1], segments: [{ line: [1.1, 1.95] }] },
+              },
+              {
+                name: "transfer",
+                curve: { start: [1.1, 1.95], segments: [{ line: [1, 2.26] }] },
+              },
+              {
+                name: "aft_bulkhead",
+                curve: { start: [0, 0.25], segments: [{ line: [1.36, 0.25] }] },
+              },
+            ],
+          },
+        },
+        structure: { material: "Al 2219-T87", thickness: 0.002, mass: 1569.4 },
+        nodes: [
+          { name: "engine", position: [0, 0, 0.25], direction: [0, 0, -1], size: 0.7 },
+          { name: "fuel", position: [0, 0.62, 0.3], direction: [0, 0, 1] },
+          { name: "oxidizer", position: [0, -0.62, 0.3], direction: [0, 0, 1] },
+          { name: "panel_1", position: [1.15, 0, 0.85], direction: [0, 0, 1], size: 0.1 },
+          { name: "panel_2", position: [-1.15, 0, 0.85], direction: [0, 0, 1], size: 0.1 },
+          { name: "sa", position: [0, 0, 2.26], direction: [0, 0, 1], size: 2 },
+        ],
+        paint: {
+          color: [0.7200000286102295, 0.7400000095367432, 0.6800000071525574],
+          pieces: {
+            aggregate: {
+              color: [0.30000001192092896, 0.3199999928474426, 0.30000001192092896],
+            },
+          },
+        },
+      },
+      { id: "ktdu", on: "pao.engine", by: "top", template: "S5_60" },
+      {
+        id: "pao_fuel",
+        name: "UDMH",
+        on: "pao.fuel",
+        shape: { sphere: { diameter: 0.78 } },
+        components: [{ storage: { type: "HP Al Fuselage", contents: { UDMH: 1 } } }],
+        paint: { color: [0.75, 0.75, 0.7200000286102295], finish: "metal" },
+      },
+      {
+        id: "pao_oxidizer",
+        name: "AK-27",
+        on: "pao.oxidizer",
+        shape: { sphere: { diameter: 0.78 } },
+        components: [{ storage: { type: "HP Al Fuselage", contents: { AK27: 1 } } }],
+        paint: { color: [0.75, 0.75, 0.7200000286102295], finish: "metal" },
+      },
+      {
+        id: "solar_panel_1",
+        name: "Solar panel",
+        on: "pao.panel_1",
+        shape: { box: { size: [0.04, 0.8, 1.6] } },
+        structure: { mass: 45 },
+        paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+      },
+      {
+        id: "solar_panel_2",
+        name: "Solar panel",
+        on: "pao.panel_2",
+        shape: { box: { size: [0.04, 0.8, 1.6] } },
+        structure: { mass: 45 },
+        paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+      },
+      {
+        id: "sa",
+        name: "Descent module",
+        on: "pao.sa",
+        shape: {
+          revolved: {
+            walls: [
+              {
+                name: "heat_shield",
+                curve: { start: [0, 0], segments: [{ line: [1.08, 0.12] }] },
+              },
+              {
+                name: "side",
+                curve: {
+                  start: [1.08, 0.12],
+                  segments: [
+                    { line: [1.08, 0.3] },
+                    { line: [0.95, 1.6] },
+                    { line: [0.6, 2.1] },
+                  ],
+                },
+              },
+              {
+                name: "hatch",
+                curve: { start: [0.6, 2.1], segments: [{ line: [0, 2.1] }] },
+              },
+            ],
+          },
+        },
+        structure: { mass: 2810 },
+        components: [{ crew: { seats: 3 } }],
+        nodes: [{ name: "bo", position: [0, 0, 2.1], direction: [0, 0, 1], size: 1.2 }],
+        paint: {
+          color: [0.5, 0.5199999809265137, 0.46000000834465027],
+          pieces: { heat_shield: { finish: "char" } },
+        },
+      },
+      {
+        id: "bo",
+        name: "Orbital module",
+        on: "sa.bo",
+        shape: {
+          revolved: {
+            walls: [
+              {
+                name: "neck",
+                curve: { start: [0.6, 0], segments: [{ line: [0.7, 0.15] }] },
+              },
+              {
+                name: "sphere",
+                curve: {
+                  start: [0.7, 0.15],
+                  segments: [
+                    { ellipse: { center: [0, 1.05], radii: [1.140175, 1.140175], to: 90 } },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        structure: { mass: 1100 },
+        nodes: [
+          { name: "probe", position: [0, 0, 2.190175], direction: [0, 0, 1], size: 0.3 },
+        ],
+        paint: { color: [0.5, 0.5199999809265137, 0.46000000834465027] },
+      },
+      {
+        id: "probe",
+        name: "Docking probe",
+        on: "bo.probe",
+        shape: {
+          shell: {
+            bottom_diameter: 0.3,
+            sections: [{ length: 0.6, top_diameter: 0.05 }],
+            cap_bottom: true,
+          },
+        },
+        structure: { mass: 30 },
+        paint: {
+          color: [0.6000000238418579, 0.6000000238418579, 0.6000000238418579],
+          finish: "metal",
+        },
+      },
+    ],
+    free: "pao.bottom",
+  },
+]

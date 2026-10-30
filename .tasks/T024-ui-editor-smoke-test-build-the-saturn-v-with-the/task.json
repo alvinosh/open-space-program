@@ -1,0 +1,21 @@
+{
+  "id": "T024",
+  "title": "UI editor smoke test: build the Saturn V with the pointer",
+  "kind": "test",
+  "status": "todo",
+  "area": "test",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [
+    "T019",
+    "T020",
+    "T022",
+    "T023"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E12)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

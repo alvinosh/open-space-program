@@ -1,0 +1,19 @@
+{
+  "id": "T050",
+  "title": "Failures and reliability",
+  "kind": "feature",
+  "status": "todo",
+  "area": "propulsion",
+  "size": "M",
+  "parent": "T011",
+  "depends_on": [
+    "T028",
+    "T045"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 25)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,19 @@
+{
+  "id": "T028",
+  "title": "Open components with state",
+  "kind": "feature",
+  "status": "todo",
+  "area": "physics",
+  "size": "L",
+  "parent": "T003",
+  "depends_on": [
+    "T025",
+    "T014"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 3, The build core)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

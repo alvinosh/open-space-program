@@ -1,0 +1,16 @@
+{
+  "id": "T064",
+  "title": "Propulsion and systems breadth",
+  "kind": "epic",
+  "status": "todo",
+  "area": "propulsion",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 5"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

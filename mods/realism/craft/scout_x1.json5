@@ -1,0 +1,701 @@
+// Scout X-1 (1961).
+// NASA's all-solid Scout: Algol, Castor, Antares and Altair.
+// Built by hand from plain parts: hydrogen peroxide reaction jets steer the second and
+// third stages, as the jets in the real one's transition sections did.
+{
+  id: "scout_x1",
+  name: "Scout X-1",
+  parts: [
+    {
+      id: "explorer_9",
+      name: "Explorer 9",
+      shape: {
+        compound: [
+          {
+            name: "adapter",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "floor",
+                    curve: { start: [0, 0], segments: [{ line: [0.23, 0] }] },
+                  },
+                  {
+                    name: "adapter",
+                    curve: {
+                      start: [0.23, 0],
+                      segments: [{ line: [0.23, 0.12] }, { line: [0.115, 0.9] }],
+                    },
+                  },
+                  {
+                    name: "deck",
+                    curve: { start: [0.115, 0.9], segments: [{ line: [0, 0.9] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 0.46, height: 0.5, thickness: 0.23 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 7 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.46 },
+        { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 0.23 },
+        { name: "fairing_1", position: [0.23, 0, 0], direction: [0, 0, 1], size: 0.46 },
+        { name: "fairing_2", position: [-0.23, 0, 0], direction: [0, 0, 1], size: 0.46 },
+        {
+          name: "payload_1",
+          position: [0, 0, 0.9],
+          direction: [0, 0, 1],
+          size: 0.2927422074112307,
+        },
+        {
+          name: "panel_1",
+          position: [0.1535, 0, 0.94],
+          direction: [0, 0, 1],
+          size: 0.19289294958603337,
+        },
+        {
+          name: "panel_2",
+          position: [-0.1535, 0, 0.94],
+          direction: [0, 0, 1],
+          size: 0.19289294958603337,
+        },
+        { name: "antenna_1", position: [0, 0, 1.95], direction: [0, 0, 1], size: 0.1242 },
+      ],
+      paint: {
+        color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+        finish: "composite",
+      },
+    },
+    {
+      id: "explorer_9_fairing_1",
+      name: "Fairing",
+      on: "explorer_9.fairing_1",
+      shape: {
+        shell: {
+          bottom_diameter: 0.46,
+          sections: [{ length: 2 }, { length: 0.598, top_diameter: 0, profile: "ogive" }],
+          span: [-90, 90],
+        },
+      },
+      structure: { thickness: 0.04, mass: 20 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "explorer_9_fairing_2",
+      name: "Fairing",
+      on: "explorer_9.fairing_2",
+      roll: -180,
+      shape: {
+        shell: {
+          bottom_diameter: 0.46,
+          sections: [{ length: 2 }, { length: 0.598, top_diameter: 0, profile: "ogive" }],
+          span: [-90, 90],
+        },
+      },
+      structure: { thickness: 0.04, mass: 20 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "explorer_9_payload_1",
+      name: "Payload",
+      on: "explorer_9.payload_1",
+      shape: { box: { size: [0.20700000000000002, 0.20700000000000002, 1] } },
+      paint: { color: [0.8500000238418579, 0.6200000047683716, 0.25], finish: "metal" },
+    },
+    {
+      id: "explorer_9_panel_1",
+      name: "Solar panel",
+      on: "explorer_9.panel_1",
+      shape: { box: { size: [0.05, 0.18630000000000002, 0.92] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "explorer_9_panel_2",
+      name: "Solar panel",
+      on: "explorer_9.panel_2",
+      shape: { box: { size: [0.05, 0.18630000000000002, 0.92] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "explorer_9_antenna_1",
+      name: "Antenna",
+      on: "explorer_9.antenna_1",
+      shape: {
+        shell: {
+          bottom_diameter: 0.1242,
+          sections: [{ length: 0.25, top_diameter: 0 }],
+          cap_bottom: true,
+        },
+      },
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "altair",
+      name: "Altair",
+      on: "explorer_9.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.23, 0], segments: [{ line: [0.23, 0.16263456] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.23, 0.73736544],
+                      segments: [{ line: [0.23, 1.74] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [0.23, 1.74], segments: [{ line: [0.23, 1.8] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.23, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 0.46, height: 1.8, thickness: 0.23 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 15 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.46 },
+        { name: "top", position: [0, 0, 1.8], direction: [0, 0, 1], size: 0.46 },
+        {
+          name: "engine_1",
+          position: [0, 0, 0],
+          direction: [0, 0, -1],
+          size: 0.13799999999999998,
+        },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 0.46 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "altair_engine_1", on: "altair.engine_1", by: "top", template: "Altair" },
+    {
+      id: "altair_tank_1",
+      name: "Solid Grain",
+      on: "altair.tank_1",
+      shape: { cylinder_tank: { diameter: 0.46, length: 0.9 } },
+      components: [{ storage: { type: "Solid Grain", contents: { PSPC: 1 } } }],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "antares",
+      name: "Antares",
+      on: "altair.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.38, 0], segments: [{ line: [0.38, 0.268700577] }] },
+                  },
+                  {
+                    name: "interstage",
+                    curve: {
+                      start: [0.38, 1.347299423],
+                      segments: [{ line: [0.235445633, 2.94] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [0.235445633, 2.94], segments: [{ line: [0.23, 3] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.38, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 0.76, height: 3, thickness: 0.38 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 94 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.76 },
+        { name: "top", position: [0, 0, 3], direction: [0, 0, 1], size: 0.46 },
+        {
+          name: "engine_1",
+          position: [0, 0, 0],
+          direction: [0, 0, -1],
+          size: 0.2906666666666667,
+        },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 0.76 },
+        {
+          name: "rcs_1",
+          position: [0.268701, 0.268701, 1.9],
+          direction: [0.7071067811865477, 0.7071067811865477, 0],
+          size: 0.2,
+        },
+        {
+          name: "rcs_2",
+          position: [-0.268701, 0.268701, 1.9],
+          direction: [-0.7071067811865477, 0.7071067811865477, 0],
+          size: 0.2,
+        },
+        {
+          name: "rcs_3",
+          position: [-0.268701, -0.268701, 1.9],
+          direction: [-0.7071067811865477, -0.7071067811865477, 0],
+          size: 0.2,
+        },
+        {
+          name: "rcs_4",
+          position: [0.268701, -0.268701, 1.9],
+          direction: [0.7071067811865477, -0.7071067811865477, 0],
+          size: 0.2,
+        },
+        { name: "tank_2", position: [0, 0, 1.65], direction: [0, 0, 1], size: 0.3 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/interstage": {
+            color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+            finish: "composite",
+          },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    {
+      // Its share of the transition section: the peroxide that feeds its reaction jets.
+      id: "antares_peroxide",
+      name: "Peroxide tank",
+      on: "antares.tank_2",
+      shape: { sphere: { diameter: 0.3 } },
+      components: [{ storage: { type: "HP Steel Fuselage", contents: { HTP: 1 } } }],
+      paint: { color: [0.550000011920929, 0.550000011920929, 0.5699999928474426], finish: "metal" },
+    },
+    {
+      id: "antares_rcs_1",
+      on: "antares.rcs_1",
+      by: "mount",
+      roll: 180,
+      template: "Peroxide Quad",
+    },
+    {
+      id: "antares_rcs_2",
+      on: "antares.rcs_2",
+      by: "mount",
+      roll: 180,
+      template: "Peroxide Quad",
+    },
+    {
+      id: "antares_rcs_3",
+      on: "antares.rcs_3",
+      by: "mount",
+      template: "Peroxide Quad",
+    },
+    {
+      id: "antares_rcs_4",
+      on: "antares.rcs_4",
+      by: "mount",
+      template: "Peroxide Quad",
+    },
+    { id: "antares_engine_1", on: "antares.engine_1", by: "top", template: "Antares-I" },
+    {
+      id: "antares_tank_1",
+      name: "Solid Grain",
+      on: "antares.tank_1",
+      shape: { cylinder_tank: { diameter: 0.76, length: 1.616 } },
+      components: [{ storage: { type: "Solid Grain", contents: { PBAA: 1 } } }],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "castor",
+      name: "Castor",
+      on: "antares.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: {
+                      start: [0.395, 0],
+                      segments: [{ line: [0.395, 0.279307179] }],
+                    },
+                  },
+                  {
+                    name: "interstage",
+                    curve: {
+                      start: [0.395, 4.248692821],
+                      segments: [{ line: [0.380461229, 6.14] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: {
+                      start: [0.380461229, 6.14],
+                      segments: [{ line: [0.38, 6.2] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.395, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 0.79, height: 6.2, thickness: 0.395 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 242 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.79 },
+        { name: "top", position: [0, 0, 6.2], direction: [0, 0, 1], size: 0.76 },
+        {
+          name: "engine_1",
+          position: [0, 0, 0],
+          direction: [0, 0, -1],
+          size: 0.25433333333333336,
+        },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 0.79 },
+        {
+          name: "rcs_1",
+          position: [0.279307, 0.279307, 5.9],
+          direction: [0.7071067811865476, 0.7071067811865476, 0],
+          size: 0.2,
+        },
+        {
+          name: "rcs_2",
+          position: [-0.279307, 0.279307, 5.9],
+          direction: [-0.7071067811865476, 0.7071067811865476, 0],
+          size: 0.2,
+        },
+        {
+          name: "rcs_3",
+          position: [-0.279307, -0.279307, 5.9],
+          direction: [-0.7071067811865476, -0.7071067811865476, 0],
+          size: 0.2,
+        },
+        {
+          name: "rcs_4",
+          position: [0.279307, -0.279307, 5.9],
+          direction: [0.7071067811865476, -0.7071067811865476, 0],
+          size: 0.2,
+        },
+        { name: "tank_2", position: [0, 0, 4.6], direction: [0, 0, 1], size: 0.35 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/interstage": {
+            color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+            finish: "composite",
+          },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    {
+      // Its share of the transition section: the peroxide that feeds its reaction jets.
+      id: "castor_peroxide",
+      name: "Peroxide tank",
+      on: "castor.tank_2",
+      shape: { sphere: { diameter: 0.35 } },
+      components: [{ storage: { type: "HP Steel Fuselage", contents: { HTP: 1 } } }],
+      paint: { color: [0.550000011920929, 0.550000011920929, 0.5699999928474426], finish: "metal" },
+    },
+    {
+      id: "castor_rcs_1",
+      on: "castor.rcs_1",
+      by: "mount",
+      roll: 180,
+      template: "Peroxide Quad",
+    },
+    {
+      id: "castor_rcs_2",
+      on: "castor.rcs_2",
+      by: "mount",
+      roll: 180,
+      template: "Peroxide Quad",
+    },
+    {
+      id: "castor_rcs_3",
+      on: "castor.rcs_3",
+      by: "mount",
+      template: "Peroxide Quad",
+    },
+    {
+      id: "castor_rcs_4",
+      on: "castor.rcs_4",
+      by: "mount",
+      template: "Peroxide Quad",
+    },
+    { id: "castor_engine_1", on: "castor.engine_1", by: "top", template: "Castor-1-Vac" },
+    {
+      id: "castor_tank_1",
+      name: "Solid Grain",
+      on: "castor.tank_1",
+      shape: { cylinder_tank: { diameter: 0.79, length: 4.528 } },
+      components: [{ storage: { type: "Solid Grain", contents: { PSPC: 1 } } }],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "algol",
+      name: "Algol",
+      on: "castor.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: {
+                      start: [0.505, 0],
+                      segments: [{ line: [0.505, 0.357088924] }],
+                    },
+                  },
+                  {
+                    name: "interstage",
+                    curve: {
+                      start: [0.505, 6.486911076],
+                      segments: [{ line: [0.397525746, 9.04] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: {
+                      start: [0.397525746, 9.04],
+                      segments: [{ line: [0.395, 9.1] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.505, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.01, height: 9.1, thickness: 0.505 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 134 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.01 },
+        { name: "top", position: [0, 0, 9.1], direction: [0, 0, 1], size: 0.79 },
+        {
+          name: "engine_1",
+          position: [0, 0, 0],
+          direction: [0, 0, -1],
+          size: 0.36800000000000005,
+        },
+        { name: "fin_1", position: [0.505, 0, 1.6], direction: [1, 0, 0], size: 1.6 },
+        { name: "fin_2", position: [0, 0.505, 1.6], direction: [0, 1, 0], size: 1.6 },
+        { name: "fin_3", position: [-0.505, 0, 1.6], direction: [-1, 0, 0], size: 1.6 },
+        { name: "fin_4", position: [0, -0.505, 1.6], direction: [0, -1, 0], size: 1.6 },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 1.01 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/interstage": {
+            color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+            finish: "composite",
+          },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "algol_engine_1", on: "algol.engine_1", by: "top", template: "Algol-I" },
+    {
+      id: "algol_fin_1",
+      name: "Fin",
+      on: "algol.fin_1",
+      by: "root",
+      shape: {
+        wing: {
+          root_chord: 1.6,
+          tip_chord: 1,
+          span: 0.6,
+          airfoil: { plate: { thickness: 0.02 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "algol_fin_2",
+      name: "Fin",
+      on: "algol.fin_2",
+      by: "root",
+      roll: -180,
+      shape: {
+        wing: {
+          root_chord: 1.6,
+          tip_chord: 1,
+          span: 0.6,
+          airfoil: { plate: { thickness: 0.02 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "algol_fin_3",
+      name: "Fin",
+      on: "algol.fin_3",
+      by: "root",
+      roll: -180,
+      shape: {
+        wing: {
+          root_chord: 1.6,
+          tip_chord: 1,
+          span: 0.6,
+          airfoil: { plate: { thickness: 0.02 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "algol_fin_4",
+      name: "Fin",
+      on: "algol.fin_4",
+      by: "root",
+      shape: {
+        wing: {
+          root_chord: 1.6,
+          tip_chord: 1,
+          span: 0.6,
+          airfoil: { plate: { thickness: 0.02 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "algol_tank_1",
+      name: "Solid Grain",
+      on: "algol.tank_1",
+      shape: { cylinder_tank: { diameter: 1.01, length: 6.844 } },
+      components: [{ storage: { type: "Solid Grain", contents: { PUPE: 1 } } }],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+  ],
+}

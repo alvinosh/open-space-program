@@ -1,0 +1,19 @@
+{
+  "id": "T140",
+  "title": "Recolouring parts",
+  "kind": "feature",
+  "status": "backlog",
+  "area": "content",
+  "size": "XL",
+  "parent": "T071",
+  "depends_on": [
+    "T019",
+    "T031"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Backlog"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

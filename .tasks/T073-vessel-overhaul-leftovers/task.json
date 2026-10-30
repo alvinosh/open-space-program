@@ -1,0 +1,16 @@
+{
+  "id": "T073",
+  "title": "Vessel overhaul leftovers",
+  "kind": "epic",
+  "status": "todo",
+  "area": "content",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "vessel overhaul plan, carry-over notes (docs/vessel-overhaul.md)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

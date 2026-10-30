@@ -1,0 +1,339 @@
+// The Apollo command and service modules, as an assembly: placing it copies its
+// parts into a craft. The service module's six sector bays hold the SPS's four
+// tanks, the fuel cells and the RCS propellant round two helium spheres; four
+// RCS quads stand round it. Written by tools; the Saturn V and IB carry it.
+[
+  {
+    id: "apollo_csm",
+    name: "Apollo CSM",
+    parts: [
+      {
+        id: "command_module",
+        name: "Command Module",
+        shape: {
+          compound: [
+            {
+              name: "skin",
+              shape: {
+                revolved: {
+                  walls: [
+                    {
+                      name: "aft_skirt",
+                      curve: { start: [1.95, 0], segments: [{ line: [1.95, 1.085] }] },
+                    },
+                    {
+                      name: "floor",
+                      curve: { start: [0, 0], segments: [{ line: [1.95, 0] }] },
+                    },
+                    {
+                      name: "lid",
+                      curve: { start: [1.95, 1.085], segments: [{ line: [0, 1.085] }] },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              name: "equipment",
+              shape: { ring: { diameter: 3.9, height: 3.2, thickness: 1.95 } },
+              unseen: true,
+            },
+          ],
+        },
+        structure: { thickness: 0, mass: 1560 },
+        components: [{ container: {} }],
+        nodes: [
+          { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.9 },
+          { name: "top", position: [0, 0, 3.2], direction: [0, 0, 1], size: 3.9 },
+          { name: "pod", position: [0, 0, 1.085], direction: [0, 0, 1], size: 3.918 },
+        ],
+        paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+      },
+      {
+        id: "command_module_pod",
+        on: "command_module.pod",
+        template: "Apollo Command Module (CM)",
+      },
+      {
+        id: "service_module",
+        name: "Service Module",
+        on: "command_module.bottom",
+        by: "top",
+        shape: {
+          compound: [
+            {
+              name: "skin",
+              shape: {
+                revolved: {
+                  walls: [
+                    {
+                      name: "aft_skirt",
+                      curve: { start: [1.955, 0], segments: [{ line: [1.955, 0.5] }] },
+                    },
+                    {
+                      name: "shell",
+                      curve: { start: [1.955, 0.5], segments: [{ line: [1.955, 4.74] }] },
+                    },
+                    {
+                      name: "separation_ring",
+                      curve: { start: [1.955, 4.74], segments: [{ line: [1.955, 4.8] }] },
+                    },
+                    {
+                      name: "aft_bulkhead",
+                      curve: { start: [0, 0.15], segments: [{ line: [1.955, 0.15] }] },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              name: "beam_1",
+              shape: { box: { size: [1.355, 0.05, 4.6] } },
+              position: [1.084697, 0.62625, 0.15],
+              rotation: [0, 0, 30],
+            },
+            {
+              name: "beam_2",
+              shape: { box: { size: [1.355, 0.05, 4.6] } },
+              position: [0, 1.2525, 0.15],
+              rotation: [0, 0, 90],
+            },
+            {
+              name: "beam_3",
+              shape: { box: { size: [1.355, 0.05, 4.6] } },
+              position: [-1.084697, 0.62625, 0.15],
+              rotation: [0, 0, 150],
+            },
+            {
+              name: "beam_4",
+              shape: { box: { size: [1.355, 0.05, 4.6] } },
+              position: [-1.084697, -0.62625, 0.15],
+              rotation: [0, 0, 210],
+            },
+            {
+              name: "beam_5",
+              shape: { box: { size: [1.355, 0.05, 4.6] } },
+              position: [0, -1.2525, 0.15],
+              rotation: [0, 0, 270],
+            },
+            {
+              name: "beam_6",
+              shape: { box: { size: [1.355, 0.05, 4.6] } },
+              position: [1.084697, -0.62625, 0.15],
+              rotation: [0, 0, 330],
+            },
+          ],
+        },
+        structure: { material: "Al 2219-T87", thickness: 0.0015, mass: 3899.8 },
+        components: [{ container: {} }, { decoupler: { node: "top" } }],
+        nodes: [
+          { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.91 },
+          { name: "top", position: [0, 0, 4.8], direction: [0, 0, 1], size: 3.91 },
+          { name: "engine", position: [0, 0, 0.15], direction: [0, 0, -1], size: 1 },
+          { name: "helium_1", position: [0, 0, 0.35], direction: [0, 0, 1], size: 1 },
+          { name: "helium_2", position: [0, 0, 1.45], direction: [0, 0, 1], size: 1 },
+          {
+            name: "rcs_propellant",
+            position: [1.2, 0, 2.5],
+            direction: [0, 0, 1],
+            size: 1,
+          },
+          {
+            name: "oxidizer_sump",
+            position: [0.6, 1.03923, 0.2],
+            direction: [0, 0, 1],
+            size: 1.15,
+          },
+          {
+            name: "fuel_sump",
+            position: [-0.6, 1.03923, 0.2],
+            direction: [0, 0, 1],
+            size: 1.15,
+          },
+          {
+            name: "oxidizer_storage",
+            position: [-0.6, -1.03923, 0.2],
+            direction: [0, 0, 1],
+            size: 1.15,
+          },
+          {
+            name: "fuel_storage",
+            position: [0.6, -1.03923, 0.2],
+            direction: [0, 0, 1],
+            size: 1.15,
+          },
+          {
+            name: "fuel_cell_1",
+            position: [1.127631, -0.410424, 0.4],
+            direction: [0, 0, 1],
+            size: 0.5,
+          },
+          { name: "fuel_cell_2", position: [1.2, 0, 0.4], direction: [0, 0, 1], size: 0.5 },
+          {
+            name: "fuel_cell_3",
+            position: [1.127631, 0.410424, 0.4],
+            direction: [0, 0, 1],
+            size: 0.5,
+          },
+          {
+            name: "rcs_1",
+            position: [1.382394, 1.382394, 3.6],
+            direction: [0.7071067811865476, 0.7071067811865475, 0],
+            size: 0.3,
+          },
+          {
+            name: "rcs_2",
+            position: [-1.382394, 1.382394, 3.6],
+            direction: [-0.7071067811865475, 0.7071067811865476, 0],
+            size: 0.3,
+          },
+          {
+            name: "rcs_3",
+            position: [-1.382394, -1.382394, 3.6],
+            direction: [-0.7071067811865477, -0.7071067811865475, 0],
+            size: 0.3,
+          },
+          {
+            name: "rcs_4",
+            position: [1.382394, -1.382394, 3.6],
+            direction: [0.7071067811865474, -0.7071067811865477, 0],
+            size: 0.3,
+          },
+        ],
+        paint: {
+          color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563],
+          finish: "metal",
+          pieces: {
+            "skin/aft_skirt": {
+              color: [0.30000001192092896, 0.30000001192092896, 0.30000001192092896],
+              finish: "metal",
+            },
+          },
+        },
+      },
+      { id: "sps", on: "service_module.engine", by: "top", template: "AJ10-137" },
+      {
+        id: "oxidizer_sump",
+        name: "Oxidizer sump",
+        on: "service_module.oxidizer_sump",
+        shape: { cylinder_tank: { diameter: 1.15, length: 4.452468 } },
+        components: [
+          { storage: { type: "HP Refined Al Stringer Tank", contents: { MON1: 1 } } },
+        ],
+        paint: { color: [0.75, 0.75, 0.7200000286102295], finish: "metal" },
+      },
+      {
+        id: "fuel_sump",
+        name: "Fuel sump",
+        on: "service_module.fuel_sump",
+        shape: { cylinder_tank: { diameter: 1.15, length: 4.42645 } },
+        components: [
+          { storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 1 } } },
+        ],
+        paint: { color: [0.75, 0.75, 0.7200000286102295], finish: "metal" },
+      },
+      {
+        id: "oxidizer_storage",
+        name: "Oxidizer storage",
+        on: "service_module.oxidizer_storage",
+        shape: { cylinder_tank: { diameter: 1.15, length: 4.452468 } },
+        components: [
+          { storage: { type: "HP Refined Al Stringer Tank", contents: { MON1: 1 } } },
+        ],
+        paint: { color: [0.75, 0.75, 0.7200000286102295], finish: "metal" },
+      },
+      {
+        id: "fuel_storage",
+        name: "Fuel storage",
+        on: "service_module.fuel_storage",
+        shape: { cylinder_tank: { diameter: 1.15, length: 4.42645 } },
+        components: [
+          { storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 1 } } },
+        ],
+        paint: { color: [0.75, 0.75, 0.7200000286102295], finish: "metal" },
+      },
+      {
+        id: "helium_1",
+        name: "Helium tank",
+        on: "service_module.helium_1",
+        shape: { sphere: { diameter: 1 } },
+        components: [{ storage: { type: "COPV", contents: { Helium: 1 } } }],
+        paint: { color: [0.75, 0.75, 0.7200000286102295], finish: "metal" },
+      },
+      {
+        id: "helium_2",
+        name: "Helium tank",
+        on: "service_module.helium_2",
+        shape: { sphere: { diameter: 1 } },
+        components: [{ storage: { type: "COPV", contents: { Helium: 1 } } }],
+        paint: { color: [0.75, 0.75, 0.7200000286102295], finish: "metal" },
+      },
+      {
+        id: "rcs_propellant",
+        name: "RCS propellant",
+        on: "service_module.rcs_propellant",
+        shape: { sphere: { diameter: 1 } },
+        components: [
+          {
+            storage: {
+              type: "HP Refined Al Stringer Tank",
+              contents: { Aerozine50: 0.385, NTO: 0.615 },
+            },
+          },
+        ],
+        paint: { color: [0.75, 0.75, 0.7200000286102295], finish: "metal" },
+      },
+      {
+        id: "fuel_cell_1",
+        name: "Fuel cell",
+        on: "service_module.fuel_cell_1",
+        shape: { box: { size: [0.5, 0.5, 1.1] } },
+        structure: { mass: 111 },
+        paint: { color: [0.550000011920929, 0.550000011920929, 0.5199999809265137] },
+      },
+      {
+        id: "fuel_cell_2",
+        name: "Fuel cell",
+        on: "service_module.fuel_cell_2",
+        shape: { box: { size: [0.5, 0.5, 1.1] } },
+        structure: { mass: 111 },
+        paint: { color: [0.550000011920929, 0.550000011920929, 0.5199999809265137] },
+      },
+      {
+        id: "fuel_cell_3",
+        name: "Fuel cell",
+        on: "service_module.fuel_cell_3",
+        shape: { box: { size: [0.5, 0.5, 1.1] } },
+        structure: { mass: 111 },
+        paint: { color: [0.550000011920929, 0.550000011920929, 0.5199999809265137] },
+      },
+      {
+        id: "rcs_quad_1",
+        on: "service_module.rcs_1",
+        by: "mount",
+        roll: 180,
+        template: "Hypergolic Quad",
+      },
+      {
+        id: "rcs_quad_2",
+        on: "service_module.rcs_2",
+        by: "mount",
+        roll: 180,
+        template: "Hypergolic Quad",
+      },
+      {
+        id: "rcs_quad_3",
+        on: "service_module.rcs_3",
+        by: "mount",
+        template: "Hypergolic Quad",
+      },
+      {
+        id: "rcs_quad_4",
+        on: "service_module.rcs_4",
+        by: "mount",
+        template: "Hypergolic Quad",
+      },
+    ],
+    free: "service_module.bottom",
+  },
+]

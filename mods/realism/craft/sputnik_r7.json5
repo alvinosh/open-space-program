@@ -1,0 +1,661 @@
+// Sputnik (R-7 8K71PS) (1957).
+// The R-7's four strap-ons and core carry PS-1, the first satellite (83.6 kg). Built
+// from plain parts: each strap-on is the `r7_strap_on_8k71ps` assembly
+// (mods/realism/assemblies/boosters.json5) placed on the core.
+{
+  id: "sputnik_r7",
+  name: "Sputnik (R-7 8K71PS)",
+  parts: [
+    {
+      id: "sputnik",
+      name: "Sputnik",
+      shape: {
+        compound: [
+          {
+            name: "adapter",
+            shape: {
+              revolved: {
+                walls: [
+                  { name: "floor", curve: { start: [0, 0], segments: [{ line: [1, 0] }] } },
+                  {
+                    name: "adapter",
+                    curve: {
+                      start: [1, 0],
+                      segments: [{ line: [1, 0.12] }, { line: [0.5, 0.9] }],
+                    },
+                  },
+                  {
+                    name: "deck",
+                    curve: { start: [0.5, 0.9], segments: [{ line: [0, 0.9] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 2, height: 3, thickness: 1 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 3000 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2 },
+        { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 1 },
+        { name: "fairing_1", position: [1, 0, 0], direction: [0, 0, 1], size: 2 },
+        { name: "fairing_2", position: [-1, 0, 0], direction: [0, 0, 1], size: 2 },
+        {
+          name: "payload_1",
+          position: [0, 0, 0.9],
+          direction: [0, 0, 1],
+          size: 1.2727922061357855,
+        },
+        {
+          name: "panel_1",
+          position: [0.5, 0, 0.984],
+          direction: [0, 0, 1],
+          size: 0.8115417426109394,
+        },
+        {
+          name: "panel_2",
+          position: [-0.5, 0, 0.984],
+          direction: [0, 0, 1],
+          size: 0.8115417426109394,
+        },
+        { name: "antenna_1", position: [0, 0, 3.05], direction: [0, 0, 1], size: 0.54 },
+      ],
+      paint: {
+        color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+        finish: "composite",
+      },
+    },
+    {
+      id: "sputnik_fairing_1",
+      name: "Fairing",
+      on: "sputnik.fairing_1",
+      shape: {
+        shell: {
+          bottom_diameter: 2,
+          sections: [
+            { length: 1.694269 },
+            { length: 2.6, top_diameter: 0, profile: "ogive" },
+          ],
+          span: [-90, 90],
+        },
+      },
+      structure: { thickness: 0.04, mass: 250 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "sputnik_fairing_2",
+      name: "Fairing",
+      on: "sputnik.fairing_2",
+      roll: -180,
+      shape: {
+        shell: {
+          bottom_diameter: 2,
+          sections: [
+            { length: 1.694269 },
+            { length: 2.6, top_diameter: 0, profile: "ogive" },
+          ],
+          span: [-90, 90],
+        },
+      },
+      structure: { thickness: 0.04, mass: 250 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "sputnik_payload_1",
+      name: "Payload",
+      on: "sputnik.payload_1",
+      shape: { box: { size: [0.9, 0.9, 2.1] } },
+      paint: { color: [0.8500000238418579, 0.6200000047683716, 0.25], finish: "metal" },
+    },
+    {
+      id: "sputnik_panel_1",
+      name: "Solar panel",
+      on: "sputnik.panel_1",
+      shape: { box: { size: [0.05, 0.81, 1.9320000000000002] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "sputnik_panel_2",
+      name: "Solar panel",
+      on: "sputnik.panel_2",
+      shape: { box: { size: [0.05, 0.81, 1.9320000000000002] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "sputnik_antenna_1",
+      name: "Antenna",
+      on: "sputnik.antenna_1",
+      shape: {
+        shell: {
+          bottom_diameter: 0.54,
+          sections: [{ length: 0.25, top_diameter: 0 }],
+          cap_bottom: true,
+        },
+      },
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "core_blok_a",
+      name: "Core (Blok A)",
+      on: "sputnik.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [1.33, 0], segments: [{ line: [1.33, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: {
+                      start: [1.33, 0.55],
+                      segments: [
+                        { line: [1.33, 14] },
+                        { line: [1.08, 19] },
+                        { line: [1.475, 22] },
+                        { line: [1.475, 26.6] },
+                        { line: [1, 27.74] },
+                      ],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [1, 27.74], segments: [{ line: [1, 27.8] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [1.33, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 2.95, height: 27.8, thickness: 1.475 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 4350 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.66 },
+        { name: "top", position: [0, 0, 27.8], direction: [0, 0, 1], size: 2 },
+        { name: "engine_1", position: [0, 0, 0], direction: [0, 0, -1], size: 1 },
+        { name: "tank_1", position: [0, 0, 0.3], direction: [0, 0, 1], size: 2.6 },
+        { name: "tank_2", position: [0, 0, 22], direction: [0, 0, 1], size: 2.9 },
+        {
+          name: "booster_1",
+          position: [2.72, 0, 17.248],
+          direction: [0, 0, -1],
+          size: 2.68,
+        },
+        {
+          name: "booster_2",
+          position: [0, 2.72, 17.248],
+          direction: [0, 0, -1],
+          size: 2.68,
+        },
+        {
+          name: "booster_3",
+          position: [-2.72, 0, 17.248],
+          direction: [0, 0, -1],
+          size: 2.68,
+        },
+        {
+          name: "booster_4",
+          position: [0, -2.72, 17.248],
+          direction: [0, 0, -1],
+          size: 2.68,
+        },
+      ],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    {
+      id: "core_blok_a_engine_1",
+      on: "core_blok_a.engine_1",
+      by: "top",
+      template: "RD-108-8D75PS",
+    },
+    {
+      id: "core_blok_a_tank_1",
+      name: "Al Stringer Tank",
+      on: "core_blok_a.tank_1",
+      shape: { cylinder_tank: { diameter: 2.6, length: 13.28276 } },
+      components: [
+        {
+          storage: {
+            type: "Al Stringer Tank",
+            contents: { Kerosene: 0.295, LqdOxygen: 0.705 },
+          },
+        },
+      ],
+      paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
+    },
+    {
+      id: "core_blok_a_tank_2",
+      name: "Al Stringer Tank",
+      on: "core_blok_a.tank_2",
+      shape: { cylinder_tank: { diameter: 2.9, length: 4.6 } },
+      components: [
+        {
+          storage: {
+            type: "Al Stringer Tank",
+            contents: { Kerosene: 0.295, LqdOxygen: 0.705 },
+          },
+        },
+      ],
+      paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
+    },
+    {
+      id: "blok_b_body",
+      name: "Strap-on",
+      on: "core_blok_a.booster_1",
+      by: "attach",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [1.34, 0], segments: [{ line: [1.34, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [1.34, 0.55], segments: [{ line: [1.34, 0.947523] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: { start: [1.34, 7.316525], segments: [{ line: [1.34, 8.5] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [1.34, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "nose",
+            shape: {
+              lofted: {
+                name: "cone",
+                section: { regular: { sides: 48, diameter: 1 } },
+                stations: [
+                  { z: 8.5, scale: [2.68, 2.68] },
+                  { z: 19.6, offset: [-1.39, 0], scale: [0.5, 0.5] },
+                ],
+                fill: "cell",
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 2.68, height: 19.6, thickness: 1.34 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 1660.1 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
+        { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 17.248], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 1.608 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 2.68 },
+      ],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+        pieces: {
+          "nose/cone": {
+            color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+          },
+          "skin/engine_section": { finish: "composite" },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "blok_b_engine", on: "blok_b_body.engine", by: "top", template: "RD-107-8D74PS" },
+    {
+      id: "blok_b_tank",
+      name: "Al Stringer Tank",
+      on: "blok_b_body.tank",
+      shape: { cylinder_tank: { diameter: 2.64, length: 8.264048 } },
+      components: [
+        {
+          storage: {
+            type: "Al Stringer Tank",
+            contents: { Kerosene: 0.28823, LqdOxygen: 0.71177 },
+          },
+        },
+      ],
+      paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
+    },
+    {
+      id: "blok_v_body",
+      name: "Strap-on",
+      on: "core_blok_a.booster_2",
+      by: "attach",
+      roll: -90,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [1.34, 0], segments: [{ line: [1.34, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [1.34, 0.55], segments: [{ line: [1.34, 0.947523] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: { start: [1.34, 7.316525], segments: [{ line: [1.34, 8.5] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [1.34, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "nose",
+            shape: {
+              lofted: {
+                name: "cone",
+                section: { regular: { sides: 48, diameter: 1 } },
+                stations: [
+                  { z: 8.5, scale: [2.68, 2.68] },
+                  { z: 19.6, offset: [-1.39, 0], scale: [0.5, 0.5] },
+                ],
+                fill: "cell",
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 2.68, height: 19.6, thickness: 1.34 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 1660.1 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
+        { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 17.248], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 1.608 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 2.68 },
+      ],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+        pieces: {
+          "nose/cone": {
+            color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+          },
+          "skin/engine_section": { finish: "composite" },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "blok_v_engine", on: "blok_v_body.engine", by: "top", template: "RD-107-8D74PS" },
+    {
+      id: "blok_v_tank",
+      name: "Al Stringer Tank",
+      on: "blok_v_body.tank",
+      shape: { cylinder_tank: { diameter: 2.64, length: 8.264048 } },
+      components: [
+        {
+          storage: {
+            type: "Al Stringer Tank",
+            contents: { Kerosene: 0.28823, LqdOxygen: 0.71177 },
+          },
+        },
+      ],
+      paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
+    },
+    {
+      id: "blok_g_body",
+      name: "Strap-on",
+      on: "core_blok_a.booster_3",
+      by: "attach",
+      roll: -180,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [1.34, 0], segments: [{ line: [1.34, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [1.34, 0.55], segments: [{ line: [1.34, 0.947523] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: { start: [1.34, 7.316525], segments: [{ line: [1.34, 8.5] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [1.34, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "nose",
+            shape: {
+              lofted: {
+                name: "cone",
+                section: { regular: { sides: 48, diameter: 1 } },
+                stations: [
+                  { z: 8.5, scale: [2.68, 2.68] },
+                  { z: 19.6, offset: [-1.39, 0], scale: [0.5, 0.5] },
+                ],
+                fill: "cell",
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 2.68, height: 19.6, thickness: 1.34 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 1660.1 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
+        { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 17.248], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 1.608 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 2.68 },
+      ],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+        pieces: {
+          "nose/cone": {
+            color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+          },
+          "skin/engine_section": { finish: "composite" },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "blok_g_engine", on: "blok_g_body.engine", by: "top", template: "RD-107-8D74PS" },
+    {
+      id: "blok_g_tank",
+      name: "Al Stringer Tank",
+      on: "blok_g_body.tank",
+      shape: { cylinder_tank: { diameter: 2.64, length: 8.264048 } },
+      components: [
+        {
+          storage: {
+            type: "Al Stringer Tank",
+            contents: { Kerosene: 0.28823, LqdOxygen: 0.71177 },
+          },
+        },
+      ],
+      paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
+    },
+    {
+      id: "blok_d_body",
+      name: "Strap-on",
+      on: "core_blok_a.booster_4",
+      by: "attach",
+      roll: -270,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [1.34, 0], segments: [{ line: [1.34, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [1.34, 0.55], segments: [{ line: [1.34, 0.947523] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: { start: [1.34, 7.316525], segments: [{ line: [1.34, 8.5] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [1.34, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "nose",
+            shape: {
+              lofted: {
+                name: "cone",
+                section: { regular: { sides: 48, diameter: 1 } },
+                stations: [
+                  { z: 8.5, scale: [2.68, 2.68] },
+                  { z: 19.6, offset: [-1.39, 0], scale: [0.5, 0.5] },
+                ],
+                fill: "cell",
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 2.68, height: 19.6, thickness: 1.34 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 1660.1 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
+        { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 17.248], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 1.608 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 2.68 },
+      ],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+        pieces: {
+          "nose/cone": {
+            color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137],
+          },
+          "skin/engine_section": { finish: "composite" },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "blok_d_engine", on: "blok_d_body.engine", by: "top", template: "RD-107-8D74PS" },
+    {
+      id: "blok_d_tank",
+      name: "Al Stringer Tank",
+      on: "blok_d_body.tank",
+      shape: { cylinder_tank: { diameter: 2.64, length: 8.264048 } },
+      components: [
+        {
+          storage: {
+            type: "Al Stringer Tank",
+            contents: { Kerosene: 0.28823, LqdOxygen: 0.71177 },
+          },
+        },
+      ],
+      paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
+    },
+  ],
+}

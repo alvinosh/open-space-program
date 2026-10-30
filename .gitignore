@@ -1,0 +1,14 @@
+/target
+.DS_Store
+# Downloads for the terrain bake (cargo run -p osp_bake --release).
+/.bake-cache/
+# Baked terrain is generated, and large: keep only the README.
+/assets/core/terrain/*/
+# The baked star background (cargo run -p osp_bake --release -- --sky).
+/assets/core/sky/*.png
+# Python caches from the Blender model scripts.
+__pycache__/
+
+*.txt
+*.glb
+scripts

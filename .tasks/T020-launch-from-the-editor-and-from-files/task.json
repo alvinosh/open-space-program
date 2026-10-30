@@ -1,0 +1,18 @@
+{
+  "id": "T020",
+  "title": "Launch from the editor and from files",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [
+    "T019"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E8)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

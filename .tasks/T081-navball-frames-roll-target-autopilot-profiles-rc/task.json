@@ -1,0 +1,16 @@
+{
+  "id": "T081",
+  "title": "Navball frames, roll target, autopilot profiles, RCS modes",
+  "kind": "feature",
+  "status": "todo",
+  "area": "ui",
+  "size": "M",
+  "parent": "T061",
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 1"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

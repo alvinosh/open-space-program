@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smoke test report</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0e1116; --panel: #161b22; --panel2: #1c232c; --line: #2a333f; --text: #e6edf3; --dim: #8b98a7;
+  --pass: #3fb27f; --fail: #f0616d; --known: #e0a43a; --gap: #8c96a3; --bridged: #5ea2f0; --info: #6f7f92;
+  --accent: #2fb7b0;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f5f7fa; --panel: #ffffff; --panel2: #eef2f6; --line: #d5dce4; --text: #18202a; --dim: #5b6877;
+    --pass: #1f8a5b; --fail: #d1303f; --known: #b87a12; --gap: #6b7684; --bridged: #2a74cf; --info: #667587;
+    --accent: #12857f;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f7fa; --panel: #ffffff; --panel2: #eef2f6; --line: #d5dce4; --text: #18202a; --dim: #5b6877;
+  --pass: #1f8a5b; --fail: #d1303f; --known: #b87a12; --gap: #6b7684; --bridged: #2a74cf; --info: #667587;
+  --accent: #12857f;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 80px; }
+h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+h2 { font-size: 17px; margin: 40px 0 12px; letter-spacing: 0.01em; }
+h2 small { color: var(--dim); font-weight: 400; margin-left: 8px; }
+p { margin: 0 0 8px; }
+.dim { color: var(--dim); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+a { color: var(--accent); }
+header { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; justify-content: space-between; }
+.counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.count { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; min-width: 84px; }
+.count b { display: block; font-size: 22px; line-height: 1.1; }
+.count span { font-size: 12px; color: var(--dim); }
+.banner { background: color-mix(in srgb, var(--fail) 14%, var(--panel)); border: 1px solid var(--fail); border-radius: 8px; padding: 10px 14px; margin-top: 16px; }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; border-radius: 99px; padding: 1px 9px; color: #fff; white-space: nowrap; }
+.pill.pass { background: var(--pass); } .pill.fail { background: var(--fail); } .pill.known { background: var(--known); }
+.pill.gap { background: var(--gap); } .pill.bridged { background: var(--bridged); } .pill.info { background: var(--info); }
+.pill.passed { background: var(--pass); } .pill.failed { background: var(--fail); } .pill.partial { background: var(--known); }
+.pill.not_reached { background: var(--gap); }
+/* phases */
+.phases { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.phase { text-align: left; background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--gap); border-radius: 8px; padding: 10px 12px; color: inherit; font: inherit; cursor: pointer; }
+.phase:hover, .phase.on { border-color: var(--accent); }
+.phase.passed { border-top-color: var(--pass); } .phase.failed { border-top-color: var(--fail); }
+.phase.partial { border-top-color: var(--known); } .phase.not_reached { opacity: .65; }
+.phase h3 { margin: 0 0 2px; font-size: 14px; }
+.phase .when { font-size: 12px; color: var(--dim); }
+.phase .goal { font-size: 12.5px; color: var(--dim); margin-top: 6px; }
+.phase .nums { font-size: 12.5px; margin-top: 6px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+button.chip { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 99px; padding: 3px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
+button.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+input[type=search] { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font: inherit; min-width: 220px; }
+/* charts */
+.charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: 12px; }
+@media (max-width: 640px) { .charts { grid-template-columns: 1fr; } }
+.chart { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px 4px; position: relative; }
+.chart h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
+.chart .legend { font-size: 12px; color: var(--dim); display: flex; gap: 12px; flex-wrap: wrap; }
+.chart .legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+.chart canvas { width: 100%; height: 190px; display: block; }
+.tip { position: absolute; pointer-events: none; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; white-space: nowrap; display: none; z-index: 2; }
+/* tables */
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--dim); font-weight: 600; background: var(--panel2); position: sticky; top: 0; }
+tr:last-child td { border-bottom: 0; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.scroll { max-height: 520px; overflow: auto; border-radius: 8px; border: 1px solid var(--line); }
+.scroll table { border: 0; }
+.systems { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.system { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--gap); border-radius: 8px; padding: 10px 12px; }
+.system.works { border-left-color: var(--pass); } .system.failing { border-left-color: var(--fail); }
+.system.partial { border-left-color: var(--known); }
+.system h3 { margin: 0 0 4px; font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
+.system ul { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--dim); }
+.tag { font-size: 11.5px; padding: 0 6px; border-radius: 4px; background: var(--panel2); color: var(--dim); border: 1px solid var(--line); margin-right: 4px; }
+footer { margin-top: 48px; color: var(--dim); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div>
+    <h1 id="title"></h1>
+    <p class="dim" id="summary"></p>
+    <p class="dim mono" id="meta"></p>
+  </div>
+  <div class="counts" id="counts"></div>
+</header>
+<div id="banner"></div>
+
+<h2>Mission timeline <small>click a phase to zoom the charts and findings to it</small></h2>
+<div class="phases" id="phases"></div>
+
+<h2>Telemetry <small id="viewlabel"></small></h2>
+<div class="bar"><button class="chip" id="whole">Whole mission</button></div>
+<div class="charts" id="charts"></div>
+
+<h2>Systems <small>what the sim modelled, from the findings</small></h2>
+<div class="systems" id="systems"></div>
+
+<h2>Findings <small id="findlabel"></small></h2>
+<div class="bar" id="filters"></div>
+<div class="scroll"><table id="findings"><thead><tr><th>Result</th><th>System</th><th>Check</th><th>Detail</th><th>MET</th></tr></thead><tbody></tbody></table></div>
+
+<h2>The craft, part by part <small id="craftlabel"></small></h2>
+<div class="scroll"><table id="craft"><thead><tr><th>Part</th><th class="num">Mass (kg)</th><th>What the sim runs for it</th><th>Notes</th></tr></thead><tbody></tbody></table></div>
+
+<h2>Event log</h2>
+<div class="bar"><input type="search" id="eventfilter" placeholder="filter events"></div>
+<div class="scroll"><table id="events"><thead><tr><th>MET</th><th>Phase</th><th>Event</th></tr></thead><tbody></tbody></table></div>
+
+<footer id="footer"></footer>
+</main>
+
+<script id="data" type="application/json">/*DATA*/null</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const STATUS = { pass: "Pass", fail: "Fail", known: "Known issue", gap: "Not modelled", bridged: "Bridged", info: "Info" };
+const AREAS = { build: "Build", structure: "Structure", propulsion: "Propulsion", staging: "Staging", control: "Guidance & control", aero: "Aerodynamics", orbit: "Orbits & navigation", power: "Electrical power", avionics: "Avionics", comms: "Communications", thermal: "Heating & entry", recovery: "Recovery", docking: "Docking", landing: "Landing", crew: "Crew & life support" };
+const OUTCOME = { passed: "Passed", failed: "Failed", partial: "Partial", not_reached: "Not reached" };
+
+function fmtMet(s) {
+  if (s == null) return "";
+  const sign = s < 0 ? "-" : "+", a = Math.abs(Math.round(s));
+  const d = Math.floor(a / 86400), h = Math.floor(a % 86400 / 3600), m = Math.floor(a % 3600 / 60), x = a % 60;
+  const p = (n) => String(n).padStart(2, "0");
+  return `T${sign}${d ? d + "d " : ""}${p(h)}:${p(m)}:${p(x)}`;
+}
+function fmtSpan(s) {
+  if (s == null) return "";
+  if (s < 120) return `${s.toFixed(0)} s`;
+  if (s < 7200) return `${(s / 60).toFixed(1)} min`;
+  if (s < 172800) return `${(s / 3600).toFixed(1)} h`;
+  return `${(s / 86400).toFixed(1)} d`;
+}
+const num = (x, d = 0) => x.toLocaleString(undefined, { maximumFractionDigits: d });
+
+// --- header -------------------------------------------------------------------------------
+document.title = `${D.mission.title} · smoke test`;
+$("title").textContent = D.mission.title;
+$("summary").textContent = D.mission.summary;
+$("meta").textContent = `scenario ${D.mission.scenario} · craft ${D.mission.craft} · run ${D.generated}`;
+for (const [k, label] of [["pass", "passed"], ["fail", "failed"], ["known", "known issues"], ["gap", "not modelled"], ["bridged", "bridged"]]) {
+  const c = el("div", "count"); const b = el("b", null, D.counts[k]); b.style.color = `var(--${k})`;
+  c.append(b, el("span", null, label)); $("counts").append(c);
+}
+if (D.stopped) {
+  const reached = D.phases.filter(p => p.outcome !== "not_reached").length;
+  const b = el("div", "banner");
+  b.append(el("b", null, "The script stopped early. "), document.createTextNode(`It got through ${reached} of ${D.phases.length} phases; the last check that failed is under Findings. Phases after it were not flown.`));
+  $("banner").append(b);
+}
+
+// --- view (zoom) ---------------------------------------------------------------------------
+const S = D.samples, T = S.t || [];
+let view = { from: T[0] ?? 0, to: T[T.length - 1] ?? 1, phase: null };
+const redraw = [];
+function setView(phase) {
+  if (phase && phase.started != null) {
+    const end = phase.ended ?? T[T.length - 1];
+    const pad = Math.max((end - phase.started) * 0.04, 1);
+    view = { from: phase.started - pad, to: end + pad, phase: phase.id };
+  } else view = { from: T[0], to: T[T.length - 1], phase: null };
+  document.querySelectorAll(".phase").forEach(p => p.classList.toggle("on", p.dataset.id === view.phase));
+  $("viewlabel").textContent = phase ? phase.title : "whole mission";
+  $("whole").classList.toggle("on", !phase);
+  redraw.forEach(f => f());
+  renderFindings();
+}
+
+// --- phases --------------------------------------------------------------------------------
+for (const p of D.phases) {
+  const b = el("button", `phase ${p.outcome}`); b.dataset.id = p.id;
+  const h = el("h3"); h.append(document.createTextNode(p.title + " "), el("span", `pill ${p.outcome}`, OUTCOME[p.outcome]));
+  b.append(h);
+  if (p.started != null) {
+    b.append(el("div", "when mono", `${fmtMet(p.started)} · ${fmtSpan((p.ended ?? p.started) - p.started)}`));
+    const parts = [];
+    if (p.burn_time > 0) parts.push(`burn ${fmtSpan(p.burn_time)}`);
+    if (p.delta_v > 1) parts.push(`${num(p.delta_v)} m/s`);
+    if (p.mass_start > 0) parts.push(`${num(p.mass_start / 1000)} → ${num(p.mass_end / 1000)} t`);
+    if (parts.length) b.append(el("div", "nums mono", parts.join(" · ")));
+  }
+  b.append(el("div", "goal", p.goal));
+  b.onclick = () => setView(view.phase === p.id ? null : p);
+  $("phases").append(b);
+}
+$("whole").onclick = () => setView(null);
+
+// --- charts --------------------------------------------------------------------------------
+const C = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const PALETTE = ["#2fb7b0", "#e0a43a", "#5ea2f0", "#f0616d", "#a98bf0"];
+const CHARTS = [
+  { title: "Altitude above the surface", unit: "km", series: [["altitude", "altitude", 1e-3]] },
+  { title: "Speed", unit: "m/s", series: [["orbital_speed", "relative to the centre", 1], ["speed", "relative to the ground", 1]] },
+  { title: "Acceleration", unit: "g", series: [["g", "proper acceleration", 1]] },
+  { title: "Thrust", unit: "MN", series: [["thrust", "thrust", 1e-6]] },
+  { title: "Mass and propellant", unit: "t", series: [["mass", "total mass", 1e-3], ["propellant", "main propellant", 1e-3], ["rcs_propellant", "RCS propellant", 1e-3]] },
+  { title: "Orbit", unit: "km", series: [["apoapsis", "apoapsis", 1e-3], ["periapsis", "periapsis", 1e-3]], clip: [-300, 800000] },
+  { title: "Dynamic pressure", unit: "kPa", series: [["q", "q", 1e-3]] },
+  { title: "Attitude", unit: "°", series: [["pitch", "nose above horizon", 1], ["aoa", "angle of attack", 1]] },
+  { title: "Distance from the Earth and the Moon", unit: "×1000 km", series: [["earth", "to the Earth", 1e-6], ["moon", "to the Moon", 1e-6]] },
+  { title: "Structure load", unit: "× limit", series: [["load", "most loaded part", 1]] },
+];
+function niceTicks(lo, hi, n) {
+  const span = hi - lo || 1, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) || raw;
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(v);
+  return { step, out };
+}
+function fmtTick(v) {
+  const a = Math.abs(v);
+  if (a >= 1e6) return `${+(v / 1e6).toPrecision(3)}M`;
+  if (a >= 1e4) return `${+(v / 1e3).toPrecision(3)}k`;
+  return `${+v.toPrecision(3)}`;
+}
+function axisLabel(v, range) {
+  if (range > 2 * 86400) return `${(v / 86400).toFixed(range > 10 * 86400 ? 0 : 1)} d`;
+  if (range > 7200 * 1.5) return `${(v / 3600).toFixed(range > 36000 ? 0 : 1)} h`;
+  if (range > 300) return `${(v / 60).toFixed(0)} min`;
+  return `${v.toFixed(0)} s`;
+}
+function lowerBound(a, x) { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < x) lo = m + 1; else hi = m; } return lo; }
+
+function makeChart(def) {
+  const live = def.series.filter(s => S[s[0]] && S[s[0]].some(v => v != null && (s[0] !== "load" || v > 0) && (s[0] !== "rcs_propellant" || v > 0)));
+  if (!live.length) return;
+  const box = el("div", "chart"); const head = el("h3", null, `${def.title} (${def.unit})`);
+  const legend = el("div", "legend");
+  live.forEach((s, i) => { const l = el("span"); const sw = el("i"); sw.style.background = PALETTE[i]; l.append(sw, document.createTextNode(s[1])); legend.append(l); });
+  const canvas = el("canvas"); const tip = el("div", "tip");
+  box.append(head, legend, canvas, tip); $("charts").append(box);
+  let hover = null;
+  const draw = () => {
+    const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth, H = canvas.clientHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    const g = canvas.getContext("2d"); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+    const L = 48, R = 8, Tp = 6, B = 20, pw = W - L - R, ph = H - Tp - B;
+    const i0 = Math.max(0, lowerBound(T, view.from) - 1), i1 = Math.min(T.length, lowerBound(T, view.to) + 1);
+    let lo = Infinity, hi = -Infinity;
+    for (const s of live) for (let i = i0; i < i1; i++) {
+      let v = S[s[0]][i]; if (v == null) continue; v *= s[2];
+      if (def.clip && (v < def.clip[0] || v > def.clip[1])) continue;
+      lo = Math.min(lo, v); hi = Math.max(hi, v);
+    }
+    if (!isFinite(lo)) { lo = 0; hi = 1; }
+    if (hi - lo < 1e-9) { hi = lo + 1; }
+    const padv = (hi - lo) * 0.06; lo -= padv; hi += padv;
+    const X = (t) => L + (t - view.from) / (view.to - view.from) * pw, Y = (v) => Tp + (1 - (v - lo) / (hi - lo)) * ph;
+    g.font = "11px -apple-system, sans-serif"; g.fillStyle = C("--dim"); g.strokeStyle = C("--line"); g.lineWidth = 1;
+    // phase bands
+    D.phases.forEach((p, k) => {
+      if (p.started == null) return; const a = X(p.started), b = X(p.ended ?? view.to);
+      if (b < L || a > L + pw) return;
+      if (k % 2) { g.fillStyle = C("--panel2"); g.fillRect(Math.max(a, L), Tp, Math.min(b, L + pw) - Math.max(a, L), ph); }
+    });
+    g.fillStyle = C("--dim");
+    const yt = niceTicks(lo, hi, 4); g.textAlign = "right"; g.textBaseline = "middle";
+    for (const v of yt.out) { const y = Y(v); g.beginPath(); g.moveTo(L, y); g.lineTo(L + pw, y); g.stroke(); g.fillText(fmtTick(v), L - 5, y); }
+    const range = view.to - view.from, xt = niceTicks(view.from, view.to, 5); g.textAlign = "center"; g.textBaseline = "top";
+    const unit = range > 2 * 86400 ? 86400 : range > 10800 ? 3600 : range > 300 ? 60 : 1;
+    const xs = niceTicks(view.from / unit, view.to / unit, 5);
+    for (const u of xs.out) { const x = X(u * unit); g.fillText(axisLabel(u * unit, range), x, Tp + ph + 4); }
+    live.forEach((s, k) => {
+      g.strokeStyle = PALETTE[k]; g.lineWidth = 1.6; g.beginPath(); let pen = false;
+      for (let i = Math.max(0, i0 - 1); i < i1; i++) {
+        const raw = S[s[0]][i]; const v = raw == null ? null : raw * s[2];
+        if (v == null || (def.clip && (v < def.clip[0] || v > def.clip[1]))) { pen = false; continue; }
+        const x = X(T[i]), y = Y(v); if (pen) g.lineTo(x, y); else g.moveTo(x, y); pen = true;
+      }
+      g.stroke();
+    });
+    if (hover != null) {
+      const i = Math.min(T.length - 1, Math.max(0, lowerBound(T, hover)));
+      const x = X(T[i]); g.strokeStyle = C("--dim"); g.beginPath(); g.moveTo(x, Tp); g.lineTo(x, Tp + ph); g.stroke();
+      tip.style.display = "block"; tip.style.left = Math.min(x + 12, W - 170) + "px"; tip.style.top = "40px";
+      tip.textContent = ""; tip.append(el("div", "mono", fmtMet(T[i])));
+      live.forEach((s, k) => { const v = S[s[0]][i]; const row = el("div"); const sw = el("i"); sw.style.cssText = `display:inline-block;width:8px;height:3px;margin-right:6px;background:${PALETTE[k]}`; row.append(sw, document.createTextNode(`${s[1]}: ${v == null ? "—" : +(v * s[2]).toPrecision(4)} ${def.unit}`)); tip.append(row); });
+    } else tip.style.display = "none";
+    canvas._map = { L, pw };
+  };
+  canvas.addEventListener("mousemove", (e) => { const r = canvas.getBoundingClientRect(), m = canvas._map; hover = view.from + (e.clientX - r.left - m.L) / m.pw * (view.to - view.from); draw(); });
+  canvas.addEventListener("mouseleave", () => { hover = null; draw(); });
+  redraw.push(draw);
+}
+CHARTS.forEach(makeChart);
+window.addEventListener("resize", () => redraw.forEach(f => f()));
+
+// --- systems -------------------------------------------------------------------------------
+function renderSystems() {
+  const by = {};
+  for (const f of D.findings) (by[f.area] ||= []).push(f);
+  const order = Object.keys(AREAS).filter(a => by[a]);
+  for (const a of order) {
+    const fs = by[a], n = (s) => fs.filter(f => f.status === s).length;
+    const state = n("fail") ? "failing" : n("pass") && !n("gap") && !n("known") && !n("bridged") ? "works" : n("pass") ? "partial" : n("gap") || n("known") || n("bridged") ? "gap" : "works";
+    const label = { failing: "Failing", works: "Works", partial: "Partly works", gap: n("gap") || !n("known") ? "Not modelled" : "Known issue" }[state];
+    const card = el("div", `system ${state}`);
+    const h = el("h3"); h.append(el("span", null, AREAS[a]), el("span", `pill ${state === "failing" ? "fail" : state === "works" ? "pass" : state === "partial" ? "known" : "gap"}`, label));
+    card.append(h, el("div", "dim", ["pass", "fail", "known", "gap", "bridged"].filter(s => n(s)).map(s => `${n(s)} ${STATUS[s].toLowerCase()}`).join(" · ")));
+    const ul = el("ul");
+    for (const f of fs.filter(f => ["fail", "known", "gap", "bridged"].includes(f.status)).slice(0, 4)) ul.append(el("li", null, f.title));
+    if (ul.children.length) card.append(ul);
+    $("systems").append(card);
+  }
+}
+renderSystems();
+
+// --- findings ------------------------------------------------------------------------------
+let statusFilter = null;
+function renderFilters() {
+  const bar = $("filters"); bar.textContent = "";
+  const all = el("button", "chip" + (statusFilter ? "" : " on"), "All"); all.onclick = () => { statusFilter = null; renderFilters(); renderFindings(); }; bar.append(all);
+  for (const s of ["fail", "known", "gap", "bridged", "pass", "info"]) {
+    const n = D.findings.filter(f => f.status === s).length; if (!n) continue;
+    const b = el("button", "chip" + (statusFilter === s ? " on" : ""), `${STATUS[s]} · ${n}`); b.onclick = () => { statusFilter = s; renderFilters(); renderFindings(); }; bar.append(b);
+  }
+}
+function renderFindings() {
+  const body = $("findings").tBodies[0]; body.textContent = "";
+  const rows = D.findings.filter(f => (!statusFilter || f.status === statusFilter) && (!view.phase || f.phase === view.phase));
+  $("findlabel").textContent = `${rows.length} shown${view.phase ? " for the selected phase" : ""}`;
+  const rank = { fail: 0, known: 1, gap: 2, bridged: 3, info: 4, pass: 5 };
+  let last = null;
+  for (const f of rows) {
+    if (f.phase !== last && !view.phase) {
+      last = f.phase; const ph = D.phases.find(p => p.id === f.phase);
+      const tr = el("tr"); const td = el("td", "dim", ph ? ph.title : "Before the flight"); td.colSpan = 5; td.style.background = "var(--panel2)"; td.style.fontWeight = 600; tr.append(td); body.append(tr);
+    }
+    const tr = el("tr");
+    const a = el("td"); a.append(el("span", `pill ${f.status}`, STATUS[f.status]));
+    tr.append(a, el("td", null, AREAS[f.area] || f.area), el("td", null, f.title), el("td", "dim", f.detail), el("td", "mono", f.met == null ? "" : fmtMet(f.met)));
+    body.append(tr);
+  }
+}
+renderFilters();
+
+// --- craft ---------------------------------------------------------------------------------
+function renderCraft() {
+  const A = D.audit; if (!A) { $("craft").parentElement.style.display = "none"; return; }
+  $("craftlabel").textContent = `${A.parts.length} parts · ${num(A.dry / 1000, 1)} t dry · ${num(A.propellant / 1000, 0)} t of propellant · ${A.crew} crew`;
+  const body = $("craft").tBodies[0];
+  for (const p of A.parts) {
+    const tr = el("tr");
+    const name = el("td"); name.append(document.createTextNode(p.name || p.id), el("div", "dim mono", p.id));
+    const notes = el("td");
+    if (!p.catalogue) notes.append(el("span", "tag", "shaped by hand"));
+    if (p.lump != null) notes.append(el("span", "tag", `flat mass ${num(p.lump)} kg`));
+    if (p.inert) notes.append(el("span", "tag", `${p.inert}: does nothing`));
+    const runs = el("td"); if (p.runs.length) p.runs.forEach(r => runs.append(el("div", null, r))); else runs.append(el("span", "dim", "mass and shape only"));
+    tr.append(name, el("td", "num", num(p.mass)), runs, notes); body.append(tr);
+  }
+}
+renderCraft();
+
+// --- events --------------------------------------------------------------------------------
+function renderEvents() {
+  const body = $("events").tBodies[0]; body.textContent = ""; const q = $("eventfilter").value.toLowerCase();
+  for (const e of D.events) {
+    if (q && !e.text.toLowerCase().includes(q)) continue;
+    const tr = el("tr"); const ph = D.phases.find(p => p.id === e.phase);
+    tr.append(el("td", "mono", fmtMet(e.t)), el("td", "dim", ph ? ph.title : ""), el("td", null, e.text)); body.append(tr);
+  }
+}
+$("eventfilter").oninput = renderEvents; renderEvents();
+$("footer").textContent = `Generated by cargo smoke from tests/smoke. Real-mission figures are from the Apollo 11 flight journal and the Saturn V flight manual.`;
+setView(null);
+</script>
+</body>
+</html>

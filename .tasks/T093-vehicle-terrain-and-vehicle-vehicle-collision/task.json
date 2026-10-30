@@ -1,0 +1,18 @@
+{
+  "id": "T093",
+  "title": "Vehicle-terrain and vehicle-vehicle collision",
+  "kind": "feature",
+  "status": "todo",
+  "area": "physics",
+  "size": "L",
+  "parent": "T063",
+  "depends_on": [
+    "T092"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 4"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

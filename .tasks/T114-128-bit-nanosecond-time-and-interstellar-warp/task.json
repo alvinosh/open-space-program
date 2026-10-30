@@ -1,0 +1,18 @@
+{
+  "id": "T114",
+  "title": "128-bit nanosecond time and interstellar warp",
+  "kind": "feature",
+  "status": "todo",
+  "area": "orbit",
+  "size": "L",
+  "parent": "T066",
+  "depends_on": [
+    "T113"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 7"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

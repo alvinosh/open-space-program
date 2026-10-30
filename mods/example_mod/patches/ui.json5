@@ -1,0 +1,43 @@
+// Patches to the base game's UI, addressed by node id (`#id`) inside layout records.
+[
+  {
+    op: "insert",
+    collection: "layouts",
+    target: "flight_info",
+    path: "#flight.children",
+    value: {
+      widget: "row",
+      class: "kv",
+      children: [
+        // Core's icon: image paths resolve through every mod.
+        { widget: "image", class: "row_icon", image: "icons/telemetry/position.svg" },
+        { widget: "label", class: "key", text: "Lat / Lon" },
+        { widget: "label", text: "{vessel.latitude|fixed:3} / {vessel.longitude|fixed:3}" },
+      ],
+    },
+  },
+  {
+    op: "insert",
+    collection: "layouts",
+    target: "toolbar",
+    path: "#toolbar.children",
+    index: 0,
+    value: {
+      widget: "button",
+      class: "launcher_button",
+      tooltip: "Mission clock (F6)",
+      action: "ui.toggle:example_clock",
+      active: "ui.shown.example_clock",
+      // From this mod's folder.
+      children: [{ widget: "image", class: "launcher_icon", image: "icons/clock.png" }],
+    },
+  },
+  // Restyle: a different fuel/throttle bar colour.
+  {
+    op: "set",
+    collection: "themes",
+    target: "default",
+    path: "classes.bar_fill.background",
+    value: "#4fb3ff",
+  },
+]

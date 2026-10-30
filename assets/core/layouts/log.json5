@@ -1,0 +1,20 @@
+// Flight log, newest first.
+{
+  id: "log",
+  visible: false,
+  group: "flight",
+  root: {
+    widget: "window",
+    icon: "icons/log.svg",
+    title: "Flight log",
+    style: { left: "50%", margin: [0, 0, 0, -200], top: 150, width: 400 },
+    children: [
+      {
+        id: "log",
+        widget: "column",
+        repeat: "vessel.log",
+        children: [{ widget: "label", class: "dim", text: "[{item.time|clock}] {item.message}" }],
+      },
+    ],
+  },
+}

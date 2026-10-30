@@ -1,0 +1,18 @@
+{
+  "id": "T108",
+  "title": "Dense variant (3 186 bodies)",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "XL",
+  "parent": "T066",
+  "depends_on": [
+    "T107"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 7"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,23 @@
+// Altitude above sea level (top centre), and the situation; hover for the vessel's name.
+{
+  id: "altimeter",
+  group: "flight",
+  root: {
+    id: "altimeter",
+    widget: "panel",
+    class: "module",
+    style: { left: "50%", margin: [0, 0, 0, -100], top: 12, width: 200, align_items: "center", gap: 1, padding: [5, 12, 7, 12], radius: 10 },
+    tooltip: "{vessel.name}",
+    children: [
+      { widget: "label", class: "alt_readout", text: "{vessel.altitude|distance}" },
+      {
+        widget: "row",
+        style: { gap: 6 },
+        children: [
+          { widget: "column", class: "status_dot" },
+          { widget: "label", class: "dim", style: { font_size: 12 }, text: "{vessel.situation} · {vessel.body}" },
+        ],
+      },
+    ],
+  },
+}

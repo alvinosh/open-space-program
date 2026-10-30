@@ -1,0 +1,19 @@
+{
+  "id": "T094",
+  "title": "Explosions: shrapnel, shockwave, dents",
+  "kind": "feature",
+  "status": "todo",
+  "area": "structure",
+  "size": "L",
+  "parent": "T063",
+  "depends_on": [
+    "T051",
+    "T092"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 4"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

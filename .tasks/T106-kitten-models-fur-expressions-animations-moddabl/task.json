@@ -1,0 +1,18 @@
+{
+  "id": "T106",
+  "title": "Kitten models, fur, expressions, animations; moddable kittens",
+  "kind": "feature",
+  "status": "todo",
+  "area": "crew",
+  "size": "XL",
+  "parent": "T065",
+  "depends_on": [
+    "T104"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 6"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

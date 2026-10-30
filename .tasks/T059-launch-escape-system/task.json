@@ -1,0 +1,19 @@
+{
+  "id": "T059",
+  "title": "Launch escape system",
+  "kind": "feature",
+  "status": "todo",
+  "area": "propulsion",
+  "size": "M",
+  "parent": "T012",
+  "depends_on": [
+    "T029",
+    "T032"
+  ],
+  "refs": [
+    "docs/systems-plan.md (palette table, step 25)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

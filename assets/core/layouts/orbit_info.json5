@@ -1,0 +1,47 @@
+// Orbit window: opens by itself on leaving the atmosphere and closes on re-entering it (see
+// windows.rs); the launcher toggles it in between. Node ids (#orbit, #events) are stable for mods to insert rows.
+{
+  id: "orbit_info",
+  visible: false,
+  group: "flight",
+  dock: "right",
+  dock_order: 10,
+  root: {
+    widget: "window",
+    icon: "icons/orbit.svg",
+    title: "Orbit - {vessel.body}",
+    style: { width: 230 },
+    children: [
+      {
+        id: "orbit",
+        widget: "column",
+        children: [
+          { widget: "row", class: "kv", visible: "!orbit.escape", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/apoapsis.svg" }, { widget: "label", class: "key", text: "Apoapsis" }, { widget: "label", text: "{orbit.apoapsis|distance}" }] },
+          { widget: "row", class: "kv", visible: "orbit.escape", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/apoapsis.svg" }, { widget: "label", class: "key", text: "Apoapsis" }, { widget: "label", text: "escape" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/periapsis.svg" }, { widget: "label", class: "key", text: "Periapsis" }, { widget: "label", text: "{orbit.periapsis|distance}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/inclination.svg" }, { widget: "label", class: "key", text: "Inclination" }, { widget: "label", text: "{orbit.inclination|degrees}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/eccentricity.svg" }, { widget: "label", class: "key", text: "Eccentricity" }, { widget: "label", text: "{orbit.eccentricity|fixed:4}" }] },
+          { widget: "row", class: "kv", visible: "orbit.period", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/period.svg" }, { widget: "label", class: "key", text: "Period" }, { widget: "label", text: "{orbit.period|duration}" }] },
+          {
+            id: "warp_to",
+            widget: "row",
+            style: { gap: 4, margin: [4, 0, 0, 0] },
+            children: [
+              { widget: "label", class: "caption", text: "WARP" },
+              { widget: "button", class: "step_button", text: "Ap", action: "warp.to:ap", visible: "!orbit.escape" },
+              { widget: "button", class: "step_button", text: "Pe", action: "warp.to:pe" },
+              { widget: "button", class: "step_button", text: "SOI", action: "warp.to:soi", visible: "orbit.events" },
+              { widget: "button", class: "step_button", text: "Burn", action: "warp.to:burn", visible: "plan.count" },
+            ],
+          },
+          {
+            id: "events",
+            widget: "column",
+            repeat: "orbit.events",
+            children: [{ widget: "label", class: "warning", text: "{item.label} in {item.time_to|duration}" }],
+          },
+        ],
+      },
+    ],
+  },
+}

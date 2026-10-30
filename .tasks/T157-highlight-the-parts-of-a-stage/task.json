@@ -1,0 +1,19 @@
+{
+  "id": "T157",
+  "title": "Highlight the parts of a stage on the rocket",
+  "kind": "feature",
+  "status": "todo",
+  "area": "ui",
+  "size": "M",
+  "parent": "T152",
+  "depends_on": [
+    "T155"
+  ],
+  "refs": [
+    "crates/osp_game/src/vessel_render.rs",
+    "crates/osp_game/src/vessel_material.rs"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

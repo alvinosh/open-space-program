@@ -1,0 +1,266 @@
+// A two-part sailplane: a slim tail boom carrying the tailplane and fin, tapering up into
+// the cabin, which carries the wing. Nothing separates (`sequences: []`). Stick: pitch
+// (elevator), yaw (rudder) and roll (ailerons); trimmed to glide hands off at about 38 m/s.
+{
+  id: "glider",
+  name: "Kestrel",
+  parts: [
+    {
+      id: "cabin",
+      name: "Cabin",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [0.45, 0], segments: [{ line: [0.45, 3] }] },
+                  },
+                  {
+                    name: "floor",
+                    curve: { start: [0, 0], segments: [{ line: [0.45, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 0.9, height: 3, thickness: 0.45 } },
+            unseen: true,
+          },
+        ],
+      },
+      // Pilot, seat, canopy, instruments and the fuselage around them.
+      structure: { thickness: 0, mass: 330 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.9 },
+        { name: "top", position: [0, 0, 3], direction: [0, 0, 1], size: 0.9 },
+        {
+          name: "wing_1",
+          position: [0.45, 0, 1.1],
+          direction: [0.999999061395, -0.000017909647, 0.001369995621],
+          size: 1,
+        },
+        {
+          name: "wing_1_left",
+          position: [-0.45, 0, 1.1],
+          direction: [-0.999999061395, -0.000017909647, 0.001369995621],
+          size: 1,
+        },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    // A tangent-ogive nose, 1.3 diameters long.
+    {
+      id: "cabin_shell_1",
+      name: "Nose cone",
+      on: "cabin.top",
+      shape: {
+        shell: {
+          bottom_diameter: 0.9,
+          sections: [{ length: 1.17, top_diameter: 0, profile: "ogive" }],
+        },
+      },
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "cabin_wing_1",
+      name: "Wing",
+      on: "cabin.wing_1",
+      by: "root",
+      roll: 1.497943834,
+      shape: {
+        wing: {
+          root_chord: 1,
+          tip_chord: 0.45,
+          span: 6.9904067432820165,
+          sweep: 0.15,
+          dihedral: 3,
+          airfoil: { naca: { thickness: 0.15 } },
+        },
+      },
+      structure: { mass: 80 },
+      components: [
+        {
+          lifting_surface: {
+            control: { axes: ["roll"], chord: 0.22, span: [0.55, 0.95], deflection: 15 },
+          },
+        },
+      ],
+      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
+    },
+    {
+      id: "cabin_wing_1_left",
+      name: "Wing",
+      on: "cabin.wing_1_left",
+      by: "root",
+      roll: -1.497943834,
+      shape: {
+        mirrored: {
+          wing: {
+            root_chord: 1,
+            tip_chord: 0.45,
+            span: 6.9904067432820165,
+            sweep: 0.15,
+            dihedral: 3,
+            airfoil: { naca: { thickness: 0.15 } },
+          },
+        },
+      },
+      structure: { mass: 80 },
+      components: [
+        {
+          lifting_surface: {
+            control: { axes: ["roll"], chord: 0.22, span: [0.55, 0.95], deflection: 15 },
+          },
+        },
+      ],
+      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
+    },
+    {
+      id: "tail_boom",
+      name: "Tail boom",
+      on: "cabin.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  // Slim past the tail, then flaring out to the cabin.
+                  {
+                    name: "aft_skirt",
+                    curve: {
+                      start: [0.15, 0],
+                      segments: [{ line: [0.15, 1.2] }, { line: [0.45, 4.44] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [0.45, 4.44], segments: [{ line: [0.45, 4.5] }] },
+                  },
+                  {
+                    name: "floor",
+                    curve: { start: [0, 0], segments: [{ line: [0.15, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 0.3, height: 4.5, thickness: 0.15 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 45 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.3 },
+        { name: "top", position: [0, 0, 4.5], direction: [0, 0, 1], size: 0.9 },
+        { name: "wing_1", position: [0.15, 0, 0.9], direction: [1, 0, 0], size: 0.6 },
+        {
+          name: "wing_1_left",
+          position: [-0.15, 0, 0.9],
+          direction: [-1, 0, 0],
+          size: 0.6,
+        },
+        { name: "wing_2", position: [0, -0.15, 1.1], direction: [0, -1, 0], size: 0.9 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+        },
+      },
+    },
+    {
+      id: "tail_boom_wing_1",
+      name: "Tailplane",
+      on: "tail_boom.wing_1",
+      by: "root",
+      roll: -1.5,
+      shape: {
+        wing: {
+          root_chord: 0.6,
+          tip_chord: 0.4,
+          span: 1.3,
+          sweep: 0.15,
+          airfoil: { naca: { thickness: 0.1 } },
+        },
+      },
+      structure: { mass: 6 },
+      components: [
+        {
+          lifting_surface: {
+            control: { axes: ["pitch"], chord: 0.3, span: [0, 1], deflection: 15 },
+          },
+        },
+      ],
+      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
+    },
+    {
+      id: "tail_boom_wing_1_left",
+      name: "Tailplane",
+      on: "tail_boom.wing_1_left",
+      by: "root",
+      roll: 1.5,
+      shape: {
+        mirrored: {
+          wing: {
+            root_chord: 0.6,
+            tip_chord: 0.4,
+            span: 1.3,
+            sweep: 0.15,
+            airfoil: { naca: { thickness: 0.1 } },
+          },
+        },
+      },
+      structure: { mass: 6 },
+      components: [
+        {
+          lifting_surface: {
+            control: { axes: ["pitch"], chord: 0.3, span: [0, 1], deflection: 15 },
+          },
+        },
+      ],
+      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
+    },
+    {
+      id: "tail_boom_wing_2",
+      name: "Fin",
+      on: "tail_boom.wing_2",
+      by: "root",
+      shape: {
+        wing: {
+          root_chord: 0.9,
+          tip_chord: 0.5,
+          span: 1.1,
+          sweep: 0.4,
+          airfoil: { naca: { thickness: 0.1 } },
+        },
+      },
+      structure: { mass: 8 },
+      components: [
+        {
+          lifting_surface: {
+            control: { axes: ["yaw"], chord: 0.35, span: [0, 1], deflection: 20 },
+          },
+        },
+      ],
+      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
+    },
+  ],
+  sequences: [],
+}

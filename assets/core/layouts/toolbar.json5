@@ -1,0 +1,30 @@
+// The app launcher (an icon strip down the right edge): toggles the flight windows, KSP
+// style. Each button lights up while its window is open (`ui.shown.<layout>`) and names it
+// in a tooltip. Mods add their own windows here with an `insert` patch on
+// `#toolbar.children` (an `image` child relative to the mod root, and a `tooltip`).
+{
+  id: "toolbar",
+  group: "flight",
+  root: {
+    id: "toolbar",
+    widget: "column",
+    class: "launcher",
+    children: [
+      { widget: "button", class: "launcher_button", tooltip: "Flight", action: "ui.toggle:flight_info", active: "ui.shown.flight_info", children: [{ widget: "image", class: "launcher_icon", image: "icons/flight.svg", active: "ui.shown.flight_info" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Orbit", action: "ui.toggle:orbit_info", active: "ui.shown.orbit_info", children: [{ widget: "image", class: "launcher_icon", image: "icons/orbit.svg", active: "ui.shown.orbit_info" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Flight plan", action: "ui.toggle:flight_plan", active: "ui.shown.flight_plan", children: [{ widget: "image", class: "launcher_icon", image: "icons/plan.svg", active: "ui.shown.flight_plan" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Target", action: "ui.toggle:target_info", active: "ui.shown.target_info", children: [{ widget: "image", class: "launcher_icon", image: "icons/target.svg", active: "ui.shown.target_info" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Transfer planner (F4)", action: "ui.toggle:transfer_planner", active: "ui.shown.transfer_planner", children: [{ widget: "image", class: "launcher_icon", image: "icons/transfer.svg", active: "ui.shown.transfer_planner" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Vessel", action: "ui.toggle:vessel_info", active: "ui.shown.vessel_info", children: [{ widget: "image", class: "launcher_icon", image: "icons/vessel.svg", active: "ui.shown.vessel_info" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Resources", action: "ui.toggle:resources", active: "ui.shown.resources", children: [{ widget: "image", class: "launcher_icon", image: "icons/resources.svg", active: "ui.shown.resources" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Attitude", action: "ui.toggle:attitude_info", active: "ui.shown.attitude_info", children: [{ widget: "image", class: "launcher_icon", image: "icons/attitude.svg", active: "ui.shown.attitude_info" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Structure", action: "ui.toggle:structure_info", active: "ui.shown.structure_info", children: [{ widget: "image", class: "launcher_icon", image: "icons/structure.svg", active: "ui.shown.structure_info" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Flight log", action: "ui.toggle:log", active: "ui.shown.log", children: [{ widget: "image", class: "launcher_icon", image: "icons/log.svg", active: "ui.shown.log" }] },
+      { widget: "column", class: "launcher_divider" },
+      { widget: "button", class: "launcher_button", tooltip: "Map (M)", action: "view.toggle_map", active: "view.map", children: [{ widget: "image", class: "launcher_icon", image: "icons/map.svg", active: "view.map" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Mods (F2)", action: "ui.toggle:mods", active: "ui.shown.mods", children: [{ widget: "image", class: "launcher_icon", image: "icons/mods.svg", active: "ui.shown.mods" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Help (F1)", action: "ui.toggle:help", active: "ui.shown.help", children: [{ widget: "image", class: "launcher_icon", image: "icons/help.svg", active: "ui.shown.help" }] },
+      { widget: "button", class: "launcher_button", tooltip: "Menu (Esc)", action: "game.menu", children: [{ widget: "image", class: "launcher_icon", image: "icons/menu.svg" }] },
+    ],
+  },
+}

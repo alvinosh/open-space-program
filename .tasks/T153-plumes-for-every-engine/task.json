@@ -1,0 +1,18 @@
+{
+  "id": "T153",
+  "title": "Plumes for every engine",
+  "kind": "bug",
+  "status": "done",
+  "area": "rendering",
+  "size": "S",
+  "parent": "T152",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_game/src/plume.rs (PlumeDef::for_engine)",
+    "assets/core/plumes/stock.json5",
+    "mods/realism/engines"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": "2026-10-30"
+}

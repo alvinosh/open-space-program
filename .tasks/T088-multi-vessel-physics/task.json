@@ -1,0 +1,18 @@
+{
+  "id": "T088",
+  "title": "Multi-vessel physics",
+  "kind": "feature",
+  "status": "todo",
+  "area": "physics",
+  "size": "L",
+  "parent": "T062",
+  "depends_on": [
+    "T092"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 2"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

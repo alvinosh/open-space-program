@@ -1,0 +1,21 @@
+{
+  "id": "T036",
+  "title": "Avionics and guidance",
+  "kind": "feature",
+  "status": "todo",
+  "area": "avionics",
+  "size": "M",
+  "parent": "T005",
+  "depends_on": [
+    "T029",
+    "T032",
+    "T035"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 11, Avionics and guidance)",
+    "old issue list, issue 13 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

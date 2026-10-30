@@ -1,0 +1,19 @@
+{
+  "id": "T160",
+  "title": "Compact staging window",
+  "kind": "feature",
+  "status": "done",
+  "area": "ui",
+  "size": "S",
+  "parent": "T152",
+  "depends_on": [
+    "T155"
+  ],
+  "refs": [
+    "assets/core/layouts/staging.json5",
+    "assets/core/themes/default.json5"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": "2026-10-30"
+}

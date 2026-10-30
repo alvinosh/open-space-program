@@ -1,0 +1,18 @@
+{
+  "id": "T016",
+  "title": "Editor session, headless",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [
+    "T015"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E4, Design)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

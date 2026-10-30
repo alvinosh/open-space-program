@@ -1,0 +1,16 @@
+{
+  "id": "T107",
+  "title": "The 25-body Solar System",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "L",
+  "parent": "T066",
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 7"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

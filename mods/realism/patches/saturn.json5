@@ -1,0 +1,39 @@
+// Saturn V engines the importer's records lack. Written by hand.
+// The S-IVB lit twice, once for orbit and once to leave it for the Moon, so it gets a J-2
+// with two ignitions; the S-II's J-2 lit once. Both stages settled their propellant with
+// solid ullage motors before the first start (the S-II-Ullage record covers the S-II's);
+// the restart used the auxiliary propulsion system's ullage thrusters, which the Apollo
+// service module's RCS stands in for.
+[
+  {
+    op: "copy",
+    collection: "engines",
+    target: "J-2-230K",
+    new_id: "J-2-230K S-IVB",
+    value: {
+      ignitions: 2,
+      name: "J-2-230K S-IVB",
+      config: "J-2-230K S-IVB",
+      description: "The J-2 as the S-IVB flew it: lit for orbit, relit for the trans-lunar burn.",
+    },
+  },
+  {
+    op: "copy",
+    collection: "engines",
+    target: "S-II-Ullage",
+    new_id: "S-IVB-Ullage",
+    value: {
+      mass: 28.0,
+      thrust_vac: 15100.0,
+      thrust_sl: 12740.0,
+      length: 0.55,
+      exit_diameter: 0.25,
+      name: "S-IVB-Ullage",
+      config: "S-IVB-Ullage",
+      family: "SIVBUllageMotor",
+      title: "S-IVB Ullage Motor",
+      description: "One of the two solid ullage motors of the Saturn V S-IVB: 3,400 lbf for about four seconds, to settle its propellant before the first start.",
+      year: 1967,
+    },
+  },
+]

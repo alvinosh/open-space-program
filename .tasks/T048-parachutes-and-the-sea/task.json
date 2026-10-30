@@ -1,0 +1,20 @@
+{
+  "id": "T048",
+  "title": "Parachutes and the sea",
+  "kind": "feature",
+  "status": "todo",
+  "area": "recovery",
+  "size": "L",
+  "parent": "T009",
+  "depends_on": [
+    "T029",
+    "T032"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 23)",
+    "old issue list, issue 11 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

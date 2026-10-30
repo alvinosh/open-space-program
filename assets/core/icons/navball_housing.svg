@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="272" height="252" viewBox="0 0 272 252">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2b3b"/>
+      <stop offset="0.55" stop-color="#0f1a26"/>
+      <stop offset="1" stop-color="#0a121b"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a8d2f0" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#7aa2c8" stop-opacity="0.14"/>
+    </linearGradient>
+    <linearGradient id="well_edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#9cc8ec" stop-opacity="0.32"/>
+    </linearGradient>
+    <radialGradient id="well" cx="0.5" cy="0.42" r="0.6">
+      <stop offset="0.7" stop-color="#050a10"/>
+      <stop offset="1" stop-color="#02050a"/>
+    </radialGradient>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2e3f"/>
+      <stop offset="1" stop-color="#0d1722"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38e0c4" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#38e0c4" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#38e0c4" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <g opacity="0.97">
+    <!-- Silhouette: outlines first, fills over them, so only the outer half of each
+         stroke shows and the shapes read as one body. -->
+    <g fill="none" stroke="url(#edge)" stroke-width="2">
+      <circle cx="136" cy="122" r="112"/>
+    </g>
+    <circle cx="136" cy="122" r="112" fill="url(#body)"/>
+    <circle cx="136" cy="122" r="110.5" fill="none" stroke="#fff" stroke-opacity="0.05"/>
+    <!-- The well the ball sits in. -->
+    <circle cx="136" cy="122" r="90" fill="url(#well)"/>
+    <circle cx="136" cy="122" r="90" fill="none" stroke="url(#well_edge)" stroke-width="1.2"/>
+    <!-- Gauge scales: 0, 25, 50, 75 and 100 %. -->
+    <path d="M76.63 206.78L73.77 210.88M49.99 182.23L47.12 184.23M34.58 149.18L31.20 150.08M31.40 112.85L27.91 112.54M42.20 78.26L37.67 76.15M195.37 206.78L198.23 210.88M222.01 182.23L224.88 184.23M237.42 149.18L240.80 150.08M240.60 112.85L244.09 112.54M229.80 78.26L234.33 76.15" stroke="#cfe3f2" stroke-opacity="0.45" stroke-width="1.2" stroke-linecap="round"/>
+    <!-- Bezel round the ball. -->
+    <circle cx="136" cy="122" r="80.5" fill="none" stroke="#18242f" stroke-width="5"/>
+    <circle cx="136" cy="122" r="83.2" fill="none" stroke="#a8d2f0" stroke-opacity="0.16" stroke-width="0.8"/>
+    <!-- Speed tab and heading plate, mounted in front of the ring. -->
+    <rect x="80" y="1" width="112" height="35" rx="11" fill="url(#plate)" stroke="url(#edge)" stroke-width="1"/>
+    <rect x="114.0" y="1" width="44" height="1.6" rx="0.8" fill="url(#accent)"/>
+    <rect x="36" y="220" width="200" height="31" rx="11" fill="url(#plate)" stroke="url(#edge)" stroke-width="1"/>
+    <path d="M102.7 228v15M169.3 228v15" stroke="#fff" stroke-opacity="0.08"/>
+  </g>
+</svg>

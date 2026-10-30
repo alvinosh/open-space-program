@@ -1,0 +1,17 @@
+[package]
+name = "osp_ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+osp_mods = { workspace = true }
+thiserror = { workspace = true }
+# `.svg` UI images, rasterised at load (no SVG text or embedded bitmaps).
+resvg = { version = "0.47", default-features = false }
+
+[lints]
+workspace = true

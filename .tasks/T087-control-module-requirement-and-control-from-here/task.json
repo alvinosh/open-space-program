@@ -1,0 +1,18 @@
+{
+  "id": "T087",
+  "title": "Control-module requirement and 'control from here'",
+  "kind": "feature",
+  "status": "todo",
+  "area": "avionics",
+  "size": "S",
+  "parent": "T062",
+  "depends_on": [
+    "T036"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 2"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

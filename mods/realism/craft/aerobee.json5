@@ -1,0 +1,392 @@
+// Aerobee (1947).
+// Aerobee sounding rocket: the XASR-1 sustainer on an Aerojet 2.5KS-18000 booster, which
+// burns 2.5 s. Built by hand from plain parts. The sustainer lights with the booster (the
+// real one lit a second after launch, while the booster still burned), firing through the
+// vented adapter it stands on, so its propellant never floats; the booster falls away with
+// the adapter once it burns out.
+{
+  id: "aerobee",
+  name: "Aerobee",
+  parts: [
+    {
+      id: "aerobee",
+      name: "Aerobee",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.19, 0], segments: [{ line: [0.19, 1.134350288] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: { start: [0.19, 4.030649712], segments: [{ line: [0.19, 6] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.19, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 0.38, height: 6, thickness: 0.19 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 50 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.38 },
+        { name: "top", position: [0, 0, 6], direction: [0, 0, 1], size: 0.38 },
+        { name: "engine_1", position: [0, 0, 0], direction: [0, 0, -1], size: 0.5 },
+        { name: "fin_1", position: [0.19, 0, 0.8], direction: [1, 0, 0], size: 0.6 },
+        {
+          name: "fin_2",
+          position: [-0.095, 0.164544827, 0.8],
+          direction: [-0.5, 0.866025403784, 0],
+          size: 0.6,
+        },
+        {
+          name: "fin_3",
+          position: [-0.095, -0.164544827, 0.8],
+          direction: [-0.5, -0.866025403784, 0],
+          size: 0.6,
+        },
+        { name: "tank_1", position: [0, 0, 1], direction: [0, 0, 1], size: 0.38 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    {
+      id: "aerobee_shell_1",
+      name: "Nose cone",
+      on: "aerobee.top",
+      shape: {
+        shell: {
+          bottom_diameter: 0.38,
+          sections: [{ length: 1, top_diameter: 0, profile: "ogive" }],
+        },
+      },
+      // With the instruments it carried, about 70 kg.
+      structure: { mass: 70 },
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    { id: "aerobee_engine_1", on: "aerobee.engine_1", by: "top", template: "XASR-1" },
+    {
+      id: "aerobee_fin_1",
+      name: "Fin",
+      on: "aerobee.fin_1",
+      by: "root",
+      shape: {
+        wing: {
+          root_chord: 0.8,
+          tip_chord: 0.4,
+          span: 0.4,
+          sweep: 0.4,
+          airfoil: { plate: { thickness: 0.006 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "aerobee_fin_2",
+      name: "Fin",
+      on: "aerobee.fin_2",
+      by: "root",
+      roll: -180,
+      shape: {
+        wing: {
+          root_chord: 0.8,
+          tip_chord: 0.4,
+          span: 0.4,
+          sweep: 0.4,
+          airfoil: { plate: { thickness: 0.006 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "aerobee_fin_3",
+      name: "Fin",
+      on: "aerobee.fin_3",
+      by: "root",
+      shape: {
+        wing: {
+          root_chord: 0.8,
+          tip_chord: 0.4,
+          span: 0.4,
+          sweep: 0.4,
+          airfoil: { plate: { thickness: 0.006 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "aerobee_tank_1",
+      name: "HP Steel Fuselage",
+      on: "aerobee.tank_1",
+      shape: { cylinder_tank: { diameter: 0.38, length: 3.165 } },
+      components: [
+        {
+          storage: {
+            type: "HP Steel Fuselage",
+            contents: { ANFA37: 0.2809, "IRFNA-III": 0.7191 },
+          },
+        },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      // Six panels with vents between them: the sustainer's nozzle sits inside and fires
+      // out through the gaps while the booster still burns.
+      id: "booster_adapter",
+      name: "Booster adapter",
+      on: "aerobee.bottom",
+      by: "upper",
+      shape: {
+        compound: [
+          {
+            name: "panel_1",
+            shape: {
+              shell: { bottom_diameter: 0.38, sections: [{ length: 0.5 }], span: [-20, 20] },
+            },
+          },
+          {
+            name: "panel_2",
+            shape: {
+              shell: { bottom_diameter: 0.38, sections: [{ length: 0.5 }], span: [-20, 20] },
+            },
+            rotation: [0, 0, 60],
+          },
+          {
+            name: "panel_3",
+            shape: {
+              shell: { bottom_diameter: 0.38, sections: [{ length: 0.5 }], span: [-20, 20] },
+            },
+            rotation: [0, 0, 120],
+          },
+          {
+            name: "panel_4",
+            shape: {
+              shell: { bottom_diameter: 0.38, sections: [{ length: 0.5 }], span: [-20, 20] },
+            },
+            rotation: [0, 0, 180],
+          },
+          {
+            name: "panel_5",
+            shape: {
+              shell: { bottom_diameter: 0.38, sections: [{ length: 0.5 }], span: [-20, 20] },
+            },
+            rotation: [0, 0, 240],
+          },
+          {
+            name: "panel_6",
+            shape: {
+              shell: { bottom_diameter: 0.38, sections: [{ length: 0.5 }], span: [-20, 20] },
+            },
+            rotation: [0, 0, 300],
+          },
+        ],
+      },
+      structure: { material: "Al 2014-T6", thickness: 0.002 },
+      components: [{ decoupler: { node: "upper" } }],
+      nodes: [
+        { name: "lower", position: [0, 0, 0], direction: [0, 0, -1], size: 0.38 },
+        { name: "upper", position: [0, 0, 0.5], direction: [0, 0, 1], size: 0.38 },
+      ],
+      paint: {
+        color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+        finish: "metal",
+      },
+    },
+    {
+      id: "booster",
+      name: "Booster",
+      on: "booster_adapter.lower",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.2, 0], segments: [{ line: [0.2, 0.141421356] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: {
+                      start: [0.2, 0.332578644],
+                      segments: [{ line: [0.190359837, 1.94] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [0.190359837, 1.94], segments: [{ line: [0.19, 2] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.2, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 0.4, height: 2, thickness: 0.2 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 55 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.4 },
+        { name: "top", position: [0, 0, 2], direction: [0, 0, 1], size: 0.38 },
+        {
+          name: "engine_1",
+          position: [0, 0, 0],
+          direction: [0, 0, -1],
+          size: 0.09966666666666667,
+        },
+        { name: "fin_1", position: [0.2, 0, 0.6], direction: [1, 0, 0], size: 0.6 },
+        {
+          name: "fin_2",
+          position: [-0.1, 0.173205081, 0.6],
+          direction: [-0.5, 0.866025403784, 0],
+          size: 0.6,
+        },
+        {
+          name: "fin_3",
+          position: [-0.1, -0.173205081, 0.6],
+          direction: [-0.5, -0.866025403784, 0],
+          size: 0.6,
+        },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 0.4 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "booster_engine_1", on: "booster.engine_1", by: "top", template: "2_5KS18000" },
+    {
+      id: "booster_fin_1",
+      name: "Fin",
+      on: "booster.fin_1",
+      by: "root",
+      shape: {
+        wing: {
+          root_chord: 0.6,
+          tip_chord: 0.4,
+          span: 0.35,
+          airfoil: { plate: { thickness: 0.01 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "booster_fin_2",
+      name: "Fin",
+      on: "booster.fin_2",
+      by: "root",
+      roll: -180,
+      shape: {
+        wing: {
+          root_chord: 0.6,
+          tip_chord: 0.4,
+          span: 0.35,
+          airfoil: { plate: { thickness: 0.01 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "booster_fin_3",
+      name: "Fin",
+      on: "booster.fin_3",
+      by: "root",
+      shape: {
+        wing: {
+          root_chord: 0.6,
+          tip_chord: 0.4,
+          span: 0.35,
+          airfoil: { plate: { thickness: 0.01 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "booster_tank_1",
+      name: "Solid Grain",
+      on: "booster.tank_1",
+      shape: { cylinder_tank: { diameter: 0.4, length: 0.705 } },
+      components: [{ storage: { type: "Solid Grain", contents: { NGNC: 1 } } }],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+  ],
+  sequences: [
+    // Booster and sustainer together, then the spent booster and its adapter.
+    ["engines:booster", "engines:aerobee"],
+    ["decoupler:booster_adapter"],
+  ],
+}

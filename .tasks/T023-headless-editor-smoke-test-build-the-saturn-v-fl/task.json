@@ -1,0 +1,20 @@
+{
+  "id": "T023",
+  "title": "Headless editor smoke test: build the Saturn V, fly Apollo 11",
+  "kind": "test",
+  "status": "todo",
+  "area": "test",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [
+    "T022",
+    "T016"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E11)",
+    "docs/smoke-tests.md"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

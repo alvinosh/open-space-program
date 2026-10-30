@@ -1,0 +1,18 @@
+{
+  "id": "T034",
+  "title": "Networks: power and data over joints",
+  "kind": "feature",
+  "status": "todo",
+  "area": "environment",
+  "size": "M",
+  "parent": "T004",
+  "depends_on": [
+    "T028"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 9)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

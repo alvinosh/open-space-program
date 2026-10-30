@@ -1,0 +1,82 @@
+// How procedural tanks are built. The wall is sized from these: thick enough that the
+// material's yield strength is `safety_factor` above the design pressure (operating
+// `pressure` plus a full tank's hydrostatic head at `design_load` g), and never thinner than
+// `min_gauge` (m). Mass is that wall times `stiffening`, plus `insulation` (kg/m²). The
+// tank buckles under the stack above it at the thin-shell buckling load, times
+// `buckling_factor` for grid stiffening, plus what its own pressure carries.
+//
+// Defaults: utilization 0.97 (the rest is ullage and plumbing), safety_factor 1.25,
+// design_load 2.5, min_temperature 77 K (bare metal: liquid oxygen yes, hydrogen no).
+[
+  {
+    // Machined isogrid, Falcon 9 style.
+    id: "Isogrid Al-Li",
+    material: "Al-Li 2195-T8",
+    pressure: 3.5e5,
+    min_gauge: 0.002,
+    stiffening: 1.6,
+    buckling_factor: 3.0,
+  },
+  {
+    // Isogrid under spray-on foam, for hydrogen and methane (Centaur V, the external tank).
+    id: "Insulated Al-Li",
+    material: "Al-Li 2195-T8",
+    pressure: 2.5e5,
+    min_gauge: 0.002,
+    stiffening: 1.6,
+    buckling_factor: 3.0,
+    insulation: 1.2,
+    min_temperature: 20,
+  },
+  {
+    // Stringer-stiffened welded aluminium, Saturn style.
+    id: "Stiffened Al 2219",
+    material: "Al 2219-T87",
+    pressure: 3.0e5,
+    min_gauge: 0.0025,
+    stiffening: 1.3,
+    buckling_factor: 2.0,
+    utilization: 0.96,
+  },
+  {
+    // Foil-thin stainless held up by its own pressure, Atlas and Centaur style: very light,
+    // but it buckles under any real load if the pressure drops.
+    id: "Balloon Stainless",
+    material: "Stainless 301 Full Hard",
+    pressure: 2.5e5,
+    min_gauge: 0.0004,
+    utilization: 0.98,
+  },
+  {
+    // Carbon-fibre laminate, Electron style.
+    id: "Composite",
+    material: "Carbon Composite",
+    pressure: 3.5e5,
+    min_gauge: 0.0015,
+    stiffening: 1.2,
+    buckling_factor: 1.5,
+  },
+  {
+    // Composite-overwrapped pressure vessel for RCS gas and pressurant, 300 bar. Mount
+    // them as spheres.
+    id: "COPV",
+    material: "Carbon Overwrap",
+    pressure: 3.0e7,
+    min_gauge: 0.001,
+    stiffening: 1.25, // metal liner
+    safety_factor: 1.5,
+    utilization: 1.0,
+    propellants: ["Nitrogen", "Helium"],
+  },
+  {
+    // Titanium spheres for pressure-fed storable propellants (RCS, small engines), 20 bar.
+    // Mount them as spheres.
+    id: "Titanium Sphere",
+    material: "Ti-6Al-4V",
+    pressure: 2.0e6,
+    min_gauge: 0.0008,
+    safety_factor: 1.5,
+    utilization: 0.95, // the rest is the propellant management device and ullage
+    propellants: ["Aerozine50", "NTO", "Hydrazine"],
+  },
+]

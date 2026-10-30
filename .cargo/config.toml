@@ -1,0 +1,5 @@
+[alias]
+# Whole-mission smoke tests (crates/osp_sim/tests/smoke) and the build suite
+# (crates/osp_sim/tests/build). `cargo smoke saturn_v` runs one mission, `cargo smoke build`
+# the build suite; `OSP_SMOKE_OPEN=1 cargo smoke` opens the report. See docs/smoke-tests.md.
+smoke = "test -p osp_sim --test smoke --test build -- --nocapture"

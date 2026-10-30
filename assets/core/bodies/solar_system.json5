@@ -1,0 +1,175 @@
+// Real Solar System, J2000 epoch (t = 0 is 2000-01-01 12:00 TDB).
+// Orbital elements are referenced to the J2000 ecliptic; angles in degrees, SI units otherwise.
+// Rotation uses the IAU WGCCRE 2015 models (pole RA/Dec in ICRF, prime meridian W = W0 + rate·d,
+// d = days since J2000); periodic correction terms are omitted.
+// Bodies may be listed in any order; parents are resolved by id.
+[
+  {
+    id: "Sun",
+    gm: 1.32712440018e+20,
+    radius: 695700000,
+    rotation: {
+      pole_ra: 286.13,
+      pole_dec: 63.87,
+      prime_meridian: 84.176,
+      rate: 14.1844,
+    },
+    color: [1.0, 0.85, 0.55],
+  },
+  {
+    id: "Mercury",
+    parent: "Sun",
+    gm: 2.2032e+13,
+    radius: 2439700.0,
+    rotation: {
+      pole_ra: 281.0103,
+      pole_dec: 61.4155,
+      prime_meridian: 329.5988,
+      rate: 6.1385108,
+    },
+    orbit: {
+      semi_major_axis: 57909050000,
+      eccentricity: 0.20563,
+      inclination: 7.005,
+      longitude_of_ascending_node: 48.331,
+      argument_of_periapsis: 29.124,
+      mean_anomaly_at_epoch: 174.796,
+    },
+    color: [0.45, 0.43, 0.4],
+  },
+  {
+    id: "Venus",
+    parent: "Sun",
+    gm: 3.24859e+14,
+    radius: 6051800.0,
+    rotation: {
+      pole_ra: 272.76,
+      pole_dec: 67.16,
+      prime_meridian: 160.2,
+      rate: -1.4813688,
+    },
+    atmosphere: {
+      model: {
+        type: "Exponential",
+        surface_pressure: 9200000.0,
+        scale_height: 15900.0,
+        temperature: 737.0,
+        molar_mass: 0.04345,
+      },
+      height: 250000.0,
+    },
+    orbit: {
+      semi_major_axis: 108208000000,
+      eccentricity: 0.006772,
+      inclination: 3.39458,
+      longitude_of_ascending_node: 76.68,
+      argument_of_periapsis: 54.884,
+      mean_anomaly_at_epoch: 50.115,
+    },
+    color: [0.85, 0.75, 0.55],
+  },
+  {
+    id: "Earth",
+    parent: "Sun",
+    gm: 3.986004418e+14,
+    radius: 6371000.0,
+    // Elevation, colour, land cover and night lights baked from public datasets by
+    // `cargo run -p osp_bake --release` (see assets/core/terrain/README.md).
+    terrain: "terrain/earth",
+    max_terrain_height: 8900,
+    rotation: {
+      pole_ra: 0.0,
+      pole_dec: 90.0,
+      prime_meridian: 190.147,
+      rate: 360.9856235,
+    },
+    atmosphere: {
+      model: {
+        type: "Us1976",
+      },
+      height: 140000.0,
+    },
+    orbit: {
+      semi_major_axis: 149598023000,
+      eccentricity: 0.0167086,
+      inclination: 5e-05,
+      longitude_of_ascending_node: -11.26064,
+      argument_of_periapsis: 114.20783,
+      mean_anomaly_at_epoch: 358.617,
+    },
+    color: [0.18, 0.32, 0.55],
+  },
+  {
+    id: "Moon",
+    parent: "Earth",
+    gm: 4.9048695e+12,
+    radius: 1737400.0,
+    rotation: {
+      pole_ra: 269.9949,
+      pole_dec: 66.5392,
+      prime_meridian: 38.3213,
+      rate: 13.17635815,
+    },
+    orbit: {
+      semi_major_axis: 384399000,
+      eccentricity: 0.0549,
+      inclination: 5.145,
+      longitude_of_ascending_node: 125.08,
+      argument_of_periapsis: 318.15,
+      mean_anomaly_at_epoch: 135.27,
+    },
+    color: [0.5, 0.5, 0.5],
+  },
+  {
+    id: "Mars",
+    parent: "Sun",
+    gm: 4.282837e+13,
+    radius: 3389500.0,
+    rotation: {
+      pole_ra: 317.269202,
+      pole_dec: 54.432516,
+      prime_meridian: 176.049863,
+      rate: 350.891982443297,
+    },
+    atmosphere: {
+      model: {
+        type: "Exponential",
+        surface_pressure: 610.0,
+        scale_height: 11100.0,
+        temperature: 210.0,
+        molar_mass: 0.04334,
+      },
+      height: 125000.0,
+    },
+    orbit: {
+      semi_major_axis: 227939366000,
+      eccentricity: 0.0934,
+      inclination: 1.85,
+      longitude_of_ascending_node: 49.558,
+      argument_of_periapsis: 286.502,
+      mean_anomaly_at_epoch: 19.412,
+    },
+    color: [0.7, 0.35, 0.2],
+  },
+  {
+    id: "Jupiter",
+    parent: "Sun",
+    gm: 1.26686534e+17,
+    radius: 69911000,
+    rotation: {
+      pole_ra: 268.056595,
+      pole_dec: 64.495303,
+      prime_meridian: 284.95,
+      rate: 870.536,
+    },
+    orbit: {
+      semi_major_axis: 778479000000,
+      eccentricity: 0.0489,
+      inclination: 1.303,
+      longitude_of_ascending_node: 100.464,
+      argument_of_periapsis: 273.867,
+      mean_anomaly_at_epoch: 20.02,
+    },
+    color: [0.75, 0.65, 0.5],
+  },
+]

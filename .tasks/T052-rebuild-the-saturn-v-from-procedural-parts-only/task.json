@@ -1,0 +1,29 @@
+{
+  "id": "T052",
+  "title": "Rebuild the Saturn V from procedural parts only, in the editor",
+  "kind": "milestone",
+  "status": "todo",
+  "area": "test",
+  "size": "L",
+  "parent": "T011",
+  "depends_on": [
+    "T032",
+    "T022",
+    "T035",
+    "T036",
+    "T037",
+    "T044",
+    "T046",
+    "T047",
+    "T048",
+    "T049",
+    "T050",
+    "T051"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 27)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

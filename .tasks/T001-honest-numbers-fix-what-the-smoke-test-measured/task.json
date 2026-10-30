@@ -1,0 +1,16 @@
+{
+  "id": "T001",
+  "title": "Honest numbers: fix what the smoke test measured",
+  "kind": "epic",
+  "status": "todo",
+  "area": "propulsion",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "docs/systems-plan.md (Milestone 0)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

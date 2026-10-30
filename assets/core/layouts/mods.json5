@@ -1,0 +1,86 @@
+// Loaded mods and load problems (F2). Opens automatically if a mod fails to load.
+{
+  id: "mods",
+  visible: false,
+  root: {
+    widget: "window",
+    icon: "icons/mods.svg",
+    title: "Mods ({mods.count} loaded, {mods.errors} errors, {mods.warnings} warnings)",
+    style: {
+      left: "50%",
+      margin: [0, 0, 0, -280],
+      top: 80,
+      width: 560,
+      max_height: "80vh",
+    },
+    children: [
+      {
+        widget: "column",
+        repeat: "mods.list",
+        children: [
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "narrow",
+                text: "{item.name}",
+              },
+              {
+                widget: "label",
+                class: "dim",
+                text: "{item.id} {item.version}",
+              },
+            ],
+          },
+          {
+            widget: "label",
+            text: "{item.description}",
+            class: "dim",
+            visible: "item.description",
+          },
+        ],
+      },
+      {
+        widget: "label",
+        text: "PROBLEMS",
+        class: "section",
+        visible: "mods.problems",
+      },
+      {
+        widget: "column",
+        repeat: "mods.problems",
+        children: [
+          {
+            widget: "label",
+            text: "{item.text}",
+            class: "error",
+            visible: "item.error",
+          },
+          {
+            widget: "label",
+            text: "{item.text}",
+            class: "warning",
+            visible: "!item.error",
+          },
+        ],
+        style: {
+          clip: true,
+        },
+      },
+      {
+        widget: "row",
+        children: [
+          {
+            widget: "spacer",
+          },
+          {
+            widget: "button",
+            text: "Reload (F5)",
+            action: "game.reload",
+          },
+        ],
+      },
+    ],
+  },
+}

@@ -1,0 +1,19 @@
+{
+  "id": "T019",
+  "title": "Editor UI",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "L",
+  "parent": "T002",
+  "depends_on": [
+    "T017",
+    "T018"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E7)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,19 @@
+{
+  "id": "T086",
+  "title": "Propellant flow rules, drain order and crossfeed",
+  "kind": "feature",
+  "status": "todo",
+  "area": "propulsion",
+  "size": "M",
+  "parent": "T062",
+  "depends_on": [
+    "T014"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 2",
+    "vessel overhaul plan, carry-over notes (docs/vessel-overhaul.md), step 8b"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

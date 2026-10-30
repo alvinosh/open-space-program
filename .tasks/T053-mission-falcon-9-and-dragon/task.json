@@ -1,0 +1,22 @@
+{
+  "id": "T053",
+  "title": "Mission: Falcon 9 and Dragon",
+  "kind": "test",
+  "status": "todo",
+  "area": "test",
+  "size": "XL",
+  "parent": "T011",
+  "depends_on": [
+    "T052",
+    "T040",
+    "T043",
+    "T048",
+    "T058"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 28)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

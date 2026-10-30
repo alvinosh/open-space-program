@@ -1,0 +1,29 @@
+// RCS blocks: four fixed nozzles each, pushing forward, back and both ways around the stage.
+// A stage's blocks sit evenly around its forward rim. They turn the vessel (with RCS on) and
+// translate it, e.g. forward to settle propellant before lighting an engine that needs
+// ullage. `thrust` is per nozzle in vacuum (N), `mass` in kg, Isp in s. `propellants` maps
+// resource -> mass ratio like engines, drawn from tanks on the same stage. `model` is a glTF
+// file: origin on the hull, +X out from it, +Y towards the nose.
+[
+  {
+    id: "Cold Gas Quad", // nitrogen cold-gas thrusters, as on kerolox upper stages
+    mass: 20,
+    thrust: 400,
+    isp_vac: 70,
+    isp_sl: 45,
+    propellants: { Nitrogen: 1.0 },
+    model: "models/rcs/cold_gas_quad.glb",
+  },
+  {
+    // Pressure-fed hypergolic thrusters (Shuttle primary RCS class): ten times the thrust
+    // of the cold-gas quad at four times the Isp, enough to throw a hundred-tonne vessel
+    // around.
+    id: "Hypergolic Quad",
+    mass: 60,
+    thrust: 3870,
+    isp_vac: 280,
+    isp_sl: 120,
+    propellants: { Aerozine50: 1.0, NTO: 1.6 },
+    model: "models/rcs/cold_gas_quad.glb",
+  },
+]

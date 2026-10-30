@@ -1,0 +1,20 @@
+{
+  "id": "T102",
+  "title": "Electrical circuits: wiring, breakers, fuses",
+  "kind": "feature",
+  "status": "todo",
+  "area": "power",
+  "size": "L",
+  "parent": "T064",
+  "depends_on": [
+    "T034",
+    "T035"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 5",
+    "docs/systems-plan.md (Choices made)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

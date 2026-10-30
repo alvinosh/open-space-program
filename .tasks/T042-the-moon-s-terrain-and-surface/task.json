@@ -1,0 +1,18 @@
+{
+  "id": "T042",
+  "title": "The Moon's terrain and surface",
+  "kind": "feature",
+  "status": "todo",
+  "area": "landing",
+  "size": "M",
+  "parent": "T008",
+  "depends_on": [
+    "T025"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 17)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

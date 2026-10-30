@@ -1,0 +1,20 @@
+{
+  "id": "T054",
+  "title": "Mission: the Space Shuttle",
+  "kind": "test",
+  "status": "todo",
+  "area": "test",
+  "size": "XL",
+  "parent": "T011",
+  "depends_on": [
+    "T052",
+    "T030",
+    "T046"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 28)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

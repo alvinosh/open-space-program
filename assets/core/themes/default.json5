@@ -1,0 +1,475 @@
+// Default theme. Every node gets the class named after its widget, then the classes in its
+// `class` string, then its inline `style`; text also gets the `text` class underneath.
+// Mods restyle the game by patching these classes or adding another theme record (all
+// themes are merged in load order).
+// Colours: "#rgb", "#rrggbb", "#rrggbbaa" or [r, g, b(, a)] in 0..1.
+// `active_*` colours apply while a node's `active` condition holds (selected modes, open
+// windows, the current stage).
+//
+// One look throughout: navy glass panels (a top-to-bottom gradient, a border lit along
+// the top edge, a soft shadow), Barlow type with capitals for titles, cool white values
+// over dimmer keys, hairlines between rows, and one teal accent (#38e0c4) for what is on
+// or selected. Amber is thrust and warnings, blue the atmosphere. Screen edges and gaps
+// between modules are 12 and 8 px. Icons are white SVGs tinted by `color`.
+//
+// UI colours blend in linear light, where a faint white overlay comes out far brighter
+// than its alpha suggests; controls on panels therefore use solid surface colours:
+// #1a2a3a (control), #23374a (hovered), #0e3a35 with a teal border (selected), #3b2c13
+// (armed, amber).
+{
+  id: "default",
+  fonts: ["fonts/Barlow-Medium.ttf", "fonts/Barlow-SemiBold.ttf"],
+  classes: {
+    // --- widget defaults ---
+    text: { font: "Barlow", font_weight: 500 },
+    column: { gap: 2 },
+    row: { gap: 8, align_items: "center" },
+    spacer: { grow: 1 },
+    label: { color: "#e4edf4", font_size: 13 },
+    button: {
+      padding: [3, 9],
+      background: "#1a2a3a",
+      hover_background: "#23374a",
+      active_background: "#0e3a35",
+      border: 1,
+      border_color: "#24364a",
+      active_border_color: [0.22, 0.88, 0.77, 0.7],
+      active_color: "#ffffff",
+      radius: 4,
+      color: "#e4edf4",
+      font_size: 12,
+      font_weight: 600,
+      align_items: "center",
+      justify_content: "center",
+    },
+    bar: { height: 5, min_width: 60, grow: 1, background: "#223244", radius: 3, clip: true },
+    bar_fill: { background: "#38e0c4" },
+    image: { color: "#e4edf4" },
+    panel: {
+      padding: [7, 10],
+      gap: 2,
+      gradient: ["#16263aeb", "#0b1520e6"],
+      radius: 8,
+      border: 1,
+      border_gradient: ["#a6d0f055", "#6f98c014"],
+      shadow: { color: [0, 0, 0, 0.45], y: 4, blur: 16 },
+    },
+    window: {
+      position: "absolute",
+      min_width: 180,
+      gradient: ["#16263aed", "#0b1520e8"],
+      radius: 8,
+      border: 1,
+      border_gradient: ["#a6d0f055", "#6f98c014"],
+      shadow: { color: [0, 0, 0, 0.45], y: 4, blur: 16 },
+    },
+    window_title: {
+      direction: "row",
+      gap: 7,
+      padding: [5, 5, 5, 10],
+      align_items: "center",
+      background: [1, 1, 1, 0.012],
+      border: [0, 0, 1, 0],
+      border_color: [1, 1, 1, 0.06],
+      radius: 0,
+    },
+    window_icon: { width: 14, height: 14, color: "#38e0c4" },
+    window_title_text: { color: "#dce8f2", font_size: 12, font_weight: 600, letter_spacing: 1.3, uppercase: true },
+    window_content: { padding: [6, 10, 8, 10], gap: 0 },
+    window_close: {
+      width: 20,
+      height: 20,
+      padding: 0,
+      border: 0,
+      background: [0, 0, 0, 0],
+      hover_background: [1, 0.42, 0.42, 0.22],
+      radius: 4,
+    },
+    window_close_icon: { width: 10, height: 10, color: [1, 1, 1, 0.5] },
+    // A popup's pin (part windows): lit teal while pinned.
+    window_pin: {
+      width: 20,
+      height: 20,
+      padding: 0,
+      border: 1,
+      border_color: [0, 0, 0, 0],
+      background: [0, 0, 0, 0],
+      hover_background: "#23374a",
+      active_background: "#0e3a35",
+      active_border_color: [0.22, 0.88, 0.77, 0.7],
+      radius: 4,
+    },
+    window_pin_icon: { width: 12, height: 12, color: [1, 1, 1, 0.5], active_color: "#38e0c4" },
+
+    // --- main menu (see layouts/main_menu.json5) ---
+    menu_backdrop: {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: "100%",
+      height: "100%",
+      align_items: "center",
+      justify_content: "center",
+      background: [0.01, 0.02, 0.03, 0.6],
+      z_index: 50,
+    },
+    menu: {
+      width: 580,
+      max_height: "86vh",
+      padding: [24, 26],
+      gap: 10,
+      gradient: ["#172839f5", "#0b1520f2"],
+      radius: 10,
+      border: 1,
+      border_gradient: ["#a6d0f066", "#6f98c014"],
+      shadow: { color: [0, 0, 0, 0.6], y: 10, blur: 40 },
+    },
+    menu_title: { font_size: 28, font_weight: 600, letter_spacing: 2.5, uppercase: true, color: "#f2f7fa" },
+    menu_tab: { padding: [6, 14], letter_spacing: 0.8, uppercase: true, font_size: 12 },
+    menu_page: { gap: 6, shrink: 1, min_height: 0 },
+    menu_list: { gap: 6, scroll: true, shrink: 1, min_height: 0 },
+    // A choice in a row of them (graphics settings); the selected one is `active`.
+    menu_option: { min_width: 52, padding: [3, 6], font_size: 12 },
+    menu_item: {
+      direction: "column",
+      align_items: "start",
+      padding: [9, 13],
+      gap: 2,
+      background: "#16253399",
+      hover_background: "#1a3a40",
+      border: 1,
+      border_color: "#24364a",
+      radius: 6,
+    },
+    menu_item_name: { font_size: 16, font_weight: 600, color: "#ffffff" },
+    // A place to start on the scenarios page: icon, name and line, how many scenarios.
+    menu_place: { direction: "row", align_items: "center", gap: 14, padding: [12, 14] },
+    menu_place_icon: { width: 30, height: 30, color: "#38e0c4" },
+    menu_place_text: { gap: 2, grow: 1 },
+    menu_count: { color: "#8fa3b4", font_size: 14 },
+    // A spacecraft there: its name and where exactly it starts, then the scenario's name.
+    menu_item_head: { align_self: "stretch" },
+    menu_item_start: { color: "#8fa3b4", font_size: 12 },
+    menu_item_setup: { color: "#cfdbe5", font_size: 13 },
+
+    // --- docks (see layouts/docks.json5) ---
+    // Every `dock` node stacks what is docked into it; `dock_root` places a dock column on
+    // the screen.
+    dock: { gap: 8 },
+    dock_root: { position: "absolute" },
+    // Takes the dock's free height and scrolls when its windows do not fit.
+    dock_scroll: { grow: 1, shrink: 1, min_height: 0, scroll: true },
+
+    // --- flight modules ---
+    // Panels anchored to the screen edges; centred ones set `left: "50%"` and a negative
+    // left margin of half their width.
+    module: { position: "absolute" },
+    launcher: {
+      position: "absolute",
+      right: 12,
+      top: 12,
+      direction: "column",
+      gap: 3,
+      padding: 4,
+      width: 44,
+      gradient: ["#16263aeb", "#0b1520e6"],
+      radius: 8,
+      border: 1,
+      border_gradient: ["#a6d0f055", "#6f98c014"],
+      shadow: { color: [0, 0, 0, 0.45], y: 4, blur: 16 },
+    },
+    launcher_button: {
+      width: 34,
+      height: 34,
+      padding: 0,
+      radius: 6,
+      background: [0, 0, 0, 0],
+      border_color: [0, 0, 0, 0],
+      hover_background: "#1f3142",
+    },
+    launcher_icon: { width: 19, height: 19, color: "#c9d6e1", active_color: "#38e0c4" },
+    launcher_divider: { height: 1, margin: [4, 6], background: [1, 1, 1, 0.1] },
+    // Shown beside a node with a `tooltip` while the pointer is over it.
+    tooltip: {
+      padding: [4, 9],
+      background: "#0d1824f5",
+      radius: 5,
+      border: 1,
+      border_color: [0.65, 0.82, 0.94, 0.25],
+      shadow: { color: [0, 0, 0, 0.5], y: 3, blur: 10 },
+      color: "#e4edf4",
+      font_size: 12,
+    },
+    readout: { color: "#ffffff", font_size: 26, font_weight: 600 },
+    alt_readout: { color: "#ffffff", font_size: 24, font_weight: 600, letter_spacing: 0.5 },
+    caption: { color: "#7f94a6", font_size: 10.5, font_weight: 600, letter_spacing: 1, uppercase: true },
+    // A pill: fully rounded ends.
+    pill: {
+      padding: [4, 12],
+      radius: 99,
+      gradient: ["#16263aeb", "#0b1520e6"],
+      border: 1,
+      border_gradient: ["#a6d0f055", "#6f98c014"],
+      shadow: { color: [0, 0, 0, 0.45], y: 4, blur: 16 },
+    },
+    // A coloured status dot (altimeter: the situation).
+    status_dot: { width: 7, height: 7, radius: 4, background: "#38e0c4" },
+
+    // --- time warp (layouts/time.json5) ---
+    time_button: {
+      width: 26,
+      height: 26,
+      padding: 0,
+      radius: 99,
+      border: 0,
+      background: [0, 0, 0, 0],
+      hover_background: "#23374a",
+      active_background: "#0e3a35",
+    },
+    time_icon: { width: 13, height: 13, color: "#c9d6e1", active_color: "#38e0c4" },
+    // One chevron per warp level, lit up to the current one; on-rails levels in amber.
+    warp_chevron: { width: 7, height: 14, color: "#2a3b4d", active_color: "#38e0c4" },
+    warp_rails: { active_color: "#ffb340" },
+    warp_rate: { min_width: 50, font_size: 15, font_weight: 600, color: "#ffffff" },
+    divider: { width: 1, height: 26, background: [1, 1, 1, 0.1] },
+
+    // --- navball (layouts/navball.json5) ---
+    // The housing is one picture (icons/navball_housing.svg); the ball, gauges and
+    // readouts sit on it at fixed places.
+    housing: { position: "absolute", left: 0, top: 0, width: 272, height: 252 },
+    navball_ball: { position: "absolute", left: 58, top: 44, width: 156, height: 156 },
+    // Arc gauges round the ball: a ring's `border` is its thickness, `border_color` the
+    // empty track, `color` the fill.
+    gauge_thrust: { position: "absolute", left: 33, top: 19, width: 206, height: 206, border: 8, border_color: [1, 1, 1, 0.07], color: "#ffb340" },
+    gauge_throttle: { position: "absolute", left: 42, top: 28, width: 188, height: 188, border: 2, border_color: [1, 1, 1, 0.05], color: "#38e0c4" },
+    gauge_atmosphere: { position: "absolute", left: 33, top: 19, width: 206, height: 206, border: 8, border_color: [1, 1, 1, 0.07], color: "#5ab4ff" },
+    speed_display: {
+      position: "absolute",
+      left: 80,
+      top: 1,
+      width: 112,
+      height: 35,
+      padding: 0,
+      gap: 0,
+      direction: "column",
+      background: [0, 0, 0, 0],
+      hover_background: "#ffffff06",
+      border: 0,
+      radius: 11,
+    },
+    speed_frame: { color: "#38e0c4", font_size: 10, font_weight: 600, letter_spacing: 1.2, uppercase: true },
+    speed_value: { color: "#ffffff", font_size: 15, font_weight: 600 },
+    // SAS and RCS switches on the ring's upper corners, teal while on.
+    nav_toggle: {
+      position: "absolute",
+      top: 45,
+      width: 40,
+      height: 18,
+      padding: 0,
+      radius: 99,
+      background: "#0b141e",
+      hover_background: "#1a2a3a",
+      active_background: "#12392f",
+      border: 1,
+      border_color: [1, 1, 1, 0.14],
+      active_border_color: "#38e0c4",
+      color: [1, 1, 1, 0.55],
+      active_color: "#38e0c4",
+      font_size: 10,
+      font_weight: 600,
+    },
+    nav_toggle_text: { letter_spacing: 1 },
+    // Heading plate cells.
+    plate: { position: "absolute", left: 36, top: 220, width: 200, height: 31, direction: "row", gap: 0, align_items: "center" },
+    plate_cell: { width: "33.3%", direction: "row", gap: 4, justify_content: "center", align_items: "baseline" },
+    plate_key: { color: "#7f94a6", font_size: 9.5, font_weight: 600, letter_spacing: 0.8 },
+    plate_value: { color: "#ffffff", font_size: 13, font_weight: 600 },
+    // The SAS mode buttons beside the housing, with the navball's own markers on them.
+    sas_strip: {
+      position: "absolute",
+      left: 280,
+      top: 58,
+      padding: 5,
+      gap: 3,
+      align_items: "center",
+      radius: 10,
+      gradient: ["#16263aeb", "#0b1520e6"],
+      border: 1,
+      border_gradient: ["#a6d0f055", "#6f98c014"],
+      shadow: { color: [0, 0, 0, 0.45], y: 4, blur: 16 },
+    },
+    sas_button: {
+      width: 28,
+      height: 28,
+      padding: 0,
+      radius: 6,
+      background: "#172634",
+      border_color: [0, 0, 0, 0],
+      hover_background: "#23374a",
+      active_background: "#0e3a35",
+    },
+    sas_icon: { width: 20, height: 20, color: "#ffffff" },
+    // Small +/- and step buttons (flight plan).
+    step_button: { min_width: 26, padding: [1, 6], font_size: 12 },
+    // Buttons that take something out of the game, and recovery (Universe Manifest).
+    danger_button: { color: "#ff9a9a", hover_background: "#4a2428" },
+    recover_button: { color: "#6ff0d6", hover_background: "#0e3a35" },
+    // A manifest row's name; debris is dimmer.
+    manifest_name: { min_width: 180, active_color: [1, 1, 1, 0.55] },
+    value: { min_width: 86, font_size: 13 },
+    vbar: { width: 8, min_width: 8, height: 170, grow: 0 },
+    thin: { width: 3, min_width: 3 },
+    ibar: { width: 46, min_width: 46, grow: 0, height: 3 },
+    // The Resources window (layouts/resources.json5): a row per propellant and stage, bars in
+    // the stage's colour, the bottom stage's names lit.
+    res_row: { gap: 7, padding: [2, 3], radius: 4, hover_background: "#ffffff06" },
+    res_name: { min_width: 70, shrink: 0, color: "#8fa3b4", active_color: "#ffffff", font_size: 12.5 },
+    res_amount: { min_width: 72, shrink: 0, font_size: 12.5 },
+    res_bar: { min_width: 30 },
+    res_tag: { min_width: 22, shrink: 0 },
+    // The sequence stack (layouts/staging.json5): tiles of 24 px, four to a line.
+    // No panel round the stack: every row is a box of its own, as wide as it needs.
+    seq_stack: { align_self: "start", align_items: "start", gap: 0 },
+    seq_key: { color: "#7f94a6", font_size: 10, font_weight: 600, letter_spacing: 0.8, uppercase: true },
+    seq_stat: { color: "#e4edf4", font_size: 12.5, font_weight: 600 },
+    // Plain glyph buttons: no background until hovered.
+    seq_glyph: {
+      padding: [0, 4],
+      background: "#00000000",
+      hover_background: "#ffffff1a",
+      border: 0,
+      radius: 3,
+      color: "#8fa3b4",
+      font_size: 13,
+      font_weight: 600,
+    },
+    // The strip between two rows, a drop place that lights up under a dragged row or tile.
+    seq_gap: { height: 5, radius: 2, background: "#00000000", hover_background: "#38e0c4" },
+    seq_row: {
+      padding: [3, 4],
+      gap: 5,
+      min_height: 24,
+      min_width: 44,
+      radius: 4,
+      border: 1,
+      background: "#0f1c28ee",
+      border_color: "#203142",
+      hover_background: "#1f3b4a",
+      active_background: "#0e3a35f2",
+      active_border_color: "#38e0c4",
+    },
+    seq_number: { min_width: 10, font_size: 12, font_weight: 600, color: [1, 1, 1, 0.45], active_color: "#38e0c4" },
+    seq_tiles: { align_items: "start", gap: 4 },
+    seq_line: { gap: 4 },
+    seq_item: {
+      width: 24,
+      height: 24,
+      align_items: "center",
+      justify_content: "center",
+      radius: 4,
+      background: "#ffffff0f",
+      hover_background: "#ffffff24",
+    },
+    seq_icon: { width: 16, height: 16, color: "#dfe8ef" },
+    seq_count: {
+      position: "absolute",
+      right: -4,
+      top: -5,
+      padding: [0, 3],
+      radius: 3,
+      background: "#0b141ee6",
+      border: 1,
+      border_color: [1, 1, 1, 0.15],
+      font_size: 9.5,
+      font_weight: 600,
+      color: "#ffffff",
+    },
+    seq_fuel: { position: "absolute", left: 4, bottom: 2, width: 16, min_width: 16, height: 2, grow: 0 },
+    // Under the stack: the engines already lit.
+    seq_armed: { background: "#3b2c13d9", border_color: "#b07a2a", margin: [3, 0, 0, 0] },
+    seq_add: { align_self: "start", margin: [0, 0, 1, 0] },
+    seq_stats: { align_items: "start", gap: 2, padding: [4, 7], margin: [5, 0, 0, 0] },
+    stage_row: {
+      padding: [4, 6],
+      radius: 5,
+      border: 1,
+      border_color: [0, 0, 0, 0],
+      active_background: "#0e3a35d9",
+      active_border_color: "#38e0c4",
+    },
+    // The part window (layouts/part_info.json5): an engine's status in amber while it burns,
+    // short bars beside the values, the catalogue text at the bottom.
+    part_status: { active_color: "#ffb340" },
+    part_bar: { min_width: 40, max_width: 70 },
+    part_description: { margin: [6, 0, 0, 0], font_size: 11.5 },
+
+    // --- map view (layouts/map_menu.json5, layouts/node_panel.json5) ---
+    // The context menu: a plain list on a glass panel, items lit under the pointer.
+    context_menu: {
+      position: "absolute",
+      min_width: 170,
+      padding: 4,
+      gap: 0,
+      gradient: ["#16263af2", "#0b1520ee"],
+      radius: 7,
+      border: 1,
+      border_gradient: ["#a6d0f055", "#6f98c014"],
+      shadow: { color: [0, 0, 0, 0.5], y: 4, blur: 16 },
+    },
+    context_title: { color: "#8fa3b4", font_size: 11, font_weight: 600, letter_spacing: 0.5, padding: [3, 8, 5, 8] },
+    context_item: {
+      justify_content: "start",
+      padding: [5, 8],
+      background: [0, 0, 0, 0],
+      border_color: [0, 0, 0, 0],
+      hover_background: "#23374a",
+      radius: 4,
+      font_size: 12.5,
+      font_weight: 500,
+    },
+    // The selected manoeuvre's panel, beside the navball and under the windows.
+    node_panel: {
+      position: "absolute",
+      width: 264,
+      padding: [8, 11, 9, 11],
+      gap: 2,
+      z_index: -5,
+      gradient: ["#16263aeb", "#0b1520e6"],
+      radius: 8,
+      border: 1,
+      border_gradient: ["#a6d0f055", "#6f98c014"],
+      shadow: { color: [0, 0, 0, 0.45], y: 4, blur: 16 },
+    },
+    node_time: { color: "#cfdbe5", font_size: 12.5 },
+    node_dv: { color: "#ffffff", font_size: 22, font_weight: 600 },
+    node_axes: { gap: 12, margin: [0, 0, 4, 0] },
+    node_axis: { gap: 3 },
+    node_axis_icon: { width: 15, height: 15, color: "#ffffff" },
+    node_actions: { gap: 4, margin: [6, 0, 0, 0] },
+
+    // --- named classes ---
+    title: { color: "#ffffff", font_size: 17, font_weight: 600 },
+    section: { color: "#38e0c4", font_size: 10.5, font_weight: 600, letter_spacing: 1.2, uppercase: true, margin: [8, 0, 2, 0] },
+    dim: { color: "#8fa3b4", font_size: 12.5 },
+    // A key/value row in a window: a hairline under each.
+    kv: { padding: [2, 0], border: [0, 0, 1, 0], border_color: [1, 1, 1, 0.05] },
+    // A row's leading icon.
+    row_icon: { width: 14, height: 14, color: "#6f8496" },
+    // Key of a key/value row: it takes the free width, so values line up on the right.
+    key: { color: "#8fa3b4", min_width: 64, grow: 1 },
+    narrow: { min_width: 104, shrink: 0 },
+    nowrap: { shrink: 0 },
+    warning: { color: "#ffc24a" },
+    // A screen message: readable over whatever is behind it.
+    notice: {
+      padding: [5, 14],
+      background: "#0b141ed9",
+      radius: 99,
+      border: 1,
+      border_color: [1, 0.76, 0.29, 0.35],
+      shadow: { color: [0, 0, 0, 0.4], y: 3, blur: 12 },
+    },
+    error: { color: "#ff6b6b" },
+    marker: { color: "#38e0c4", min_width: 10 },
+  },
+}

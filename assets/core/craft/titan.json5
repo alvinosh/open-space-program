@@ -1,0 +1,343 @@
+// Hypergolic two-stage launcher in the Titan II mould: two A-87s (LR-87 class) under a
+// 3.05 m first stage, one on the second, and 2.5 t on top. Translucent orange plumes.
+{
+  id: "titan",
+  name: "Titan",
+  parts: [
+    {
+      id: "payload",
+      name: "Payload",
+      shape: {
+        compound: [
+          {
+            name: "adapter",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "floor",
+                    curve: { start: [0, 0], segments: [{ line: [1.525, 0] }] },
+                  },
+                  {
+                    name: "adapter",
+                    curve: {
+                      start: [1.525, 0],
+                      segments: [{ line: [1.525, 0.12] }, { line: [0.7625, 0.9] }],
+                    },
+                  },
+                  {
+                    name: "deck",
+                    curve: { start: [0.7625, 0.9], segments: [{ line: [0, 0.9] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 3.05, height: 6, thickness: 1.525 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 2500 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
+        { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 1.525 },
+        { name: "fairing_1", position: [1.525, 0, 0], direction: [0, 0, 1], size: 3.05 },
+        { name: "fairing_2", position: [-1.525, 0, 0], direction: [0, 0, 1], size: 3.05 },
+        {
+          name: "payload_1",
+          position: [0, 0, 0.9],
+          direction: [0, 0, 1],
+          size: 1.941008114357073,
+        },
+        {
+          name: "panel_1",
+          position: [0.73625, 0, 1.08],
+          direction: [0, 0, 1],
+          size: 1.2362615267410049,
+        },
+        {
+          name: "panel_2",
+          position: [-0.73625, 0, 1.08],
+          direction: [0, 0, 1],
+          size: 1.2362615267410049,
+        },
+        { name: "antenna_1", position: [0, 0, 5.45], direction: [0, 0, 1], size: 0.8235 },
+      ],
+      paint: {
+        color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+        finish: "composite",
+      },
+    },
+    {
+      id: "payload_fairing_1",
+      name: "Fairing",
+      on: "payload.fairing_1",
+      // The fairing's nose: a tangent ogive 1.3 diameters long.
+      shape: {
+        shell: {
+          bottom_diameter: 3.05,
+          sections: [{ length: 6 }, { length: 3.965, top_diameter: 0, profile: "ogive" }],
+          span: [-90, 90],
+        },
+      },
+      structure: { mass: 250 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "payload_fairing_2",
+      name: "Fairing",
+      on: "payload.fairing_2",
+      roll: -180,
+      shape: {
+        shell: {
+          bottom_diameter: 3.05,
+          sections: [{ length: 6 }, { length: 3.965, top_diameter: 0, profile: "ogive" }],
+          span: [-90, 90],
+        },
+      },
+      structure: { mass: 250 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "payload_payload_1",
+      name: "Payload",
+      on: "payload.payload_1",
+      shape: { box: { size: [1.3725, 1.3725, 4.5] } },
+      paint: { color: [0.8500000238418579, 0.6200000047683716, 0.25], finish: "metal" },
+    },
+    {
+      id: "payload_panel_1",
+      name: "Solar panel",
+      on: "payload.panel_1",
+      shape: { box: { size: [0.05, 1.2352500000000002, 4.140000000000001] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "payload_panel_2",
+      name: "Solar panel",
+      on: "payload.panel_2",
+      shape: { box: { size: [0.05, 1.2352500000000002, 4.140000000000001] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "payload_antenna_1",
+      name: "Antenna",
+      on: "payload.antenna_1",
+      shape: {
+        shell: {
+          bottom_diameter: 0.8235,
+          sections: [{ length: 0.25, top_diameter: 0 }],
+          cap_bottom: true,
+        },
+      },
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "second_stage",
+      name: "Second Stage",
+      on: "payload.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [1.525, 0], segments: [{ line: [1.525, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: {
+                      start: [1.525, 0.55],
+                      segments: [{ line: [1.525, 1.078337841] }],
+                    },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [1.525, 3.921662159],
+                      segments: [{ line: [1.525, 8.94] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [1.525, 8.94], segments: [{ line: [1.525, 9] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [1.525, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 3.05, height: 9, thickness: 1.525 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 2000 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
+        { name: "top", position: [0, 0, 9], direction: [0, 0, 1], size: 3.05 },
+        { name: "engine_1", position: [0, 0, 0], direction: [0, 0, -1], size: 1.3 },
+        { name: "wheel_1", position: [0, 0, 4.5], direction: [0, 0, 1], size: 0.5 },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 3.05 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    {
+      id: "second_stage_engine_1",
+      on: "second_stage.engine_1",
+      by: "top",
+      template: "A-87",
+    },
+    {
+      id: "second_stage_wheel_1",
+      on: "second_stage.wheel_1",
+      template: "Attitude Control Unit",
+    },
+    {
+      id: "second_stage_tank_1",
+      name: "Stiffened Al 2219",
+      on: "second_stage.tank_1",
+      shape: { cylinder_tank: { diameter: 3.05, length: 5 } },
+      components: [
+        {
+          storage: {
+            type: "Stiffened Al 2219",
+            contents: { Aerozine50: 1, NTO: 1.9 },
+            design_load: 4,
+          },
+        },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "first_stage",
+      name: "First Stage",
+      on: "second_stage.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [1.525, 0], segments: [{ line: [1.525, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: {
+                      start: [1.525, 0.55],
+                      segments: [{ line: [1.525, 1.078337841] }],
+                    },
+                  },
+                  {
+                    name: "interstage",
+                    curve: {
+                      start: [1.525, 12.721662159],
+                      segments: [{ line: [1.525, 19.94] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [1.525, 19.94], segments: [{ line: [1.525, 20] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [1.525, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 3.05, height: 20, thickness: 1.525 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 5000 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
+        { name: "top", position: [0, 0, 20], direction: [0, 0, 1], size: 3.05 },
+        { name: "engine_1", position: [0.7625, 0, 0], direction: [0, 0, -1], size: 1.3 },
+        { name: "engine_2", position: [-0.7625, 0, 0], direction: [0, 0, -1], size: 1.3 },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 3.05 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/interstage": {
+            color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+            finish: "composite",
+          },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "first_stage_engine_1", on: "first_stage.engine_1", by: "top", template: "A-87" },
+    { id: "first_stage_engine_2", on: "first_stage.engine_2", by: "top", template: "A-87" },
+    {
+      id: "first_stage_tank_1",
+      name: "Stiffened Al 2219",
+      on: "first_stage.tank_1",
+      shape: { cylinder_tank: { diameter: 3.05, length: 13.8 } },
+      components: [
+        { storage: { type: "Stiffened Al 2219", contents: { Aerozine50: 1, NTO: 1.9 } } },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+  ],
+}

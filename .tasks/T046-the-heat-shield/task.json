@@ -1,0 +1,21 @@
+{
+  "id": "T046",
+  "title": "The heat shield",
+  "kind": "feature",
+  "status": "todo",
+  "area": "thermal",
+  "size": "M",
+  "parent": "T009",
+  "depends_on": [
+    "T031",
+    "T032",
+    "T045"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 21)",
+    "old issue list, issue 13 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

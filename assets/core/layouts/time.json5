@@ -1,0 +1,52 @@
+// Time warp and clocks (top of the left dock). The chevrons are the warp levels, lit up to
+// the current one: teal while physics runs, amber on rails. The middle button stops warp.
+{
+  id: "time",
+  group: "flight",
+  dock: "left_top",
+  root: {
+    id: "time",
+    widget: "panel",
+    style: { width: 216, gap: 5, padding: [6, 8, 7, 8] },
+    children: [
+      {
+        widget: "row",
+        style: { gap: 2 },
+        children: [
+          { widget: "button", class: "time_button", tooltip: "Slower (,)", action: "warp.decrease", children: [{ widget: "image", class: "time_icon", image: "icons/slower.svg" }] },
+          { widget: "button", class: "time_button", tooltip: "Normal speed (/)", action: "warp.stop", active: "time.warp == 1", children: [{ widget: "image", class: "time_icon", image: "icons/play.svg", active: "time.warp == 1" }] },
+          { widget: "button", class: "time_button", tooltip: "Faster (.)", action: "warp.increase", children: [{ widget: "image", class: "time_icon", image: "icons/faster.svg" }] },
+          {
+            widget: "row",
+            repeat: "time.warp_levels",
+            style: { gap: 1.5, margin: [0, 6, 0, 8] },
+            children: [
+              { widget: "image", class: "warp_chevron", image: "icons/warp_chevron.svg", active: "item.lit", visible: "!item.rails" },
+              { widget: "image", class: "warp_chevron warp_rails", image: "icons/warp_chevron.svg", active: "item.lit", visible: "item.rails" },
+            ],
+          },
+          { widget: "spacer" },
+          { widget: "label", class: "warp_rate", tooltip: "Warp: {time.warp_mode}", text: "{time.warp}x" },
+        ],
+      },
+      { widget: "column", style: { height: 1, background: [1, 1, 1, 0.07], margin: [0, -10, 0, -8] } },
+      {
+        widget: "row",
+        style: { gap: 6 },
+        children: [
+          { widget: "label", class: "caption", style: { min_width: 26 }, text: "UT" },
+          { widget: "label", style: { font_weight: 600 }, text: "{time.ut|date}" },
+        ],
+      },
+      {
+        widget: "row",
+        visible: "time.launched",
+        style: { gap: 6 },
+        children: [
+          { widget: "label", class: "caption", style: { min_width: 26, color: "#38e0c4" }, text: "MET" },
+          { widget: "label", style: { font_weight: 600 }, text: "{time.met|duration}" },
+        ],
+      },
+    ],
+  },
+}

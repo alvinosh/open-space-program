@@ -1,0 +1,18 @@
+{
+  "id": "T022",
+  "title": "Recipes, and the Saturn V's",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [
+    "T017"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E10)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

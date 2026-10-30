@@ -1,0 +1,17 @@
+{
+  "id": "T155",
+  "title": "Staging window you can read",
+  "kind": "feature",
+  "status": "done",
+  "area": "ui",
+  "size": "M",
+  "parent": "T152",
+  "depends_on": [],
+  "refs": [
+    "assets/core/layouts/staging.json5",
+    "T060"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": "2026-10-30"
+}

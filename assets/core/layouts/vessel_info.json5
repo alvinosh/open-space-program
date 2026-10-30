@@ -1,0 +1,32 @@
+// Propulsion and mass.
+{
+  id: "vessel_info",
+  visible: false,
+  group: "flight",
+  dock: "left",
+  dock_order: 20,
+  root: {
+    widget: "window",
+    icon: "icons/vessel.svg",
+    title: "Vessel - {vessel.name}",
+    style: { width: 250 },
+    children: [
+      {
+        id: "propulsion",
+        widget: "column",
+        children: [
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Throttle" }, { widget: "label", text: "{vessel.throttle|percent} (min {vessel.min_throttle|percent})" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Engines at" }, { widget: "label", text: "{vessel.engine_level|percent}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Thrust" }, { widget: "label", text: "{vessel.thrust|force}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "TWR" }, { widget: "label", text: "{vessel.twr|fixed:2}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Mass" }, { widget: "label", text: "{vessel.mass|mass}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Delta-v (vac)" }, { widget: "label", text: "{vessel.delta_v|speed}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Stages" }, { widget: "label", text: "{vessel.stage_count}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Engines" }, { widget: "label", text: "running", visible: "vessel.engines_running" }, { widget: "label", class: "dim", text: "off", visible: "!vessel.engines_running" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Structure" }, { widget: "label", text: "{vessel.structure_load|percent} of strength", visible: "!vessel.destroyed" }, { widget: "label", class: "error", text: "destroyed", visible: "vessel.destroyed" }] },
+          { widget: "row", class: "kv", visible: "vessel.has_rcs", children: [{ widget: "label", class: "key", text: "RCS" }, { widget: "label", text: "on", visible: "vessel.rcs" }, { widget: "label", class: "dim", text: "off", visible: "!vessel.rcs" }, { widget: "label", class: "dim", text: "{vessel.rcs_mass|mass} ({vessel.rcs_fuel|percent}), {vessel.rcs_delta_v|speed}" }] },
+        ],
+      },
+    ],
+  },
+}

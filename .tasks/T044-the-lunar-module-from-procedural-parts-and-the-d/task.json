@@ -1,0 +1,22 @@
+{
+  "id": "T044",
+  "title": "The lunar module from procedural parts, and the descent tool",
+  "kind": "feature",
+  "status": "todo",
+  "area": "landing",
+  "size": "L",
+  "parent": "T008",
+  "depends_on": [
+    "T035",
+    "T040",
+    "T041",
+    "T043"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 19, Landing legs and the lunar module)",
+    "old issue list, issue 8 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

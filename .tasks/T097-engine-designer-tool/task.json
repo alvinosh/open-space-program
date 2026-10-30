@@ -1,0 +1,19 @@
+{
+  "id": "T097",
+  "title": "Engine Designer tool",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "L",
+  "parent": "T064",
+  "depends_on": [
+    "T096",
+    "T019"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 5"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

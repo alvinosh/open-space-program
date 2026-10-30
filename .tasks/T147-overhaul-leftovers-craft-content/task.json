@@ -1,0 +1,17 @@
+{
+  "id": "T147",
+  "title": "Overhaul leftovers: craft content",
+  "kind": "chore",
+  "status": "todo",
+  "area": "content",
+  "size": "L",
+  "parent": "T073",
+  "depends_on": [],
+  "refs": [
+    "vessel overhaul plan, carry-over notes (docs/vessel-overhaul.md)",
+    "docs/issues.md, issue 5 (removed)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

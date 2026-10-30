@@ -1,0 +1,52 @@
+// Resources window (closed at the start; the stage stack has a fuel bar per stage): every propellant on board, a row per stage that holds it, top of the
+// stack first. Each bar is in its stage's colour, the colour of that stage's fuel bars in
+// the sequence stack; hover a row for the stage's name. The bottom stage (burning now)
+// has its names lit; propellant only the RCS burns is tagged. The first line is the
+// delta-v the RCS can still give the whole vessel.
+{
+  id: "resources",
+  visible: false,
+  group: "flight",
+  dock: "right",
+  dock_order: 15,
+  root: {
+    widget: "window",
+    icon: "icons/resources.svg",
+    title: "Resources",
+    style: { width: 250 },
+    children: [
+      {
+        id: "rcs_supply",
+        widget: "row",
+        visible: "vessel.has_rcs",
+        style: { gap: 6, margin: [0, 0, 3, 0] },
+        children: [
+          { widget: "label", class: "caption", text: "RCS DV" },
+          { widget: "label", text: "{vessel.rcs_delta_v|speed}" },
+          { widget: "spacer" },
+          { widget: "label", class: "dim", text: "{vessel.rcs_fuel|percent} left" },
+        ],
+      },
+      {
+        id: "list",
+        widget: "column",
+        repeat: "vessel.resources",
+        style: { gap: 1 },
+        children: [
+          {
+            widget: "row",
+            class: "res_row",
+            tooltip: "{item.stage}",
+            children: [
+              { widget: "label", class: "res_name", active: "item.bottom", text: "{item.name}" },
+              { widget: "bar", class: "res_bar", value: "item.fraction", color: "item.color" },
+              { widget: "label", class: "res_amount", text: "{item.amount|mass}" },
+              { widget: "label", class: "caption res_tag", text: "{item.tag}" },
+            ],
+          },
+        ],
+      },
+      { widget: "label", class: "dim", visible: "!vessel.resource_count", text: "No propellant on board" },
+    ],
+  },
+}

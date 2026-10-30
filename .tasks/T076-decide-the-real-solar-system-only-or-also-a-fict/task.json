@@ -1,0 +1,16 @@
+{
+  "id": "T076",
+  "title": "Decide: the real Solar System only, or also a fictional one",
+  "kind": "decision",
+  "status": "todo",
+  "area": "content",
+  "size": "S",
+  "parent": "T072",
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Decisions to make"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

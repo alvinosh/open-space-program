@@ -1,0 +1,16 @@
+{
+  "id": "T131",
+  "title": "Ground track window and Target Tracking Window",
+  "kind": "feature",
+  "status": "todo",
+  "area": "ui",
+  "size": "L",
+  "parent": "T069",
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 10"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

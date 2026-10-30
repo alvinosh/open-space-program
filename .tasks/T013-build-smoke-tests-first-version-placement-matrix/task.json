@@ -1,0 +1,17 @@
+{
+  "id": "T013",
+  "title": "Build smoke tests, first version (placement matrix)",
+  "kind": "test",
+  "status": "done",
+  "area": "test",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [],
+  "refs": [
+    "docs/build-editor-plan.md (E1)",
+    "docs/systems-plan.md (Smoke tests for the build core)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": "2026-10-30"
+}

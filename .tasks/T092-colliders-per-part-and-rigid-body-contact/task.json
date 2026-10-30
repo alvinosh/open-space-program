@@ -1,0 +1,19 @@
+{
+  "id": "T092",
+  "title": "Colliders per part and rigid-body contact",
+  "kind": "feature",
+  "status": "todo",
+  "area": "physics",
+  "size": "L",
+  "parent": "T063",
+  "depends_on": [
+    "T074",
+    "T014"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 4"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

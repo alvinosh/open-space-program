@@ -1,0 +1,8 @@
+// The base game is the first mod in the load order. Other mods add records to the same
+// collections, replace records by id, or patch them (see patches/ in any mod).
+{
+  id: "core",
+  name: "Open Space Program Core",
+  version: "0.1.0",
+  description: "Real Solar System, stock parts and the default user interface.",
+}

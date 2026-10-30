@@ -1,0 +1,116 @@
+// A small satellite: a cylindrical bus with a solar array out to each side, cold-gas RCS
+// around its top and the nitrogen for it in a bottle. With the arrays out, its three
+// moments of inertia all differ: smallest about pitch (the axis along the arrays), largest
+// about yaw, and in between about roll, the bus's long axis. Spun about that middle axis it
+// cannot keep spinning steadily (the Dzhanibekov effect; see the `dzhanibekov` scenario).
+{
+  id: "satellite",
+  name: "Satellite",
+  parts: [
+    {
+      id: "bus",
+      name: "Bus",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [1, 0], segments: [{ line: [1, 4] }] },
+                  },
+                  { name: "floor", curve: { start: [0, 0], segments: [{ line: [1, 0] }] } },
+                  { name: "lid", curve: { start: [1, 4], segments: [{ line: [0, 4] }] } },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 2, height: 4, thickness: 1 } },
+            unseen: true,
+          },
+        ],
+      },
+      // Structure, avionics, batteries and payload.
+      structure: { thickness: 0, mass: 550 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2 },
+        { name: "top", position: [0, 0, 4], direction: [0, 0, 1], size: 2 },
+        { name: "rcs_1", position: [1, 0, 4], direction: [1, 0, 0] },
+        { name: "rcs_2", position: [0, 1, 4], direction: [0, 1, 0] },
+        { name: "rcs_3", position: [-1, 0, 4], direction: [-1, 0, 0] },
+        { name: "rcs_4", position: [0, -1, 4], direction: [0, -1, 0] },
+        { name: "wing_1", position: [1, 0, 2.8], direction: [1, 0, 0], size: 1.6 },
+        { name: "wing_1_left", position: [-1, 0, 2.8], direction: [-1, 0, 0], size: 1.6 },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 0.8 },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    { id: "bus_rcs_1", on: "bus.rcs_1", by: "mount", template: "Cold Gas Quad" },
+    {
+      id: "bus_rcs_2",
+      on: "bus.rcs_2",
+      by: "mount",
+      roll: -180,
+      template: "Cold Gas Quad",
+    },
+    {
+      id: "bus_rcs_3",
+      on: "bus.rcs_3",
+      by: "mount",
+      roll: -180,
+      template: "Cold Gas Quad",
+    },
+    { id: "bus_rcs_4", on: "bus.rcs_4", by: "mount", template: "Cold Gas Quad" },
+    // Flat panels across the middle of the bus.
+    {
+      id: "bus_wing_1",
+      name: "Solar array",
+      on: "bus.wing_1",
+      by: "root",
+      shape: {
+        wing: {
+          root_chord: 1.6,
+          tip_chord: 1.6,
+          span: 6,
+          airfoil: { naca: { thickness: 0.02 } },
+        },
+      },
+      structure: { mass: 60 },
+      components: [{ lifting_surface: {} }],
+      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
+    },
+    {
+      id: "bus_wing_1_left",
+      name: "Solar array",
+      on: "bus.wing_1_left",
+      by: "root",
+      shape: {
+        mirrored: {
+          wing: {
+            root_chord: 1.6,
+            tip_chord: 1.6,
+            span: 6,
+            airfoil: { naca: { thickness: 0.02 } },
+          },
+        },
+      },
+      structure: { mass: 60 },
+      components: [{ lifting_surface: {} }],
+      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
+    },
+    {
+      id: "bus_tank_1",
+      name: "COPV",
+      on: "bus.tank_1",
+      shape: { sphere: { diameter: 0.8 } },
+      components: [{ storage: { type: "COPV", contents: { Nitrogen: 1 } } }],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+  ],
+  sequences: [],
+}

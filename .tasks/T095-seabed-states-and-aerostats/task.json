@@ -1,0 +1,18 @@
+{
+  "id": "T095",
+  "title": "Seabed states and aerostats",
+  "kind": "feature",
+  "status": "todo",
+  "area": "physics",
+  "size": "M",
+  "parent": "T063",
+  "depends_on": [
+    "T048"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 4"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,35 @@
+// Flight data window, closed at the start (the altimeter and the navball carry what flying
+// needs); the launcher opens it and the choice is remembered. Node ids (#flight) are stable for mods to insert rows.
+{
+  id: "flight_info",
+  visible: false,
+  group: "flight",
+  dock: "left",
+  dock_order: 10,
+  root: {
+    widget: "window",
+    icon: "icons/flight.svg",
+    title: "Flight",
+    style: { width: 230 },
+    children: [
+      {
+        id: "flight",
+        widget: "column",
+        children: [
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/vertical_speed.svg" }, { widget: "label", class: "key", text: "Vertical speed" }, { widget: "label", text: "{vessel.vertical_speed|speed}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/surface_speed.svg" }, { widget: "label", class: "key", text: "Surface speed" }, { widget: "label", text: "{vessel.surface_speed|speed}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/orbital_speed.svg" }, { widget: "label", class: "key", text: "Orbital speed" }, { widget: "label", text: "{vessel.orbital_speed|speed}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/mach.svg" }, { widget: "label", class: "key", text: "Mach" }, { widget: "label", text: "{vessel.mach|fixed:2}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/dynamic_pressure.svg" }, { widget: "label", class: "key", text: "Dynamic Q" }, { widget: "label", text: "{vessel.dynamic_pressure|pressure}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/angle_of_attack.svg" }, { widget: "label", class: "key", text: "Angle of attack" }, { widget: "label", text: "{vessel.angle_of_attack|degrees:1}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/sideslip.svg" }, { widget: "label", class: "key", text: "Sideslip" }, { widget: "label", text: "{vessel.sideslip|degrees:1}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/drag.svg" }, { widget: "label", class: "key", text: "Drag" }, { widget: "label", text: "{vessel.drag|force}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/lift.svg" }, { widget: "label", class: "key", text: "Lift" }, { widget: "label", text: "{vessel.lift|force}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/air_pressure.svg" }, { widget: "label", class: "key", text: "Air pressure" }, { widget: "label", text: "{vessel.static_pressure|pressure}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/acceleration.svg" }, { widget: "label", class: "key", text: "Acceleration" }, { widget: "label", text: "{vessel.accel_g|fixed:2} g" }] },
+          { widget: "row", class: "kv", children: [{ widget: "image", class: "row_icon", image: "icons/telemetry/motion.svg" }, { widget: "label", class: "key", text: "Motion" }, { widget: "label", text: "{vessel.motion}" }] },
+        ],
+      },
+    ],
+  },
+}

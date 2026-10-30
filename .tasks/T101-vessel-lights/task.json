@@ -1,0 +1,18 @@
+{
+  "id": "T101",
+  "title": "Vessel lights",
+  "kind": "feature",
+  "status": "todo",
+  "area": "power",
+  "size": "M",
+  "parent": "T064",
+  "depends_on": [
+    "T035"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 5"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

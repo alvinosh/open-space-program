@@ -1,0 +1,15 @@
+// Structural materials for procedural tanks and fins: density (kg/m³), yield strength and
+// Young's modulus (Pa), room-temperature handbook values.
+[
+  // Saturn V, Delta, the early Shuttle external tank.
+  { id: "Al 2219-T87", density: 2840, yield_strength: 393e6, elastic_modulus: 73.8e9 },
+  // Falcon 9, the Super Lightweight external tank.
+  { id: "Al-Li 2195-T8", density: 2710, yield_strength: 530e6, elastic_modulus: 76e9 },
+  // Atlas and Centaur balloon tanks.
+  { id: "Stainless 301 Full Hard", density: 7880, yield_strength: 965e6, elastic_modulus: 193e9 },
+  { id: "Ti-6Al-4V", density: 4430, yield_strength: 880e6, elastic_modulus: 114e9 },
+  // Quasi-isotropic carbon-fibre laminate (Electron's tanks).
+  { id: "Carbon Composite", density: 1600, yield_strength: 600e6, elastic_modulus: 70e9 },
+  // Hoop-wound carbon fibre over a thin liner, as on pressurant bottles.
+  { id: "Carbon Overwrap", density: 1550, yield_strength: 1.4e9, elastic_modulus: 140e9 },
+]

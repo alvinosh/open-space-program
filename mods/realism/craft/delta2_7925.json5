@@ -1,0 +1,1228 @@
+// Delta II 7925 (1996).
+// Nine GEM-40 strap-ons round an RS-27A Thor core: six light on the pad and drop at
+// burnout as the other three light in the air. Then the Delta-K, the PAM-D and Mars
+// Pathfinder. Built from plain parts: the GEMs are the `gem_40_ground` and `gem_40_air`
+// assemblies (mods/realism/assemblies/boosters.json5) placed on the core.
+{
+  id: "delta2_7925",
+  name: "Delta II 7925",
+  parts: [
+    {
+      id: "mars_pathfinder",
+      name: "Mars Pathfinder",
+      shape: {
+        compound: [
+          {
+            name: "adapter",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "floor",
+                    curve: { start: [0, 0], segments: [{ line: [1.45, 0] }] },
+                  },
+                  {
+                    name: "adapter",
+                    curve: {
+                      start: [1.45, 0],
+                      segments: [{ line: [1.45, 0.12] }, { line: [0.725, 0.9] }],
+                    },
+                  },
+                  {
+                    name: "deck",
+                    curve: { start: [0.725, 0.9], segments: [{ line: [0, 0.9] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 2.9, height: 4, thickness: 1.45 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 890 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.9 },
+        { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 1.45 },
+        { name: "fairing_1", position: [1.45, 0, 0], direction: [0, 0, 1], size: 2.9 },
+        { name: "fairing_2", position: [-1.45, 0, 0], direction: [0, 0, 1], size: 2.9 },
+        {
+          name: "payload_1",
+          position: [0, 0, 0.9],
+          direction: [0, 0, 1],
+          size: 1.845548698896889,
+        },
+        {
+          name: "panel_1",
+          position: [0.7025, 0, 1.024],
+          direction: [0, 0, 1],
+          size: 1.175563800905761,
+        },
+        {
+          name: "panel_2",
+          position: [-0.7025, 0, 1.024],
+          direction: [0, 0, 1],
+          size: 1.175563800905761,
+        },
+        {
+          name: "antenna_1",
+          position: [0, 0, 4.05],
+          direction: [0, 0, 1],
+          size: 0.7829999999999999,
+        },
+      ],
+      paint: {
+        color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+        finish: "composite",
+      },
+    },
+    {
+      id: "mars_pathfinder_fairing_1",
+      name: "Fairing",
+      on: "mars_pathfinder.fairing_1",
+      shape: {
+        shell: {
+          bottom_diameter: 2.9,
+          sections: [
+            { length: 1.949507 },
+            { length: 3.77, top_diameter: 0, profile: "ogive" },
+          ],
+          span: [-90, 90],
+        },
+      },
+      structure: { thickness: 0.04, mass: 420 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "mars_pathfinder_fairing_2",
+      name: "Fairing",
+      on: "mars_pathfinder.fairing_2",
+      roll: -180,
+      shape: {
+        shell: {
+          bottom_diameter: 2.9,
+          sections: [
+            { length: 1.949507 },
+            { length: 3.77, top_diameter: 0, profile: "ogive" },
+          ],
+          span: [-90, 90],
+        },
+      },
+      structure: { thickness: 0.04, mass: 420 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        inside: {
+          color: [0.0560000017285347, 0.0560000017285347, 0.06400000303983688],
+          finish: "composite",
+        },
+      },
+    },
+    {
+      id: "mars_pathfinder_payload_1",
+      name: "Payload",
+      on: "mars_pathfinder.payload_1",
+      shape: { box: { size: [1.305, 1.305, 3.1] } },
+      paint: { color: [0.8500000238418579, 0.6200000047683716, 0.25], finish: "metal" },
+    },
+    {
+      id: "mars_pathfinder_panel_1",
+      name: "Solar panel",
+      on: "mars_pathfinder.panel_1",
+      shape: { box: { size: [0.05, 1.1744999999999999, 2.8520000000000003] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "mars_pathfinder_panel_2",
+      name: "Solar panel",
+      on: "mars_pathfinder.panel_2",
+      shape: { box: { size: [0.05, 1.1744999999999999, 2.8520000000000003] } },
+      paint: { color: [0.029999999329447746, 0.05000000074505806, 0.14000000059604645] },
+    },
+    {
+      id: "mars_pathfinder_antenna_1",
+      name: "Antenna",
+      on: "mars_pathfinder.antenna_1",
+      shape: {
+        shell: {
+          bottom_diameter: 0.7829999999999999,
+          sections: [{ length: 0.25, top_diameter: 0 }],
+          cap_bottom: true,
+        },
+      },
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "pam_d",
+      name: "PAM-D",
+      on: "mars_pathfinder.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: {
+                      start: [0.625, 0],
+                      segments: [{ line: [0.625, 0.441941738] }],
+                    },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.625, 0.861058262],
+                      segments: [{ line: [0.625, 1.94] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [0.625, 1.94], segments: [{ line: [0.625, 2] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.625, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.25, height: 2, thickness: 0.625 } },
+            unseen: true,
+          },
+        ],
+      },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.25 },
+        { name: "top", position: [0, 0, 2], direction: [0, 0, 1], size: 1.25 },
+        { name: "engine_1", position: [0, 0, 0], direction: [0, 0, -1], size: 1.33 },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 1.25 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "pam_d_engine_1", on: "pam_d.engine_1", by: "top", template: "Star-48B/Long" },
+    {
+      id: "pam_d_tank_1",
+      name: "Solid Grain",
+      on: "pam_d.tank_1",
+      shape: { cylinder_tank: { diameter: 1.25, length: 1.303 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "delta_k",
+      name: "Delta-K",
+      on: "pam_d.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [1.22, 0], segments: [{ line: [1.165458333, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: {
+                      start: [1.165458333, 0.55],
+                      segments: [{ line: [0.63095, 5.94] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [0.63095, 5.94], segments: [{ line: [0.625, 6] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [1.22, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 2.44, height: 6, thickness: 1.22 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 570 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.44 },
+        { name: "top", position: [0, 0, 6], direction: [0, 0, 1], size: 1.25 },
+        { name: "engine_1", position: [0, 0, 0], direction: [0, 0, -1], size: 1 },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 2.207 },
+      ],
+      paint: {
+        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "delta_k_engine_1", on: "delta_k.engine_1", by: "top", template: "AJ10-118K" },
+    {
+      id: "delta_k_tank_1",
+      name: "HP Al Stringer Tank",
+      on: "delta_k.tank_1",
+      shape: { sphere: { diameter: 2.207 } },
+      components: [
+        {
+          storage: {
+            type: "HP Al Stringer Tank",
+            contents: { Aerozine50: 0.3448, MON1: 0.6552 },
+            design_load: 5,
+          },
+        },
+      ],
+      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+    },
+    {
+      id: "thor_elt",
+      name: "Thor ELT",
+      on: "delta_k.bottom",
+      by: "top",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [1.22, 0], segments: [{ line: [1.22, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [1.22, 0.55], segments: [{ line: [1.22, 0.86267] }] },
+                  },
+                  {
+                    name: "interstage",
+                    curve: {
+                      start: [1.22, 21.058562],
+                      segments: [{ line: [1.22, 26.04] }],
+                    },
+                  },
+                  {
+                    name: "separation_ring",
+                    curve: { start: [1.22, 26.04], segments: [{ line: [1.22, 26.1] }] },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [1.22, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 2.44, height: 26.1, thickness: 1.22 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 2880.1 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.44 },
+        { name: "top", position: [0, 0, 26.1], direction: [0, 0, 1], size: 2.44 },
+        { name: "engine_1", position: [0, 0, 0], direction: [0, 0, -1], size: 0.48 },
+        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 2.44 },
+        {
+          name: "gem_1",
+          position: [1.68017, 0.611532, 11.05],
+          direction: [0, 0, -1],
+          size: 1.016,
+        },
+        {
+          name: "gem_2",
+          position: [0.894, 1.548453, 11.05],
+          direction: [0, 0, -1],
+          size: 1.016,
+        },
+        {
+          name: "gem_3",
+          position: [-0.310483, 1.760836, 11.05],
+          direction: [0, 0, -1],
+          size: 1.016,
+        },
+        {
+          name: "gem_4",
+          position: [-1.369687, 1.149304, 11.05],
+          direction: [0, 0, -1],
+          size: 1.016,
+        },
+        { name: "gem_5", position: [-1.788, 0, 11.05], direction: [0, 0, -1], size: 1.016 },
+        {
+          name: "gem_6",
+          position: [-1.369687, -1.149304, 11.05],
+          direction: [0, 0, -1],
+          size: 1.016,
+        },
+        {
+          name: "gem_7",
+          position: [-0.310483, -1.760836, 11.05],
+          direction: [0, 0, -1],
+          size: 1.016,
+        },
+        {
+          name: "gem_8",
+          position: [0.894, -1.548453, 11.05],
+          direction: [0, 0, -1],
+          size: 1.016,
+        },
+        {
+          name: "gem_9",
+          position: [1.68017, -0.611532, 11.05],
+          direction: [0, 0, -1],
+          size: 1.016,
+        },
+      ],
+      paint: {
+        color: [0.019999999552965164, 0.14000000059604645, 0.20000000298023224],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/interstage": {
+            color: [0.02800000086426735, 0.02800000086426735, 0.03200000151991844],
+            finish: "composite",
+          },
+          "skin/separation_ring": {
+            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
+            finish: "metal",
+          },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "thor_elt_engine_1", on: "thor_elt.engine_1", by: "top", template: "RS-27A" },
+    {
+      id: "thor_elt_tank_1",
+      name: "Al Gridded Tank",
+      on: "thor_elt.tank_1",
+      shape: { cylinder_tank: { diameter: 2.44, length: 21.921232 } },
+      components: [
+        {
+          storage: {
+            type: "Al Gridded Tank",
+            contents: { LqdOxygen: 0.6913, "RP-1": 0.3087 },
+          },
+        },
+      ],
+      paint: { color: [0.019999999552965164, 0.14000000059604645, 0.20000000298023224] },
+    },
+    {
+      id: "gem_1_body",
+      name: "GEM-40",
+      on: "thor_elt.gem_1",
+      by: "attach",
+      roll: -20,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.508, 0], segments: [{ line: [0.508, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [0.508, 0.55], segments: [{ line: [0.508, 0.35921] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.508, 9.553979],
+                      segments: [{ line: [0.508, 11.4] }],
+                    },
+                  },
+                  {
+                    name: "nose",
+                    curve: {
+                      start: [0.508, 11.4],
+                      segments: [{ line: [0.06096, 12.84] }, { line: [0, 13] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.508, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.016, height: 13, thickness: 0.508 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 0 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
+        { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 11.05], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.6096 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 1.016 },
+      ],
+      paint: {
+        color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/nose": {
+            color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+          },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "gem_1_engine", on: "gem_1_body.engine", by: "top", template: "GEM-40/Ground" },
+    {
+      id: "gem_1_tank",
+      name: "Solid Grain",
+      on: "gem_1_body.tank",
+      shape: { cylinder_tank: { diameter: 0.976, length: 9.913189 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
+    },
+    {
+      id: "gem_2_body",
+      name: "GEM-40",
+      on: "thor_elt.gem_2",
+      by: "attach",
+      roll: -59.99999999999999,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.508, 0], segments: [{ line: [0.508, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [0.508, 0.55], segments: [{ line: [0.508, 0.35921] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.508, 9.553979],
+                      segments: [{ line: [0.508, 11.4] }],
+                    },
+                  },
+                  {
+                    name: "nose",
+                    curve: {
+                      start: [0.508, 11.4],
+                      segments: [{ line: [0.06096, 12.84] }, { line: [0, 13] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.508, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.016, height: 13, thickness: 0.508 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 0 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
+        { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 11.05], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.6096 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 1.016 },
+      ],
+      paint: {
+        color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/nose": {
+            color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+          },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "gem_2_engine", on: "gem_2_body.engine", by: "top", template: "GEM-40/Ground" },
+    {
+      id: "gem_2_tank",
+      name: "Solid Grain",
+      on: "gem_2_body.tank",
+      shape: { cylinder_tank: { diameter: 0.976, length: 9.913189 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
+    },
+    {
+      id: "gem_3_body",
+      name: "GEM-40 (air-lit)",
+      on: "thor_elt.gem_3",
+      by: "attach",
+      roll: -100,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.508, 0], segments: [{ line: [0.508, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [0.508, 0.55], segments: [{ line: [0.508, 0.35921] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.508, 9.553979],
+                      segments: [{ line: [0.508, 11.4] }],
+                    },
+                  },
+                  {
+                    name: "nose",
+                    curve: {
+                      start: [0.508, 11.4],
+                      segments: [{ line: [0.06096, 12.84] }, { line: [0, 13] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.508, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.016, height: 13, thickness: 0.508 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 0 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
+        { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 11.05], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.6096 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 1.016 },
+      ],
+      paint: {
+        color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/nose": {
+            color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+          },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "gem_3_engine", on: "gem_3_body.engine", by: "top", template: "GEM-40/Air" },
+    {
+      id: "gem_3_tank",
+      name: "Solid Grain",
+      on: "gem_3_body.tank",
+      shape: { cylinder_tank: { diameter: 0.976, length: 9.913189 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
+    },
+    {
+      id: "gem_4_body",
+      name: "GEM-40",
+      on: "thor_elt.gem_4",
+      by: "attach",
+      roll: -140,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.508, 0], segments: [{ line: [0.508, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [0.508, 0.55], segments: [{ line: [0.508, 0.35921] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.508, 9.553979],
+                      segments: [{ line: [0.508, 11.4] }],
+                    },
+                  },
+                  {
+                    name: "nose",
+                    curve: {
+                      start: [0.508, 11.4],
+                      segments: [{ line: [0.06096, 12.84] }, { line: [0, 13] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.508, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.016, height: 13, thickness: 0.508 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 0 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
+        { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 11.05], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.6096 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 1.016 },
+      ],
+      paint: {
+        color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/nose": {
+            color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+          },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "gem_4_engine", on: "gem_4_body.engine", by: "top", template: "GEM-40/Ground" },
+    {
+      id: "gem_4_tank",
+      name: "Solid Grain",
+      on: "gem_4_body.tank",
+      shape: { cylinder_tank: { diameter: 0.976, length: 9.913189 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
+    },
+    {
+      id: "gem_5_body",
+      name: "GEM-40",
+      on: "thor_elt.gem_5",
+      by: "attach",
+      roll: -180,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.508, 0], segments: [{ line: [0.508, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [0.508, 0.55], segments: [{ line: [0.508, 0.35921] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.508, 9.553979],
+                      segments: [{ line: [0.508, 11.4] }],
+                    },
+                  },
+                  {
+                    name: "nose",
+                    curve: {
+                      start: [0.508, 11.4],
+                      segments: [{ line: [0.06096, 12.84] }, { line: [0, 13] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.508, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.016, height: 13, thickness: 0.508 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 0 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
+        { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 11.05], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.6096 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 1.016 },
+      ],
+      paint: {
+        color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/nose": {
+            color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+          },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "gem_5_engine", on: "gem_5_body.engine", by: "top", template: "GEM-40/Ground" },
+    {
+      id: "gem_5_tank",
+      name: "Solid Grain",
+      on: "gem_5_body.tank",
+      shape: { cylinder_tank: { diameter: 0.976, length: 9.913189 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
+    },
+    {
+      id: "gem_6_body",
+      name: "GEM-40 (air-lit)",
+      on: "thor_elt.gem_6",
+      by: "attach",
+      roll: -220,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.508, 0], segments: [{ line: [0.508, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [0.508, 0.55], segments: [{ line: [0.508, 0.35921] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.508, 9.553979],
+                      segments: [{ line: [0.508, 11.4] }],
+                    },
+                  },
+                  {
+                    name: "nose",
+                    curve: {
+                      start: [0.508, 11.4],
+                      segments: [{ line: [0.06096, 12.84] }, { line: [0, 13] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.508, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.016, height: 13, thickness: 0.508 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 0 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
+        { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 11.05], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.6096 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 1.016 },
+      ],
+      paint: {
+        color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/nose": {
+            color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+          },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "gem_6_engine", on: "gem_6_body.engine", by: "top", template: "GEM-40/Air" },
+    {
+      id: "gem_6_tank",
+      name: "Solid Grain",
+      on: "gem_6_body.tank",
+      shape: { cylinder_tank: { diameter: 0.976, length: 9.913189 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
+    },
+    {
+      id: "gem_7_body",
+      name: "GEM-40",
+      on: "thor_elt.gem_7",
+      by: "attach",
+      roll: -260,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.508, 0], segments: [{ line: [0.508, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [0.508, 0.55], segments: [{ line: [0.508, 0.35921] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.508, 9.553979],
+                      segments: [{ line: [0.508, 11.4] }],
+                    },
+                  },
+                  {
+                    name: "nose",
+                    curve: {
+                      start: [0.508, 11.4],
+                      segments: [{ line: [0.06096, 12.84] }, { line: [0, 13] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.508, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.016, height: 13, thickness: 0.508 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 0 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
+        { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 11.05], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.6096 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 1.016 },
+      ],
+      paint: {
+        color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/nose": {
+            color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+          },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "gem_7_engine", on: "gem_7_body.engine", by: "top", template: "GEM-40/Ground" },
+    {
+      id: "gem_7_tank",
+      name: "Solid Grain",
+      on: "gem_7_body.tank",
+      shape: { cylinder_tank: { diameter: 0.976, length: 9.913189 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
+    },
+    {
+      id: "gem_8_body",
+      name: "GEM-40",
+      on: "thor_elt.gem_8",
+      by: "attach",
+      roll: -300,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.508, 0], segments: [{ line: [0.508, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [0.508, 0.55], segments: [{ line: [0.508, 0.35921] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.508, 9.553979],
+                      segments: [{ line: [0.508, 11.4] }],
+                    },
+                  },
+                  {
+                    name: "nose",
+                    curve: {
+                      start: [0.508, 11.4],
+                      segments: [{ line: [0.06096, 12.84] }, { line: [0, 13] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.508, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.016, height: 13, thickness: 0.508 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 0 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
+        { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 11.05], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.6096 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 1.016 },
+      ],
+      paint: {
+        color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/nose": {
+            color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+          },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "gem_8_engine", on: "gem_8_body.engine", by: "top", template: "GEM-40/Ground" },
+    {
+      id: "gem_8_tank",
+      name: "Solid Grain",
+      on: "gem_8_body.tank",
+      shape: { cylinder_tank: { diameter: 0.976, length: 9.913189 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
+    },
+    {
+      id: "gem_9_body",
+      name: "GEM-40 (air-lit)",
+      on: "thor_elt.gem_9",
+      by: "attach",
+      roll: -340,
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.508, 0], segments: [{ line: [0.508, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: { start: [0.508, 0.55], segments: [{ line: [0.508, 0.35921] }] },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.508, 9.553979],
+                      segments: [{ line: [0.508, 11.4] }],
+                    },
+                  },
+                  {
+                    name: "nose",
+                    curve: {
+                      start: [0.508, 11.4],
+                      segments: [{ line: [0.06096, 12.84] }, { line: [0, 13] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.508, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.016, height: 13, thickness: 0.508 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 0 },
+      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
+        { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
+        { name: "attach", position: [0, 0, 11.05], direction: [0, 0, 1] },
+        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.6096 },
+        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 1.016 },
+      ],
+      paint: {
+        color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/nose": {
+            color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421],
+          },
+          "skin/thrust_plate": {
+            color: [0.039000000804662704, 0.039000000804662704, 0.04500000178813934],
+            finish: "composite",
+          },
+        },
+      },
+    },
+    { id: "gem_9_engine", on: "gem_9_body.engine", by: "top", template: "GEM-40/Air" },
+    {
+      id: "gem_9_tank",
+      name: "Solid Grain",
+      on: "gem_9_body.tank",
+      shape: { cylinder_tank: { diameter: 0.976, length: 9.913189 } },
+      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
+    },
+  ],
+  sequences: [
+    [
+      "engines:thor_elt",
+      "engines:gem_1_body",
+      "engines:gem_2_body",
+      "engines:gem_4_body",
+      "engines:gem_5_body",
+      "engines:gem_7_body",
+      "engines:gem_8_body",
+    ],
+    [
+      "decoupler:gem_1_body",
+      "decoupler:gem_2_body",
+      "decoupler:gem_4_body",
+      "decoupler:gem_5_body",
+      "decoupler:gem_7_body",
+      "decoupler:gem_8_body",
+      "engines:gem_3_body",
+      "engines:gem_6_body",
+      "engines:gem_9_body",
+    ],
+    ["decoupler:gem_3_body", "decoupler:gem_6_body", "decoupler:gem_9_body"],
+    ["decoupler:thor_elt", "engines:delta_k"],
+    ["decoupler:delta_k", "engines:pam_d"],
+    ["fairing:mars_pathfinder"],
+    ["decoupler:pam_d"],
+  ],
+}

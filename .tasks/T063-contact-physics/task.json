@@ -1,0 +1,16 @@
+{
+  "id": "T063",
+  "title": "Contact physics",
+  "kind": "epic",
+  "status": "todo",
+  "area": "physics",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 4"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

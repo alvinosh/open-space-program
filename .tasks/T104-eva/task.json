@@ -1,0 +1,19 @@
+{
+  "id": "T104",
+  "title": "EVA",
+  "kind": "feature",
+  "status": "todo",
+  "area": "crew",
+  "size": "XL",
+  "parent": "T065",
+  "depends_on": [
+    "T103",
+    "T092"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 6"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

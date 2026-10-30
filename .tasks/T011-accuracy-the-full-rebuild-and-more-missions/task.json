@@ -1,0 +1,16 @@
+{
+  "id": "T011",
+  "title": "Accuracy, the full rebuild, and more missions",
+  "kind": "epic",
+  "status": "todo",
+  "area": "test",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "docs/systems-plan.md (Milestone 10)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

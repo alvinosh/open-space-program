@@ -1,0 +1,18 @@
+{
+  "id": "T017",
+  "title": "The palette",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [
+    "T016"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E5)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

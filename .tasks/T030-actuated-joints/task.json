@@ -1,0 +1,19 @@
+{
+  "id": "T030",
+  "title": "Actuated joints",
+  "kind": "feature",
+  "status": "todo",
+  "area": "physics",
+  "size": "L",
+  "parent": "T003",
+  "depends_on": [
+    "T028",
+    "T029"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 5)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

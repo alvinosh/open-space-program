@@ -1,0 +1,22 @@
+{
+  "id": "T037",
+  "title": "Ground stations and communication links",
+  "kind": "feature",
+  "status": "todo",
+  "area": "comms",
+  "size": "M",
+  "parent": "T006",
+  "depends_on": [
+    "T032",
+    "T033",
+    "T034",
+    "T035"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 12, Communications)",
+    "old issue list, issue 13 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

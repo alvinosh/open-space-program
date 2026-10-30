@@ -1,0 +1,20 @@
+{
+  "id": "T109",
+  "title": "System presets at start",
+  "kind": "feature",
+  "status": "todo",
+  "area": "ui",
+  "size": "S",
+  "parent": "T066",
+  "depends_on": [
+    "T107",
+    "T091",
+    "T076"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 7"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

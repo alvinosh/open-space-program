@@ -1,0 +1,16 @@
+{
+  "id": "T084",
+  "title": "Engine control readouts in flight",
+  "kind": "feature",
+  "status": "todo",
+  "area": "ui",
+  "size": "S",
+  "parent": "T061",
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 1"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,24 @@
+{
+  "id": "T040",
+  "title": "Docking ports",
+  "kind": "feature",
+  "status": "todo",
+  "area": "docking",
+  "size": "L",
+  "parent": "T007",
+  "depends_on": [
+    "T039",
+    "T032",
+    "T034",
+    "T030",
+    "T092",
+    "T123"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 15, Docking)",
+    "old issue list, issue 8 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

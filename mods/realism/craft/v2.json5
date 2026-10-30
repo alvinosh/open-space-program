@@ -1,0 +1,221 @@
+// V-2 (A-4) (1944).
+// The first rocket to reach space: MW 18014 climbed to 176 km on 20 June 1944.
+// Built by hand from plain parts: the tanks stand above the 2.6 m tail section that holds
+// the engine and turbopump, and the tonne of the warhead rides in the nose, which is what
+// keeps the real one stable on its fins.
+{
+  id: "v2",
+  name: "V-2 (A-4)",
+  parts: [
+    {
+      id: "a_4",
+      name: "A-4",
+      shape: {
+        compound: [
+          {
+            name: "skin",
+            shape: {
+              revolved: {
+                walls: [
+                  {
+                    name: "engine_section",
+                    curve: { start: [0.825, 0], segments: [{ line: [0.825, 0.55] }] },
+                  },
+                  {
+                    name: "aft_skirt",
+                    curve: {
+                      start: [0.825, 0.55],
+                      segments: [{ line: [0.825, 3.183363094] }],
+                    },
+                  },
+                  {
+                    name: "forward_skirt",
+                    curve: {
+                      start: [0.825, 7.405636906],
+                      segments: [{ line: [0.825, 12] }],
+                    },
+                  },
+                  {
+                    name: "thrust_plate",
+                    curve: { start: [0, 0], segments: [{ line: [0.825, 0] }] },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            name: "equipment",
+            shape: { ring: { diameter: 1.65, height: 12, thickness: 0.825 } },
+            unseen: true,
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 880 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.65 },
+        { name: "top", position: [0, 0, 12], direction: [0, 0, 1], size: 1.65 },
+        { name: "engine_1", position: [0, 0, 0], direction: [0, 0, -1], size: 2 },
+        { name: "fin_1", position: [0.825, 0, 2.6], direction: [1, 0, 0], size: 2.6 },
+        { name: "fin_2", position: [0, 0.825, 2.6], direction: [0, 1, 0], size: 2.6 },
+        { name: "fin_3", position: [-0.825, 0, 2.6], direction: [-1, 0, 0], size: 2.6 },
+        { name: "fin_4", position: [0, -0.825, 2.6], direction: [0, -1, 0], size: 2.6 },
+        { name: "tank_1", position: [0, 0, 2.6], direction: [0, 0, 1], size: 1.65 },
+      ],
+      paint: {
+        pieces: {
+          "skin/engine_section": { finish: "composite" },
+          "skin/thrust_plate": {
+            color: [0.03920000046491623, 0.03920000046491623, 0.04480000212788582],
+            finish: "composite",
+          },
+        },
+        layers: [
+          {
+            checker: {
+              around: 4,
+              along: [0, 3.5, 7, 10.5, 14],
+              color: [0.012000000104308128, 0.012000000104308128, 0.014000000432133675],
+            },
+          },
+        ],
+      },
+    },
+    {
+      id: "a_4_shell_1",
+      name: "Nose cone",
+      on: "a_4.top",
+      shape: {
+        shell: {
+          bottom_diameter: 1.65,
+          sections: [{ length: 2, top_diameter: 0, profile: "ogive" }],
+        },
+      },
+      // The warhead.
+      structure: { mass: 1000 },
+      paint: {
+        layers: [
+          {
+            checker: {
+              around: 4,
+              along: [-12, -8.5, -5, -1.5, 2],
+              color: [0.012000000104308128, 0.012000000104308128, 0.014000000432133675],
+            },
+          },
+        ],
+      },
+    },
+    { id: "a_4_engine_1", on: "a_4.engine_1", by: "top", template: "A-4" },
+    {
+      id: "a_4_fin_1",
+      name: "Fin",
+      on: "a_4.fin_1",
+      by: "root",
+      shape: {
+        wing: {
+          root_chord: 2.6,
+          tip_chord: 1.25,
+          span: 0.95,
+          sweep: 1.2,
+          airfoil: { plate: { thickness: 0.012 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "a_4_fin_2",
+      name: "Fin",
+      on: "a_4.fin_2",
+      by: "root",
+      roll: -180,
+      shape: {
+        wing: {
+          root_chord: 2.6,
+          tip_chord: 1.25,
+          span: 0.95,
+          sweep: 1.2,
+          airfoil: { plate: { thickness: 0.012 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "a_4_fin_3",
+      name: "Fin",
+      on: "a_4.fin_3",
+      by: "root",
+      roll: -180,
+      shape: {
+        wing: {
+          root_chord: 2.6,
+          tip_chord: 1.25,
+          span: 0.95,
+          sweep: 1.2,
+          airfoil: { plate: { thickness: 0.012 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "a_4_fin_4",
+      name: "Fin",
+      on: "a_4.fin_4",
+      by: "root",
+      shape: {
+        wing: {
+          root_chord: 2.6,
+          tip_chord: 1.25,
+          span: 0.95,
+          sweep: 1.2,
+          airfoil: { plate: { thickness: 0.012 } },
+        },
+      },
+      structure: { material: "Al 2014-T6" },
+      components: [{ lifting_surface: {} }],
+      paint: {
+        color: [0.550000011920929, 0.5699999928474426, 0.6000000238418579],
+        finish: "metal",
+      },
+    },
+    {
+      id: "a_4_tank_1",
+      name: "Steel Fuselage",
+      on: "a_4.tank_1",
+      shape: { cylinder_tank: { diameter: 1.65, length: 5.389 } },
+      components: [
+        {
+          storage: {
+            type: "Steel Fuselage",
+            contents: { Ethanol75: 0.4465, LqdOxygen: 0.5535 },
+          },
+        },
+      ],
+      paint: {
+        layers: [
+          {
+            checker: {
+              around: 4,
+              along: [0, 3.5, 7, 10.5, 14],
+              color: [0.012000000104308128, 0.012000000104308128, 0.014000000432133675],
+            },
+          },
+        ],
+      },
+    },
+  ],
+}

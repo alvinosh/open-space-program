@@ -1,0 +1,16 @@
+{
+  "id": "T151",
+  "title": "Trees glitch near the ground",
+  "kind": "bug",
+  "status": "todo",
+  "area": "rendering",
+  "size": "S",
+  "parent": "T073",
+  "depends_on": [],
+  "refs": [
+    "`crates/osp_game/src/trees.rs`"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

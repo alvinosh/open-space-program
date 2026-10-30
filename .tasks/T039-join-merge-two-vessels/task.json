@@ -1,0 +1,19 @@
+{
+  "id": "T039",
+  "title": "Join: merge two vessels",
+  "kind": "feature",
+  "status": "todo",
+  "area": "docking",
+  "size": "L",
+  "parent": "T007",
+  "depends_on": [
+    "T028",
+    "T015"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 14, Join)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

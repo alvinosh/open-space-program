@@ -1,0 +1,16 @@
+{
+  "id": "T117",
+  "title": "Volumetric clouds with shadows and god rays; 2D cloud layers",
+  "kind": "feature",
+  "status": "todo",
+  "area": "rendering",
+  "size": "XL",
+  "parent": "T067",
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 8"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

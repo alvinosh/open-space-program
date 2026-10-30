@@ -1,0 +1,18 @@
+{
+  "id": "T057",
+  "title": "Procedural RCS block",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "M",
+  "parent": "T012",
+  "depends_on": [
+    "T032"
+  ],
+  "refs": [
+    "docs/systems-plan.md (palette table)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

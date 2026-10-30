@@ -1,0 +1,19 @@
+{
+  "id": "T014",
+  "title": "Physics on any part at any pose",
+  "kind": "feature",
+  "status": "todo",
+  "area": "physics",
+  "size": "L",
+  "parent": "T002",
+  "depends_on": [
+    "T013"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E2)",
+    "docs/systems-plan.md (The build core)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

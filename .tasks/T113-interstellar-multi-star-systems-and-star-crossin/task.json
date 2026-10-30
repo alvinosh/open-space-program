@@ -1,0 +1,16 @@
+{
+  "id": "T113",
+  "title": "Interstellar: multi-star systems and star crossings",
+  "kind": "feature",
+  "status": "todo",
+  "area": "orbit",
+  "size": "XL",
+  "parent": "T066",
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 7"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

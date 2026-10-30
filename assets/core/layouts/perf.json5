@@ -1,0 +1,69 @@
+// Performance overlay (F10): frame rate, where the frame's time goes and what limits it,
+// refreshed twice a second from `perf.*` (see crates/osp_game/src/profiler.rs). Shown over
+// the main menu too, to see what each graphics setting costs.
+{
+  id: "perf",
+  visible: false,
+  root: {
+    widget: "window",
+    icon: "icons/clock.svg",
+    title: "Performance (F10)",
+    style: { right: 54, bottom: 12, width: 340, z_index: 60 },
+    children: [
+      {
+        id: "perf",
+        widget: "column",
+        children: [
+          {
+            widget: "row",
+            children: [
+              { widget: "label", class: "title", text: "{perf.fps|int} fps" },
+              { widget: "label", class: "dim", text: "{perf.frame_ms|fixed:1} ms, worst {perf.worst_ms|fixed:1} ms" },
+            ],
+          },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Limited by" }, { widget: "label", text: "{perf.bound}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Main thread (CPU)" }, { widget: "label", text: "{perf.main_ms|fixed:2} ms" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Render thread (CPU)" }, { widget: "label", text: "{perf.render_ms|fixed:2} ms" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "  waiting for GPU" }, { widget: "label", text: "{perf.gpu_wait_ms|fixed:2} ms" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Meshes drawn" }, { widget: "label", text: "{perf.visible_meshes} of {perf.meshes}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Triangles drawn" }, { widget: "label", text: "{perf.triangles_m|fixed:2} M" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Entities" }, { widget: "label", text: "{perf.entities}" }] },
+          { widget: "label", class: "dim", text: "{perf.gpu}" },
+          { widget: "label", class: "dim", text: "Graphics {graphics.summary}" },
+          { widget: "label", class: "section", text: "SLOWEST SYSTEMS (MS PER FRAME)", visible: "perf.systems_traced" },
+          {
+            id: "systems",
+            widget: "column",
+            repeat: "perf.systems",
+            children: [
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "nowrap", style: { min_width: 44 }, text: "{item.ms|fixed:2}" },
+                  { widget: "label", class: "dim", text: "{item.name}" },
+                ],
+              },
+            ],
+          },
+          { widget: "label", class: "dim", visible: "!perf.systems_traced", text: "Build with --features profile to time every system." },
+          { widget: "label", class: "section", text: "GPU PASSES (MS)", visible: "perf.gpu_timed" },
+          {
+            id: "passes",
+            widget: "column",
+            repeat: "perf.passes",
+            visible: "perf.gpu_timed",
+            children: [
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "nowrap", style: { min_width: 44 }, text: "{item.gpu_ms|fixed:2}" },
+                  { widget: "label", class: "dim", text: "{item.name}" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

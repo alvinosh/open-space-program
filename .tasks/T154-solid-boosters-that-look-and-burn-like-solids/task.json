@@ -1,0 +1,19 @@
+{
+  "id": "T154",
+  "title": "Solid boosters that look and burn like solids",
+  "kind": "feature",
+  "status": "todo",
+  "area": "rendering",
+  "size": "M",
+  "parent": "T152",
+  "depends_on": [
+    "T153"
+  ],
+  "refs": [
+    "T098 (grain geometry, the physics side)",
+    "mods/realism/engines (kind: solid)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

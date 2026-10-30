@@ -1,0 +1,15 @@
+// Hydrogen peroxide reaction jets: monopropellant H2O2 decomposed over a silver catalyst.
+// Written by hand. They steered the Scout's second and third stages from the transition
+// sections between its stages, where the air was too thin for its fins. Thrust per nozzle is
+// approximate (no source gives the jets' own rating).
+[
+  {
+    id: "Peroxide Quad",
+    mass: 12,
+    thrust: 2200,
+    isp_vac: 160,
+    isp_sl: 120,
+    propellants: { HTP: 1.0 },
+    model: "models/rcs/cold_gas_quad.glb",
+  },
+]

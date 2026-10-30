@@ -1,0 +1,19 @@
+{
+  "id": "T038",
+  "title": "Command and data policy",
+  "kind": "feature",
+  "status": "todo",
+  "area": "comms",
+  "size": "S",
+  "parent": "T006",
+  "depends_on": [
+    "T036",
+    "T037"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 13)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

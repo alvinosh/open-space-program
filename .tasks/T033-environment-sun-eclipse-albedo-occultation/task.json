@@ -1,0 +1,18 @@
+{
+  "id": "T033",
+  "title": "Environment: sun, eclipse, albedo, occultation",
+  "kind": "feature",
+  "status": "todo",
+  "area": "environment",
+  "size": "M",
+  "parent": "T004",
+  "depends_on": [
+    "T025"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 8)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,22 @@
+{
+  "id": "T049",
+  "title": "Crew and life support",
+  "kind": "feature",
+  "status": "todo",
+  "area": "crew",
+  "size": "M",
+  "parent": "T010",
+  "depends_on": [
+    "T032",
+    "T035",
+    "T039",
+    "T045"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 24)",
+    "old issue list, issue 13 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

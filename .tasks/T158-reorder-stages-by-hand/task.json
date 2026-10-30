@@ -1,0 +1,20 @@
+{
+  "id": "T158",
+  "title": "Reordering stages by hand works and shows where it lands",
+  "kind": "bug",
+  "status": "todo",
+  "area": "ui",
+  "size": "M",
+  "parent": "T152",
+  "depends_on": [
+    "T155"
+  ],
+  "refs": [
+    "T060",
+    "crates/osp_sim/src/staging.rs (move_sequence, move_activations)",
+    "assets/core/layouts/staging.json5"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,16 @@
+{
+  "id": "T067",
+  "title": "Rendering",
+  "kind": "epic",
+  "status": "todo",
+  "area": "rendering",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 8"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

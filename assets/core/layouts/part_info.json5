@@ -1,0 +1,172 @@
+// Part window: right-click a part in flight view for what it is and what it is doing. A
+// copy opens per part (`instanced`), beside the pointer; a click anywhere else closes it
+// unless it is pinned (`popup`). `self.` is the part's data (`part_info.<vessel>-<part>.`),
+// and `self.type` says which section applies: engine, tank, rcs, wheel, pod, fins, wing,
+// gear, shell, fairing, hull or decoupler. `self.actions[]` are what can be done to the
+// part by hand now (`label`, `do`: the `part.do` argument); a stage only does them in order.
+// `self.mark` is the window's colour: its frame wears it (`accent`), and the part is tinted
+// in it on the vessel, so several open windows can be told apart.
+{
+  id: "part_info",
+  instanced: true,
+  popup: true,
+  group: "flight",
+  root: {
+    widget: "window",
+    accent: "self.mark",
+    icon: "icons/part.svg",
+    title: "{self.name}",
+    style: { width: 280 },
+    children: [
+      {
+        id: "summary",
+        widget: "column",
+        children: [
+          { widget: "label", class: "dim", text: "{self.kind}, {self.stage}" },
+          { widget: "label", class: "dim", visible: "self.manufacturer", text: "{self.manufacturer}" },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Mass" }, { widget: "label", text: "{self.mass|mass}" }] },
+        ],
+      },
+      {
+        id: "actions",
+        widget: "column",
+        visible: "self.has_actions",
+        repeat: "self.actions",
+        style: { gap: 2 },
+        children: [
+          { widget: "button", class: "step_button", text: "{item.label}", action: "part.do:{item.do}" },
+        ],
+      },
+      {
+        id: "engine",
+        widget: "column",
+        visible: "self.type == engine",
+        children: [
+          { widget: "label", class: "section", text: "Engine" },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Status" }, { widget: "label", class: "part_status", active: "self.lit", text: "{self.status}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Thrust" }, { widget: "bar", class: "part_bar", value: "self.level" }, { widget: "label", class: "nowrap", text: "{self.thrust|force}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Max thrust" }, { widget: "label", text: "{self.thrust_sl|force} SL, {self.thrust_vac|force} vac" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Isp" }, { widget: "label", text: "{self.isp|fixed:0} s ({self.isp_sl|fixed:0} SL, {self.isp_vac|fixed:0} vac)" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Throttle" }, { widget: "label", text: "{self.min_throttle|percent} to 100%" }] },
+          { widget: "row", class: "kv", visible: "self.gimbal_range", children: [{ widget: "label", class: "key", text: "Gimbal" }, { widget: "label", text: "{self.gimbal|fixed:1} of {self.gimbal_range|degrees:1}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Ignitions" }, { widget: "label", visible: "self.limited", text: "{self.ignitions} left" }, { widget: "label", visible: "!self.limited", text: "Unlimited" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Burns" }, { widget: "label", text: "{self.propellants}" }] },
+        ],
+      },
+      {
+        id: "tank",
+        widget: "column",
+        visible: "self.type == tank",
+        children: [
+          { widget: "label", class: "section", text: "Contents" },
+          {
+            id: "resources",
+            widget: "column",
+            repeat: "self.resources",
+            style: { gap: 1 },
+            children: [
+              {
+                widget: "row",
+                class: "res_row",
+                tooltip: "{item.amount|mass} of {item.capacity|mass}",
+                children: [
+                  { widget: "label", class: "res_name", text: "{item.name}" },
+                  { widget: "bar", class: "res_bar", value: "item.fraction" },
+                  { widget: "label", class: "res_amount", text: "{item.fraction|percent}" },
+                ],
+              },
+            ],
+          },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Propellant" }, { widget: "label", text: "{self.contents_mass|mass}" }] },
+          { widget: "label", class: "section", text: "Tank" },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Size" }, { widget: "label", text: "{self.size}, {self.volume|fixed:2} m3" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Wall" }, { widget: "label", text: "{self.wall|fixed:2} mm {self.material}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Yields at" }, { widget: "label", text: "{self.max_pressure|fixed:1} bar" }] },
+          { widget: "row", class: "kv", visible: "self.max_axial_load", children: [{ widget: "label", class: "key", text: "Buckles at" }, { widget: "label", text: "{self.max_axial_load|force}" }] },
+        ],
+      },
+      {
+        id: "rcs",
+        widget: "column",
+        visible: "self.type == rcs",
+        children: [
+          { widget: "label", class: "section", text: "RCS" },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Status" }, { widget: "label", class: "part_status", active: "self.firing", visible: "self.on", text: "On" }, { widget: "label", class: "dim", visible: "!self.on", text: "Off" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Firing" }, { widget: "bar", class: "part_bar", value: "self.firing" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Thrust" }, { widget: "label", text: "{self.nozzle_thrust|force} per nozzle" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Isp" }, { widget: "label", text: "{self.isp_sl|fixed:0} s SL, {self.isp_vac|fixed:0} s vac" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Burns" }, { widget: "label", text: "{self.propellants}" }] },
+        ],
+      },
+      {
+        id: "wheel",
+        widget: "column",
+        visible: "self.type == wheel",
+        children: [
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Torque" }, { widget: "label", text: "{self.torque|torque} each axis" }] },
+        ],
+      },
+      {
+        id: "pod",
+        widget: "column",
+        visible: "self.type == pod",
+        children: [
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Crew" }, { widget: "label", text: "{self.crew}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Size" }, { widget: "label", text: "{self.diameter|fixed:2} m wide, {self.height|fixed:2} m tall" }] },
+        ],
+      },
+      {
+        id: "fins",
+        widget: "column",
+        visible: "self.type == fins",
+        children: [
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Fin" }, { widget: "label", text: "One of {self.count}, {self.area|fixed:2} m2, span {self.span|fixed:2} m" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Plate" }, { widget: "label", text: "{self.thickness|fixed:0} mm {self.material}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Bends off at" }, { widget: "label", text: "{self.max_fin_force|force} each" }] },
+        ],
+      },
+      {
+        id: "wing",
+        widget: "column",
+        visible: "self.type == wing",
+        children: [
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Span" }, { widget: "label", text: "{self.span|fixed:2} m, {self.area|fixed:2} m2" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Sweep" }, { widget: "label", text: "{self.sweep|fixed:2} m" }] },
+          { widget: "row", class: "kv", visible: "self.mirrored", children: [{ widget: "label", class: "key", text: "Mirrored" }, { widget: "label", text: "A pair, figures per side" }] },
+          { widget: "row", class: "kv", visible: "self.control", children: [{ widget: "label", class: "key", text: "Control surface" }, { widget: "label", text: "{self.deflection|degrees:0} each way" }] },
+        ],
+      },
+      {
+        id: "gear",
+        widget: "column",
+        visible: "self.type == gear",
+        children: [
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Strut" }, { widget: "bar", class: "part_bar", value: "self.compression" }, { widget: "label", class: "nowrap", text: "{self.compression|percent} of {self.stroke|fixed:2} m" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Sprung for" }, { widget: "label", text: "{self.rated_mass|mass}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Brakes" }, { widget: "label", text: "{self.brakes|yesno}" }] },
+          { widget: "row", class: "kv", visible: "self.steering", children: [{ widget: "label", class: "key", text: "Steering" }, { widget: "label", text: "{self.steering|degrees:0} each way" }] },
+        ],
+      },
+      {
+        id: "shape",
+        widget: "column",
+        children: [
+          { widget: "row", class: "kv", visible: "self.type == shell", children: [{ widget: "label", class: "key", text: "Profile" }, { widget: "label", text: "{self.profile}, {self.length|fixed:2} m long" }] },
+          { widget: "row", class: "kv", visible: "self.type == shell", children: [{ widget: "label", class: "key", text: "Diameter" }, { widget: "label", text: "{self.bottom_diameter|fixed:2} m to {self.top_diameter|fixed:2} m" }] },
+          { widget: "row", class: "kv", visible: "self.type == hull", children: [{ widget: "label", class: "key", text: "Size" }, { widget: "label", text: "{self.diameter|fixed:2} m wide, {self.length|fixed:2} m long" }] },
+          { widget: "row", class: "kv", visible: "self.type == fairing", children: [{ widget: "label", class: "key", text: "Size" }, { widget: "label", text: "{self.diameter|fixed:2} m wide, {self.length|fixed:2} m long" }] },
+        ],
+      },
+      {
+        id: "structure",
+        widget: "column",
+        visible: "self.mode",
+        children: [
+          { widget: "label", class: "section", text: "Structure" },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Load" }, { widget: "bar", class: "part_bar", value: "self.load" }, { widget: "label", class: "nowrap", text: "{self.load|percent} ({self.mode})" }] },
+        ],
+      },
+      { widget: "label", class: "dim part_description", visible: "self.description", text: "{self.description}" },
+    ],
+  },
+}

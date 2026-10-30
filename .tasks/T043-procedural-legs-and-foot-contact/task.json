@@ -1,0 +1,21 @@
+{
+  "id": "T043",
+  "title": "Procedural legs and foot contact",
+  "kind": "feature",
+  "status": "todo",
+  "area": "landing",
+  "size": "L",
+  "parent": "T008",
+  "depends_on": [
+    "T030",
+    "T032",
+    "T042",
+    "T092"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 18)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,18 @@
+{
+  "id": "T126",
+  "title": "Biome ambience, IVA muffling, capsule rattle, DSP in data",
+  "kind": "feature",
+  "status": "todo",
+  "area": "audio",
+  "size": "M",
+  "parent": "T068",
+  "depends_on": [
+    "T125"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 9"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

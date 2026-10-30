@@ -1,0 +1,103 @@
+# Builds the game for Windows, Linux and macOS and publishes it as a GitHub release.
+# Push a tag (git tag v0.1.0 && git push origin v0.1.0), or run it by hand with a tag name.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to release (created on the selected commit if it does not exist)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Earth's terrain is generated, not checked in. The packs are little-endian, so baking on
+  # Linux works for every platform.
+  terrain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .bake-cache
+          key: bake-sources-${{ hashFiles('crates/osp_bake/src/sources.rs') }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo run -p osp_bake --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terrain
+          path: assets/core/terrain/earth
+          retention-days: 1
+
+  build:
+    strategy:
+      matrix:
+        include:
+          - { platform: windows-x64, os: windows-latest, exe: osp.exe }
+          - { platform: linux-x64, os: ubuntu-latest, exe: osp }
+          - { platform: macos-arm64, os: macos-latest, exe: osp }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # Audio (ALSA), gamepads (udev) and windowing (X11, Wayland) for Bevy.
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev libudev-dev \
+            libx11-dev libwayland-dev libxkbcommon-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p osp_game
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.platform }}
+          path: target/release/${{ matrix.exe }}
+          retention-days: 1
+
+  release:
+    needs: [terrain, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: terrain
+          path: assets/core/terrain/earth
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: build-*
+          path: bin
+      # Artifacts lose the executable bit, so Linux and macOS get it back and ship as tarballs.
+      - name: Package
+        run: |
+          mkdir dist
+          for build in bin/build-*; do
+            platform="${build#bin/build-}"
+            dir="open-space-program-$TAG-$platform"
+            mkdir "$dir"
+            cp "$build"/* README.md "$dir/"
+            cp -r assets mods "$dir/"
+            if [ "$platform" = windows-x64 ]; then
+              zip -qr "dist/$dir.zip" "$dir"
+            else
+              chmod +x "$dir/osp"
+              tar -czf "dist/$dir.tar.gz" "$dir"
+            fi
+          done
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "$TAG" \
+              --notes "Builds for Windows (x64), Linux (x64) and macOS (Apple Silicon). Extract and run osp.exe on Windows or ./osp on Linux and macOS. The macOS build is unsigned: if it is blocked, run xattr -dr com.apple.quarantine on the extracted folder."
+          fi

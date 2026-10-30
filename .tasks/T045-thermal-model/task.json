@@ -1,0 +1,22 @@
+{
+  "id": "T045",
+  "title": "Thermal model",
+  "kind": "feature",
+  "status": "todo",
+  "area": "thermal",
+  "size": "L",
+  "parent": "T009",
+  "depends_on": [
+    "T028",
+    "T031",
+    "T033",
+    "T034"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 20, Heat and the heat shield)",
+    "old issue list, issue 13 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

@@ -1,0 +1,16 @@
+{
+  "id": "T071",
+  "title": "Later: ideas nobody has planned yet",
+  "kind": "epic",
+  "status": "backlog",
+  "area": "content",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Backlog"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

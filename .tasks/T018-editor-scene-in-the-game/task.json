@@ -1,0 +1,19 @@
+{
+  "id": "T018",
+  "title": "Editor scene in the game",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "L",
+  "parent": "T002",
+  "depends_on": [
+    "T016",
+    "T017"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E6)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

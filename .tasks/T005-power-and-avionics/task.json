@@ -1,0 +1,16 @@
+{
+  "id": "T005",
+  "title": "Power and avionics",
+  "kind": "epic",
+  "status": "todo",
+  "area": "power",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "docs/systems-plan.md (Milestone 4)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

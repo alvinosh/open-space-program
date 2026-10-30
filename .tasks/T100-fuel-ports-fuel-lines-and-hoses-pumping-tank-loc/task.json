@@ -1,0 +1,19 @@
+{
+  "id": "T100",
+  "title": "Fuel ports, fuel lines and hoses, pumping, tank lockout",
+  "kind": "feature",
+  "status": "todo",
+  "area": "propulsion",
+  "size": "L",
+  "parent": "T064",
+  "depends_on": [
+    "T086",
+    "T035"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 5"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

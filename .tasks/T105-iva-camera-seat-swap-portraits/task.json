@@ -1,0 +1,18 @@
+{
+  "id": "T105",
+  "title": "IVA camera, seat swap, portraits",
+  "kind": "feature",
+  "status": "todo",
+  "area": "crew",
+  "size": "L",
+  "parent": "T065",
+  "depends_on": [
+    "T103"
+  ],
+  "refs": [
+    "Early feature checklist (since removed), Phase 6"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

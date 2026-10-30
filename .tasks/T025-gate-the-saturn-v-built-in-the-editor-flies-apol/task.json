@@ -1,0 +1,19 @@
+{
+  "id": "T025",
+  "title": "Gate: the Saturn V built in the editor flies Apollo 11",
+  "kind": "milestone",
+  "status": "todo",
+  "area": "test",
+  "size": "S",
+  "parent": "T002",
+  "depends_on": [
+    "T023",
+    "T024"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E13)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

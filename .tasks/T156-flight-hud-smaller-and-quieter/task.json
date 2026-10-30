@@ -1,0 +1,19 @@
+{
+  "id": "T156",
+  "title": "Flight HUD smaller and quieter",
+  "kind": "feature",
+  "status": "done",
+  "area": "ui",
+  "size": "S",
+  "parent": "T152",
+  "depends_on": [],
+  "refs": [
+    "assets/core/layouts/",
+    "assets/core/themes/default.json5",
+    "T128",
+    "T134"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": "2026-10-30"
+}

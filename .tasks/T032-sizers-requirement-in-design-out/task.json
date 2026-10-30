@@ -1,0 +1,19 @@
+{
+  "id": "T032",
+  "title": "Sizers: requirement in, design out",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "M",
+  "parent": "T003",
+  "depends_on": [
+    "T028",
+    "T017"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 7, Principles)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

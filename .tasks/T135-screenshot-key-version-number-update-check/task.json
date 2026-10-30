@@ -1,0 +1,16 @@
+{
+  "id": "T135",
+  "title": "Screenshot key, version number, update check",
+  "kind": "feature",
+  "status": "todo",
+  "area": "ui",
+  "size": "S",
+  "parent": "T069",
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 10"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

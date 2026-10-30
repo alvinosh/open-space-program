@@ -1,0 +1,21 @@
+{
+  "id": "T161",
+  "title": "Staging as ordered part actions",
+  "kind": "feature",
+  "status": "in_progress",
+  "area": "sequences",
+  "size": "M",
+  "parent": "T152",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/staging.rs",
+    "crates/osp_sim/src/propulsion.rs (part_actions, perform, run)",
+    "crates/osp_game/src/part_info.rs",
+    "assets/core/layouts/part_info.json5",
+    "T158",
+    "T159"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

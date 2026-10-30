@@ -1,0 +1,50 @@
+// The selected manoeuvre in map view (`map.node_panel`): what it does, beside the navball as
+// in KSP, where it keeps clear of the trajectory. The Flight plan window has the fine
+// controls.
+{
+  id: "node_panel",
+  group: "flight",
+  root: {
+    widget: "column",
+    class: "node_panel",
+    visible: "map.node_panel",
+    // Just left of the navball (272 px wide, centred).
+    style: { left: "50%", margin: [0, 0, 0, -412], bottom: 12 },
+    children: [
+      {
+        widget: "row",
+        children: [
+          { widget: "label", class: "caption", text: "Manoeuvre {burn.label}" },
+          { widget: "spacer" },
+          { widget: "label", class: "node_time", text: "{burn.time_to|countdown}" },
+        ],
+      },
+      { widget: "label", class: "node_dv", text: "{burn.delta_v|speed}" },
+      {
+        id: "axes",
+        widget: "row",
+        class: "node_axes",
+        children: [
+          { widget: "row", class: "node_axis", tooltip: "Prograde", children: [{ widget: "image", class: "node_axis_icon", image: "icons/sas_prograde.svg" }, { widget: "label", text: "{burn.prograde|fixed:1}" }] },
+          { widget: "row", class: "node_axis", tooltip: "Normal", children: [{ widget: "image", class: "node_axis_icon", image: "icons/sas_normal.svg" }, { widget: "label", text: "{burn.normal|fixed:1}" }] },
+          { widget: "row", class: "node_axis", tooltip: "Radial out", children: [{ widget: "image", class: "node_axis_icon", image: "icons/sas_radial_out.svg" }, { widget: "label", text: "{burn.radial|fixed:1}" }] },
+        ],
+      },
+      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Burn time" }, { widget: "label", text: "{burn.duration|duration}" }] },
+      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Then Ap / Pe" }, { widget: "label", class: "nowrap", text: "{burn.apoapsis|distance} / {burn.periapsis|distance}" }] },
+      { widget: "row", class: "kv", visible: "burn.arrival_periapsis", children: [{ widget: "label", class: "key", text: "At {target.name}" }, { widget: "label", text: "Pe {burn.arrival_periapsis|distance}" }] },
+      {
+        id: "actions",
+        widget: "row",
+        class: "node_actions",
+        children: [
+          { widget: "button", class: "step_button nowrap", text: "-1 orbit", action: "plan.orbit:-1" },
+          { widget: "button", class: "step_button nowrap", text: "+1 orbit", action: "plan.orbit:1" },
+          { widget: "spacer" },
+          { widget: "button", class: "step_button nowrap", text: "Warp", action: "warp.to:burn", visible: "burn.is_next", tooltip: "Warp to the burn" },
+          { widget: "button", class: "step_button danger_button nowrap", text: "Delete", action: "plan.delete" },
+        ],
+      },
+    ],
+  },
+}

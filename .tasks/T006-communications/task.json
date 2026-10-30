@@ -1,0 +1,16 @@
+{
+  "id": "T006",
+  "title": "Communications",
+  "kind": "epic",
+  "status": "todo",
+  "area": "comms",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "docs/systems-plan.md (Milestone 5)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

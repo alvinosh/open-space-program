@@ -1,0 +1,43 @@
+// Lists every key the game publishes, live (F12). Use it to discover bindings.
+{
+  id: "data_inspector",
+  visible: false,
+  root: {
+    widget: "window",
+    icon: "icons/mods.svg",
+    title: "Data inspector (bind with {{key}})",
+    style: {
+      left: "50%",
+      margin: [0, 0, 0, -230],
+      top: 60,
+      width: 460,
+      max_height: "90vh",
+      clip: true,
+    },
+    children: [
+      {
+        widget: "column",
+        repeat: "ui.inspector",
+        children: [
+          {
+            widget: "row",
+            children: [
+              {
+                widget: "label",
+                class: "dim",
+                style: {
+                  min_width: 200,
+                },
+                text: "{item.key}",
+              },
+              {
+                widget: "label",
+                text: "{item.value}",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

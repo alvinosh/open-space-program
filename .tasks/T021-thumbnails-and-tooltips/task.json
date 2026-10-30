@@ -1,0 +1,18 @@
+{
+  "id": "T021",
+  "title": "Thumbnails and tooltips",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T002",
+  "depends_on": [
+    "T019"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E9)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

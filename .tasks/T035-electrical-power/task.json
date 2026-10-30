@@ -1,0 +1,21 @@
+{
+  "id": "T035",
+  "title": "Electrical power",
+  "kind": "feature",
+  "status": "todo",
+  "area": "power",
+  "size": "L",
+  "parent": "T005",
+  "depends_on": [
+    "T032",
+    "T033",
+    "T034"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 10, Electrical power)",
+    "old issue list, issue 13 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

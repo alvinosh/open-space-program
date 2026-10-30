@@ -1,0 +1,42 @@
+// Launch sites. A site's pad and roads become part of the body's terrain (for collision as
+// well as rendering), and its structures are drawn around the pad. A site can have a runway
+// instead (or as well): a level concrete strip centred on it along its heading. Scenarios
+// start on a site's pad with `start: { type: "LaunchSite", site: "<id>" }`, or at the start
+// of its runway with `{ type: "Runway", site: "<id>" }`.
+//
+// Layout coordinates are metres in the site frame: [right, forward], where forward points
+// along `heading` (degrees clockwise from north).
+[
+  {
+    id: "cape_canaveral",
+    name: "Cape Canaveral LC-39A",
+    body: "Earth",
+    latitude: 28.6083,
+    longitude: -80.6041,
+    heading: 0,
+    pad: {
+      // A small concrete deck raised on an embankment above the coastal scrub.
+      size: [90, 70],
+      corner_radius: 12,
+      elevation: 7,
+      slope: 0.4,
+      // The vehicle stands on its hold-downs with the engine bells above the trench grate.
+      mount_height: 3,
+    },
+    roads: [
+      // Out west-southwest across the marsh, roughly along the old crawlerway.
+      { points: [[-40, -6], [-260, -110], [-700, -360], [-1500, -800]], width: 9 },
+    ],
+  },
+  {
+    // The Shuttle Landing Facility: one concrete runway, 15/33, 4.6 km long. Vessels start
+    // at its south-east end and take off towards the north-north-west.
+    id: "cape_slf",
+    name: "Shuttle Landing Facility",
+    body: "Earth",
+    latitude: 28.6164,
+    longitude: -80.695,
+    heading: 330,
+    runway: { size: [4570, 91], elevation: 4 },
+  },
+]

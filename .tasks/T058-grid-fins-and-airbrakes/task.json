@@ -1,0 +1,19 @@
+{
+  "id": "T058",
+  "title": "Grid fins and airbrakes",
+  "kind": "feature",
+  "status": "todo",
+  "area": "aero",
+  "size": "M",
+  "parent": "T012",
+  "depends_on": [
+    "T030",
+    "T032"
+  ],
+  "refs": [
+    "docs/systems-plan.md (palette table)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

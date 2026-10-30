@@ -1,0 +1,16 @@
+{
+  "id": "T152",
+  "title": "Fun first: flying a rocket is readable and looks right",
+  "kind": "epic",
+  "status": "todo",
+  "area": "ui",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "play feedback 2026-10-30"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

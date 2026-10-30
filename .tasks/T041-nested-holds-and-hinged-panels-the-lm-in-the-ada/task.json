@@ -1,0 +1,20 @@
+{
+  "id": "T041",
+  "title": "Nested holds and hinged panels (the LM in the adapter)",
+  "kind": "feature",
+  "status": "todo",
+  "area": "docking",
+  "size": "M",
+  "parent": "T007",
+  "depends_on": [
+    "T030",
+    "T040"
+  ],
+  "refs": [
+    "docs/systems-plan.md (step 16)",
+    "old issue list, issue 8 (docs/issues.md, removed; see git history)"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

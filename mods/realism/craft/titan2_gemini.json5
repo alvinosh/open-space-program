@@ -1,0 +1,420 @@
+// Titan II GLV (1965).
+// The Titan II ICBM man-rated for Gemini: storable Aerozine 50 and nitrogen tetroxide, in
+// separate fuel and oxidizer tanks in each stage. Built by hand from plain parts: the
+// gemini_spacecraft and titan2_glv assemblies (mods/realism/assemblies/gemini.json5)
+// placed together. The spacecraft drops its equipment section before retrofire and its
+// retrograde section after. Colours and proportions are approximate.
+{
+  id: "titan2_gemini",
+  name: "Titan II GLV",
+  parts: [
+    {
+      id: "reentry",
+      name: "Heat shield",
+      shape: {
+        shell: { bottom_diameter: 2.286, sections: [{ length: 0.12 }], cap_bottom: true },
+      },
+      structure: { mass: 260 },
+      components: [{ container: {} }],
+      paint: { finish: "char" },
+    },
+    { id: "cabin", on: "reentry.top", template: "Gemini Cabin" },
+    {
+      id: "rr",
+      name: "R&R section",
+      on: "cabin.top",
+      shape: {
+        shell: {
+          bottom_diameter: 0.997,
+          sections: [{ length: 0.95, top_diameter: 0.79 }],
+          cap_top: true,
+        },
+      },
+      structure: { mass: 190 },
+      paint: { color: [0.019999999552965164, 0.019999999552965164, 0.02199999988079071] },
+    },
+    {
+      id: "retro",
+      name: "Retrograde section",
+      on: "reentry.bottom",
+      by: "top",
+      shape: {
+        shell: { bottom_diameter: 2.6, sections: [{ length: 0.9, top_diameter: 2.286 }] },
+      },
+      structure: { mass: 240 },
+      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      nodes: [
+        { name: "propellant", position: [0, 0, 0.12], direction: [0, 0, 1] },
+        {
+          name: "retro_motor_1",
+          position: [0.43840620433565947, 0.2616062043356594, 0.18],
+          direction: [0, -1, 0],
+        },
+        {
+          name: "retro_motor_2",
+          position: [-0.4384062043356594, 0.26160620433565945, 0.18],
+          direction: [0, -1, 0],
+        },
+        {
+          name: "retro_motor_3",
+          position: [-0.4384062043356596, -0.6152062043356594, 0.18],
+          direction: [0, -1, 0],
+        },
+        {
+          name: "retro_motor_4",
+          position: [0.43840620433565936, -0.6152062043356596, 0.18],
+          direction: [0, -1, 0],
+        },
+      ],
+    },
+    {
+      id: "retro_propellant",
+      name: "Retro rocket propellant",
+      on: "retro.propellant",
+      shape: { sphere: { diameter: 0.48 } },
+      components: [{ storage: { type: "Solid Grain", contents: { PSPC: 1 } } }],
+    },
+    { id: "retro_motor_1", on: "retro.retro_motor_1", by: "attach", template: "Star-13E" },
+    { id: "retro_motor_2", on: "retro.retro_motor_2", by: "attach", template: "Star-13E" },
+    { id: "retro_motor_3", on: "retro.retro_motor_3", by: "attach", template: "Star-13E" },
+    { id: "retro_motor_4", on: "retro.retro_motor_4", by: "attach", template: "Star-13E" },
+    {
+      id: "equipment",
+      name: "Equipment section",
+      on: "retro.bottom",
+      by: "top",
+      shape: {
+        shell: { bottom_diameter: 3.05, sections: [{ length: 1.4, top_diameter: 2.6 }] },
+      },
+      structure: { mass: 758 },
+      components: [
+        { container: {} },
+        { decoupler: { node: "top" } },
+        { decoupler: { node: "bottom" } },
+      ],
+      nodes: [
+        { name: "oams_fuel", position: [0, 0.75, 0.35], direction: [0, 0, 1] },
+        { name: "oams_oxidizer", position: [0, -0.75, 0.35], direction: [0, 0, 1] },
+        { name: "fuel_cell_1", position: [0.9, 0, 0.3], direction: [0, 0, 1] },
+        { name: "fuel_cell_2", position: [-0.9, 0, 0.3], direction: [0, 0, 1] },
+      ],
+    },
+    {
+      id: "oams_fuel",
+      name: "OAMS fuel",
+      on: "equipment.oams_fuel",
+      shape: { sphere: { diameter: 0.56 } },
+      components: [{ storage: { type: "HP Al Fuselage", contents: { MMH: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.7200000286102295], finish: "metal" },
+    },
+    {
+      id: "oams_oxidizer",
+      name: "OAMS oxidizer",
+      on: "equipment.oams_oxidizer",
+      shape: { sphere: { diameter: 0.56 } },
+      components: [{ storage: { type: "HP Al Fuselage", contents: { NTO: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.7200000286102295], finish: "metal" },
+    },
+    {
+      id: "fuel_cell_1",
+      name: "Fuel cell",
+      on: "equipment.fuel_cell_1",
+      shape: { box: { size: [0.3, 0.3, 0.65] } },
+      structure: { mass: 31 },
+      paint: { color: [0.550000011920929, 0.550000011920929, 0.5199999809265137] },
+    },
+    {
+      id: "fuel_cell_2",
+      name: "Fuel cell",
+      on: "equipment.fuel_cell_2",
+      shape: { box: { size: [0.3, 0.3, 0.65] } },
+      structure: { mass: 31 },
+      paint: { color: [0.550000011920929, 0.550000011920929, 0.5199999809265137] },
+    },
+    {
+      id: "stage2",
+      name: "Titan II second stage",
+      on: "equipment.bottom",
+      by: "top",
+      shape: {
+        revolved: {
+          walls: [
+            {
+              name: "aft_skirt",
+              curve: {
+                start: [1.525, 0],
+                segments: [{ line: [1.525, 1.378337841309485] }],
+              },
+            },
+            {
+              name: "intertank",
+              curve: {
+                start: [1.525, 1.4726621586905149],
+                segments: [{ line: [1.525, 3.7793378413094842] }],
+              },
+            },
+            {
+              name: "forward_skirt",
+              curve: {
+                start: [1.525, 4.143662158690515],
+                segments: [{ line: [1.525, 5.8] }],
+              },
+            },
+            {
+              name: "thrust_plate",
+              curve: { start: [0, 0.6], segments: [{ line: [1.525, 0.6] }] },
+            },
+          ],
+        },
+      },
+      structure: { material: "Al 2014-T6", thickness: 0.002, mass: 1340 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "engine", position: [0, 0, 0.6], direction: [0, 0, -1], size: 1.2 },
+        { name: "fuel", position: [0, 0, 0.3], direction: [0, 0, 1], size: 3.05 },
+        {
+          name: "oxidizer",
+          position: [0, 0, 2.7009999999999996],
+          direction: [0, 0, 1],
+          size: 3.05,
+        },
+      ],
+      paint: {
+        layers: [
+          { image: { file: "decals/us_flag.svg", at: [0.125, 4.75], size: [0.95, 0.5] } },
+        ],
+      },
+    },
+    { id: "stage2_engine", on: "stage2.engine", by: "top", template: "LR91-AJ-7" },
+    {
+      id: "stage2_fuel",
+      name: "Fuel tank",
+      on: "stage2.fuel",
+      shape: { cylinder_tank: { diameter: 3.05, length: 2.251 } },
+      components: [{ storage: { type: "Al Stringer Tank", contents: { Aerozine50: 1 } } }],
+      paint: {
+        layers: [
+          { image: { file: "decals/us_flag.svg", at: [0.125, 4.45], size: [0.95, 0.5] } },
+        ],
+      },
+    },
+    {
+      id: "stage2_oxidizer",
+      name: "Oxidizer tank",
+      on: "stage2.oxidizer",
+      shape: { cylinder_tank: { diameter: 3.05, length: 2.521 } },
+      components: [{ storage: { type: "Al Stringer Tank", contents: { NTO: 1 } } }],
+      paint: {
+        layers: [
+          { image: { file: "decals/us_flag.svg", at: [0.125, 2.049], size: [0.95, 0.5] } },
+        ],
+      },
+    },
+    {
+      id: "interstage",
+      name: "Titan II interstage",
+      on: "stage2.bottom",
+      by: "upper",
+      shape: {
+        compound: [
+          {
+            name: "panel_1",
+            shape: {
+              shell: {
+                bottom_diameter: 3.05,
+                sections: [{ length: 2.2 }],
+                span: [-20, 20],
+              },
+            },
+          },
+          {
+            name: "panel_2",
+            shape: {
+              shell: {
+                bottom_diameter: 3.05,
+                sections: [{ length: 2.2 }],
+                span: [-20, 20],
+              },
+            },
+            rotation: [0, 0, 60],
+          },
+          {
+            name: "panel_3",
+            shape: {
+              shell: {
+                bottom_diameter: 3.05,
+                sections: [{ length: 2.2 }],
+                span: [-20, 20],
+              },
+            },
+            rotation: [0, 0, 120],
+          },
+          {
+            name: "panel_4",
+            shape: {
+              shell: {
+                bottom_diameter: 3.05,
+                sections: [{ length: 2.2 }],
+                span: [-20, 20],
+              },
+            },
+            rotation: [0, 0, 180],
+          },
+          {
+            name: "panel_5",
+            shape: {
+              shell: {
+                bottom_diameter: 3.05,
+                sections: [{ length: 2.2 }],
+                span: [-20, 20],
+              },
+            },
+            rotation: [0, 0, 240],
+          },
+          {
+            name: "panel_6",
+            shape: {
+              shell: {
+                bottom_diameter: 3.05,
+                sections: [{ length: 2.2 }],
+                span: [-20, 20],
+              },
+            },
+            rotation: [0, 0, 300],
+          },
+        ],
+      },
+      structure: { material: "Al 2014-T6", thickness: 0.002, mass: 160 },
+      components: [{ decoupler: { node: "upper" } }],
+      nodes: [
+        { name: "lower", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
+        { name: "upper", position: [0, 0, 2.2], direction: [0, 0, 1], size: 3.05 },
+      ],
+      paint: {
+        color: [0.012000000104308128, 0.012000000104308128, 0.014000000432133675],
+        finish: "composite",
+      },
+    },
+    {
+      id: "stage1",
+      name: "Titan II first stage",
+      on: "interstage.lower",
+      by: "top",
+      shape: {
+        revolved: {
+          walls: [
+            {
+              name: "engine_section",
+              curve: {
+                start: [1.525, 0],
+                segments: [{ line: [1.525, 3.478337841309485] }],
+              },
+            },
+            {
+              name: "intertank",
+              curve: {
+                start: [1.525, 8.562662158690515],
+                segments: [{ line: [1.525, 11.079337841309485] }],
+              },
+            },
+            {
+              name: "forward_skirt",
+              curve: {
+                start: [1.525, 17.334662158690517],
+                segments: [{ line: [1.525, 18.413] }],
+              },
+            },
+            {
+              name: "thrust_plate",
+              curve: { start: [0, 2], segments: [{ line: [1.525, 2] }] },
+            },
+          ],
+        },
+      },
+      structure: { material: "Al 2014-T6", thickness: 0.002, mass: 1150 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "engine_1", position: [0.68, 0, 2], direction: [0, 0, -1], size: 1.2 },
+        { name: "engine_2", position: [-0.68, 0, 2], direction: [0, 0, -1], size: 1.2 },
+        { name: "fuel", position: [0, 0, 2.4], direction: [0, 0, 1], size: 3.05 },
+        { name: "oxidizer", position: [0, 0, 10.001], direction: [0, 0, 1], size: 3.05 },
+      ],
+      paint: {
+        pieces: {
+          interstage: {
+            color: [0.012000000104308128, 0.012000000104308128, 0.014000000432133675],
+            finish: "composite",
+          },
+          thrust_plate: {
+            color: [0.012000000104308128, 0.012000000104308128, 0.014000000432133675],
+            finish: "composite",
+          },
+        },
+        layers: [
+          {
+            text: {
+              text: "UNITED STATES",
+              at: [0.125, 12.5],
+              height: 0.62,
+              vertical: true,
+              color: [0.012000000104308128, 0.012000000104308128, 0.014000000432133675],
+            },
+          },
+        ],
+      },
+    },
+    { id: "stage1_engine_1", on: "stage1.engine_1", by: "top", template: "LR87-AJ-7" },
+    { id: "stage1_engine_2", on: "stage1.engine_2", by: "top", template: "LR87-AJ-7" },
+    {
+      id: "stage1_fuel",
+      name: "Fuel tank",
+      on: "stage1.fuel",
+      shape: { cylinder_tank: { diameter: 3.05, length: 7.241 } },
+      components: [
+        { storage: { type: "Al Stringer Tank", contents: { CooledAerozine50: 1 } } },
+      ],
+      paint: {
+        layers: [
+          {
+            text: {
+              text: "UNITED STATES",
+              at: [0.125, 10.1],
+              height: 0.62,
+              vertical: true,
+              color: [0.012000000104308128, 0.012000000104308128, 0.014000000432133675],
+            },
+          },
+        ],
+      },
+    },
+    {
+      id: "stage1_oxidizer",
+      name: "Oxidizer tank",
+      on: "stage1.oxidizer",
+      shape: { cylinder_tank: { diameter: 3.05, length: 8.412 } },
+      components: [{ storage: { type: "Al Stringer Tank", contents: { CooledNTO: 1 } } }],
+      paint: {
+        layers: [
+          {
+            text: {
+              text: "UNITED STATES",
+              at: [0.125, 2.499],
+              height: 0.62,
+              vertical: true,
+              color: [0.012000000104308128, 0.012000000104308128, 0.014000000432133675],
+            },
+          },
+        ],
+      },
+    },
+  ],
+  sequences: [
+    ["engines:stage1"],
+    ["engines:stage2"],
+    ["decoupler:stage1"],
+    ["decoupler:stage2"],
+    ["decoupler:equipment"],
+    ["engines:retro"],
+    ["decoupler:retro"],
+  ],
+}

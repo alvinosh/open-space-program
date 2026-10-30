@@ -1,0 +1,16 @@
+{
+  "id": "T137",
+  "title": "Shader overrides from mods; part creation tooling",
+  "kind": "feature",
+  "status": "todo",
+  "area": "modding",
+  "size": "M",
+  "parent": "T070",
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Phase 11"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}

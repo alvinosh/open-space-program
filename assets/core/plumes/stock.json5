@@ -1,0 +1,163 @@
+// Exhaust plume looks. An engine names one (`plume: "Kerolox Staged"`) or gets the look for
+// what it burns: the one whose `propellants` it all burns (the one that names the most). The
+// shape comes from the engine: its thrust level, nozzle exit and exit pressure against the
+// ambient pressure (a narrow column with shock diamonds at sea level, Mach disks where the
+// jet is well off the ambient pressure, fanning out and fading towards vacuum). The jets of
+// engines that share a look merge into one plume.
+//
+// The gas glows in its own colours (linear RGB): `core` for the hot core at the nozzle,
+// `flame` for the body of the plume, `shock` for the shock diamonds and Mach disks.
+// `luminance` is how bright a metre of that glow is at full thrust, cd/m² per m (sunlit
+// white paint is about 30 000 cd/m²).
+//
+// `soot` (0..1) is how much particle matter the exhaust carries: it hides what is behind the
+// plume, glows like a black body up to `temperature` (K) where the exhaust afterburns with
+// the air (white-hot at 2300 K, orange as it cools, dark below 1400 K) and becomes smoke of
+// colour `smoke` as it cools. `haze` (0..1) is how much of the exhaust condenses once cool:
+// the white trail it leaves in the air and the sunlit cloud around a plume in thin air.
+// An open-cycle engine's turbine exhaust (its `turbine_exhaust`) is drawn in the same look:
+// cooler and sootier, a dark streak from its pipe or a dark collar from the nozzle wall.
+[
+  {
+    // Gas-generator kerosene and oxygen (Merlin): white-hot and yellow-orange from soot,
+    // smoky as it cools.
+    id: "Kerolox",
+    propellants: ["Kerosene|RP-1|RG-1|Syntin|Turpentine", "LqdOxygen"],
+    core: [1.0, 0.82, 0.55],
+    flame: [1.0, 0.45, 0.13],
+    shock: [1.0, 0.9, 0.7],
+    luminance: 20000,
+    soot: 0.5,
+    temperature: 2300,
+    smoke: [0.2, 0.18, 0.16],
+    haze: 0.3,
+  },
+  {
+    // Oxygen-rich staged combustion (RD-180, RD-191): the soot burns away in the preburner,
+    // so a brighter, cleaner, more see-through flame with crisp diamonds.
+    id: "Kerolox Staged",
+    core: [1.0, 0.86, 0.62],
+    flame: [1.0, 0.55, 0.2],
+    shock: [1.0, 0.92, 0.78],
+    luminance: 45000,
+    soot: 0.12,
+    temperature: 2450,
+    smoke: [0.3, 0.27, 0.24],
+    haze: 0.3,
+  },
+  {
+    // Hydrogen and oxygen: nearly clear and faintly blue, with white-hot Mach disks where the
+    // jet is far off the air's pressure (an RS-25 at sea level), and a steam trail.
+    id: "Hydrolox",
+    propellants: ["LqdHydrogen", "LqdOxygen"],
+    core: [0.6, 0.65, 1.0],
+    flame: [0.45, 0.5, 1.0],
+    shock: [1.0, 0.82, 0.72],
+    luminance: 1500,
+    haze: 0.6,
+  },
+  {
+    // Storable fuel on nitrogen tetroxide or nitric acid (Aerozine 50, UDMH, MMH): translucent
+    // orange-pink.
+    id: "Hypergolic",
+    propellants: [
+      "Aerozine50|UDMH|MMH|Hydrazine|UH25|Tonka250|Visol|Salbei|Hydyne|PB-1|Pentaborane|Kerosene|RP-1|Syntin",
+      "NTO|MON1|MON3|MON10|IRFNA-III|IRFNA-IV|IWFNA|HTP|AK20|AK27|ClF3",
+    ],
+    core: [1.0, 0.75, 0.6],
+    flame: [1.0, 0.5, 0.35],
+    shock: [1.0, 0.8, 0.65],
+    luminance: 25000,
+    soot: 0.03,
+    temperature: 1900,
+    smoke: [0.55, 0.4, 0.3],
+    haze: 0.3,
+  },
+  {
+    // Methane and oxygen: a clean blue-violet flame with orange-pink diamonds (Raptor).
+    id: "Methalox",
+    propellants: ["LqdMethane", "LqdOxygen"],
+    core: [0.55, 0.6, 1.0],
+    flame: [0.45, 0.45, 1.0],
+    shock: [1.0, 0.62, 0.38],
+    luminance: 15000,
+    soot: 0.004,
+    temperature: 1900,
+    haze: 0.5,
+  },
+  {
+    // Alcohol or ammonia and oxygen (V-2, X-15): a bright yellow-orange flame, little soot,
+    // a white steam trail.
+    id: "Alcohol",
+    propellants: ["Ethanol75|Ethanol90|LqdAmmonia", "LqdOxygen"],
+    core: [1.0, 0.85, 0.6],
+    flame: [1.0, 0.6, 0.25],
+    shock: [1.0, 0.9, 0.75],
+    luminance: 18000,
+    soot: 0.15,
+    temperature: 2200,
+    smoke: [0.35, 0.33, 0.3],
+    haze: 0.5,
+  },
+  {
+    // Hydrazine-family fuel and liquid oxygen (UDMH/LOX): clean and bright, pale orange.
+    id: "Storable Lox",
+    propellants: ["UDMH|MMH|Hydrazine|UH25|Tonka250|Visol|Salbei|Hydyne|PB-1|Pentaborane", "LqdOxygen"],
+    core: [1.0, 0.8, 0.6],
+    flame: [1.0, 0.5, 0.25],
+    shock: [1.0, 0.88, 0.7],
+    luminance: 22000,
+    soot: 0.05,
+    temperature: 2000,
+    smoke: [0.4, 0.35, 0.3],
+    haze: 0.3,
+  },
+  {
+    // A monopropellant (hydrazine, peroxide) over a catalyst bed: a thin, pale orange jet.
+    id: "Monopropellant",
+    propellants: ["Hydrazine|HTP"],
+    core: [1.0, 0.75, 0.5],
+    flame: [0.9, 0.45, 0.2],
+    shock: [1.0, 0.85, 0.7],
+    luminance: 3000,
+    haze: 0.1,
+  },
+  {
+    // A nuclear thermal rocket: hot hydrogen, faintly pink and almost clear.
+    id: "Nuclear Thermal",
+    propellants: ["LqdHydrogen", "EnrichedUranium"],
+    core: [1.0, 0.8, 0.85],
+    flame: [0.9, 0.45, 0.65],
+    shock: [1.0, 0.8, 0.8],
+    luminance: 1200,
+    haze: 0.3,
+  },
+  {
+    // A solid motor: a blinding white-orange core, a heavy flame loaded with alumina that
+    // hides what is behind it, and a thick grey-white smoke trail; no clean shock diamonds.
+    id: "Solid",
+    kinds: ["solid"],
+    core: [1.0, 0.9, 0.7],
+    flame: [1.0, 0.55, 0.18],
+    shock: [1.0, 0.85, 0.6],
+    luminance: 40000,
+    soot: 0.85,
+    temperature: 2700,
+    smoke: [0.75, 0.74, 0.72],
+    haze: 0.8,
+  },
+  {
+    // For an engine nothing above fits (fluorine, chlorine trifluoride, a new propellant):
+    // a plain orange flame, so it is never drawn without exhaust.
+    id: "Generic",
+    fallback: true,
+    core: [1.0, 0.85, 0.6],
+    flame: [1.0, 0.5, 0.2],
+    shock: [1.0, 0.9, 0.7],
+    luminance: 15000,
+    soot: 0.1,
+    temperature: 2000,
+    smoke: [0.3, 0.27, 0.24],
+    haze: 0.3,
+  },
+]

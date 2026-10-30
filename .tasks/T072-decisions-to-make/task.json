@@ -1,0 +1,16 @@
+{
+  "id": "T072",
+  "title": "Decisions to make",
+  "kind": "epic",
+  "status": "todo",
+  "area": "process",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "Early feature checklist (since removed), Decisions to make"
+  ],
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "done": null
+}
