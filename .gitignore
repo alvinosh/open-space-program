@@ -10,5 +10,6 @@
 __pycache__/
 
 *.txt
+!/website/fonts/OFL.txt
 *.glb
 scripts

@@ -1,0 +1,297 @@
+/* Open Space Program site. Same look as the game's UI (assets/core/themes/default.json5):
+   navy glass panels, Barlow, capitals for titles, hairlines between rows, one teal accent.
+   Amber is for things in progress. */
+
+@font-face {
+  font-family: "Barlow";
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  src: url("fonts/Barlow-Medium.woff") format("woff");
+}
+@font-face {
+  font-family: "Barlow";
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url("fonts/Barlow-SemiBold.woff") format("woff");
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #070d14;
+  --panel-top: #16263a;
+  --panel-bottom: #0b1520;
+  --line: #24364a;
+  --line-lit: #3b5772;
+  --hair: #1b2a3b;
+  --control: #1a2a3a;
+  --control-hover: #23374a;
+  --selected: #0e3a35;
+  --text: #e4edf4;
+  --strong: #f2f7fa;
+  --dim: #8fa3b4;
+  --teal: #38e0c4;
+  --amber: #ffb340;
+  --measure: 62ch;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 500 17px/1.55 "Barlow", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+a { color: var(--teal); text-underline-offset: 3px; }
+a:hover { color: #7ff0dc; }
+a:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; border-radius: 3px; }
+
+code {
+  font: 13.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--strong);
+}
+
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+/* --- top bar --- */
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 0 18px;
+}
+.brand {
+  color: var(--strong);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.brand:hover { color: var(--strong); }
+.top nav { display: flex; gap: 2px; margin-right: -10px; }
+.top nav a {
+  padding: 6px 10px;
+  border-radius: 4px;
+  color: var(--dim);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.top nav a:hover { background: var(--control); color: var(--text); }
+
+/* --- intro --- */
+
+.intro { padding: 28px 0 32px; }
+h1 {
+  margin: 0 0 18px;
+  color: var(--strong);
+  font-size: clamp(32px, 5.4vw, 48px);
+  font-weight: 600;
+  line-height: 1.08;
+}
+.intro p { max-width: var(--measure); margin: 0 0 12px; font-size: 19px; }
+.intro .note { color: var(--dim); font-size: 17px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+
+.btn {
+  display: inline-block;
+  padding: 9px 18px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--control);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.btn:hover { background: var(--control-hover); color: var(--strong); }
+.btn.primary { border-color: rgba(56, 224, 196, 0.7); background: var(--selected); color: #fff; }
+.btn.primary:hover { background: #115048; }
+
+/* --- pictures --- */
+
+figure { margin: 0; }
+.shot {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-top-color: var(--line-lit);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+.shot img { display: block; width: 100%; height: auto; }
+figcaption { padding-top: 9px; color: var(--dim); font-size: 14.5px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+
+/* --- sections --- */
+
+section { padding-top: 64px; }
+h2 {
+  margin: 0 0 8px;
+  color: var(--strong);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.sub { max-width: var(--measure); margin: 0 0 24px; color: var(--dim); }
+
+/* --- panels, like the game's windows --- */
+
+.panel {
+  border: 1px solid var(--line);
+  border-top-color: var(--line-lit);
+  border-radius: 8px;
+  background: linear-gradient(var(--panel-top), var(--panel-bottom));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+.panel + .panel { margin-top: 16px; }
+.panel > header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px 7px 13px;
+  border-bottom: 1px solid var(--hair);
+}
+.panel h3 {
+  margin: 0;
+  color: #dce8f2;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: var(--teal);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.chip {
+  margin-left: auto;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.chip.active { border-color: rgba(56, 224, 196, 0.7); background: var(--selected); color: #fff; }
+.panel .body { padding: 4px 14px 14px; }
+.lede { max-width: var(--measure); margin: 10px 0 8px; color: var(--dim); font-size: 16px; }
+
+/* key and value rows */
+
+dl.rows { display: grid; grid-template-columns: 9rem 1fr; margin: 0; padding: 0 14px 8px; }
+dl.rows dt,
+dl.rows dd { margin: 0; padding: 10px 0; border-top: 1px solid var(--hair); }
+dl.rows dt:first-of-type,
+dl.rows dt:first-of-type + dd { border-top: 0; }
+dl.rows dt {
+  padding-right: 16px;
+  color: var(--dim);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  line-height: 1.9;
+  text-transform: uppercase;
+}
+dl.rows dd { color: var(--text); font-size: 16.5px; }
+dl.rows dd code { display: block; margin-top: 6px; }
+dl.rows dd code + code { margin-top: 2px; }
+
+/* roadmap lists */
+
+.items { margin: 0; padding: 0; list-style: none; }
+.items.cols { columns: 2 17rem; column-gap: 40px; }
+.items li { position: relative; break-inside: avoid; padding: 5px 0 5px 18px; font-size: 16.5px; }
+.items li::before {
+  content: "";
+  position: absolute;
+  top: 0.93em;
+  left: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #3f566d;
+}
+
+/* items with a state, as in the game's telemetry rows */
+
+.items.states li {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 8px 0 8px 22px;
+  border-top: 1px solid var(--hair);
+}
+.items.states li:first-child { border-top: 0; }
+.items.states li::before {
+  top: 1.05em;
+  left: 2px;
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  border: 1.5px solid #4c647b;
+  background: transparent;
+}
+.items.states li.done::before { border-color: var(--teal); background: var(--teal); }
+.items.states li.doing::before { border-color: var(--amber); background: var(--amber); }
+.state {
+  margin-left: auto;
+  flex: none;
+  color: var(--dim);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.done .state { color: var(--teal); }
+.doing .state { color: var(--amber); }
+
+/* --- footer --- */
+
+footer {
+  margin-top: 80px;
+  padding: 28px 0 44px;
+  border-top: 1px solid var(--hair);
+  color: var(--dim);
+  font-size: 14.5px;
+}
+footer .wrap { display: flex; flex-wrap: wrap; gap: 6px 28px; }
+footer a { color: var(--dim); }
+footer a:hover { color: var(--text); }
+
+/* --- narrow screens --- */
+
+@media (max-width: 680px) {
+  body { font-size: 16.5px; }
+  .wrap { padding: 0 16px; }
+  .intro p { font-size: 18px; }
+  .pair { grid-template-columns: 1fr; gap: 20px; }
+  section { padding-top: 52px; }
+  dl.rows { grid-template-columns: 1fr; padding: 0 12px 6px; }
+  dl.rows dt { padding: 10px 0 0; line-height: 1.5; border-top: 1px solid var(--hair); }
+  dl.rows dd { padding: 2px 0 10px; border-top: 0; }
+  dl.rows dt:first-of-type { border-top: 0; }
+  .panel .body { padding: 4px 12px 12px; }
+  .panel > header { padding-left: 11px; }
+}

@@ -193,6 +193,7 @@ assets/core/     The base game, itself a mod: bodies, parts, craft, launch sites
 tools/blender/   Scripts that build the stock part models in Blender.
 mods/           Installed mods (example_mod shows every mechanism).
 docs/modding.md Modding guide and reference.
+website/        The project site: static HTML and CSS, no build step.
 ```
 
 ## Earth

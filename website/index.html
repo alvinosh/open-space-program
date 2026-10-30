@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Space Program</title>
+<meta name="description" content="A realism-focused spaceflight game with real-scale planets, real engine performance and exact orbits. Built to be modded.">
+<meta name="theme-color" content="#070d14">
+<meta property="og:title" content="Open Space Program">
+<meta property="og:description" content="A realism-focused spaceflight game with real-scale planets, real engine performance and exact orbits.">
+<meta property="og:type" content="website">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/Barlow-Medium.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="fonts/Barlow-SemiBold.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Icons from assets/core/icons, drawn the way the game tints them. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-flight" viewBox="0 0 24 24"><path d="M4.2 17.5a9 9 0 1 1 15.6 0"/><path d="M12 5.6v1.6M6.9 7.9l1.1 1.1M17.1 7.9 16 9M4.6 13h1.6M17.8 13h1.6"/><path d="m12 13 4.2-3.4"/><circle cx="12" cy="13" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-structure" viewBox="0 0 24 24"><path d="M6.5 2.8v18.4M17.5 2.8v18.4"/><path d="M6.5 4.6h11M6.5 12h11M6.5 19.4h11"/><path d="m6.5 4.6 11 7.4M6.5 12l11 7.4"/></symbol>
+  <symbol id="i-vessel" viewBox="0 0 24 24"><path d="M12 2.4c2.5 1.9 3.9 4.9 3.9 8.4v5.7H8.1v-5.7c0-3.5 1.4-6.5 3.9-8.4z"/><circle cx="12" cy="9.3" r="1.5"/><path d="M8.1 12.6 5.2 15v4l2.9-1.6M15.9 12.6l2.9 2.4v4l-2.9-1.6"/><path d="M10.4 19.2 12 21.8l1.6-2.6"/></symbol>
+  <symbol id="i-plan" viewBox="0 0 24 24"><path d="M3 20.5c2.4-5.4 5.4-8.6 8.4-10"/><path d="M16.3 8.4c1.6-.6 3.1-1 4.7-1.3" stroke-dasharray="1.2 2.4"/><circle cx="13.7" cy="9.6" r="2.5"/><path d="M13.7 7.1V3.6M11.5 10.8l-3 1.8M15.9 10.8l3 1.8"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="3.8" ry="9"/><path d="M3 12h18M4.5 7.4h15M4.5 16.6h15"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.6-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.6 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-mods" viewBox="0 0 24 24"><path d="m12 2.8 8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><path d="m4 7.4 8 4.6 8-4.6M12 12v9.2"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="13.2" r="8"/><path d="M12 9v4.2l2.8 2.2"/><path d="M9.6 2.6h4.8M12 2.6v2.6M18.6 5.4l1.4 1.4"/></symbol>
+  <symbol id="i-orbit" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4.6" transform="rotate(-25 12 12)"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/><circle cx="18.9" cy="6.3" r="1.7" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-pad" viewBox="0 0 24 24"><path d="M14 2.8c1.7 1.5 2.6 3.7 2.6 6.4V18h-5.2V9.2c0-2.7.9-4.9 2.6-6.4z"/><path d="M11.4 14.2 9.8 15.8V18M16.6 14.2l1.6 1.6V18"/><path d="M4.8 21V4.5M4.8 7.5h6.6M4.8 12h6.6"/><path d="M8.6 21v-3h10.8v3M2.6 21h18.8"/></symbol>
+</svg>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#">Open Space Program</a>
+    <nav aria-label="Site">
+      <a href="#roadmap">Roadmap</a>
+      <a href="#run">Run it</a>
+      <a href="https://github.com/alvinosh/open-space-program">Source</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="intro">
+      <h1>A realistic spaceflight game.</h1>
+      <p>Open Space Program is built around real numbers: real-scale planets, real engine performance, and orbits that are solved exactly, so a trajectory comes out the same at any time warp. Launch from Cape Canaveral, reach orbit, rendezvous, and go on to the Moon.</p>
+      <p class="note">It is early and unfinished. You can fly the scenarios today. The in-game build editor is the next big step.</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/alvinosh/open-space-program/releases/latest">Download</a>
+        <a class="btn" href="#roadmap">Roadmap</a>
+      </div>
+    </div>
+
+    <figure>
+      <div class="shot"><img src="img/launch.jpg" width="1600" height="900" alt="A white rocket climbing from the Florida coast, with a bright plume, over marsh, forest and sea"></div>
+      <figcaption>Pathfinder a few seconds after liftoff from LC-39A.</figcaption>
+    </figure>
+
+    <section id="inside">
+      <h2>What is in it</h2>
+      <p class="sub">The physics is the part that is done properly, and what the rest is built on.</p>
+      <div class="panel">
+        <header><svg class="icon" aria-hidden="true"><use href="#i-orbit"/></svg><h3>Simulation</h3></header>
+        <dl class="rows">
+          <dt>Orbits</dt>
+          <dd>Exact patched conics, with sphere-of-influence changes, atmosphere entry and ground contact solved to the tick. The result is the same at any time warp.</dd>
+          <dt>Time and space</dt>
+          <dd>Integer time in microseconds since J2000, good for 292 000 years either way. Hierarchical frames and a floating origin at the vessel keep large distances precise.</dd>
+          <dt>Worlds</dt>
+          <dd>IAU rotation models for every body, real launch-site coordinates, and an Earth built from real elevation and land-cover data.</dd>
+          <dt>Engines</dt>
+          <dd>Pressure-dependent specific impulse, limited ignitions, ullage, throttle floors, spool-up and tail-off, and gimbal.</dd>
+          <dt>Structure</dt>
+          <dd>Procedural tanks with real wall thickness that burst and buckle. Fins can tear off.</dd>
+          <dt>Aerodynamics</dt>
+          <dd>Drag and lift from a voxel model of the whole vessel, so radial boosters, fairings and open interstages need no special cases.</dd>
+          <dt>Attitude</dt>
+          <dd>Exact torque-free rotation for any shape, the Dzhanibekov flip included, and SAS that holds exactly while time warps.</dd>
+          <dt>Planning</dt>
+          <dd>Maneuver nodes, a burn executor, targets and rendezvous, and a transfer planner with porkchop plots.</dd>
+          <dt>Mods</dt>
+          <dd>Planets, parts, craft, scenarios, windows and keybindings are all records that mods can add or patch. F5 reloads them live.</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section aria-label="Screenshots">
+      <div class="pair">
+        <figure>
+          <div class="shot"><img src="img/flight.jpg" width="1600" height="900" loading="lazy" alt="The flight screen: clock and vessel windows on the left, attitude on the right, a structure window in the middle, the navball and staging at the bottom"></div>
+          <figcaption>The flight screen, with the vessel, structure and attitude windows open.</figcaption>
+        </figure>
+        <figure>
+          <div class="shot"><img src="img/orbit.jpg" width="1600" height="900" loading="lazy" alt="A small upper stage in orbit against a dense star field, with the dark side of Earth and its city lights below"></div>
+          <figcaption>An upper stage in a 300 km orbit, over the night side of Earth.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2>Roadmap</h2>
+      <p class="sub">What is planned, roughly in this order. There are no dates. The editor comes before most of the spacecraft systems because they all build on the same part model. The full list, with what depends on what, is the <a href="https://github.com/alvinosh/open-space-program/tree/main/.tasks"><code>.tasks</code></a> folder in the repo.</p>
+
+      <div class="panel">
+        <header><svg class="icon" aria-hidden="true"><use href="#i-flight"/></svg><h3>Now: flying it is readable and looks right</h3><span class="chip active">In progress</span></header>
+        <div class="body">
+          <ul class="items states">
+            <li class="doing">Staging as ordered part actions<span class="state">In progress</span></li>
+            <li class="doing">Part windows marked with the part's colour<span class="state">In progress</span></li>
+            <li>Highlight a stage's parts on the rocket<span class="state">Planned</span></li>
+            <li>Hot staging<span class="state">Planned</span></li>
+            <li>Reorder stages by hand, and see where one lands<span class="state">Planned</span></li>
+            <li>Solid boosters that look and burn like solids<span class="state">Planned</span></li>
+            <li class="done">Plumes for every engine<span class="state">Done</span></li>
+            <li class="done">A staging window you can read, and a compact one<span class="state">Done</span></li>
+            <li class="done">A smaller, quieter flight HUD<span class="state">Done</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><svg class="icon" aria-hidden="true"><use href="#i-structure"/></svg><h3>Build editor</h3><span class="chip">Planned</span></header>
+        <div class="body">
+          <p class="lede">Craft come from files today. Next you build them in the game. The test is a Saturn&nbsp;V built in the editor that flies Apollo 11. A smoke test already flies Apollo 11 with a ready-made Saturn&nbsp;V, and the editor has to match it.</p>
+          <ul class="items cols">
+            <li>Place, remove, pattern and undo parts</li>
+            <li>Physics on any part at any pose</li>
+            <li>A part palette with thumbnails and tooltips</li>
+            <li>The editor scene and its windows</li>
+            <li>Launch from the editor, and from files</li>
+            <li>Recipes, starting with the Saturn&nbsp;V's</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><svg class="icon" aria-hidden="true"><use href="#i-vessel"/></svg><h3>Spacecraft systems</h3><span class="chip">Planned</span></header>
+        <div class="body">
+          <p class="lede">Everything a mission needs besides an engine and a tank.</p>
+          <ul class="items cols">
+            <li>Electrical power and avionics</li>
+            <li>Ground stations and communication links</li>
+            <li>Docking ports, and joining two vessels</li>
+            <li>The lander: Moon terrain, legs, a lunar module</li>
+            <li>Thermal model, heat shield and capsule entry</li>
+            <li>Parachutes and the sea</li>
+            <li>Crew and life support</li>
+            <li>Failures and reliability</li>
+            <li>More missions: Falcon 9 and Dragon, the Space Shuttle, Soyuz</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><svg class="icon" aria-hidden="true"><use href="#i-plan"/></svg><h3>Flight planning and saves</h3><span class="chip">Planned</span></header>
+        <div class="body">
+          <ul class="items cols">
+            <li>A flight plan window</li>
+            <li>A rendezvous panel and target autopilot modes</li>
+            <li>More in the transfer planner</li>
+            <li>Navball frames, a roll target and autopilot profiles</li>
+            <li>Warp to any point on the orbit, up to 100 years per second</li>
+            <li>Saving and loading a game</li>
+            <li>A start menu: system, vehicle and location</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><svg class="icon" aria-hidden="true"><use href="#i-map"/></svg><h3>Worlds</h3><span class="chip">Planned</span></header>
+        <div class="body">
+          <ul class="items cols">
+            <li>The full Solar System: the moons of Mars, Jupiter and Saturn, Saturn's rings, Uranus, Neptune, Pluto</li>
+            <li>Four more launch pads: Vandenberg, Starbase, Kourou and Mahia</li>
+            <li>Biomes and ground clutter</li>
+            <li>Craters on airless bodies, and real Mars elevation</li>
+            <li>Space weather: radiation, aurora, magnetospheres</li>
+            <li>Other stars, and flying between them</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg><h3>Look and sound</h3><span class="chip">Planned</span></header>
+        <div class="body">
+          <ul class="items cols">
+            <li>Volumetric clouds, with shadows and god rays</li>
+            <li>Ocean waves, foam and an underwater view</li>
+            <li>GPU particles and engine heat glow</li>
+            <li>Reflections, point-light shadows and ambient occlusion</li>
+            <li>A docking camera and picture in picture</li>
+            <li>Ray-traced cockpit views</li>
+            <li>Engine sounds, wind and music</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><svg class="icon" aria-hidden="true"><use href="#i-mods"/></svg><h3>Interface and modding</h3><span class="chip">Planned</span></header>
+        <div class="body">
+          <ul class="items cols">
+            <li>A HUD editor, saved layouts and detachable windows</li>
+            <li>Gamepad and mouse-button bindings</li>
+            <li>Localisation</li>
+            <li>A console with commands</li>
+            <li>Ground track and target tracking windows</li>
+            <li>Code mods, through a scripting layer</li>
+            <li>Shader overrides and part creation tools from mods</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg><h3>Maybe later</h3><span class="chip">Not planned</span></header>
+        <div class="body">
+          <p class="lede">Ideas that nobody has planned yet.</p>
+          <ul class="items cols">
+            <li>Science and a career</li>
+            <li>Multiplayer</li>
+            <li>Colonies</li>
+            <li>Terramechanics for wheels and feet</li>
+            <li>Anchoring vessels to the ground</li>
+            <li>Working cockpit instruments</li>
+            <li>Recolouring parts</li>
+            <li>Trajectories drawn in any reference frame</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="run">
+      <h2>Run it</h2>
+      <p class="sub">Windows, Linux and macOS.</p>
+      <div class="panel">
+        <header><svg class="icon" aria-hidden="true"><use href="#i-pad"/></svg><h3>Getting started</h3></header>
+        <dl class="rows">
+          <dt>Download</dt>
+          <dd>Builds are published on the <a href="https://github.com/alvinosh/open-space-program/releases/latest">releases page</a>.</dd>
+          <dt>From source</dt>
+          <dd>Install Rust (the repo pins the version), bake Earth's terrain once, then run the game.
+            <code>cargo run -p osp_bake --release</code>
+            <code>cargo run</code>
+          </dd>
+          <dt>First flight</dt>
+          <dd>Press Esc for the scenario menu and pick the Cape. Space fires the next stage, Shift and Ctrl change the throttle, M opens the map and F1 shows help.</dd>
+        </dl>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Open Space Program</span>
+    <a href="https://github.com/alvinosh/open-space-program">Source on GitHub</a>
+    <span>Set in Barlow, <a href="fonts/OFL.txt">SIL Open Font License</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
