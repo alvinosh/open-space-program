@@ -1,0 +1,22 @@
+# Checks the commit messages of a push or pull request against the format in README.md
+# ("Commits"). The same check runs locally as a commit-msg hook (.githooks).
+name: Commit messages
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 -m unittest discover -s .githooks
+      - name: Check the commits
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 .githooks/check_commit.py --range "$BASE" "$HEAD"

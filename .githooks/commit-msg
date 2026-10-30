@@ -1,0 +1,4 @@
+#!/bin/sh
+# Rejects commit messages that do not say what the commit is and what it touches.
+# Turn it on once per clone: git config core.hooksPath .githooks
+exec python3 "$(dirname "$0")/check_commit.py" --hook "$1"

@@ -312,3 +312,27 @@ What the game already does well, and new work must not regress:
 - Procedural tanks with real wall thickness, burst and buckling, and fins that tear off.
 - Earth from real data (30 m elevation and 10 m land cover around the Cape), a single-scattering atmosphere, trees by land-cover class.
 - A data-driven UI and keybindings, mods with layered records and patches, live reload (F5).
+
+## Commits
+
+A commit message says what the commit is and what it touches:
+
+```
+type(scope): subject
+feat(sim,game): add hot staging
+```
+
+The types are `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `chore`, `build`, `ci`, `style`
+and `revert`. The scopes are areas of the repo, and a commit names every area it changes and
+none it does not: `sim`, `mods`, `terrain`, `bake`, `ui` and `game` are the crates, `assets`,
+`example-mod`, `tools`, `docs` (also the README), `tasks`, `website`, `ci` (`.github/`), `build`
+(Cargo.toml, the toolchain, `.cargo/`) and `repo` (`.gitignore`, `.githooks/`). The subject is
+lower case, has no full stop, and fits with the rest of the first line in 72 characters.
+
+```sh
+git config core.hooksPath .githooks    # once per clone: the commit-msg hook checks the message
+python3 -m unittest discover -s .githooks
+```
+
+The same check runs in CI over the commits of every push and pull request, so `--no-verify`
+only postpones it. A new top-level directory needs a scope in `.githooks/check_commit.py`.
