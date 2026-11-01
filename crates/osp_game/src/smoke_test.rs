@@ -98,6 +98,8 @@ impl Plugin for SmokeTestPlugin {
                 MARS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_DEBRIS").is_some() {
                 DEBRIS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_HOVER").is_some() {
+                HOVER_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_PARTS").is_some() {
                 PARTS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_STAGING").is_some() {
@@ -394,6 +396,22 @@ const PARTS_SCRIPT: &[(f64, Action)] = &[
     (3.6, Action::Ui("ui.hide:part_info:0-18")),
     (4.5, Action::Capture("parts_closed.png")),
     (4.7, Action::Exit),
+];
+
+/// On the pad (`OSP_CAPTURE_HOVER=1`): the engines that light next are teal; a staging tile
+/// under the pointer (`part.hover` stands in for it) tints its nine engines blue; one engine
+/// split off into a sequence of its own is blue alone. A camera that sees the engines:
+/// `OSP_CAMERA=200,22,13,-14 OSP_SCENARIO=pad`.
+const HOVER_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (2.0, Action::Capture("hover_next.png")),
+    (2.2, Action::Ui("part.hover:0:18,19,20,21,22,23,24,25,26")),
+    (3.0, Action::Capture("hover_tile.png")),
+    (3.2, Action::Ui("part.hover:")),
+    (3.3, Action::Sequences("staging.drop_at:one:0:0:0")),
+    (3.6, Action::Ui("part.hover:0:26")),
+    (4.4, Action::Capture("hover_split.png")),
+    (4.6, Action::Exit),
 ];
 
 /// In LEO (`OSP_CAPTURE_STAGING=1`): the sequence stack, rearranged (RCS moved in with the

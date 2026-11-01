@@ -12,7 +12,8 @@
 // dragged onto a row joins it, onto a strip it makes a sequence of its own there; drag its
 // count to move just one (to light a cluster's centre engine first, say). Right-click a tile
 // for the window of its first part: the tile takes the window's colour and every part of the
-// tile is tinted in it on the rocket (see part_info.json5). The + box at the
+// tile is tinted in it on the rocket (see part_info.json5). Under the pointer, a tile (or a
+// row's number) tints its parts blue on the rocket; the engines of the next row are teal. The + box at the
 // top adds an empty sequence (and takes a dropped tile as a new last one), x removes an
 // empty one.
 // Under the stack, numbered after the last sequence fired, are the engines already lit,
@@ -53,7 +54,7 @@
                 drag: "seq:{item.index}",
                 drop: "staging.drop:$drag:{item.index}",
                 children: [
-                  { widget: "label", class: "seq_number", active: "item.next", tooltip: "{item.caption}", text: "{item.number}" },
+                  { widget: "label", class: "seq_number", active: "item.next", tooltip: "{item.caption}", hover: "part.group:{item.window}", text: "{item.number}" },
                   {
                     widget: "column",
                     class: "seq_tiles",
@@ -70,6 +71,7 @@
                             drag: "item:{item.seq}:{item.index}",
                             tooltip: "{item.tip}",
                             context: "part.group:{item.window}",
+                            hover: "part.group:{item.window}",
                             accent: "item.mark",
                             children: [
                               { widget: "image", class: "seq_icon", image: "icons/engine.svg", visible: "item.is_engines" },
@@ -116,6 +118,7 @@
                     class: "seq_item",
                     tooltip: "{item.tip}",
                     context: "part.group:{item.window}",
+                    hover: "part.group:{item.window}",
                     accent: "item.mark",
                     children: [
                       { widget: "image", class: "seq_icon", image: "icons/engine.svg", visible: "item.is_engines" },

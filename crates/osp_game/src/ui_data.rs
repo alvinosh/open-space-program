@@ -8,11 +8,12 @@ use osp_sim::{
     constants::G0,
     data::TankShape,
     events::EventKind,
+    parts::PartId,
     propulsion::Group,
     staging::Activation,
     structure::{Mode, Part, PartLoad},
     time::SimTime,
-    vessel::{Motion, Situation, VesselEventKind},
+    vessel::{Motion, Situation, VesselEventKind, VesselId},
 };
 use osp_ui::{Formatters, UiData, UiValue, record};
 
@@ -571,6 +572,12 @@ pub fn format_date(ut: SimTime) -> String {
     format!("{year:04}-{month:02}-{day:02} {}", format_clock(ut))
 }
 
+/// `<vessel>:<part>,<part>,...`, which `part.group` and the `hover` of a tile take.
+fn group_window(vessel: VesselId, parts: &[PartId]) -> String {
+    let parts: Vec<_> = parts.iter().map(|p| p.0.to_string()).collect();
+    format!("{}:{}", vessel.0, parts.join(","))
+}
+
 /// The activation sequences, next first (`vessel.sequences`), each with an icon per group
 /// of identical parts in it (`items`, see `Propulsion::groups`), and the thrust-to-weight
 /// ratio the bottom stage's engines give at full throttle here (`vessel.stage_twr`).
@@ -626,16 +633,12 @@ fn publish_sequences(
                 None => caption.clone(),
             },
         };
-        let parts = (group.parts.iter())
-            .map(|p| p.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
         let mark = marks.color_of_parts(vessel.id(), &group.parts);
         record([
             ("seq", seq.into()),
             ("index", index.into()),
             ("kind", group.kind.into()),
-            ("window", format!("{}:{parts}", vessel.id().0).into()),
+            ("window", group_window(vessel.id(), &group.parts).into()),
             ("mark", mark.unwrap_or_default().into()),
             (
                 "is_engines",
@@ -669,6 +672,14 @@ fn publish_sequences(
                 .map(|(j, g)| icon(i, j, g))
                 .collect();
             let lines = tile_lines(&items);
+            // Every part of the row, for hovering its number.
+            let row_parts: Vec<PartId> = (groups.iter())
+                .flat_map(|g| g.parts.iter().copied())
+                .collect();
+            let window = match row_parts.is_empty() {
+                true => String::new(),
+                false => group_window(vessel.id(), &row_parts),
+            };
             let caption = (items.iter())
                 .filter_map(|item| match item.get("caption") {
                     Some(UiValue::Text(text)) => Some(text.as_str()),
@@ -680,6 +691,7 @@ fn publish_sequences(
                 ("index", i.into()),
                 ("number", sequences.number(i).into()),
                 ("next", (i == 0).into()),
+                ("window", window.into()),
                 ("empty", seq.is_empty().into()),
                 ("caption", caption.into()),
                 ("lines", lines.into()),
@@ -827,6 +839,22 @@ mod tests {
             "Jettison Payload fairing"
         );
         assert_eq!(group_caption("rcs", 1, "", "S-IVB"), "RCS on");
+    }
+
+    #[test]
+    fn a_tile_and_a_row_name_the_parts_to_mark() {
+        let boosters = [PartId(7), PartId(8), PartId(9)];
+        let window = group_window(VesselId(2), &boosters);
+        assert_eq!(window, "2:7,8,9");
+        // What a hover of that text marks.
+        let text = format!("part.group:{window}");
+        assert_eq!(
+            crate::part_highlight::group_of(&text),
+            Some((VesselId(2), boosters.to_vec()))
+        );
+        // One booster split off into a tile of its own marks just that one.
+        let one = group_window(VesselId(2), &boosters[..1]);
+        assert_eq!(one, "2:7");
     }
 
     #[test]

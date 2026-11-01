@@ -209,7 +209,7 @@ fn open_tile_part(
 }
 
 /// The vessel and parts `<vessel>:<part>,<part>,...` names.
-fn parse_group(arg: &str) -> Option<(VesselId, Vec<PartId>)> {
+pub(crate) fn parse_group(arg: &str) -> Option<(VesselId, Vec<PartId>)> {
     let (vessel, parts) = arg.split_once(':')?;
     let parts: Option<Vec<_>> = parts
         .split(',')

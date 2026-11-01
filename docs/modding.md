@@ -816,6 +816,7 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 | `pin` | `window` only: a pin button in the title bar (classes `window_pin`, `window_pin_icon`). Popup windows have one unless `pin: false`. |
 | `drag`, `drop` | Drag and drop: a node with `drag` can be picked up and carries that text (a template); dropping it on a node with `drop` fires the `drop` action with `$drag` replaced by what it carried, e.g. `drop: "staging.drop:$drag:{item.index}"`. |
 | `tooltip` | Text (a template) shown beside the node while the pointer is over it, styled by the `tooltip` class; icon buttons use it for their name. |
+| `hover` | Text (a template) the node says while the pointer is over it, e.g. `"part.group:{item.window}"`; the game reads it (`UiHover`) and shows something for it. The staging window's tiles use it to mark their parts on the rocket. |
 | `id` | Optional; lets patches address the node with `#id`. |
 | `class` | Space-separated theme classes. |
 | `style` | Inline style (overrides classes). |

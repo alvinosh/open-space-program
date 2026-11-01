@@ -260,6 +260,16 @@ pub struct ActionSource(pub Template);
 #[derive(Component)]
 pub struct ContextAction(pub Template);
 
+/// What a node says while the pointer is over it (`hover`, an action template). The text goes
+/// into [`UiHover`]; the game decides what to show for it.
+#[derive(Component)]
+pub struct HoverAction(pub Template);
+
+/// The `hover` text of the node under the pointer, filled in, if it has one. Where nodes
+/// overlap, the first found wins.
+#[derive(Resource, Default, Debug, PartialEq, Eq)]
+pub struct UiHover(pub Option<String>);
+
 /// A node whose border takes the colour (`"#rrggbb"`) the data key holds while it is not
 /// empty (`accent`), instead of its style's, and is `width` px thick (`accent_width`, 2).
 #[derive(Component)]
@@ -543,6 +553,11 @@ pub fn spawn_node(
             .entity(entity)
             .insert(ContextAction(Template::parse(action)))
             .observe(context_action);
+    }
+    if let Some(action) = text("hover") {
+        commands
+            .entity(entity)
+            .insert((HoverAction(Template::parse(action)), Hovered::default()));
     }
     if let Some(key) = text("accent") {
         let width = def.extra.get("accent_width").and_then(|v| v.as_f64());
@@ -1257,6 +1272,21 @@ pub fn context_action(
     }
 }
 
+/// Publish what the node under the pointer says in its `hover` ([`UiHover`]).
+pub fn update_hover(
+    sources: Query<(&HoverAction, &Hovered)>,
+    data: Res<UiData>,
+    formatters: Res<Formatters>,
+    mut hover: ResMut<UiHover>,
+) {
+    let said = sources
+        .iter()
+        .find(|(_, hovered)| hovered.get())
+        .map(|(action, _)| action.0.render(&data, &formatters))
+        .filter(|text| !text.is_empty());
+    hover.set_if_neq(UiHover(said));
+}
+
 /// Light the borders of `accent` nodes whose colour key is set, and put the others back.
 pub fn update_accents(
     mut commands: Commands,
@@ -1933,5 +1963,85 @@ mod gauge_tests {
             &stops(&g)[..4],
             [(track, 0.0), (track, 60.0), (fill, 60.0), (fill, 80.0)]
         );
+    }
+}
+
+#[cfg(test)]
+mod hover_tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::UiPlugin;
+
+    fn hover_of(app: &App) -> Option<String> {
+        app.world().resource::<UiHover>().0.clone()
+    }
+
+    #[test]
+    fn the_node_under_the_pointer_says_its_hover_text() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::input::InputPlugin, UiPlugin));
+        let layout = json!({
+            "id": "tiles",
+            "root": {
+                "widget": "row",
+                "children": [
+                    { "widget": "label", "text": "a", "hover": "part.group:{tile.window}" },
+                    { "widget": "label", "text": "b", "hover": "part.group:{tile.other}" },
+                    { "widget": "label", "text": "c" },
+                ],
+            },
+        });
+        app.insert_resource(UiDocuments {
+            layouts: vec![serde_json::from_value(layout).unwrap()],
+            ..default()
+        });
+        app.world_mut()
+            .resource_mut::<UiData>()
+            .set("tile.window", "1:7,8,9");
+        app.update();
+        app.update();
+        assert_eq!(hover_of(&app), None);
+
+        let mut tiles = app.world_mut().query::<(Entity, &HoverAction)>();
+        let tiles: Vec<Entity> = tiles.iter(app.world()).map(|(e, _)| e).collect();
+        assert_eq!(tiles.len(), 2);
+        let (first, second) = {
+            // The first label is the one that reads `tile.window`.
+            let data = app.world().resource::<UiData>();
+            let formatters = app.world().resource::<Formatters>();
+            let mut by_text = tiles.iter().map(|&e| {
+                let action = app.world().get::<HoverAction>(e).unwrap();
+                (action.0.render(data, formatters), e)
+            });
+            let a = by_text.next().unwrap();
+            let b = by_text.next().unwrap();
+            if a.0.contains("1:7") {
+                (a.1, b.1)
+            } else {
+                (b.1, a.1)
+            }
+        };
+
+        app.world_mut().entity_mut(first).insert(Hovered(true));
+        app.update();
+        assert_eq!(hover_of(&app).as_deref(), Some("part.group:1:7,8,9"));
+
+        // It follows the data while the pointer stays.
+        app.world_mut()
+            .resource_mut::<UiData>()
+            .set("tile.window", "1:7");
+        app.update();
+        assert_eq!(hover_of(&app).as_deref(), Some("part.group:1:7"));
+
+        // Over the other node, whose data is not there yet (it renders as a dash).
+        app.world_mut().entity_mut(first).insert(Hovered(false));
+        app.world_mut().entity_mut(second).insert(Hovered(true));
+        app.update();
+        assert_eq!(hover_of(&app).as_deref(), Some("part.group:-"));
+
+        app.world_mut().entity_mut(second).insert(Hovered(false));
+        app.update();
+        assert_eq!(hover_of(&app), None);
     }
 }
