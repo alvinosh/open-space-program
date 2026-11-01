@@ -1,0 +1,21 @@
+{
+  "id": "T175",
+  "title": "Procedural decoupler and separation motors",
+  "kind": "feature",
+  "status": "todo",
+  "area": "structure",
+  "size": "M",
+  "parent": null,
+  "depends_on": [
+    "T032"
+  ],
+  "refs": [
+    "crates/osp_sim/src/component.rs (`DecouplerDef`)",
+    "docs/systems-plan.md (the palette of procedural parts)"
+  ],
+  "created": "2026-11-01",
+  "updated": "2026-11-01",
+  "done": null,
+  "milestone": "M4",
+  "priority": 53
+}

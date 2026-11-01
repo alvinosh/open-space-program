@@ -1,6 +1,6 @@
-# T106: Kitten models, fur, expressions, animations; moddable kittens
+# T106: Crew models, expressions, animations; moddable crew
 
-The kittens themselves: models, fur, expressions and animations, which mods can replace.
+The crew themselves: models, expressions and animations, which mods can replace.
 
 ## Done when
 

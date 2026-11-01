@@ -1,0 +1,21 @@
+{
+  "id": "T168",
+  "title": "Scenario and tutorial: rendezvous",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "M",
+  "parent": null,
+  "depends_on": [
+    "T166"
+  ],
+  "refs": [
+    "assets/core/scenarios/stock.json5 (`rendezvous`)",
+    "crates/osp_sim/src/rendezvous.rs"
+  ],
+  "created": "2026-11-01",
+  "updated": "2026-11-01",
+  "done": null,
+  "milestone": "M2",
+  "priority": 28
+}

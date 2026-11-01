@@ -1,0 +1,23 @@
+{
+  "id": "T174",
+  "title": "Scenario and tutorial: three days in orbit",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "M",
+  "parent": null,
+  "depends_on": [
+    "T166",
+    "T035",
+    "T037",
+    "T049"
+  ],
+  "refs": [
+    "docs/systems-plan.md (the palette of procedural parts)"
+  ],
+  "created": "2026-11-01",
+  "updated": "2026-11-01",
+  "done": null,
+  "milestone": "M5",
+  "priority": 68
+}

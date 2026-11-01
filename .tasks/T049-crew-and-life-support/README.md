@@ -11,6 +11,10 @@ Crew in seats with mass and metabolic load; consumables as resources (pod record
 
 - The smoke test reports consumables left at splashdown.
 
+## Open question
+
+This waits for T039 (join two vessels) because crew moving through a docked tunnel is in scope. A single capsule's cabin does not need that. If life support should come earlier, split this in two (the cabin, then the transfer) and move T039 to the transfer half.
+
 ## Where it comes from
 
 - docs/systems-plan.md (step 24)

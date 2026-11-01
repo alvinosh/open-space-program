@@ -1,0 +1,21 @@
+{
+  "id": "T167",
+  "title": "Scenario and tutorial: first launch to orbit",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "M",
+  "parent": null,
+  "depends_on": [
+    "T166"
+  ],
+  "refs": [
+    "assets/core/craft/pathfinder_crew.json5",
+    "assets/core/scenarios/stock.json5"
+  ],
+  "created": "2026-11-01",
+  "updated": "2026-11-01",
+  "done": null,
+  "milestone": "M2",
+  "priority": 21
+}

@@ -6,6 +6,8 @@
     python3 .tasks/tasks.py ready            tasks you can start: todo, every dependency done
     python3 .tasks/tasks.py blocked          todo tasks and what they wait for
     python3 .tasks/tasks.py set T026 done    change a status (sets `updated`, and `done` for done)
+    python3 .tasks/tasks.py next [N]         the N (default 10) ready tasks with the lowest `priority`
+    python3 .tasks/tasks.py plan [M3]        every milestone (or one) with its open tasks in priority order
 
 See .tasks/README.md for the format.
 """
@@ -20,6 +22,8 @@ KINDS = ["epic", "feature", "bug", "chore", "test", "milestone", "decision"]
 SIZES = ["S", "M", "L", "XL", None]
 REQUIRED = ["id", "title", "kind", "status", "area", "size", "parent", "depends_on", "refs",
             "created", "updated", "done"]
+# Where each task sits in the plan, in order; what each delivers is in README.md.
+MILESTONES = ["M0", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "later", "shelved"]
 
 
 def load():
@@ -71,6 +75,23 @@ def check(tasks):
             warnings.append("%s: an epic groups tasks; put dependencies on its tasks" % where)
         if (t.get("status") == "done") != (t.get("done") is not None):
             errors.append("%s: `done` must be a date exactly when the status is done" % where)
+        ms = t.get("milestone")
+        if ms is not None and ms not in MILESTONES:
+            errors.append("%s: milestone `%s` is not one of %s" % (where, ms, MILESTONES))
+        if ms is None and t.get("status") not in ("done", "dropped"):
+            warnings.append("%s: no milestone" % where)
+        if t.get("priority") is not None:
+            if ms is None:
+                errors.append("%s: has a priority but no milestone" % where)
+            for d in t.get("depends_on", []):
+                dp = tasks.get(d, {}).get("priority")
+                if dp is not None and dp >= t["priority"]:
+                    errors.append("%s: priority %d is not after its dependency %s (%d)" % (where, t["priority"], d, dp))
+                elif dp is not None and MILESTONES.index(tasks[d]["milestone"]) > MILESTONES.index(ms):
+                    errors.append("%s: milestone %s is before its dependency %s (%s)" % (where, ms, d, tasks[d]["milestone"]))
+    prios = [t["priority"] for t in tasks.values() if t.get("priority") is not None]
+    if len(prios) != len(set(prios)):
+        errors.append("priorities are not unique")
     # cycles
     state = {}
 
@@ -127,6 +148,41 @@ def cmd_ready(tasks):
             print(row(t))
 
 
+def ready_ids(tasks):
+    return {i for i, t in tasks.items() if t["kind"] != "epic" and t["status"] == "todo"
+            and all(finished(tasks, d) for d in t["depends_on"])}
+
+
+def by_priority(tasks, ids):
+    return sorted(ids, key=lambda i: (tasks[i].get("priority") is None, tasks[i].get("priority") or 0, i))
+
+
+def cmd_next(tasks, args):
+    n = int(args[0]) if args else 10
+    ready = [i for i in by_priority(tasks, ready_ids(tasks)) if tasks[i].get("priority") is not None]
+    # a started task comes before a new one
+    started = [i for i in by_priority(tasks, tasks) if tasks[i]["status"] == "in_progress"]
+    for i in (started + ready)[:n]:
+        print("%-3s %s" % (tasks[i].get("milestone", "-"), row(tasks[i])))
+
+
+def cmd_plan(tasks, args):
+    ready = ready_ids(tasks)
+    for ms in MILESTONES:
+        if args and ms != args[0]:
+            continue
+        ids = [i for i, t in tasks.items() if t.get("milestone") == ms and t["status"] not in ("done", "dropped")]
+        if not ids:
+            continue
+        print("\n== %s (%d open)" % (ms, len([i for i in ids if tasks[i]["kind"] != "epic"])))
+        for i in by_priority(tasks, [i for i in ids if tasks[i]["kind"] != "epic"]):
+            print(" %s %s" % ("*" if i in ready else " ", row(tasks[i])))
+        epics = [i for i in ids if tasks[i]["kind"] == "epic"]
+        if epics:
+            print("   epics: " + ", ".join("%s %s" % (i, tasks[i]["title"]) for i in sorted(epics)))
+    print("\n* = can start now")
+
+
 def cmd_blocked(tasks):
     for id in sorted(tasks):
         t = tasks[id]
@@ -176,6 +232,10 @@ def main():
         cmd_ready(tasks)
     elif cmd == "blocked":
         cmd_blocked(tasks)
+    elif cmd == "next":
+        cmd_next(tasks, args[1:])
+    elif cmd == "plan":
+        cmd_plan(tasks, args[1:])
     elif cmd == "set":
         cmd_set(tasks, args[1:])
     else:

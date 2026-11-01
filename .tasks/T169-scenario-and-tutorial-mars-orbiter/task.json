@@ -1,0 +1,25 @@
+{
+  "id": "T169",
+  "title": "Scenario and tutorial: Mars orbiter probe",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "M",
+  "parent": null,
+  "depends_on": [
+    "T166",
+    "T035",
+    "T036",
+    "T037",
+    "T038"
+  ],
+  "refs": [
+    "crates/osp_sim/src/transfer.rs",
+    "crates/osp_game/src/transfer_planner.rs"
+  ],
+  "created": "2026-11-01",
+  "updated": "2026-11-01",
+  "done": null,
+  "milestone": "M4",
+  "priority": 59
+}

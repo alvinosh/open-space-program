@@ -1,0 +1,21 @@
+{
+  "id": "T171",
+  "title": "Scenario and tutorial: crewed Moon landing",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "M",
+  "parent": null,
+  "depends_on": [
+    "T170",
+    "T044"
+  ],
+  "refs": [
+    "assets/core/craft/colossus.json5"
+  ],
+  "created": "2026-11-01",
+  "updated": "2026-11-01",
+  "done": null,
+  "milestone": "M6",
+  "priority": 79
+}

@@ -1,6 +1,6 @@
 # T105: IVA camera, seat swap, portraits
 
-An IVA camera and seat swap; kitten portraits.
+An IVA camera and seat swap; crew portraits.
 
 ## Done when
 

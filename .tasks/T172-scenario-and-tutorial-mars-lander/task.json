@@ -1,0 +1,23 @@
+{
+  "id": "T172",
+  "title": "Scenario and tutorial: Mars lander",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "M",
+  "parent": null,
+  "depends_on": [
+    "T169",
+    "T048",
+    "T110",
+    "T043"
+  ],
+  "refs": [
+    "assets/core/bodies/solar_system.json5"
+  ],
+  "created": "2026-11-01",
+  "updated": "2026-11-01",
+  "done": null,
+  "milestone": "M6",
+  "priority": 81
+}

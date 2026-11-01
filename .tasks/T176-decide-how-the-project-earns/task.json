@@ -1,0 +1,16 @@
+{
+  "id": "T176",
+  "title": "Decide how the project earns",
+  "kind": "decision",
+  "status": "todo",
+  "area": "process",
+  "size": "S",
+  "parent": null,
+  "depends_on": [],
+  "refs": [],
+  "created": "2026-11-01",
+  "updated": "2026-11-01",
+  "done": null,
+  "milestone": "M0",
+  "priority": 4
+}

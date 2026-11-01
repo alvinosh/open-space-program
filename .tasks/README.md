@@ -31,6 +31,8 @@ The plan documents say why and how; the tasks say what is left.
 | `refs` | Where the plan, the code or the old lists said more. |
 | `created`, `updated` | `YYYY-MM-DD`. |
 | `done` | The date it was finished, `null` until then. |
+| `milestone` | Where it sits in the plan: `M0` to `M8`, `later` or `shelved` (below). Every open task has one. |
+| `priority` | A unique number across the open tasks, lower first. Never before one of its dependencies; `check` enforces it. Epics have a milestone but no priority. |
 
 What `depends_on` means: an edge is there when the task needs the other to exist, or when the plan
 says it must not start before it (the systems tasks wait for the editor's gate, T025, for that
@@ -51,6 +53,8 @@ python3 .tasks/tasks.py ready          # what can be started now
 python3 .tasks/tasks.py blocked        # what waits for what
 python3 .tasks/tasks.py list --status todo --area editor
 python3 .tasks/tasks.py set T026 done  # status, `updated`, and `done` together
+python3 .tasks/tasks.py next           # the ready tasks with the lowest priority (started ones first)
+python3 .tasks/tasks.py plan M3        # a milestone's open tasks in order; without M3, all of them
 ```
 
 To add a task: make a folder `T0nn-short-slug` with the next free id, copy a `task.json` and a
@@ -60,6 +64,30 @@ and the smoke test finding it came from now passes (not "known" or "not modelled
 names its task by id). Then `set <id> done`. A bug found in play is a task of kind `bug`.
 
 Work one task at a time, as the rest of the project does: `ready` lists the candidates.
+
+## The plan: milestones
+
+The goal for now is a complete core game, not more simulation depth: fly well, hear it, be taught,
+build, save, keep the ship alive, and scenarios worth playing, each with a tutorial and a craft that
+is fun to fly. The crew are people. The game stays free (T176). `plan` shows the order; the
+dependency graph decides where a milestone cannot start earlier.
+
+| Milestone | What it delivers |
+| --- | --- |
+| `M0` | Decisions and licences, in days: contact solver, scripting, real Solar System only, how the project earns, licence files. |
+| `M1` | Flying feels good: the in-progress work, the visible bugs, and sound (there is no audio at all). |
+| `M2` | Missions (goals, a checker, results), the tutorial layer, and the first two scenarios: first launch and rendezvous. They need nothing new from the simulation. |
+| `M3` | Build and save: the editor chain to its gate (T025), save and load, the start menu, a build tutorial. |
+| `M4` | A ship that stays alive: the build core, batteries, solar arrays, fuel cells, avionics, antennas, ground stations, link policy, sized decouplers, then the Mars orbiter probe. |
+| `M5` | The way home and the Moon flyby: heat, entry, parachutes and the sea, life support, the systems tutorial, the crewed flyby. |
+| `M6` | Landings: contact physics, docking, the Moon's terrain, the lander, Mars relief, the Moon landing and the Mars lander. |
+| `M7` | Polish and depth: trailer-grade visuals, reliability, the Saturn V from procedural parts only. Pull a task forward if a scenario needs it. |
+| `M8` | Together: multiplayer, and the paid servers that depend on it. |
+| `later` | Content drops and breadth, in the order they unblock each other. |
+| `shelved` | Not dropped, not for 1.0: the XL realism-depth tasks (thermodynamic engine model, interstellar, ray-traced IVA, EVA, scripting). Revisit when players ask. |
+
+Two plan rules are open questions, written in the tasks (T025, T049): the Saturn V gate sits in front
+of all the systems, and life support waits for joining vessels.
 
 ## What is in it
 

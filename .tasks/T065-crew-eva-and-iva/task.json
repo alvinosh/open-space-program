@@ -1,6 +1,6 @@
 {
   "id": "T065",
-  "title": "Kittens: crew, EVA and IVA",
+  "title": "Crew: people, EVA and IVA",
   "kind": "epic",
   "status": "todo",
   "area": "crew",
@@ -11,6 +11,7 @@
     "Early feature checklist (since removed), Phase 6"
   ],
   "created": "2026-10-30",
-  "updated": "2026-10-30",
-  "done": null
+  "updated": "2026-11-01",
+  "done": null,
+  "milestone": "shelved"
 }

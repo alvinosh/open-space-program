@@ -1,0 +1,28 @@
+{
+  "id": "T170",
+  "title": "Scenario and tutorial: crewed Moon flyby",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "M",
+  "parent": null,
+  "depends_on": [
+    "T166",
+    "T035",
+    "T037",
+    "T045",
+    "T046",
+    "T047",
+    "T048",
+    "T049"
+  ],
+  "refs": [
+    "assets/core/craft/colossus.json5",
+    "assets/core/craft/lunar_upper.json5"
+  ],
+  "created": "2026-11-01",
+  "updated": "2026-11-01",
+  "done": null,
+  "milestone": "M5",
+  "priority": 69
+}
