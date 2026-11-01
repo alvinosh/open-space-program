@@ -7,7 +7,8 @@
   "size": "M",
   "parent": null,
   "depends_on": [
-    "T032"
+    "T032",
+    "T178"
   ],
   "refs": [
     "crates/osp_sim/src/component.rs (`DecouplerDef`)",
@@ -17,5 +18,5 @@
   "updated": "2026-11-01",
   "done": null,
   "milestone": "M2",
-  "priority": 28
+  "priority": 29
 }

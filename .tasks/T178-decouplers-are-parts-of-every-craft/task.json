@@ -1,0 +1,21 @@
+{
+  "id": "T178",
+  "title": "Decouplers are parts of every craft",
+  "kind": "feature",
+  "status": "todo",
+  "area": "structure",
+  "size": "M",
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/staged.rs (the stack of each stage)",
+    "crates/osp_sim/src/component.rs (`DecouplerDef`)",
+    "crates/osp_game/src/part_info.rs",
+    "crates/osp_sim/tests/golden/craft.json"
+  ],
+  "created": "2026-11-01",
+  "updated": "2026-11-01",
+  "done": null,
+  "milestone": "M2",
+  "priority": 22
+}
