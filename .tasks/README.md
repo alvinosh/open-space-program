@@ -76,9 +76,9 @@ dependency graph decides where a milestone cannot start earlier.
 | --- | --- |
 | `M0` | Decisions and licences, in days: contact solver, scripting, real Solar System only, how the project earns, licence files. |
 | `M1` | Flying feels good: the in-progress work, the visible bugs, and sound (there is no audio at all). |
-| `M2` | Missions (goals, a checker, results), the tutorial layer, and the first two scenarios: first launch and rendezvous. They need nothing new from the simulation. |
-| `M3` | Build and save: the editor chain to its gate (T025), save and load, the start menu, a build tutorial. |
-| `M4` | A ship that stays alive: the build core, batteries, solar arrays, fuel cells, avionics, antennas, ground stations, link policy, sized decouplers, then the Mars orbiter probe. |
+| `M2` | Ship parts and systems, before the editor: the build core (physics on any part, open components, sizers, surface layers, environment), decouplers and separation motors, batteries, solar arrays, fuel cells, avionics, antennas, ground stations, link policy. Craft files can hold the new parts before a player can place them. |
+| `M3` | Build and save: the editor chain to its gate (T025), save and load, the start menu. |
+| `M4` | Flight planning, then the first scenarios and their tutorials: first launch, rendezvous, the Mars orbiter probe, the build tutorial. Missions and the tutorial layer (T165, T166) are done. |
 | `M5` | The way home and the Moon flyby: heat, entry, parachutes and the sea, life support, the systems tutorial, the crewed flyby. |
 | `M6` | Landings: contact physics, docking, the Moon's terrain, the lander, Mars relief, the Moon landing and the Mars lander. |
 | `M7` | Polish and depth: trailer-grade visuals, reliability, the Saturn V from procedural parts only. Pull a task forward if a scenario needs it. |
@@ -86,8 +86,9 @@ dependency graph decides where a milestone cannot start earlier.
 | `later` | Content drops and breadth, in the order they unblock each other. |
 | `shelved` | Not dropped, not for 1.0: the XL realism-depth tasks (thermodynamic engine model, interstellar, ray-traced IVA, EVA, scripting). Revisit when players ask. |
 
-Two plan rules are open questions, written in the tasks (T025, T049): the Saturn V gate sits in front
-of all the systems, and life support waits for joining vessels.
+The systems come before the editor (decided 2026-11-01): T028, T031 and T033 wait for the build core
+(T014), not for the Saturn V gate (T025), which now only gates the editor chain and T052. One plan rule
+is still an open question, written in T049: life support waits for joining vessels.
 
 ## What is in it
 

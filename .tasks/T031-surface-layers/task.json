@@ -7,14 +7,14 @@
   "size": "M",
   "parent": "T003",
   "depends_on": [
-    "T025"
+    "T014"
   ],
   "refs": [
     "docs/systems-plan.md (step 6)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-10-30",
+  "updated": "2026-11-01",
   "done": null,
-  "milestone": "M4",
-  "priority": 49
+  "milestone": "M2",
+  "priority": 24
 }

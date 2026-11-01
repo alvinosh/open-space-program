@@ -16,3 +16,7 @@ A list of everything a player can place, with tags, size class, default paramete
 ## Where it comes from
 
 - docs/build-editor-plan.md (E5)
+
+## Notes
+
+- Every sizer built before the editor (T032, T175, the battery, solar, avionics and antenna sizers) gets its palette entry here, with a slider per requirement field it lists. T032's and T175's old "palette entry" lines moved to this task.

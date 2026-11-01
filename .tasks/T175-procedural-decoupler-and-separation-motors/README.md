@@ -8,7 +8,7 @@ A decoupler today is a component on a part with a node, a separation impulse and
 - Axial and radial (for boosters), and one that releases an inside joint (the lander in its adapter).
 - Separation motors as small solid motors the sizer picks: retro motors that pull a spent stage away and ullage motors that settle propellant (T150 needs the second).
 - The shock at release as a load on both neighbours (feeds the joint strengths of T051), and the interplay with hot staging (T159).
-- A palette entry with sliders for the editor (T017).
+- The requirement fields listed for the editor's palette (T017 makes the entry).
 
 ## Done when
 

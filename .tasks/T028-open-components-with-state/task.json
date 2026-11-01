@@ -7,15 +7,14 @@
   "size": "L",
   "parent": "T003",
   "depends_on": [
-    "T025",
     "T014"
   ],
   "refs": [
     "docs/systems-plan.md (step 3, The build core)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-10-30",
+  "updated": "2026-11-01",
   "done": null,
-  "milestone": "M4",
-  "priority": 47
+  "milestone": "M2",
+  "priority": 22
 }

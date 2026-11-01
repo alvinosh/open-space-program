@@ -7,14 +7,14 @@
   "size": "M",
   "parent": "T009",
   "depends_on": [
-    "T025"
+    "T014"
   ],
   "refs": [
     "docs/systems-plan.md (step 22)",
     "old issue list, issue 12 (docs/issues.md, removed; see git history)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-10-30",
+  "updated": "2026-11-01",
   "done": null,
   "milestone": "M5",
   "priority": 62

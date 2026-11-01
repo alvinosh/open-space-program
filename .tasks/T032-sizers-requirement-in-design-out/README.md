@@ -1,6 +1,6 @@
 # T032: Sizers: requirement in, design out
 
-The `procedural` field in craft files, the sizer trait that turns a requirement and a tech level into dimensions, mass and performance, the oracle harness, a palette entry for each sizer, and an inventory of every flat mass in the shipped craft.
+The `procedural` field in craft files, the sizer trait that turns a requirement and a tech level into dimensions, mass and performance, the oracle harness, and an inventory of every flat mass in the shipped craft.
 
 ## Scope
 
@@ -10,8 +10,12 @@ The `procedural` field in craft files, the sizer trait that turns a requirement 
 
 ## Done when
 
-- The battery sizer reproduces the CM's 21 390 kJ within 10% in mass, and the editor's palette lists it with a slider.
+- The battery sizer reproduces the CM's 21 390 kJ within 10% in mass, from a requirement in a craft file.
 
 ## Where it comes from
 
 - docs/systems-plan.md (step 7, Principles)
+
+## Notes
+
+- A sizer lists its requirement fields (name, unit, range, default) so the editor's palette (T017) can show a slider for each; the palette entries are T017's, since the editor now comes after the systems.
