@@ -2,7 +2,7 @@
   "id": "T151",
   "title": "Trees glitch near the ground",
   "kind": "bug",
-  "status": "todo",
+  "status": "dropped",
   "area": "rendering",
   "size": "S",
   "parent": "T073",
@@ -11,7 +11,7 @@
     "`crates/osp_game/src/trees.rs`"
   ],
   "created": "2026-10-30",
-  "updated": "2026-10-30",
+  "updated": "2026-11-01",
   "done": null,
   "milestone": "M1",
   "priority": 10
