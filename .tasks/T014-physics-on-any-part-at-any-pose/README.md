@@ -28,6 +28,16 @@ Replace the sorting of parts into eleven kinds in `parts/gather.rs` with a direc
 - Container, a part with two components, a decoupler on a bottom node (25 cells): "the stage with `x` needs one body" and "a stage has no part like it": the stage layout (`Hull`, `PartKind`, 133 uses in `propulsion`, `parts`, `staged`, `vessel` and the game's `vessel_render` and `part_info`) is what has to go.
 - A suggested order, each step keeping the golden figures: keep every component with its mass (battery, crew); lift the pose rule for tanks, engines, RCS and pods; then wings and gear; then containers, two components and the bottom decoupler, which is the real removal of `PartKind` and `Hull`.
 
+## Done so far
+
+- Engines at any pose (2026-11-01). The part's own thrust axis (`Engine::direction`) is the way it pushes; the gimbal swings across it. `attitude::actuate` and `torque_authority` use the lever arm across the thrust line, which for an engine along the stack is exactly the old height-above-the-centre-of-mass and distance-from-the-axis (a test writes the old formulas out and compares bit for bit, and the goldens and the Saturn V did not move). The game aims plumes from the same `Engine::thrust_direction`. All 11 engine cells of the placement matrix that were refused now pass all seven checks (112 red cells down to 101).
+- Tests: `a_sideways_engine_pushes_and_turns_across_its_own_axis` (force, torque and authority worked out by hand), `an_engine_firing_along_the_axis_is_unchanged`, `thrust_points_along_the_engines_axis_tilted_by_its_gimbal`.
+
+## Still open
+
+- The burn executor, ullage settling and the staging layout still treat an engine as pushing along the nose, so a canted engine flies but a burn planned with one steers the nose, not the thrust. A canted engine was not seen in the running game (plume aim is from the same function as the force, but no capture).
+- The first order above changes: the battery and crew rows are about where a component's state lives, which is T028; they stay red until then. Next here: RCS blocks, pods and tanks at any pose, then wings and gear, then containers, two components and the bottom decoupler.
+
 ## Where it comes from
 
 - docs/build-editor-plan.md (E2)

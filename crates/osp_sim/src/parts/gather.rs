@@ -361,12 +361,7 @@ fn kind(
         })
         .collect();
     match what.as_slice() {
-        [Component::Engine(engine)] => {
-            if !upright(local.rotation, yaw(local.rotation)) {
-                return Err("an engine stands upright, firing down its stage".into());
-            }
-            Ok(PartKind::Engine(engine.clone()))
-        }
+        [Component::Engine(engine)] => Ok(PartKind::Engine(engine.clone())),
         [Component::Rcs(block)] => {
             if !local
                 .rotation

@@ -156,8 +156,8 @@ gathers parts into stages: each stage is the parts between joints that let go (a
 decoupler's), with one body, a container standing upright whose `bottom` node is as wide
 as the stage and whose `top` node is where a stage above stands. The root's stage stands on
 the vessel's axis. A stage hangs under the one holding it, on the same axis, or beside it
-anywhere round it (a radial booster); engines stand upright anywhere on their stage, so a
-cluster is laid out by its nodes' positions. Engines burn once armed if no stage hangs under
+anywhere round it (a radial booster); engines go anywhere on their stage and may point any
+way (see below), so a cluster is laid out by its nodes' positions. Engines burn once armed if no stage hangs under
 theirs. Each engine and RCS block draws from the tanks propellant can reach it from: through
 joints at nodes (not on surfaces), and across a decoupler only if its `crossfeed` is on; the
 tanks it reaches give in proportion to what they hold, so they drain together. A craft the
@@ -298,6 +298,15 @@ tank. Together they give the centre of mass and the moments of inertia, which ch
 tanks drain and stages drop. A tank low in a long stage keeps its propellant low, so place
 tanks (`position`) where that mass belongs: a plane wants its propellant near the centre of
 mass, so that its trim hardly changes as the tanks drain.
+
+An engine pushes along its own +Z, as the part stands in the craft: an engine on a part turned
+15° pushes 15° off the stack's axis, one turned 90° pushes sideways, and one turned 180° (on a
+top node) pushes back, as a retro motor does. Its gimbal swings the thrust across that axis, and
+the torque it makes is the side force times its lever arm to the centre of mass (an engine firing
+along the stack has the height above or below the centre of mass for pitch and yaw, and its
+distance from the axis for roll; a sideways one has the same levers about the axes across its
+thrust line and none about its own). The burn executor, ullage and the stage layout still think
+of an engine as pushing along the nose.
 
 Control torque comes from the bottom stage's burning engines swivelling up to
 `gimbal_range`, and from reaction wheels anywhere in the stack. A single engine sits on the

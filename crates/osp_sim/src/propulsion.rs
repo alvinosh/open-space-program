@@ -13,7 +13,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use glam::{DVec2, DVec3};
+use glam::{DQuat, DVec2, DVec3};
 use thiserror::Error;
 
 use crate::{
@@ -84,6 +84,10 @@ pub struct Engine {
     /// Where the engine is mounted: its gimbal pivot, in the assembly frame (vessel axes,
     /// from the axis at the height the craft was built from), m.
     pub mount: DVec3,
+    /// The way it pushes with its gimbal centred: a unit vector in vessel axes, +Z for an
+    /// engine firing straight down the stack, the part's own thrust axis (its +Z) as it
+    /// stands in the assembly otherwise.
+    pub direction: DVec3,
     /// Thrust in the last physics step, N.
     pub thrust: f64,
     /// Thrust as a share of full thrust at the end of the last physics step: what the
@@ -96,7 +100,40 @@ pub struct Engine {
     pub deflection: DVec2,
 }
 
+/// Two unit vectors across `axis`, which with it make a right-handed frame (X and Y for +Z):
+/// the plane a gimbal swings in, and the frame `Engine::deflection` is measured in.
+pub(crate) fn across(axis: DVec3) -> (DVec3, DVec3) {
+    let seed = if axis.x.abs() < 0.9 {
+        DVec3::X
+    } else {
+        DVec3::Y
+    };
+    let first = (seed - axis * seed.dot(axis)).normalize();
+    (first, axis.cross(first))
+}
+
+/// The way an engine on a part turned by `rotation` pushes. A part frame turned about the
+/// thrust axis (or round and back) leaves the axis a few 1e-16 off +Z, so one that is within
+/// 1e-9 of it is +Z exactly: an engine firing down the stack gives the figures it always did.
+fn thrust_axis(rotation: DQuat) -> DVec3 {
+    let axis = rotation * DVec3::Z;
+    if axis.abs_diff_eq(DVec3::Z, 1e-9) {
+        DVec3::Z
+    } else {
+        axis.normalize()
+    }
+}
+
 impl Engine {
+    /// The way the thrust points now, a unit vector in vessel axes: its `direction` tilted by
+    /// the gimbal's `deflection` (measured across the direction, see [`across`]).
+    pub fn thrust_direction(&self) -> DVec3 {
+        let (first, second) = across(self.direction);
+        let angle = self.deflection.length();
+        let side = self.deflection.normalize_or_zero() * angle.sin();
+        self.direction * angle.cos() + first * side.x + second * side.y
+    }
+
     /// Full-throttle propellant mass flow, kg/s.
     pub fn max_mass_flow(&self) -> f64 {
         self.def.thrust_vac / (self.def.isp_vac * G0)
@@ -793,6 +830,7 @@ impl Propulsion {
                     running: false,
                     ignitions_left: def.ignitions,
                     mount: part.position,
+                    direction: thrust_axis(part.rotation),
                     thrust: 0.0,
                     level: 0.0,
                     spooling: None,
@@ -1755,11 +1793,34 @@ mod tests {
             section: 0,
             running: true,
             mount: DVec3::ZERO,
+            direction: DVec3::Z,
             thrust: 0.0,
             level: 0.0,
             spooling: Some(0.0),
             deflection: DVec2::ZERO,
         }
+    }
+
+    #[test]
+    fn thrust_points_along_the_engines_axis_tilted_by_its_gimbal() {
+        let mut e = engine("K-1 Vacuum");
+        assert_eq!(e.thrust_direction(), DVec3::Z);
+        // Swung 0.1 rad towards +Y: tilted across the axis, still a unit vector.
+        e.deflection = DVec2::new(0.0, 0.1);
+        let d = e.thrust_direction();
+        assert!((d - DVec3::new(0.0, 0.1f64.sin(), 0.1f64.cos())).length() < 1e-15);
+        // An engine pointing sideways swings across its own axis: the frame is Y and Z for +X.
+        e.direction = DVec3::X;
+        e.deflection = DVec2::new(0.1, 0.0);
+        let d = e.thrust_direction();
+        assert!((d - DVec3::new(0.1f64.cos(), 0.1f64.sin(), 0.0)).length() < 1e-15);
+        assert!((d.length() - 1.0).abs() < 1e-15);
+        // Pointing straight back, as a retro engine on a top node does.
+        e.direction = DVec3::NEG_Z;
+        e.deflection = DVec2::ZERO;
+        assert_eq!(e.thrust_direction(), DVec3::NEG_Z);
+        let (first, second) = across(DVec3::Z);
+        assert_eq!((first, second), (DVec3::X, DVec3::Y));
     }
 
     /// Run `respond` for `seconds` in ticks of `dt`; returns the level after each tick.

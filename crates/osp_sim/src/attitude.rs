@@ -21,7 +21,7 @@ use crate::{
     elliptic,
     mass::{self, Mass},
     orbit::StateVector,
-    propulsion::{Engine, Propulsion},
+    propulsion::{Engine, Propulsion, across},
     structure::Tank,
 };
 
@@ -151,6 +151,16 @@ fn wheel_torque(propulsion: &Propulsion) -> f64 {
     propulsion.sections.iter().map(|s| s.wheel_torque).sum()
 }
 
+/// How the engine's thrust can be turned to torque the vessel about `axis`: the part of
+/// `axis × r` (its lever arm `r` from the centre of mass) across the thrust line, which is the
+/// side force per unit of thrust that does it. Its length is the lever and its direction is
+/// the way to swing the engine. For an engine firing along +Z the pitch and yaw levers are its
+/// height above or below the centre of mass, and the roll lever its distance from the axis.
+fn lever_arm(engine: &Engine, r: DVec3, axis: DVec3) -> DVec3 {
+    let v = axis.cross(r);
+    v - engine.direction * v.dot(engine.direction)
+}
+
 /// The largest torque the actuators can produce about each vessel axis right now, N·m:
 /// reaction wheels anywhere on the vessel, plus the gimbal of the burning engines (side
 /// force times the lever arm to the centre of mass; for roll, the engine's distance from
@@ -162,11 +172,11 @@ pub fn torque_authority(propulsion: &Propulsion, center_of_mass: DVec3) -> DVec3
         .iter()
         .map(|e| {
             let r = lever(e, base, center_of_mass);
-            let arm = r.z.abs();
+            let arm = |axis| lever_arm(e, r, axis).length();
             // One on the line rolls nothing (as `actuate` swings it).
-            let radial = r.truncate().length();
-            let roll = if radial > ON_LINE { radial } else { 0.0 };
-            e.thrust * gimbal_range(e).sin() * DVec3::new(arm, arm, roll)
+            let roll = arm(DVec3::Z);
+            let roll = if roll > ON_LINE { roll } else { 0.0 };
+            e.thrust * gimbal_range(e).sin() * DVec3::new(arm(DVec3::X), arm(DVec3::Y), roll)
         })
         .sum();
     gimbal + DVec3::splat(wheel_torque(propulsion))
@@ -176,9 +186,10 @@ pub fn torque_authority(propulsion: &Propulsion, center_of_mass: DVec3) -> DVec3
 /// vessel axis). Returns the thrust force and the torque about the centre of mass, both in
 /// vessel axes.
 ///
-/// Each engine tilts for pitch and yaw together, plus sideways around the axis for roll if
-/// it is off the centre of mass's line; a command beyond what one engine can do is scaled
-/// back to its range. Thrust off that line turns the vessel too.
+/// Each engine swings towards the side that turns the vessel the way each axis asks (see
+/// [`lever_arm`]), pitch, yaw and roll together; roll only if it is off the centre of mass's
+/// line. A command beyond what one engine can do is scaled back to its range. Thrust off
+/// that line turns the vessel too.
 pub fn actuate(
     propulsion: &mut Propulsion,
     center_of_mass: DVec3,
@@ -191,23 +202,23 @@ pub fn actuate(
     for engine in &mut propulsion.engines {
         let r = lever(engine, base, center_of_mass);
         // Thrust tilted towards +Y at the tail (below the centre of mass) pitches the nose up.
-        let below = if r.z > 0.0 { -1.0 } else { 1.0 };
-        let mut tilt = DVec2::new(-command.y, command.x) * below;
-        let radial = r.truncate();
-        if radial.length() > ON_LINE {
-            tilt += radial.normalize().perp() * command.z;
+        let steer = |axis| lever_arm(engine, r, axis);
+        let mut tilt = steer(DVec3::X).normalize_or_zero() * command.x
+            + steer(DVec3::Y).normalize_or_zero() * command.y;
+        let roll = steer(DVec3::Z);
+        if roll.length() > ON_LINE {
+            tilt += roll.normalize() * command.z;
         }
         if tilt.length_squared() > 1.0 {
             tilt = tilt.normalize();
         }
+        let (first, second) = across(engine.direction);
         engine.deflection = if engine.thrust > 0.0 {
-            tilt * gimbal_range(engine)
+            DVec2::new(tilt.dot(first), tilt.dot(second)) * gimbal_range(engine)
         } else {
             DVec2::ZERO
         };
-        let angle = engine.deflection.length();
-        let side = engine.deflection.normalize_or_zero() * angle.sin();
-        let f = engine.thrust * DVec3::new(side.x, side.y, angle.cos());
+        let f = engine.thrust * engine.thrust_direction();
         force += f;
         torque += r.cross(f);
     }
@@ -865,6 +876,87 @@ mod tests {
         assert_eq!(authority.z, 0.0);
         let (_, torque) = actuate(&mut p, DVec3::Z * com, DVec3::Y);
         assert!(close(torque.y, 1e6 * range.sin() * com, 1e-12));
+    }
+
+    /// A sideways engine (thrust along +X) at the tail, 7 m below the centre of mass: it pushes
+    /// the vessel sideways, which turns it about Y (the offset), and its gimbal swings the
+    /// thrust across X, so it can pitch about X but has nothing to pitch about Y or roll with.
+    #[test]
+    fn a_sideways_engine_pushes_and_turns_across_its_own_axis() {
+        let mut p = propulsion(vec![stage(&["K-1 Vacuum"], 0.0, 5_000.0, 3.7, 14.0)]);
+        let engine = &mut p.engines[0];
+        engine.thrust = 1e6;
+        engine.direction = DVec3::X;
+        let range = engine.def.gimbal_range.to_radians();
+        let com = DVec3::Z * 7.0;
+
+        // Gimbal centred: all the thrust is along X, at 7 m below the centre of mass.
+        let (force, torque) = actuate(&mut p, com, DVec3::ZERO);
+        assert!(close(force.x, 1e6, 1e-12) && force.y.abs() < 1e-6 && force.z.abs() < 1e-6);
+        assert!(close(torque.y, -7e6, 1e-12));
+        assert!(torque.x.abs() < 1e-6 && torque.z.abs() < 1e-6);
+
+        // Its authority is about X only, with the full gimbal across the thrust.
+        let authority = torque_authority(&p, com);
+        assert!(
+            close(authority.x, 1e6 * range.sin() * 7.0, 1e-12),
+            "{authority}"
+        );
+        assert!(
+            authority.y.abs() < 1e-9 && authority.z.abs() < 1e-9,
+            "{authority}"
+        );
+
+        // Pitch up about X: the thrust swings towards +Y, as far as the gimbal goes.
+        let (force, torque) = actuate(&mut p, com, DVec3::X);
+        assert!(close(torque.x, authority.x, 1e-12), "{torque}");
+        assert!(force.y > 0.0 && close(force.length(), 1e6, 1e-12));
+        assert!(close(force.y, 1e6 * range.sin(), 1e-12));
+        // The other way round, and a command about an axis it cannot turn about does nothing.
+        let (force, _) = actuate(&mut p, com, -DVec3::X);
+        assert!(force.y < 0.0);
+        let (force, _) = actuate(&mut p, com, DVec3::Y);
+        assert!(
+            close(force.x, 1e6, 1e-12) && force.y.abs() < 1e-6,
+            "{force}"
+        );
+    }
+
+    /// An engine pointing along +Z behaves as it always did: the same figures to the last bit,
+    /// whichever way the part frame around it is turned about its thrust axis.
+    #[test]
+    fn an_engine_firing_along_the_axis_is_unchanged() {
+        let mut p = propulsion(vec![stage(&["K-1 Booster"; 4], 0.0, 5_000.0, 3.7, 40.0)]);
+        for e in &mut p.engines {
+            e.thrust = 8e5;
+            assert_eq!(e.direction, DVec3::Z);
+        }
+        let com = DVec3::new(0.01, -0.02, 20.0);
+        let (force, torque) = actuate(&mut p, com, DVec3::new(0.3, -0.6, 0.2));
+        // The old formulas, written out for thrust along +Z.
+        let base = p.parts().base();
+        let (mut want_force, mut want_torque) = (DVec3::ZERO, DVec3::ZERO);
+        for e in &p.engines {
+            let r = e.mount - DVec3::Z * base - com;
+            let below = if r.z > 0.0 { -1.0 } else { 1.0 };
+            let c = DVec3::new(0.3, -0.6, 0.2);
+            let mut tilt = DVec2::new(-c.y, c.x) * below;
+            let radial = r.truncate();
+            if radial.length() > ON_LINE {
+                tilt += radial.normalize().perp() * c.z;
+            }
+            if tilt.length_squared() > 1.0 {
+                tilt = tilt.normalize();
+            }
+            let deflection = tilt * gimbal_range(e);
+            let angle = deflection.length();
+            let side = deflection.normalize_or_zero() * angle.sin();
+            let f = e.thrust * DVec3::new(side.x, side.y, angle.cos());
+            want_force += f;
+            want_torque += r.cross(f);
+        }
+        assert_eq!(force, want_force);
+        assert_eq!(torque, want_torque);
     }
 
     #[test]

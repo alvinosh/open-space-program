@@ -947,9 +947,7 @@ fn update_control_surfaces(
 /// Where an engine's bell points, along its exhaust (opposite the tilted thrust), in vessel
 /// render axes.
 fn nozzle_axis(engine: &Engine) -> Vec3 {
-    let angle = engine.deflection.length();
-    let side = engine.deflection.normalize_or_zero() * angle.sin();
-    -to_render(DVec3::new(side.x, side.y, angle.cos())).normalize()
+    -to_render(engine.thrust_direction()).normalize()
 }
 
 /// Size each RCS puff by how hard its nozzle fired on the last physics tick.

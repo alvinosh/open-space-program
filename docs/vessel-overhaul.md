@@ -399,7 +399,7 @@ Milestone 3, physics on parts:
        not in it yet.
      - A stage beside another carries only itself in the structure loads; a stage carries
        the ones it hangs under and what hangs beside those. Joint loads replace this.
-     - Engines still stand upright (no canted engines), and an armed engine waits while a
+     - Engines pointed any way are in (T014, 2026-11-01); an armed engine waits while a
        stage hangs under its own (no hot staging).
      - Converted craft that mix engines in one ring (the R-7 family, Delta II, Ariane 5,
        Atlas, Starship) and the planes (tail fin) now have their centre of mass slightly

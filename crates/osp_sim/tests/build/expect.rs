@@ -70,13 +70,6 @@ pub const RULES: &[Rule] = &[
               stage's side, and a mirrored one only beside its partner",
     },
     Rule {
-        row: "engine",
-        columns: &["bottom"],
-        except: true,
-        expect: Expect::Red(LOADS, "T014"),
-        why: "the gatherer only takes an engine standing upright and firing down its stage",
-    },
-    Rule {
         row: "rcs",
         columns: &["radial", "ring2", "ring3", "ring4", "ring6", "mirror"],
         except: false,
