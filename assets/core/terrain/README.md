@@ -32,7 +32,7 @@ path to replace it, or point a body at another directory.
 | Night lights | NASA Black Marble 2016 (Joshua Stevens, NASA Earth Observatory; Suomi NPP VIIRS data from Miguel Román, NASA GSFC) | NASA imagery, free with credit |
 | Elevation | NOAA NCEI ETOPO 2022, 60 arc-second surface (doi:10.25921/fd45-gt74) | Public domain |
 | Land cover | ESA Climate Change Initiative Land Cover, 2015, 300 m (© ESA 2017 - UCLouvain) | Free with acknowledgement |
-| Cape elevation | Copernicus DEM GLO-30 | Free with attribution (below) |
+| Cape elevation | Copernicus DEM GLO-30 (Copernicus WorldDEM-30) | Copernicus WorldDEM-30 licence: free, with attribution and a liability notice (below) |
 | Cape land cover | ESA WorldCover 10 m 2021 v200 | CC BY 4.0 |
 
 Required attributions:
@@ -43,3 +43,15 @@ Required attributions:
   Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights
   reserved.
 - ESA Climate Change Initiative and the Land Cover CCI project.
+
+The Copernicus WorldDEM-30 licence (Articles 4 to 6) allows reproduction, distribution and
+adaptation, free of charge and without limiting the purpose, so paid use is allowed. It asks
+that anyone who distributes the data, changed or not, carries the notice above and this
+sentence: "The organisations in charge of the Copernicus programme by law or by delegation do
+not incur any liability for any use of the Copernicus WorldDEM-30". It also asks that
+nothing suggests the data providers endorse the game, and that whoever passes the data on is
+bound by the same terms. The baked tiles in a release contain this data, so they fall under
+these terms and not under the game's licence. The text is at
+https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/DEM/resources/license/License-COPDEM-30.pdf.
+
+None of these organisations (NASA, NOAA, ESA, Copernicus) endorses or is affiliated with the game.

@@ -313,6 +313,19 @@ What the game already does well, and new work must not regress:
 - Earth from real data (30 m elevation and 10 m land cover around the Cape), a single-scattering atmosphere, trees by land-cover class.
 - A data-driven UI and keybindings, mods with layered records and patches, live reload (F5).
 
+## Licence
+
+The code and the assets in `assets/core` are licensed under either of [Apache License 2.0](LICENSE-APACHE)
+or [MIT](LICENSE-MIT), at your option. Some things in the repository are not ours:
+
+- `assets/core/fonts`: Barlow, SIL Open Font License 1.1 (`OFL.txt` is next to it).
+- Earth's terrain, imagery and star map are baked from NASA, NOAA, ESA and Copernicus data, which
+  have terms of their own: see `assets/core/terrain/README.md` and `assets/core/sky/README.md`.
+- `mods/realism` is generated from community mods for KSP and is mostly non-commercial. It is not
+  under the licence above: see `mods/realism/LICENSES.md`.
+- `tools/blender/vendor/io_object_mu` is a separate repository under the GPL v2. It is a build
+  tool and does not ship with the game.
+
 ## Commits
 
 A commit message says what the commit is and what it touches:
@@ -326,7 +339,7 @@ The types are `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `chore`, `build
 and `revert`. The scopes are areas of the repo, and a commit names every area it changes and
 none it does not: `sim`, `mods`, `terrain`, `bake`, `ui` and `game` are the crates, `assets`,
 `example-mod`, `tools`, `docs` (also the README), `tasks`, `website`, `ci` (`.github/`), `build`
-(Cargo.toml, the toolchain, `.cargo/`) and `repo` (`.gitignore`, `.githooks/`). The subject is
+(Cargo.toml, the toolchain, `.cargo/`) and `repo` (`.gitignore`, `.githooks/`, the licence files). The subject is
 lower case, has no full stop, and fits with the rest of the first line in 72 characters.
 
 ```sh

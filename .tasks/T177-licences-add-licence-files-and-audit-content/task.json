@@ -2,7 +2,7 @@
   "id": "T177",
   "title": "Licences: add licence files and audit what ships",
   "kind": "chore",
-  "status": "todo",
+  "status": "done",
   "area": "process",
   "size": "S",
   "parent": null,
@@ -10,7 +10,7 @@
   "refs": [],
   "created": "2026-11-01",
   "updated": "2026-11-01",
-  "done": null,
+  "done": "2026-11-01",
   "milestone": "M0",
   "priority": 5
 }

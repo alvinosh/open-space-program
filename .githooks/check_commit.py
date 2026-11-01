@@ -34,7 +34,7 @@ SCOPES = {
     "website": ["website/"],
     "ci": [".github/"],
     "build": ["Cargo.toml", "rust-toolchain.toml", ".cargo/"],
-    "repo": [".gitignore", ".githooks/"],
+    "repo": [".gitignore", ".githooks/", "LICENSE-MIT", "LICENSE-APACHE"],
 }
 
 # Changes that follow from another change; they never need a scope of their own.

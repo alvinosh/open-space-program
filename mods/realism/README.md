@@ -107,17 +107,7 @@ drops with them. Each craft's comment says how it is built.
 
 ## Licences
 
-The data and models keep their mods' licences (from the CKAN metadata in the snapshot):
-
-| Source | Licence |
-| --- | --- |
-| RealismOverhaul, ROCapsules, ROTanks, RealFuels | CC-BY-SA |
-| ROSolar | CC-BY-SA 4.0 |
-| ROEngines (most engine models) | CC-BY-NC-ND: no commercial use, no changes beyond format conversion |
-| RP-1, TestFlight, Bluedog_DB, Community Resource Pack | CC-BY-NC-SA 4.0 |
-| Tundra Exploration | configs CC-BY-NC-SA 4.0; models and textures All Rights Reserved |
-
-Tundra Exploration's models are used with its author's permission, recorded in
-`scripts/realism/sources.py` (`PERMITTED_ROOTS`); other restricted sources are left out of
-the conversion unless permitted there. Most of the rest is non-commercial: check before
-distributing anything built from this mod.
+The records keep the licences of the mods they come from, and most of those are non-commercial.
+[LICENSES.md](LICENSES.md) says which record comes from which source and what that allows, and
+[licenses/](licenses/) has the texts. The converted models are not in the repository and must
+stay out of it (ROEngines is CC BY-NC-ND, and Tundra Exploration's art is All Rights Reserved).

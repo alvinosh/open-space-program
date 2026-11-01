@@ -47,6 +47,7 @@ class Files(unittest.TestCase):
         self.assertEqual(c.scope_of("docs/modding.md"), "docs")
         self.assertEqual(c.scope_of(".tasks/T001-x/task.json"), "tasks")
         self.assertEqual(c.scope_of(".githooks/commit-msg"), "repo")
+        self.assertEqual(c.scope_of("LICENSE-APACHE"), "repo")
         self.assertEqual(c.scope_of("Cargo.lock"), "incidental")
         self.assertIsNone(c.scope_of("something/new.txt"))
 
