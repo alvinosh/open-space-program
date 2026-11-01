@@ -98,6 +98,10 @@ impl Plugin for SmokeTestPlugin {
                 MARS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_DEBRIS").is_some() {
                 DEBRIS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_TUTORIAL").is_some() {
+                TUTORIAL_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_MENU_TUTORIAL").is_some() {
+                MENU_TUTORIAL_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MISSION").is_some() {
                 MISSION_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_HOVER").is_some() {
@@ -249,6 +253,17 @@ const MENU_SCRIPT: &[(f64, Action)] = &[
     (31.5, Action::Exit),
 ];
 
+/// `OSP_CAPTURE_MENU_TUTORIAL=1`: the main menu's Tutorials page, and a tutorial started from it.
+const MENU_TUTORIAL_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.2, Action::Ui("menu.page:tutorials")),
+    (2.0, Action::Capture("menu_tutorials.png")),
+    (4.5, Action::Ui("game.start_tutorial:controls")),
+    (7.0, Action::Capture("tutorial_from_menu.png")),
+    (10.0, Action::Exit),
+];
+
 /// `OSP_CAPTURE_GRAPHICS=1`: the main menu's Graphics page with the performance overlay,
 /// then the Low preset and back to High.
 const GRAPHICS_SCRIPT: &[(f64, Action)] = &[
@@ -398,6 +413,23 @@ const PARTS_SCRIPT: &[(f64, Action)] = &[
     (3.6, Action::Ui("ui.hide:part_info:0-18")),
     (4.5, Action::Capture("parts_closed.png")),
     (4.7, Action::Exit),
+];
+
+/// `OSP_TUTORIAL=controls OSP_CAPTURE_TUTORIAL=1`: the first step with its control outlined, the
+/// hint once the player has been idle on it (20 s of game time), the launch that does the
+/// next steps, the navball step waiting for Continue, the climb, the map step, and the end.
+const TUTORIAL_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (2.0, Action::Capture("tutorial_step.png")),
+    (22.8, Action::Capture("tutorial_hint.png")),
+    (23.0, Action::Launch),
+    (26.0, Action::Capture("tutorial_continue.png")),
+    (26.5, Action::Ui("tutorial.next")),
+    (29.0, Action::Capture("tutorial_climb.png")),
+    (46.0, Action::Capture("tutorial_map.png")),
+    (47.0, Action::MapView(true)),
+    (49.5, Action::Capture("tutorial_done.png")),
+    (53.0, Action::Exit),
 ];
 
 /// On the pad (`OSP_CAPTURE_MISSION=1`, a scenario with goals such as `pad`): the goals window,

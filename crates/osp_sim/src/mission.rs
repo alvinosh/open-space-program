@@ -13,9 +13,11 @@
 
 use std::collections::HashMap;
 
+use glam::DVec3;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    attitude::SasMode,
     body::Body,
     constants::G0,
     data::{LaunchSiteDef, ScenarioDef},
@@ -114,6 +116,41 @@ pub enum Condition {
     Destroyed,
     /// This long since the mission began.
     Elapsed { seconds: f64 },
+    /// The throttle setting, 0 to 1.
+    Throttle {
+        #[serde(default)]
+        min: Option<f64>,
+        #[serde(default)]
+        max: Option<f64>,
+    },
+    /// SAS is on, in `mode` if given (`stability`, `prograde`, ... as in `vessel.sas_mode`).
+    Sas {
+        #[serde(default)]
+        mode: Option<String>,
+    },
+    /// How many engines are running.
+    Engines {
+        #[serde(default)]
+        min: Option<f64>,
+        #[serde(default)]
+        max: Option<f64>,
+    },
+    /// The nose's angle above the local horizon (negative below it).
+    Pitch {
+        #[serde(default)]
+        min: Option<f64>,
+        #[serde(default)]
+        max: Option<f64>,
+    },
+    /// How many burns are planned.
+    Plan {
+        #[serde(default)]
+        min: Option<f64>,
+        #[serde(default)]
+        max: Option<f64>,
+    },
+    /// The mission goal with this id is met. Only a tutorial step can ask this.
+    Goal { id: String },
 }
 
 /// One goal, or one way to fail.
@@ -174,7 +211,7 @@ pub struct Goal {
 
 /// Where a launch site is, for `Landed`.
 #[derive(Debug, Clone)]
-struct Place {
+pub(crate) struct Place {
     body: String,
     latitude: f64,
     longitude: f64,
@@ -195,6 +232,69 @@ pub struct Mission {
     events: Vec<MissionEvent>,
 }
 
+/// Check what `when` names (a body, a launch site, a vessel the scenario starts, a goal) and
+/// note where the sites it needs are. `goals` are the ones a `Goal` condition may name: only a
+/// tutorial step can ask that.
+pub(crate) fn resolve(
+    id: &str,
+    when: &Condition,
+    scenario: &ScenarioDef,
+    sites: &[LaunchSiteDef],
+    system: &SolarSystem,
+    goals: Option<&[GoalDef]>,
+    places: &mut HashMap<String, Place>,
+) -> Result<(), String> {
+    let body = |name: &str| match system.find(name) {
+        Some(_) => Ok(()),
+        None => Err(format!("`{id}`: no body `{name}`")),
+    };
+    match when {
+        Condition::Orbit { body: name, .. } => body(name)?,
+        Condition::Landed { body: on, site, .. } => {
+            if let Some(name) = on {
+                body(name)?;
+            }
+            if let Some(site_id) = site {
+                let site = sites
+                    .iter()
+                    .find(|s| &s.id == site_id)
+                    .ok_or_else(|| format!("`{id}`: no launch site `{site_id}`"))?;
+                places.insert(
+                    site_id.clone(),
+                    Place {
+                        body: site.body.clone(),
+                        latitude: site.latitude.to_radians(),
+                        longitude: site.longitude.to_radians(),
+                    },
+                );
+            }
+        }
+        Condition::Near { target, .. } => {
+            let starts = scenario
+                .others
+                .iter()
+                .any(|o| o.name.as_ref().unwrap_or(&o.craft) == target);
+            if !starts {
+                return Err(format!(
+                    "`{id}`: the scenario starts no vessel called `{target}`"
+                ));
+            }
+        }
+        Condition::Sas { mode: Some(mode) } if SasMode::from_id(mode).is_none() => {
+            return Err(format!("`{id}`: no SAS mode `{mode}`"));
+        }
+        Condition::Goal { id: goal } => match goals {
+            None => return Err(format!("`{id}`: only a tutorial step can ask for a goal")),
+            Some(goals) if !goals.iter().any(|g| &g.id == goal) => {
+                return Err(format!("`{id}`: the scenario has no goal `{goal}`"));
+            }
+            Some(_) => {}
+        },
+        _ => {}
+    }
+    Ok(())
+}
+
 impl Mission {
     /// The mission `scenario` sets, or none if it lists no goals. A goal that names something
     /// that is not there (a site, a body, a vessel) is an error.
@@ -208,44 +308,15 @@ impl Mission {
         }
         let mut places = HashMap::new();
         for def in scenario.goals.iter().chain(&scenario.fail) {
-            match &def.when {
-                Condition::Orbit { body, .. } if system.find(body).is_none() => {
-                    return Err(format!("goal `{}`: no body `{body}`", def.id));
-                }
-                Condition::Landed { body, site, .. } => {
-                    if let Some(body) = body
-                        && system.find(body).is_none()
-                    {
-                        return Err(format!("goal `{}`: no body `{body}`", def.id));
-                    }
-                    if let Some(id) = site {
-                        let site = sites
-                            .iter()
-                            .find(|s| &s.id == id)
-                            .ok_or_else(|| format!("goal `{}`: no launch site `{id}`", def.id))?;
-                        places.insert(
-                            id.clone(),
-                            Place {
-                                body: site.body.clone(),
-                                latitude: site.latitude.to_radians(),
-                                longitude: site.longitude.to_radians(),
-                            },
-                        );
-                    }
-                }
-                Condition::Near { target, .. }
-                    if !scenario
-                        .others
-                        .iter()
-                        .any(|o| o.name.as_ref().unwrap_or(&o.craft) == target) =>
-                {
-                    return Err(format!(
-                        "goal `{}`: the scenario starts no vessel called `{target}`",
-                        def.id
-                    ));
-                }
-                _ => {}
-            }
+            resolve(
+                &def.id,
+                &def.when,
+                scenario,
+                sites,
+                system,
+                None,
+                &mut places,
+            )?;
         }
         let goal = |def: &GoalDef| Goal {
             def: def.clone(),
@@ -315,6 +386,7 @@ impl Mission {
             vessel,
             stats: &self.stats,
             places: &self.places,
+            mission: None,
         };
         let ordered = self.ordered;
         let elapsed = self.stats.elapsed;
@@ -397,11 +469,13 @@ impl Goal {
 }
 
 /// Everything a condition looks at.
-struct View<'a> {
-    universe: &'a Universe,
-    vessel: &'a Vessel,
-    stats: &'a Stats,
-    places: &'a HashMap<String, Place>,
+pub(crate) struct View<'a> {
+    pub universe: &'a Universe,
+    pub vessel: &'a Vessel,
+    pub stats: &'a Stats,
+    pub places: &'a HashMap<String, Place>,
+    /// The mission, for a tutorial step that waits for one of its goals.
+    pub mission: Option<&'a Mission>,
 }
 
 impl View<'_> {
@@ -413,7 +487,7 @@ impl View<'_> {
         self.system().body(self.vessel.parent())
     }
 
-    fn holds(&self, condition: &Condition) -> bool {
+    pub(crate) fn holds(&self, condition: &Condition) -> bool {
         let time = self.universe.time();
         let state = self.vessel.state_at(self.system(), time);
         let body = self.body();
@@ -501,6 +575,31 @@ impl View<'_> {
             }
             Condition::Destroyed => self.stats.destroyed || self.stats.crashed,
             Condition::Elapsed { seconds } => self.stats.elapsed >= *seconds,
+            Condition::Throttle { min, max } => {
+                Range::new(*min, *max).contains(self.vessel.propulsion.throttle())
+            }
+            Condition::Sas { mode } => {
+                let sas = self.vessel.sas();
+                sas.enabled() && mode.as_deref().is_none_or(|m| sas.mode().id() == m)
+            }
+            Condition::Engines { min, max } => {
+                let running = self.vessel.propulsion.engines.iter().filter(|e| e.running);
+                Range::new(*min, *max).contains(running.count() as f64)
+            }
+            Condition::Pitch { min, max } => {
+                let nose = self.vessel.attitude_at(self.system(), time) * DVec3::Z;
+                let up = state.position.normalize_or_zero();
+                let pitch = nose.dot(up).clamp(-1.0, 1.0).asin().to_degrees();
+                Range::new(*min, *max).contains(pitch)
+            }
+            Condition::Plan { min, max } => {
+                Range::new(*min, *max).contains(self.vessel.plan.burns().len() as f64)
+            }
+            Condition::Goal { id } => self.mission.is_some_and(|m| {
+                m.goals()
+                    .iter()
+                    .any(|g| &g.def.id == id && g.met_at.is_some())
+            }),
         }
     }
 
@@ -518,7 +617,7 @@ fn angle_between(a: (f64, f64), b: (f64, f64)) -> f64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::{
         data::OrbitStartDef,
@@ -527,7 +626,7 @@ mod tests {
         vessel::tests::{catalog, launch_sites, leo_vessel, pad_vessel, upper_stage},
     };
 
-    fn scenario(goals: &str) -> ScenarioDef {
+    pub(crate) fn scenario(goals: &str) -> ScenarioDef {
         let text = format!(
             r#"{{ id: "t", start_time: 0, craft: "x", start: {{ type: "LaunchSite", site: "cape_canaveral" }}, {goals} }}"#
         );
@@ -535,7 +634,7 @@ mod tests {
     }
 
     /// The mission that starts now, in `universe`.
-    fn mission(goals: &str, universe: &Universe) -> Mission {
+    pub(crate) fn mission(goals: &str, universe: &Universe) -> Mission {
         let mut scenario = scenario(goals);
         scenario.start_time = universe.time().as_seconds();
         Mission::new(&scenario, &launch_sites(), &universe.system)
@@ -544,14 +643,14 @@ mod tests {
     }
 
     /// The Pathfinder on the pad, and an upper stage in a 300 km orbit.
-    fn on_the_pad() -> Universe {
+    pub(crate) fn on_the_pad() -> Universe {
         let (pad, t) = pad_vessel(&rss());
         let mut universe = Universe::new(rss(), vec![pad], t);
         universe.focus = Some(universe.vessels[0].id());
         universe
     }
 
-    fn in_orbit() -> Universe {
+    pub(crate) fn in_orbit() -> Universe {
         let (leo, t) = leo_vessel(&rss());
         let mut universe = Universe::new(rss(), vec![leo], t);
         universe.focus = Some(universe.vessels[0].id());
@@ -575,6 +674,7 @@ mod tests {
             vessel: universe.vessel(universe.focus.unwrap()).unwrap(),
             stats: &stats,
             places: &places,
+            mission: None,
         }
         .holds(&condition)
     }
@@ -712,6 +812,7 @@ mod tests {
             vessel: universe.vessel(universe.focus.unwrap()).unwrap(),
             stats: &Stats::default(),
             places: &places,
+            mission: None,
         }
         .holds(&condition)
     }
@@ -777,6 +878,7 @@ mod tests {
             vessel: universe.vessel(universe.focus.unwrap()).unwrap(),
             stats: &stats,
             places: &places,
+            mission: None,
         };
         goal.advance(&view, dt, elapsed)
     }
@@ -955,5 +1057,57 @@ mod tests {
             }
         );
         assert_eq!(scenario.fail[0].when, Condition::Destroyed);
+    }
+
+    #[test]
+    fn the_controls_can_be_asked_about() {
+        let mut pad = on_the_pad();
+        let (system, time) = (pad.system.clone(), pad.time());
+        // Throttle: shut at first, then open.
+        assert!(now(&pad, "{ type: 'Throttle', max: 0 }"));
+        assert!(!now(&pad, "{ type: 'Throttle', min: 0.9 }"));
+        pad.vessels[0].set_throttle(1.0);
+        assert!(now(&pad, "{ type: 'Throttle', min: 0.9 }"));
+        assert!(!now(&pad, "{ type: 'Throttle', max: 0.5 }"));
+        // SAS, in any mode or one.
+        assert!(!now(&pad, "{ type: 'Sas' }"));
+        pad.vessels[0].set_sas(&system, time, true);
+        assert!(now(&pad, "{ type: 'Sas' }"));
+        assert!(now(&pad, "{ type: 'Sas', mode: 'stability' }"));
+        assert!(!now(&pad, "{ type: 'Sas', mode: 'prograde' }"));
+        // Engines running.
+        assert!(now(&pad, "{ type: 'Engines', max: 0 }"));
+        assert!(!now(&pad, "{ type: 'Engines', min: 1 }"));
+        pad.activate_next_stage(0);
+        pad.step_physics();
+        assert!(now(&pad, "{ type: 'Engines', min: 1 }"));
+        assert!(!now(&pad, "{ type: 'Engines', max: 0 }"));
+        // Standing on the pad, the nose points up.
+        assert!(now(&pad, "{ type: 'Pitch', min: 80 }"));
+        assert!(!now(&pad, "{ type: 'Pitch', max: 45 }"));
+    }
+
+    #[test]
+    fn planned_burns_are_counted() {
+        let mut orbit = in_orbit();
+        assert!(now(&orbit, "{ type: 'Plan', max: 0 }"));
+        assert!(!now(&orbit, "{ type: 'Plan', min: 1 }"));
+        let burn = crate::plan::Burn {
+            time: orbit.time().add_seconds(600.0),
+            delta_v: DVec3::new(100.0, 0.0, 0.0),
+        };
+        orbit.vessels[0].plan.add(burn);
+        assert!(now(&orbit, "{ type: 'Plan', min: 1 }"));
+        assert!(!now(&orbit, "{ type: 'Plan', max: 0 }"));
+    }
+
+    #[test]
+    fn a_goal_condition_belongs_to_tutorials_only() {
+        let universe = in_orbit();
+        let goal = r#"goals: [{ id: "g", text: "G", when: { type: "Goal", id: "g" } }]"#;
+        let error = Mission::new(&scenario(goal), &launch_sites(), &universe.system).unwrap_err();
+        assert!(error.contains("tutorial"), "{error}");
+        // Without a mission to look at, it does not hold.
+        assert!(!now(&universe, "{ type: 'Goal', id: 'g' }"));
     }
 }

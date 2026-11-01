@@ -30,6 +30,7 @@ use crate::{
     system::{SolarSystem, SystemError},
     terrain::{self, HeightSource},
     time::{SimTime, Ticks},
+    tutorial::Tutorial,
     vessel::{Vessel, VesselError, VesselEvent, VesselEventKind, VesselId},
 };
 
@@ -74,6 +75,8 @@ pub struct Universe {
     pub focus: Option<VesselId>,
     /// What the scenario sets out to do, judged after every step (see [`crate::mission`]).
     pub mission: Option<Mission>,
+    /// The guided run the player is on, if any (see [`crate::tutorial`]). A restart ends it.
+    pub tutorial: Option<Tutorial>,
     time: SimTime,
     next_id: u64,
 }
@@ -85,6 +88,7 @@ impl Universe {
             vessels: Vec::new(),
             focus: None,
             mission: None,
+            tutorial: None,
             time,
             next_id: 0,
         };
@@ -272,6 +276,7 @@ impl Universe {
         }
         self.focus = Some(self.vessels[0].id());
         self.mission = mission;
+        self.tutorial = None;
         if let Some(target) = &scenario.target {
             self.vessels[0].target = self
                 .vessels
@@ -340,11 +345,15 @@ impl Universe {
         events
     }
 
-    /// Let the mission look at the universe as it is now.
+    /// Let the mission and the tutorial look at the universe as it is now.
     fn observe_mission(&mut self, events: &[SimEvent], physics: bool) {
         if let Some(mut mission) = self.mission.take() {
             mission.observe(self, events, physics);
             self.mission = Some(mission);
+        }
+        if let Some(mut tutorial) = self.tutorial.take() {
+            tutorial.observe(self, self.mission.as_ref());
+            self.tutorial = Some(tutorial);
         }
     }
 

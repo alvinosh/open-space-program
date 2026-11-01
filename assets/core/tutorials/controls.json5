@@ -1,0 +1,53 @@
+// A short first run on the pad: the throttle, the stage key, the navball, SAS, the map.
+// A tutorial is a scenario with steps. Each step says what to do (`[action]` shows the key the
+// player has that action on), may point at a UI node (`highlight`: a node's or layout's id),
+// shows `hint` after `hint_after` seconds (20 by default) of the player being stuck, and is done
+// when what it waits for holds: `when` (a mission condition, see Missions in docs/modding.md),
+// `ui` (a UI data condition, e.g. view.map), or neither, in which case the player presses
+// Continue. Steps go in the order listed.
+{
+  id: "controls",
+  name: "Basic controls",
+  description: "Throttle, staging, SAS and the map, from the pad. About two minutes.",
+  scenario: "pad",
+  steps: [
+    {
+      id: "throttle",
+      text: "Open the throttle: press [vessel.throttle_full].",
+      hint: "[vessel.throttle_up] raises it a little at a time and [vessel.throttle_down] lowers it. The setting is under the navball.",
+      highlight: "navball",
+      when: { type: "Throttle", min: 0.9 },
+    },
+    {
+      id: "stage",
+      text: "Light the engines: press [vessel.stage]. The stack at the lower left shows what comes next.",
+      hint: "The stage key fires the next row of the stack.",
+      highlight: "staging",
+      when: { type: "Engines", min: 1 },
+    },
+    {
+      id: "navball",
+      text: "The navball shows where the nose points against the horizon. The heading and pitch are under it.",
+      highlight: "navball",
+    },
+    {
+      id: "sas",
+      text: "Turn SAS on with [vessel.sas_toggle]. It holds the nose steady for you.",
+      hint: "The SAS switch is on the upper right corner of the navball.",
+      highlight: "sas",
+      when: { type: "Sas" },
+    },
+    {
+      id: "climb",
+      text: "Let the rocket climb to 1 km.",
+      hint: "Nothing to do but wait. [view.toggle_map] opens the map when you want to look at the orbit.",
+      when: { type: "Altitude", min: 1000 },
+    },
+    {
+      id: "map",
+      text: "Open the map with [view.toggle_map].",
+      highlight: "map_button",
+      ui: "view.map",
+    },
+  ],
+}

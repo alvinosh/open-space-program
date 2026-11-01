@@ -270,6 +270,21 @@ pub struct HoverAction(pub Template);
 #[derive(Resource, Default, Debug, PartialEq, Eq)]
 pub struct UiHover(pub Option<String>);
 
+/// The id of the node (or layout) the game points the player at: it gets a pulsing outline
+/// while this names it. Several nodes with the same id are all outlined.
+#[derive(Resource, Default, Debug, PartialEq, Eq)]
+pub struct UiHighlight(pub Option<String>);
+
+/// A node outlined because [`UiHighlight`] names it.
+#[derive(Component)]
+pub struct Highlighted;
+
+/// The outline's colour (the HUD's teal), and how it breathes: opacity between these, at this
+/// many pulses a second.
+const HIGHLIGHT: Srgba = Srgba::new(0.22, 0.88, 0.77, 1.0);
+const HIGHLIGHT_ALPHA: (f32, f32) = (0.45, 1.0);
+const HIGHLIGHT_RATE: f32 = 1.4;
+
 /// A node whose border takes the colour (`"#rrggbb"`) the data key holds while it is not
 /// empty (`accent`), instead of its style's, and is `width` px thick (`accent_width`, 2).
 #[derive(Component)]
@@ -1287,6 +1302,39 @@ pub fn update_hover(
     hover.set_if_neq(UiHover(said));
 }
 
+/// Outline the nodes [`UiHighlight`] names, pulsing, and take it off the others. A node is
+/// named by its `id`, a layout by its own.
+pub fn update_highlight(
+    mut commands: Commands,
+    highlight: Res<UiHighlight>,
+    time: Res<Time>,
+    nodes: Query<(Entity, &Name, Has<Highlighted>), With<Node>>,
+    mut outlines: Query<&mut Outline, With<Highlighted>>,
+) {
+    let (low, high) = HIGHLIGHT_ALPHA;
+    let pulse = 0.5 + 0.5 * (time.elapsed_secs() * HIGHLIGHT_RATE * std::f32::consts::TAU).sin();
+    let color: Color = HIGHLIGHT.with_alpha(low + (high - low) * pulse).into();
+    let wanted = highlight.0.as_deref();
+    for (entity, name, marked) in &nodes {
+        let named = wanted.is_some_and(|id| {
+            name.as_str() == id || name.as_str().strip_prefix("layout:") == Some(id)
+        });
+        match (named, marked) {
+            (true, false) => {
+                let outline = Outline::new(Val::Px(2.0), Val::Px(3.0), color);
+                commands.entity(entity).insert((outline, Highlighted));
+            }
+            (false, true) => {
+                commands.entity(entity).remove::<(Outline, Highlighted)>();
+            }
+            _ => {}
+        }
+    }
+    for mut outline in &mut outlines {
+        outline.color = color;
+    }
+}
+
 /// Light the borders of `accent` nodes whose colour key is set, and put the others back.
 pub fn update_accents(
     mut commands: Commands,
@@ -2043,5 +2091,66 @@ mod hover_tests {
         app.world_mut().entity_mut(second).insert(Hovered(false));
         app.update();
         assert_eq!(hover_of(&app), None);
+    }
+}
+
+#[cfg(test)]
+mod highlight_tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::UiPlugin;
+
+    fn outlined(app: &mut App) -> Vec<String> {
+        let mut query = app.world_mut().query::<(&Name, &Outline)>();
+        let mut names: Vec<_> = query
+            .iter(app.world())
+            .map(|(name, _)| name.to_string())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn the_node_the_game_points_at_is_outlined_until_it_stops() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::input::InputPlugin, UiPlugin));
+        let layout = json!({
+            "id": "pointed",
+            "root": {
+                "widget": "row",
+                "children": [
+                    { "id": "throttle", "widget": "label", "text": "a" },
+                    { "id": "stage", "widget": "label", "text": "b" },
+                    { "widget": "label", "text": "c" },
+                ],
+            },
+        });
+        app.insert_resource(UiDocuments {
+            layouts: vec![serde_json::from_value(layout).unwrap()],
+            ..default()
+        });
+        app.update();
+        app.update();
+        assert!(outlined(&mut app).is_empty());
+
+        app.insert_resource(UiHighlight(Some("throttle".into())));
+        app.update();
+        assert_eq!(outlined(&mut app), ["throttle"]);
+        // The outline breathes: it has a colour, not nothing.
+        let mut query = app.world_mut().query::<&Outline>();
+        assert!(query.single(app.world()).unwrap().color.alpha() > 0.4);
+
+        // Another node, or a whole layout (named by its id).
+        app.insert_resource(UiHighlight(Some("stage".into())));
+        app.update();
+        assert_eq!(outlined(&mut app), ["stage"]);
+        app.insert_resource(UiHighlight(Some("pointed".into())));
+        app.update();
+        assert_eq!(outlined(&mut app), ["layout:pointed"]);
+
+        app.insert_resource(UiHighlight(None));
+        app.update();
+        assert!(outlined(&mut app).is_empty());
     }
 }

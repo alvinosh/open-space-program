@@ -4,6 +4,9 @@
 // then the spacecraft (`game.start:<id>`), listed from `menu.scenarios` (id, craft, name,
 // description, start) in load order.
 //
+// The Tutorials page (`menu.page:tutorials`) lists the `tutorials` records, started with
+// `game.start_tutorial:<id>`.
+//
 // The Graphics page (`menu.page:graphics`) sets the graphics: a preset
 // (`graphics.preset:<low|medium|high|ultra>`), the one recommended for the GPU
 // (`graphics.detect`), or each setting (`graphics.set:<key>:<value>`, current values in
@@ -25,6 +28,7 @@
             style: { gap: 4 },
             children: [
               { widget: "button", class: "menu_tab", text: "Scenarios", action: "menu.page:scenarios", active: "menu.page == scenarios" },
+              { widget: "button", class: "menu_tab", text: "Tutorials", action: "menu.page:tutorials", active: "menu.page == tutorials", visible: "menu.tutorials" },
               { widget: "button", class: "menu_tab", text: "Graphics", action: "menu.page:graphics", active: "menu.page == graphics" },
             ],
           },
@@ -140,6 +144,39 @@
                           { widget: "label", class: "dim", text: "{item.description}", visible: "item.description" },
                         ],
                       },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            // Guided runs: each starts its scenario with the steps over it (`game.start_tutorial`).
+            widget: "column",
+            class: "menu_page",
+            visible: "menu.page == tutorials",
+            children: [
+              { widget: "label", class: "dim", text: "Learn by flying: each one tells you what to do and waits for you to do it" },
+              {
+                widget: "column",
+                class: "menu_list",
+                repeat: "menu.tutorials",
+                children: [
+                  {
+                    widget: "button",
+                    class: "menu_item",
+                    action: "game.start_tutorial:{item.id}",
+                    children: [
+                      {
+                        widget: "row",
+                        class: "menu_item_head",
+                        children: [
+                          { widget: "label", class: "menu_item_name", text: "{item.name}" },
+                          { widget: "spacer" },
+                          { widget: "label", class: "menu_item_start", text: "{item.steps|int} steps" },
+                        ],
+                      },
+                      { widget: "label", class: "dim", text: "{item.description}", visible: "item.description" },
                     ],
                   },
                 ],

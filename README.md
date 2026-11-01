@@ -16,6 +16,7 @@ OSP_SCENARIO=sounder cargo run              # finned suborbital hop with a one-p
 OSP_SCENARIO=glider_runway cargo run        # the sailplane on a dolly with two solid boosters, on the runway
 OSP_SCENARIO=runway cargo run               # rocket plane on the Shuttle Landing Facility runway
 OSP_SCENARIO=dzhanibekov cargo run          # a satellite flipping end over end (Dzhanibekov effect)
+OSP_TUTORIAL=controls cargo run             # the basic controls tutorial, from the pad
 cargo run --features dev                    # faster incremental builds (Bevy dynamic linking)
 cargo test --workspace                      # physics, mod loader and UI tests (no GPU needed)
 cargo smoke                                 # whole-mission flights (Saturn V round the Moon and home), report in target/smoke

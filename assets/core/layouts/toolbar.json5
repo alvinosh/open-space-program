@@ -21,7 +21,7 @@
       { widget: "button", class: "launcher_button", tooltip: "Structure", action: "ui.toggle:structure_info", active: "ui.shown.structure_info", children: [{ widget: "image", class: "launcher_icon", image: "icons/structure.svg", active: "ui.shown.structure_info" }] },
       { widget: "button", class: "launcher_button", tooltip: "Flight log", action: "ui.toggle:log", active: "ui.shown.log", children: [{ widget: "image", class: "launcher_icon", image: "icons/log.svg", active: "ui.shown.log" }] },
       { widget: "column", class: "launcher_divider" },
-      { widget: "button", class: "launcher_button", tooltip: "Map (M)", action: "view.toggle_map", active: "view.map", children: [{ widget: "image", class: "launcher_icon", image: "icons/map.svg", active: "view.map" }] },
+      { id: "map_button", widget: "button", class: "launcher_button", tooltip: "Map (M)", action: "view.toggle_map", active: "view.map", children: [{ widget: "image", class: "launcher_icon", image: "icons/map.svg", active: "view.map" }] },
       { widget: "button", class: "launcher_button", tooltip: "Mods (F2)", action: "ui.toggle:mods", active: "ui.shown.mods", children: [{ widget: "image", class: "launcher_icon", image: "icons/mods.svg", active: "ui.shown.mods" }] },
       { widget: "button", class: "launcher_button", tooltip: "Help (F1)", action: "ui.toggle:help", active: "ui.shown.help", children: [{ widget: "image", class: "launcher_icon", image: "icons/help.svg", active: "ui.shown.help" }] },
       { widget: "button", class: "launcher_button", tooltip: "Menu (Esc)", action: "game.menu", children: [{ widget: "image", class: "launcher_icon", image: "icons/menu.svg" }] },

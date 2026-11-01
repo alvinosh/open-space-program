@@ -91,3 +91,46 @@ fn saturn_v() {
 fn first_orbit() {
     run(&first_orbit::MISSION);
 }
+
+/// The base game's `controls` tutorial, played headless over the pad scenario the way a player
+/// plays it: each step done with the control it names. The two steps the game judges (reading
+/// the navball, the map being open) are completed as its buttons and UI data do.
+#[test]
+fn the_controls_tutorial_plays_through() {
+    use osp_sim::{attitude::SasMode, tutorial::TutorialState};
+
+    let mut w = World::new("pad", &[]);
+    w.start_tutorial("controls");
+    let on = |w: &mut World| w.tutorial().step().map(|s| s.id.clone()).unwrap_or_default();
+    let tick = |w: &mut World| {
+        w.fly(0.2, |_| false);
+    };
+    assert_eq!(on(&mut w), "throttle");
+
+    // Waiting does not move it on.
+    tick(&mut w);
+    assert_eq!(on(&mut w), "throttle");
+    w.vessel_mut().set_throttle(1.0);
+    tick(&mut w);
+    assert_eq!(on(&mut w), "stage");
+    w.stage();
+    tick(&mut w);
+    // The navball is for reading: the player presses Continue.
+    assert_eq!(on(&mut w), "navball");
+    assert!(w.tutorial().step().unwrap().is_manual());
+    tick(&mut w);
+    assert_eq!(on(&mut w), "navball");
+    w.tutorial().complete();
+    assert_eq!(on(&mut w), "sas");
+    w.sas(SasMode::Stability);
+    tick(&mut w);
+    assert_eq!(on(&mut w), "climb");
+    // The rocket climbs to a kilometre by itself.
+    let climbed = w.fly(120.0, |w| w.tutorial().step().is_none_or(|s| s.id != "climb"));
+    assert!(climbed, "stuck at {} m", w.t());
+    // The map: the UI says it is open, and the game completes the step.
+    assert_eq!(on(&mut w), "map");
+    assert_eq!(w.tutorial().step().unwrap().ui.as_deref(), Some("view.map"));
+    w.tutorial().complete();
+    assert_eq!(w.tutorial().state(), TutorialState::Finished);
+}

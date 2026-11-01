@@ -80,6 +80,7 @@ parts of it instead.
 | `craft` | Vessels | `parts`, each a `template` or a `shape` with `components`, held `on` another; optional `sequences`; see [Craft](#craft) and [Staging](#staging) |
 | `launch_sites` | Launch sites | Position, `heading`, optional `pad`, `roads` and `runway`; see [Launch sites](#launch-sites) |
 | `scenarios` | New-game setups | `name` and `description` (shown in the main menu, which lists scenarios in load order); `start: { type: "LaunchSite", site: "<id>" }`, `{ type: "Runway", site: "<id>" }` (at the start of the site's runway, on its wheels), `{ type: "Flight", body, latitude, longitude, altitude, heading, speed, climb }` (in the air, nose along the flight path, wings level; degrees, metres and m/s) or `{ type: "Orbit", body, periapsis_altitude, apoapsis_altitude, inclination, longitude_of_ascending_node, argument_of_periapsis, mean_anomaly }` (degrees, from the body's equator; `plane: "<body>"` instead takes the plane of a body that orbits it, like the Moon; `spin: [pitch, yaw, roll]` starts it turning, °/s); optional `others` and `target`; optional `goals`, `fail` and `ordered` (see [Missions](#missions)); `OSP_SCENARIO=<id>` starts one without the menu |
+| `tutorials` | Guided runs over a scenario | `scenario`, `name`, `description` and `steps`; see [Tutorials](#tutorials) |
 | `layouts` | UI windows and panels | See [User interface](#user-interface) |
 | `themes` | Style classes | All theme records merge in load order |
 | `keybindings` | Key → action | All keybinding records combine |
@@ -742,11 +743,63 @@ stops the scenario from starting, with the reason.
 | `Propellant` | `min` / `max`: propellant left in the main tanks (not the RCS), kg |
 | `Destroyed` | The vessel broke up or hit the ground too hard |
 | `Elapsed` | `seconds` have passed since the mission began |
+| `Throttle` | `min` / `max`: the throttle setting, 0 to 1 |
+| `Sas` | SAS is on, in `mode` if given (`stability`, `prograde`, `retrograde`, `normal`, `anti_normal`, `radial_out`, `radial_in`, `burn`, `target`, `anti_target`) |
+| `Engines` | `min` / `max`: how many engines are running |
+| `Pitch` | `min` / `max`: the nose's angle above the local horizon, degrees (negative below it) |
+| `Plan` | `min` / `max`: how many burns are planned |
+| `Goal` | The scenario's goal with this `id` is met. Only a tutorial step can ask this |
 
 Not there yet: battery charge (no electrical model), splashing down (no sea), crew lost (no crew).
 The results show the mission time, the delta-v the engines gave (thrust over mass, summed over
 physics ticks, so it counts what gravity and drag took too), the peak acceleration and the
 highest altitude. The UI reads it all from the `mission.*` data keys.
+
+### Tutorials
+
+A tutorial is a scenario played with steps: each says what to do, may point at a control, and
+waits for the player to do it. A record in the `tutorials` collection names the scenario it plays
+over (`game.start_tutorial:<id>` starts both, from the main menu's Tutorials page; `OSP_TUTORIAL=<id>`
+does it at launch):
+
+```json5
+{
+  id: "controls",
+  name: "Basic controls",
+  description: "Throttle, staging, SAS and the map, from the pad.",
+  scenario: "pad",
+  steps: [
+    {
+      id: "throttle",
+      text: "Open the throttle: press [vessel.throttle_full].",
+      hint: "[vessel.throttle_up] raises it a little at a time.", // after hint_after seconds on the step
+      hint_after: 20, // optional, 20 by default
+      highlight: "navball", // the id of a UI node or layout to outline while this step is current
+      when: { type: "Throttle", min: 0.9 }, // done when this holds
+    },
+    { id: "read", text: "This is the navball." }, // no `when`, no `ui`: the player presses Continue
+    { id: "map", text: "Open the map with [view.toggle_map].", ui: "view.map" },
+  ],
+}
+```
+
+- **What a step waits for** is one of `when`, a mission condition (see [Missions](#missions): the
+  throttle, SAS, engines running, a height, a goal of the scenario, ...), judged by the simulation
+  after every tick so a tutorial runs headless; `ui`, a condition on the UI data (see
+  [Conditions](#templates-and-formatters): `view.map`, `time.warp != 1`) for what only the
+  interface knows; or neither, and the step is read and moved past with a button. Give it both
+  and the tutorial does not start.
+- **Keys** are written as the action, `[vessel.stage]`, and shown as the key the player has that
+  action on (several: `Shift or Up`; none: `(no key)`), so rebinding a key does not break a
+  tutorial. Brackets around anything that is not an action name are left alone.
+- **Highlight** names a node's `id` (`sas`, `map_button`) or a layout's (`navball`, `staging`); every
+  node with that id gets a pulsing outline. Give a node an `id` in a layout (or a patch) to make
+  it something a step can point at.
+- **The hint** shows once the player has been on the step `hint_after` seconds of game time. Steps go
+  in the order listed; a player can skip a step, give the tutorial up (`tutorial.next`,
+  `tutorial.skip`), or start it again from the menu.
+- Nothing pauses the simulation. A step that names a body, launch site, vessel, goal or SAS mode
+  that is not there stops the tutorial starting, with the reason.
 
 ### Launch sites
 
@@ -1103,10 +1156,13 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `mission.goals[]`, `mission.count`, `mission.met` | The goals in the order listed: `index`, `text`, `met`, `current` (the one being worked on, in an `ordered` mission), `held` (0..1, only while a goal that has to be held for a time is being held); how many, and how many are met |
 | `mission.time`, `mission.delta_v`, `mission.peak_g`, `mission.max_altitude` | The mission clock (s), delta-v the engines gave (m/s), peak acceleration (g) and highest altitude (m); they stop when the mission ends |
 | `mission.notice`, `mission.notice_bad` | A goal met or the mission passed, and the mission failed, for a few seconds each |
+| `tutorial.active`, `tutorial.state`, `tutorial.finished`, `tutorial.name` | A tutorial is running; `running`, `finished` or `ended`; every step was done; its name |
+| `tutorial.step`, `tutorial.count`, `tutorial.text`, `tutorial.hint` | The step the player is on (1 to `count`) and its words with the player's keys in; the hint, empty until the player has been on the step long enough |
+| `tutorial.manual`, `tutorial.skippable` | The step is moved past with Continue (it waits for nothing); it waits for something and can be skipped |
 | `mods.count`, `mods.errors`, `mods.warnings` | |
 | `mods.list[]` | `id`, `name`, `version`, `authors`, `description` |
 | `mods.problems[]` | `error` (bool), `text` |
-| `menu.scenarios[]`, `menu.playing`, `menu.page` | Main menu: `id`, `name`, `description`; a scenario is being flown; the page showing (`scenarios`, `graphics`) |
+| `menu.scenarios[]`, `menu.tutorials[]`, `menu.playing`, `menu.page` | Main menu: `id`, `name`, `description`; the tutorials: `id`, `name`, `description`, `steps`; a scenario is being flown; the page showing (`scenarios`, `tutorials`, `graphics`) |
 | `graphics.preset`, `graphics.recommended`, `graphics.summary` | The preset the settings match (`low`, `medium`, `high`, `ultra` or `custom`); the one for this GPU; every setting on one line |
 | `graphics.render_scale`, `graphics.antialiasing`, `graphics.shadows`, `graphics.terrain`, `graphics.trees`, `graphics.effects`, `graphics.bloom`, `graphics.vsync`, `graphics.fps_limit` | Each setting as text: percent; `off`, `fxaa`, `msaa`; a level (`off`, `low`, `medium`, `high`, `ultra`); `on` / `off`; frames per second (`0` for none) |
 | `perf.fps`, `perf.frame_ms`, `perf.worst_ms` | Over the last half second: frame rate, mean and worst frame time (ms) |
@@ -1152,8 +1208,9 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `ui.pin:<layout>` | Pin or unpin a popup, so a click outside does not close it |
 | `ui.toggle_group:<group>`, `ui.show_group:<group>`, `ui.hide_group:<group>` | Every layout in a group |
 | `game.reload` | Reload all mods and rebuild the UI |
-| `game.menu`, `game.resume`, `game.start:<scenario>`, `game.quit` | Main menu |
-| `menu.page:<scenarios|graphics>` | Switch the main menu's page |
+| `game.menu`, `game.resume`, `game.start:<scenario>`, `game.start_tutorial:<tutorial>`, `game.quit` | Main menu; a tutorial starts its scenario with its steps |
+| `menu.page:<scenarios|tutorials|graphics>` | Switch the main menu's page |
+| `tutorial.next`, `tutorial.skip` | Move past the current step (Continue, or skip it); give the tutorial up |
 | `graphics.preset:<low|medium|high|ultra>`, `graphics.detect` | Apply a preset; apply the one recommended for this GPU (both keep vsync and the frame cap) |
 | `graphics.set:<setting>:<value>` | Change one setting (`render_scale:75`, `antialiasing:fxaa`, `shadows:off`, `vsync:on`, ...); saved at once |
 

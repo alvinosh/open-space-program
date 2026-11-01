@@ -38,6 +38,7 @@ mod targeting;
 mod terrain_material;
 mod transfer_planner;
 mod trees;
+mod tutorial;
 mod ui_data;
 mod vessel_material;
 mod vessel_render;
@@ -152,6 +153,7 @@ fn main() -> AppExit {
                 menu::MenuPlugin,
                 windows::WindowsPlugin,
                 mission::MissionPlugin,
+                tutorial::TutorialPlugin,
             ),
         ))
         // Map view and flight planning.

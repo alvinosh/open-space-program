@@ -9,6 +9,7 @@ use osp_sim::{
     data::{CraftDef, LaunchSiteDef, PartCatalog, ScenarioDef, SystemDef},
     system::SolarSystem,
     time::SimTime,
+    tutorial::{Tutorial, TutorialDef},
     universe::{PHYSICS_STEP, Universe},
     vessel::{Vessel, VesselEventKind, VesselId},
 };
@@ -385,6 +386,29 @@ impl World {
             }
         }
         until(self)
+    }
+
+    /// Plays the tutorial `id` of the mods over the scenario, as the game does when it starts one.
+    pub fn start_tutorial(&mut self, id: &str) {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let content = osp_mods::load(&root.join("assets/core"), Some(&root.join("mods")));
+        let mut diagnostics = Vec::new();
+        let sites: Vec<LaunchSiteDef> = content.registry.all("launch_sites", &mut diagnostics);
+        let def: TutorialDef = content.registry.get("tutorials", id).unwrap();
+        let tutorial = Tutorial::new(
+            &def,
+            &self.scenario,
+            &sites,
+            &self.universe.system,
+            self.universe.time(),
+        )
+        .unwrap();
+        self.universe.tutorial = Some(tutorial);
+    }
+
+    /// The tutorial being played.
+    pub fn tutorial(&mut self) -> &mut Tutorial {
+        self.universe.tutorial.as_mut().expect("no tutorial")
     }
 
     /// The stage key.

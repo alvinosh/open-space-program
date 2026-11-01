@@ -4,7 +4,8 @@ Whole-mission flights, start to finish, to find what the simulation cannot do ye
 the Saturn V on Apollo 11: pad, parking orbit, translunar injection, lunar orbit, the return and
 the entry. `first_orbit` flies the Pathfinder from the `pad` scenario to orbit with a player's
 controls and checks that the scenario's goals (see Missions in `docs/modding.md`) are met on the
-way. Dragon on a Falcon 9, the Shuttle, Soyuz and the rest will be more missions in the same
+way. `the_controls_tutorial_plays_through` plays the base game's `controls` tutorial the same
+way, step by step, with the control each step names. Dragon on a Falcon 9, the Shuttle, Soyuz and the rest will be more missions in the same
 harness.
 
 ```sh

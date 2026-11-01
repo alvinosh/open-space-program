@@ -75,6 +75,7 @@ pub mod tech;
 pub mod terrain;
 pub mod time;
 pub mod transfer;
+pub mod tutorial;
 pub mod universe;
 pub mod vessel;
 

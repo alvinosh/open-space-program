@@ -18,6 +18,7 @@ use osp_sim::{
     tech::{TechTree, calendar_year},
     terrain::HeightSource,
     time::SimTime,
+    tutorial::{Tutorial, TutorialDef},
     universe::Universe,
 };
 use osp_terrain::{Dataset, dataset::META_FILE};
@@ -241,6 +242,49 @@ pub fn restart(content: &Content, universe: &mut Universe, id: &str) -> Result<(
     universe
         .restart(&sites, &catalog, |id| craft(registry, id), &scenario)
         .map_err(|e| e.to_string())
+}
+
+/// A tutorial record.
+pub fn tutorial_def(registry: &Registry, id: &str) -> Result<TutorialDef, String> {
+    registry
+        .get::<TutorialDef>("tutorials", id)
+        .map_err(|d| d.to_string())
+}
+
+/// The tutorial `id` ready to play in `universe`'s solar system, and the scenario it is
+/// played over. Fails if a step names something that is not there.
+fn build_tutorial(
+    registry: &Registry,
+    universe: &Universe,
+    id: &str,
+) -> Result<(Tutorial, ScenarioDef), String> {
+    let def = tutorial_def(registry, id)?;
+    let scenario = scenario_def(registry, &def.scenario)?;
+    let sites = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
+    let time = SimTime::from_seconds(scenario.start_time);
+    let tutorial = Tutorial::new(&def, &scenario, &sites, &universe.system, time)?;
+    Ok((tutorial, scenario))
+}
+
+/// Play the tutorial `id` in a game that has just started its scenario (`OSP_TUTORIAL`).
+pub fn start_tutorial(content: &Content, universe: &mut Universe, id: &str) -> Result<(), String> {
+    let (tutorial, _) = build_tutorial(&content.registry, universe, id)?;
+    universe.tutorial = Some(tutorial);
+    Ok(())
+}
+
+/// Start the tutorial `id` afresh in `universe`: its scenario, and the guided steps over it.
+/// On an error nothing changes.
+pub fn restart_tutorial(
+    content: &Content,
+    universe: &mut Universe,
+    id: &str,
+) -> Result<(), String> {
+    let registry = &content.registry;
+    let (tutorial, scenario) = build_tutorial(registry, universe, id)?;
+    restart(content, universe, &scenario.id)?;
+    universe.tutorial = Some(tutorial);
+    Ok(())
 }
 
 pub(crate) fn catalog(registry: &Registry, diagnostics: &mut Vec<Diagnostic>) -> PartCatalog {

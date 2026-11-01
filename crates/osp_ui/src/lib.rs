@@ -34,10 +34,12 @@ use bevy::prelude::*;
 
 pub use data::{UiData, UiRecord, UiValue, record};
 pub use format::{Formatter, Formatters, Template};
-pub use layout::{LayoutDef, NodeDef, UiDocuments, instance_data, instance_id};
+pub use layout::{
+    KeyBindingDef, LayoutDef, NodeDef, UiDocuments, instance_data, instance_id,
+};
 pub use runtime::{
-    ActionState, CLICK_SLOP, LayoutVisibility, PointerOverUi, Tooltip, UiAction, UiHover, UiImage,
-    ViewOverlay,
+    ActionState, CLICK_SLOP, LayoutVisibility, PointerOverUi, Tooltip, UiAction, UiHighlight,
+    UiHover, UiImage, ViewOverlay,
 };
 pub use widgets::{WidgetBuilder, WidgetContext, WidgetRegistry};
 
@@ -67,6 +69,7 @@ impl Plugin for UiPlugin {
             .init_resource::<runtime::WindowStack>()
             .init_resource::<PointerOverUi>()
             .init_resource::<UiHover>()
+            .init_resource::<UiHighlight>()
             .add_message::<UiAction>()
             .configure_sets(Update, (UiSet::Input, UiSet::Build, UiSet::Update).chain())
             .add_systems(
@@ -100,7 +103,7 @@ impl Plugin for UiPlugin {
                     runtime::update_gauges,
                     runtime::update_states,
                     runtime::update_tooltip,
-                    runtime::update_hover,
+                    (runtime::update_hover, runtime::update_highlight).chain(),
                     runtime::update_scroll_thumbs,
                 )
                     .chain()

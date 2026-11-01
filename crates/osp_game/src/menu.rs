@@ -5,11 +5,15 @@
 //! flight UI is hidden and the pilot's controls do nothing. A scenario is picked in two
 //! steps: the place it starts (`menu.place:<pad|runway|orbit|flight>`, `menu.place` to go
 //! back), then the spacecraft there; that starts it afresh in the same solar system
-//! (`game.start:<id>`). Its Graphics page (`menu.page:graphics`) sets the graphics (see
-//! `settings`).
+//! (`game.start:<id>`). Its Tutorials page lists the guided runs (`game.start_tutorial:<id>`,
+//! which start the tutorial's scenario with its steps), and its Graphics page
+//! (`menu.page:graphics`) sets the graphics (see `settings`).
 
 use bevy::prelude::*;
-use osp_sim::data::{LaunchSiteDef, ScenarioDef, StartDef};
+use osp_sim::{
+    data::{LaunchSiteDef, ScenarioDef, StartDef},
+    tutorial::TutorialDef,
+};
 use osp_ui::{LayoutVisibility, UiAction, UiData, record};
 
 use crate::{
@@ -23,9 +27,10 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        // Scripted captures and `OSP_SCENARIO` go straight into flight.
-        let open =
-            std::env::var_os("OSP_SCENARIO").is_none() && std::env::var_os("OSP_CAPTURE").is_none();
+        // Scripted captures, `OSP_SCENARIO` and `OSP_TUTORIAL` go straight into flight.
+        let open = ["OSP_SCENARIO", "OSP_TUTORIAL", "OSP_CAPTURE"]
+            .iter()
+            .all(|var| std::env::var_os(var).is_none());
         app.insert_resource(Menu {
             open: false,
             playing: !open,
@@ -54,7 +59,7 @@ pub struct Menu {
     pub open: bool,
     /// A scenario is being flown, so the menu can go back to it.
     pub playing: bool,
-    /// The page showing: `scenarios` or `graphics`.
+    /// The page showing: `scenarios`, `tutorials` or `graphics`.
     page: String,
     /// The place picked on the scenarios page (see `place`), or empty while picking one.
     place: String,
@@ -109,7 +114,7 @@ fn start_detail(start: &StartDef, sites: &[LaunchSiteDef]) -> String {
 
 /// `menu.count.<place>` (scenarios starting there), `menu.scenarios` (those at
 /// `menu.place`, in the order the records load: id, craft, name, description, start),
-/// `menu.playing` and `menu.page`. A scenario's name is left out when it is the craft's.
+/// `menu.tutorials` (id, name, description, steps), `menu.playing` and `menu.page`. A scenario's name is left out when it is the craft's.
 fn publish_scenarios(content: Res<GameContent>, menu: Res<Menu>, mut data: ResMut<UiData>) {
     if content.is_changed() || menu.is_changed() {
         let registry = &content.0.registry;
@@ -139,6 +144,19 @@ fn publish_scenarios(content: Res<GameContent>, menu: Res<Menu>, mut data: ResMu
             })
             .collect();
         data.set("menu.scenarios", scenarios);
+        let tutorials: Vec<_> = (registry.all::<TutorialDef>("tutorials", &mut Vec::new()))
+            .iter()
+            .map(|t| {
+                let name = if t.name.is_empty() { &t.id } else { &t.name };
+                record([
+                    ("id", t.id.as_str().into()),
+                    ("name", name.as_str().into()),
+                    ("description", t.description.as_str().into()),
+                    ("steps", t.steps.len().into()),
+                ])
+            })
+            .collect();
+        data.set("menu.tutorials", tutorials);
     }
     if menu.is_changed() {
         data.set("menu.playing", menu.playing);
@@ -170,11 +188,15 @@ fn menu_actions(
                 }
             }
             "menu.place" => menu.place = action.arg().unwrap_or_default().to_owned(),
-            "game.start" => {
+            name @ ("game.start" | "game.start_tutorial") => {
                 let Some(id) = action.arg() else { continue };
-                match crate::content::restart(&content.0, &mut sim.universe, id) {
+                let started = match name {
+                    "game.start" => crate::content::restart(&content.0, &mut sim.universe, id),
+                    _ => crate::content::restart_tutorial(&content.0, &mut sim.universe, id),
+                };
+                match started {
                     Ok(()) => {
-                        info!("started scenario `{id}`");
+                        info!("started `{id}`");
                         sim.restarted();
                         *warp = TimeWarp::default();
                         rig.map_view = false;
@@ -182,7 +204,7 @@ fn menu_actions(
                         menu.playing = true;
                         menu.show(false, &mut sim, &mut ui);
                     }
-                    Err(e) => error!("cannot start scenario `{id}`: {e}"),
+                    Err(e) => error!("cannot start `{id}`: {e}"),
                 }
             }
             "game.quit" => {

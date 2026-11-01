@@ -45,17 +45,28 @@ pub struct SimPlugin;
 
 impl Plugin for SimPlugin {
     fn build(&self, app: &mut App) {
-        let scenario = std::env::var("OSP_SCENARIO").unwrap_or_else(|_| {
-            // The scripted captures were written for a launch from the pad.
-            if std::env::var_os("OSP_CAPTURE").is_some() {
-                "pad".into()
-            } else {
-                DEFAULT_SCENARIO.into()
-            }
-        });
         let content = &app.world().resource::<GameContent>().0;
-        let game = crate::content::new_game(content, &scenario)
+        // `OSP_TUTORIAL=<id>` plays a tutorial, over its own scenario.
+        let tutorial = std::env::var("OSP_TUTORIAL").ok();
+        let scenario = match &tutorial {
+            Some(id) => crate::content::tutorial_def(&content.registry, id)
+                .unwrap_or_else(|e| panic!("cannot start tutorial `{id}`: {e}"))
+                .scenario,
+            None => std::env::var("OSP_SCENARIO").unwrap_or_else(|_| {
+                // The scripted captures were written for a launch from the pad.
+                if std::env::var_os("OSP_CAPTURE").is_some() {
+                    "pad".into()
+                } else {
+                    DEFAULT_SCENARIO.into()
+                }
+            }),
+        };
+        let mut game = crate::content::new_game(content, &scenario)
             .unwrap_or_else(|e| panic!("cannot start scenario `{scenario}`: {e}"));
+        if let Some(id) = &tutorial {
+            crate::content::start_tutorial(content, &mut game.universe, id)
+                .unwrap_or_else(|e| panic!("cannot start tutorial `{id}`: {e}"));
+        }
         for d in &game.diagnostics {
             warn!("{d}");
         }

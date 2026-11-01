@@ -1,0 +1,41 @@
+// The step of the tutorial being played (`tutorials` records; see Tutorials in
+// docs/modding.md): what to do, a hint once the player has been on it a while, and the
+// buttons to move on, skip the step or give up. It opens when a tutorial starts, and the
+// control the step points at is outlined (`highlight`). Keys in the text are the player's own.
+{
+  id: "tutorial",
+  visible: false,
+  group: "flight",
+  dock: "left",
+  dock_order: 1,
+  root: {
+    widget: "window",
+    icon: "icons/help.svg",
+    title: "Tutorial: {tutorial.name}",
+    style: { width: 290 },
+    children: [
+      {
+        id: "step",
+        widget: "column",
+        style: { gap: 6 },
+        children: [
+          { widget: "label", class: "section", style: { margin: [0, 0, 0, 0] }, text: "Step {tutorial.step} of {tutorial.count}", visible: "tutorial.active" },
+          { widget: "label", class: "tutorial_text", text: "{tutorial.text}", visible: "tutorial.active" },
+          { widget: "label", class: "tutorial_hint", text: "{tutorial.hint}", visible: "tutorial.hint" },
+          { widget: "label", class: "tutorial_text", text: "That is the tutorial. Keep flying, or open the menu for another.", visible: "tutorial.finished" },
+          {
+            widget: "row",
+            style: { gap: 6, margin: [4, 0, 0, 0] },
+            children: [
+              { widget: "button", text: "Continue", action: "tutorial.next", visible: "tutorial.manual" },
+              { widget: "button", text: "Skip step", action: "tutorial.next", visible: "tutorial.skippable" },
+              { widget: "spacer" },
+              { widget: "button", text: "End tutorial", action: "tutorial.skip", visible: "tutorial.active" },
+              { widget: "button", text: "Close", action: "ui.hide:tutorial", visible: "tutorial.finished" },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}
