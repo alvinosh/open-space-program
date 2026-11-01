@@ -10,6 +10,18 @@
     start_time: 21600,
     craft: "pathfinder",
     start: { type: "LaunchSite", site: "cape_canaveral" },
+    // Goals and ways to fail (see docs/modding.md, Missions): met in any order unless
+    // `ordered: true`; the mission is passed when all are met.
+    goals: [
+      { id: "liftoff", text: "Leave the pad", when: { type: "Altitude", min: 100 } },
+      { id: "space", text: "Pass the Karman line", when: { type: "Altitude", min: 100000 } },
+      {
+        id: "orbit",
+        text: "Reach a stable orbit",
+        when: { type: "Orbit", body: "Earth", periapsis: { min: 150000 } },
+      },
+    ],
+    fail: [{ id: "lost", text: "The rocket was lost", when: { type: "Destroyed" } }],
   },
   {
     id: "crew",

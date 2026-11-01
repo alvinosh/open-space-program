@@ -1,5 +1,5 @@
-// Screen messages under the altimeter: the latest event (ignition, staging, SOI change)
-// and warp notices, for a few seconds each.
+// Screen messages under the altimeter: the latest event (ignition, staging, SOI change),
+// warp notices and mission news, for a few seconds each.
 {
   id: "messages",
   group: "flight",
@@ -11,6 +11,9 @@
     children: [
       { widget: "label", class: "warning notice", style: { font_size: 16 }, text: "{screen.message}", visible: "screen.message" },
       { widget: "label", class: "warning notice", text: "{time.notice}", visible: "time.notice" },
+      // A goal met or the mission passed, and the mission failed.
+      { widget: "label", class: "notice goal_notice", style: { font_size: 16 }, text: "{mission.notice}", visible: "mission.notice" },
+      { widget: "label", class: "warning notice", style: { font_size: 16 }, text: "{mission.notice_bad}", visible: "mission.notice_bad" },
       { widget: "label", class: "warning notice", text: "Simulation is lagging behind the requested warp", visible: "time.lagging" },
       // Map view: what a click on the trajectory does (the ghost node there says when).
       { widget: "label", class: "dim notice", text: "Click to add a manoeuvre, right-click for more", visible: "map.hovering" },

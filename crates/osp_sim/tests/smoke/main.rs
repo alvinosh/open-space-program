@@ -14,6 +14,7 @@
 //! The report lands in `target/smoke/<mission>/index.html` (see `docs/smoke-tests.md`).
 
 mod audit;
+mod first_orbit;
 mod pilot;
 mod planning;
 mod report;
@@ -84,4 +85,9 @@ fn run(mission: &Mission) {
 #[test]
 fn saturn_v() {
     run(&saturn_v::MISSION);
+}
+
+#[test]
+fn first_orbit() {
+    run(&first_orbit::MISSION);
 }

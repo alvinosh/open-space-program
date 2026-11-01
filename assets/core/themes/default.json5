@@ -471,5 +471,9 @@
     },
     error: { color: "#ff6b6b" },
     marker: { color: "#38e0c4", min_width: 10 },
+    // The mission's goals: a ring, filled with a tick once met, and the text lit teal.
+    goal_mark: { width: 14, height: 14, color: "#6f8496", active_color: "#38e0c4" },
+    goal_text: { color: "#e4edf4", active_color: "#38e0c4", grow: 1 },
+    goal_notice: { color: "#38e0c4", border_color: [0.22, 0.88, 0.77, 0.5] },
   },
 }

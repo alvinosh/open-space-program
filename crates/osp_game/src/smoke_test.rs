@@ -98,6 +98,8 @@ impl Plugin for SmokeTestPlugin {
                 MARS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_DEBRIS").is_some() {
                 DEBRIS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_MISSION").is_some() {
+                MISSION_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_HOVER").is_some() {
                 HOVER_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_PARTS").is_some() {
@@ -396,6 +398,19 @@ const PARTS_SCRIPT: &[(f64, Action)] = &[
     (3.6, Action::Ui("ui.hide:part_info:0-18")),
     (4.5, Action::Capture("parts_closed.png")),
     (4.7, Action::Exit),
+];
+
+/// On the pad (`OSP_CAPTURE_MISSION=1`, a scenario with goals such as `pad`): the goals window,
+/// a launch until "Leave the pad" is met (the notice and the tick), then the results window
+/// (opened by hand: the mission is not over).
+const MISSION_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (2.0, Action::Capture("mission_start.png")),
+    (2.2, Action::Launch),
+    (9.5, Action::Capture("mission_goal.png")),
+    (10.0, Action::Ui("ui.show:mission_results")),
+    (11.0, Action::Capture("mission_results.png")),
+    (12.0, Action::Exit),
 ];
 
 /// On the pad (`OSP_CAPTURE_HOVER=1`): the engines that light next are teal; a staging tile

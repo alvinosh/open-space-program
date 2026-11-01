@@ -1,0 +1,43 @@
+// What the player did, when the mission is passed or failed (opens by itself; the game goes
+// on behind it). Keep flying closes it, the menu picks another scenario.
+{
+  id: "mission_results",
+  visible: false,
+  root: {
+    widget: "window",
+    icon: "icons/target.svg",
+    title: "Mission {mission.state}",
+    style: { left: "50%", margin: [0, 0, 0, -190], top: 140, width: 380 },
+    children: [
+      { widget: "label", class: "warning", text: "{mission.reason}", visible: "mission.failed" },
+      {
+        widget: "column",
+        repeat: "mission.goals",
+        children: [
+          {
+            widget: "row",
+            class: "kv",
+            children: [
+              { widget: "image", class: "goal_mark", image: "icons/goal_done.svg", visible: "item.met", active: "item.met" },
+              { widget: "image", class: "goal_mark", image: "icons/goal.svg", visible: "!item.met" },
+              { widget: "label", class: "goal_text", text: "{item.text}", active: "item.met" },
+            ],
+          },
+        ],
+      },
+      { widget: "label", class: "section", text: "Flight" },
+      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Mission time" }, { widget: "label", text: "{mission.time|duration}" }] },
+      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Delta-v used" }, { widget: "label", text: "{mission.delta_v|speed}" }] },
+      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Peak acceleration" }, { widget: "label", text: "{mission.peak_g|fixed:1} g" }] },
+      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Highest altitude" }, { widget: "label", text: "{mission.max_altitude|distance}" }] },
+      {
+        widget: "row",
+        style: { gap: 6, margin: [8, 0, 0, 0] },
+        children: [
+          { widget: "button", text: "Keep flying", action: "ui.hide:mission_results" },
+          { widget: "button", text: "Main menu", action: "game.menu" },
+        ],
+      },
+    ],
+  },
+}

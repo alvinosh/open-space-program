@@ -79,7 +79,7 @@ parts of it instead.
 | `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), optional `top_diameter` (m, a third of `diameter` by default), `model`, `nodes` (see below) |
 | `craft` | Vessels | `parts`, each a `template` or a `shape` with `components`, held `on` another; optional `sequences`; see [Craft](#craft) and [Staging](#staging) |
 | `launch_sites` | Launch sites | Position, `heading`, optional `pad`, `roads` and `runway`; see [Launch sites](#launch-sites) |
-| `scenarios` | New-game setups | `name` and `description` (shown in the main menu, which lists scenarios in load order); `start: { type: "LaunchSite", site: "<id>" }`, `{ type: "Runway", site: "<id>" }` (at the start of the site's runway, on its wheels), `{ type: "Flight", body, latitude, longitude, altitude, heading, speed, climb }` (in the air, nose along the flight path, wings level; degrees, metres and m/s) or `{ type: "Orbit", body, periapsis_altitude, apoapsis_altitude, inclination, longitude_of_ascending_node, argument_of_periapsis, mean_anomaly }` (degrees, from the body's equator; `plane: "<body>"` instead takes the plane of a body that orbits it, like the Moon; `spin: [pitch, yaw, roll]` starts it turning, °/s); optional `others` and `target`; `OSP_SCENARIO=<id>` starts one without the menu |
+| `scenarios` | New-game setups | `name` and `description` (shown in the main menu, which lists scenarios in load order); `start: { type: "LaunchSite", site: "<id>" }`, `{ type: "Runway", site: "<id>" }` (at the start of the site's runway, on its wheels), `{ type: "Flight", body, latitude, longitude, altitude, heading, speed, climb }` (in the air, nose along the flight path, wings level; degrees, metres and m/s) or `{ type: "Orbit", body, periapsis_altitude, apoapsis_altitude, inclination, longitude_of_ascending_node, argument_of_periapsis, mean_anomaly }` (degrees, from the body's equator; `plane: "<body>"` instead takes the plane of a body that orbits it, like the Moon; `spin: [pitch, yaw, roll]` starts it turning, °/s); optional `others` and `target`; optional `goals`, `fail` and `ordered` (see [Missions](#missions)); `OSP_SCENARIO=<id>` starts one without the menu |
 | `layouts` | UI windows and panels | See [User interface](#user-interface) |
 | `themes` | Style classes | All theme records merge in load order |
 | `keybindings` | Key → action | All keybinding records combine |
@@ -697,6 +697,57 @@ wins. Real scale in metres, +Y up (Blender's default glTF export from Z-up):
 Without a model the game draws a stand-in of the right size. The stock models are built by
 scripts in `tools/blender/`.
 
+### Missions
+
+A scenario with `goals` is a mission: the game says what there is to do, ticks goals off as
+they are met, and shows the results when it ends. A scenario without goals is a start state and
+nothing else.
+
+```json5
+{
+  id: "pad",
+  // ... craft, start ...
+  goals: [
+    { id: "liftoff", text: "Leave the pad", when: { type: "Altitude", min: 100 } },
+    { id: "space", text: "Pass the Karman line", when: { type: "Altitude", min: 100000 } },
+    {
+      id: "orbit",
+      text: "Reach a stable orbit",
+      hold: 5, // the condition has to hold this long without a break, s (optional)
+      when: { type: "Orbit", body: "Earth", periapsis: { min: 150000 } },
+    },
+  ],
+  fail: [{ id: "lost", text: "The rocket was lost", when: { type: "Destroyed" } }],
+  ordered: false, // true: a goal only counts once the ones before it are met
+}
+```
+
+The mission is **passed** when every goal is met and **failed** the moment a `fail` entry holds
+(its `text` says why). Either ends it: the mission clock and statistics stop there, the results
+window opens, and the player can keep flying. A goal stays met once it has been. Conditions are
+judged on the simulation alone, after every physics tick and every jump on rails, for the
+vessel the player flies. A goal that names a body, launch site or vessel that does not exist
+stops the scenario from starting, with the reason.
+
+`when` is one of these (metres, m/s, degrees, kg and seconds; `min` and `max` are optional):
+
+| `type` | Holds while |
+| --- | --- |
+| `Altitude` | `min` / `max`: height above sea level of the body it is near |
+| `Speed` | `min` / `max`: speed over the ground (the air), or with `orbital: true` relative to the body's centre |
+| `Orbit` | In a stable orbit (the lowest point clear of the air) round `body`, with `apoapsis`, `periapsis` (altitudes) and `inclination` (to the body's equator) each a `{ min, max }` range, open ends allowed |
+| `Near` | Within `distance` of the vessel called `target` (a name from the scenario's `others`) and, with `speed`, slower than that relative to it; give the goal a `hold` to keep station |
+| `Landed` | On the ground, on `body` if given and within `radius` (500 by default) of the `launch_sites` id `site` if given; a crash is not landed |
+| `Recovered` | Back on the ground in one piece after flying, with the peak acceleration under `max_g`. There is no crew model yet, so "crew alive" is "vessel intact" |
+| `Propellant` | `min` / `max`: propellant left in the main tanks (not the RCS), kg |
+| `Destroyed` | The vessel broke up or hit the ground too hard |
+| `Elapsed` | `seconds` have passed since the mission began |
+
+Not there yet: battery charge (no electrical model), splashing down (no sea), crew lost (no crew).
+The results show the mission time, the delta-v the engines gave (thrust over mass, summed over
+physics ticks, so it counts what gravity and drag took too), the peak acceleration and the
+highest altitude. The UI reads it all from the `mission.*` data keys.
+
 ### Launch sites
 
 A launch site's pad and roads are part of its body's terrain: the ground is reshaped for
@@ -1048,6 +1099,10 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `manifest.items[]` | The rows the filters let through: `name`, `kind` (`body`, `vessel`, `debris`), `is_body`, `is_debris`, `key` (action argument), `parent`, `apoapsis`, `periapsis`, `distance` and `speed` (from what the camera follows), `is_target`, `is_active`, `is_followed`, `target_body`, `target_vessel`, `can_fly`, `can_recover` (landed on a world with a launch site), `can_destroy`, `confirming` (asking whether to remove it), `confirm_text` |
 | `manifest.show_bodies`, `manifest.show_vessels`, `manifest.show_debris` | The manifest's filters |
 | `manifest.debris_count`, `manifest.confirm_clear`, `manifest.following` | Debris that Clear debris would remove; it is asking whether to; the name of what the camera follows instead of the active vessel (empty if nothing) |
+| `mission.active`, `mission.state`, `mission.passed`, `mission.failed`, `mission.reason` | The scenario has goals; `running`, `passed` or `failed`; the `fail` text that ended it |
+| `mission.goals[]`, `mission.count`, `mission.met` | The goals in the order listed: `index`, `text`, `met`, `current` (the one being worked on, in an `ordered` mission), `held` (0..1, only while a goal that has to be held for a time is being held); how many, and how many are met |
+| `mission.time`, `mission.delta_v`, `mission.peak_g`, `mission.max_altitude` | The mission clock (s), delta-v the engines gave (m/s), peak acceleration (g) and highest altitude (m); they stop when the mission ends |
+| `mission.notice`, `mission.notice_bad` | A goal met or the mission passed, and the mission failed, for a few seconds each |
 | `mods.count`, `mods.errors`, `mods.warnings` | |
 | `mods.list[]` | `id`, `name`, `version`, `authors`, `description` |
 | `mods.problems[]` | `error` (bool), `text` |

@@ -13,6 +13,7 @@ use crate::{
     atmosphere::Atmosphere,
     component::{ComponentDef, PaintDef, StructureDef},
     geometry::{ShapeDef, preset::NodeDef},
+    mission::GoalDef,
     skip::*,
 };
 
@@ -901,6 +902,16 @@ pub struct ScenarioDef {
     /// What the player's vessel starts targeting: a body id or another vessel's name.
     #[serde(default)]
     pub target: Option<String>,
+    /// What there is to do (see [`crate::mission`]). The mission is passed when every goal is
+    /// met.
+    #[serde(default)]
+    pub goals: Vec<GoalDef>,
+    /// Ends the mission as failed when one holds; its `text` says why.
+    #[serde(default)]
+    pub fail: Vec<GoalDef>,
+    /// The goals are done one after another, in the order listed, not in any order.
+    #[serde(default)]
+    pub ordered: bool,
 }
 
 /// A vessel placed at the start of a game besides the player's.

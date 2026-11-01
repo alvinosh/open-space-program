@@ -2,7 +2,7 @@
   "id": "T165",
   "title": "Missions: goals, a checker and a results screen",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "content",
   "size": "M",
   "parent": null,
@@ -13,7 +13,7 @@
   ],
   "created": "2026-11-01",
   "updated": "2026-11-01",
-  "done": null,
+  "done": "2026-11-01",
   "milestone": "M2",
   "priority": 19
 }

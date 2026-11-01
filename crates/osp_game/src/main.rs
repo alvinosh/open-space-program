@@ -17,6 +17,7 @@ mod manifest;
 mod map_labels;
 mod menu;
 mod meshgen;
+mod mission;
 mod navball;
 mod orbit_lines;
 mod part_highlight;
@@ -147,7 +148,11 @@ fn main() -> AppExit {
             navball::NavballPlugin,
             ui_data::UiDataPlugin,
             smoke_test::SmokeTestPlugin,
-            (menu::MenuPlugin, windows::WindowsPlugin),
+            (
+                menu::MenuPlugin,
+                windows::WindowsPlugin,
+                mission::MissionPlugin,
+            ),
         ))
         // Map view and flight planning.
         .add_plugins((

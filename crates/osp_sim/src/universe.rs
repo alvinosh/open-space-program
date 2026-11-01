@@ -23,6 +23,7 @@ use thiserror::Error;
 use crate::{
     body::BodyId,
     data::{CraftDef, LaunchSiteDef, PartCatalog, ScenarioDef, StartDef, SystemDef},
+    mission::Mission,
     orbit::{Orbit, StateVector},
     rendezvous::Target,
     staging::Activation,
@@ -47,6 +48,8 @@ pub enum UniverseError {
     Craft(String),
     #[error("scenario target `{0}` is neither a body nor a vessel")]
     UnknownTarget(String),
+    #[error("{0}")]
+    Mission(String),
 }
 
 /// An event attributed to a vessel.
@@ -69,6 +72,8 @@ pub struct Universe {
     pub vessels: Vec<Vessel>,
     /// The vessel the player flies. The debris rules never apply to it.
     pub focus: Option<VesselId>,
+    /// What the scenario sets out to do, judged after every step (see [`crate::mission`]).
+    pub mission: Option<Mission>,
     time: SimTime,
     next_id: u64,
 }
@@ -79,6 +84,7 @@ impl Universe {
             system,
             vessels: Vec::new(),
             focus: None,
+            mission: None,
             time,
             next_id: 0,
         };
@@ -257,12 +263,15 @@ impl Universe {
         {
             return Err(UniverseError::UnknownTarget(target.clone()));
         }
+        let mission =
+            Mission::new(scenario, sites, &self.system).map_err(UniverseError::Mission)?;
         self.vessels.clear();
         self.time = time;
         for vessel in vessels {
             self.add_vessel(vessel);
         }
         self.focus = Some(self.vessels[0].id());
+        self.mission = mission;
         if let Some(target) = &scenario.target {
             self.vessels[0].target = self
                 .vessels
@@ -327,7 +336,16 @@ impl Universe {
                 self.remove_vessel(event.vessel);
             }
         }
+        self.observe_mission(&events, true);
         events
+    }
+
+    /// Let the mission look at the universe as it is now.
+    fn observe_mission(&mut self, events: &[SimEvent], physics: bool) {
+        if let Some(mut mission) = self.mission.take() {
+            mission.observe(self, events, physics);
+            self.mission = Some(mission);
+        }
     }
 
     /// Jump towards `target` analytically, processing trajectory events in time order.
@@ -410,6 +428,7 @@ impl Universe {
                 },
             });
         }
+        self.observe_mission(&outcome.events, false);
         outcome
     }
 }

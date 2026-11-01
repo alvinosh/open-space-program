@@ -56,6 +56,7 @@ pub mod geometry;
 pub mod integrator;
 pub mod kepler;
 pub mod mass;
+pub mod mission;
 pub mod orbit;
 pub mod parts;
 pub mod plan;
