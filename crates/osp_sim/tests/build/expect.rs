@@ -71,18 +71,11 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         row: "rcs",
-        columns: &["radial", "ring2", "ring3", "ring4", "ring6", "mirror"],
-        except: false,
+        columns: &["inside", "fairing"],
+        except: true,
         expect: Expect::Red(AERO, "T014"),
         why: "the block's catalogue model has no surface of its own for the air, so it is \
               left out of the outline",
-    },
-    Rule {
-        row: "rcs",
-        columns: &[],
-        except: false,
-        expect: Expect::Red(LOADS, "T014"),
-        why: "the gatherer only takes an RCS block standing on its stage's rim",
     },
     Rule {
         row: "storage",

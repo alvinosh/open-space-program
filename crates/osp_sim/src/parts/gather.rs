@@ -362,16 +362,7 @@ fn kind(
         .collect();
     match what.as_slice() {
         [Component::Engine(engine)] => Ok(PartKind::Engine(engine.clone())),
-        [Component::Rcs(block)] => {
-            if !local
-                .rotation
-                .mul_vec3(DVec3::Z)
-                .abs_diff_eq(DVec3::Z, NEAR)
-            {
-                return Err("an RCS block stands upright".into());
-            }
-            Ok(PartKind::Rcs(block.clone()))
-        }
+        [Component::Rcs(block)] => Ok(PartKind::Rcs(block.clone())),
         [Component::ReactionWheel(wheel)] => Ok(PartKind::ReactionWheel(wheel.clone())),
         [Component::Storage(_)] => tank(part, local),
         [Component::LiftingSurface(surface)] if fin(part) => fins

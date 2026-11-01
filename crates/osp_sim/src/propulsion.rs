@@ -285,11 +285,15 @@ pub struct RcsBlock {
     /// The part it is, and its section.
     pub part: PartId,
     pub section: usize,
-    /// Where the block sits on the stage's forward rim, seen from behind: offset from the
-    /// vessel axis in vessel X/Y, m.
-    pub mount: DVec2,
-    /// How hard each nozzle fired on the last physics tick, 0..1: the ones pushing forward,
-    /// back, around the axis towards positive roll, and the other way.
+    /// Where the block is, in the assembly frame like an engine's mount (vessel axes, from
+    /// the axis at the height the craft was built from), m.
+    pub mount: DVec3,
+    /// How the block is turned. Its nozzles push along its own axes: forward and back (+Z and
+    /// −Z) and sideways (+Y and −Y). A block on a stage's forward rim, turned to face outwards
+    /// (+X away from the axis), has its sideways nozzles going round the axis.
+    pub rotation: DQuat,
+    /// How hard each nozzle fired on the last physics tick, 0..1: the ones pushing along the
+    /// block's +Z, its −Z, its +Y and its −Y.
     pub firing: [f64; 4],
 }
 
@@ -840,7 +844,8 @@ impl Propulsion {
                     def: def.clone(),
                     part: part.id,
                     section: part.stage,
-                    mount: part.position.truncate(),
+                    mount: part.position,
+                    rotation: part.rotation,
                     firing: [0.0; 4],
                 }),
                 PartKind::Tank(tank) => tanks.push(Tank {
