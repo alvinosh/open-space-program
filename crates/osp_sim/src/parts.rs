@@ -23,7 +23,7 @@ mod gather;
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use glam::{DQuat, DVec2, DVec3};
+use glam::{DMat3, DQuat, DVec2, DVec3};
 
 use crate::{
     aero::Panel,
@@ -270,10 +270,8 @@ impl PartTree {
                 ],
             );
             hulls.push(hull);
-            // Each of the stage's parts is mounted on the hull, turned `angle` about the
-            // axis (from +X towards +Y).
-            let mut mount = |name: String, kind, position, angle: f64, carries| {
-                let rotation = DQuat::from_rotation_z(angle);
+            // Each of the stage's parts is mounted on the hull, turned `rotation`.
+            let mut mount = |name: String, kind, position, rotation: DQuat, carries| {
                 let connectors = vec![Connector::surface("mount", carries)];
                 let id = tree.add(stage, name, kind, position, rotation, connectors);
                 tree.part_mut(id).joint = Some(Joint {
@@ -301,7 +299,7 @@ impl PartTree {
                     name,
                     PartKind::Engine(Box::new(engine)),
                     at.extend(base),
-                    0.0,
+                    DQuat::IDENTITY,
                     plumbed,
                 );
             }
@@ -314,7 +312,13 @@ impl PartTree {
                     .ok_or_else(|| CraftError::UnknownReactionWheel(name.clone()))?;
                 let middle = DVec3::Z * (base + def.length / 2.0);
                 let kind = PartKind::ReactionWheel(wheel);
-                mount(name.clone(), kind, middle, 0.0, Capabilities::POWER);
+                mount(
+                    name.clone(),
+                    kind,
+                    middle,
+                    DQuat::IDENTITY,
+                    Capabilities::POWER,
+                );
             }
             // Evenly around the stage's forward rim.
             for (i, name) in def.rcs.iter().enumerate() {
@@ -333,7 +337,7 @@ impl PartTree {
                     name.clone(),
                     kind,
                     at.extend(base + def.length),
-                    angle,
+                    DQuat::from_rotation_z(angle),
                     plumbed,
                 );
             }
@@ -358,7 +362,7 @@ impl PartTree {
                     name.clone(),
                     PartKind::Pod(pod),
                     top,
-                    0.0,
+                    DQuat::IDENTITY,
                     Capabilities::POWER,
                 );
             }
@@ -368,7 +372,7 @@ impl PartTree {
                     "Fins".into(),
                     kind,
                     DVec3::Z * base,
-                    0.0,
+                    DQuat::IDENTITY,
                     Capabilities::NONE,
                 );
             }
@@ -378,7 +382,13 @@ impl PartTree {
                 let at = DVec2::from_angle(angle) * def.diameter / 2.0;
                 let root = at.extend(base + wing.position);
                 let kind = PartKind::Wing(wing.clone());
-                mount(wing.name.clone(), kind, root, angle, Capabilities::NONE);
+                mount(
+                    wing.name.clone(),
+                    kind,
+                    root,
+                    DQuat::from_rotation_z(angle),
+                    Capabilities::NONE,
+                );
             }
             for leg in &def.gear {
                 if leg.length <= 0.0 || leg.wheel_radius <= 0.0 || leg.stroke <= 0.0 {
@@ -394,10 +404,14 @@ impl PartTree {
                     )));
                 }
                 let angle = leg.angle.to_radians();
-                let at = DVec2::from_angle(angle) * def.diameter / 2.0;
-                let strut = at.extend(base + leg.position);
+                let out = DVec2::from_angle(angle).extend(0.0);
+                let strut = out * def.diameter / 2.0 + DVec3::Z * (base + leg.position);
+                // The part's −Z is the strut, out from the hull, and its +Y the way the wheel
+                // rolls: along the nose.
+                let turn = DMat3::from_cols(DVec3::Z.cross(-out), DVec3::Z, -out);
                 let kind = PartKind::Gear(leg.clone());
-                mount(leg.name.clone(), kind, strut, angle, Capabilities::NONE);
+                let rotation = DQuat::from_mat3(&turn);
+                mount(leg.name.clone(), kind, strut, rotation, Capabilities::NONE);
             }
             // Cylinders stack up from the stage base unless placed higher, each above the
             // one before; spheres sit inside, at the base unless placed.
@@ -436,7 +450,7 @@ impl PartTree {
                     name,
                     PartKind::Tank(tank),
                     bottom,
-                    0.0,
+                    DQuat::IDENTITY,
                     Capabilities::PLUMBED,
                 );
             }
@@ -466,7 +480,13 @@ impl PartTree {
                         shells: shells.clone(),
                     };
                     let release = Capabilities::RELEASE;
-                    mount("Fairing".into(), kind, DVec3::Z * base, angle, release);
+                    mount(
+                        "Fairing".into(),
+                        kind,
+                        DVec3::Z * base,
+                        DQuat::from_rotation_z(angle),
+                        release,
+                    );
                 }
                 shells.clear();
             }

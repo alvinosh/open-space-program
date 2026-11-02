@@ -10,7 +10,7 @@
 //! knows: a template's engine, pod, RCS block or reaction wheel, each at its own pose; a
 //! cylinder or sphere tank, at any pose; a shell stacked on the body; an even set of plate
 //! fins around its base; a wing on its side, with its mirror image if it has one; a gear leg
-//! standing out from it. Each part weighs what it is built as. A craft the stages cannot
+//! at any pose. Each part weighs what it is built as. A craft the stages cannot
 //! hold is refused with what is missing.
 
 use std::f64::consts::TAU;
@@ -383,27 +383,19 @@ fn kind(
             Ok(PartKind::Wing(def))
         }
         [Component::Gear(leg)] => {
+            // Its strut runs out along the part's −Z and its wheel rolls along its +Y, so the
+            // pose is all the physics needs; `position` and `angle` say where the strut
+            // stands on the stage in the terms of a stage's gear list.
             let strut = local.rotation * DVec3::NEG_Z;
-            let rolls = local.rotation * DVec3::Y;
-            let mount = local.position;
-            let outward = strut.truncate();
-            if strut.z.abs() > NEAR
-                || !rolls.abs_diff_eq(DVec3::Z, NEAR)
-                || (mount.truncate() - outward * radius).length() > NEAR
-            {
-                return Err(
-                    "a gear leg stands straight out from its stage's side, rolling along it".into(),
-                );
-            }
             Ok(PartKind::Gear(GearDef {
                 name: part.name.clone(),
-                position: mount.z,
-                angle: outward.y.atan2(outward.x).to_degrees(),
+                position: local.position.z,
+                angle: strut.y.atan2(strut.x).to_degrees(),
                 length: leg.length,
                 wheel_radius: leg.wheel_radius,
                 stroke: leg.stroke,
                 load: leg.load,
-                mass: leg.mass,
+                mass: part.built.mass.mass,
                 mirror: false,
                 brakes: leg.brakes,
                 steering: leg.steering,

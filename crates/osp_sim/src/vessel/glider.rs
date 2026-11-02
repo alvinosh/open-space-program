@@ -34,7 +34,7 @@ fn the_dolly_carries_its_wheels_out_from_the_belly() {
     let (v, t) = on_runway(&system);
     // Three wheels, each below the belly, not on the cabin's axis where the dolly's own
     // axis is not.
-    let legs = gear::legs(&v.propulsion.sections);
+    let legs = gear::legs(&v.propulsion);
     assert_eq!(legs.len(), 3);
     assert!(legs.iter().all(|l| l.mount.y > 0.5), "{legs:?}");
     // Level on its wheels, the axis a wheel and a belly above the runway.
@@ -93,10 +93,10 @@ fn the_glider_rockets_off_the_runway_and_lets_go_of_its_boosters_and_wheels() {
     // The next press lets the empty boosters go, the one after the wheels.
     let boosters = v.activate_next_stage(&system, t);
     assert_eq!(boosters.len(), 2);
-    assert_eq!(gear::legs(&v.propulsion.sections).len(), 3);
+    assert_eq!(gear::legs(&v.propulsion).len(), 3);
     let dolly = v.activate_next_stage(&system, t);
     assert_eq!(dolly.len(), 1);
-    assert!(gear::legs(&v.propulsion.sections).is_empty());
+    assert!(gear::legs(&v.propulsion).is_empty());
     let clean = v.mass.mass;
     assert!(
         (500.0..600.0).contains(&clean) && dry - clean > 100.0,

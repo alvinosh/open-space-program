@@ -1,7 +1,8 @@
 //! Landing gear: sprung, damped struts with wheels that roll along the ground.
 //!
-//! Each leg's strut stands out from the hull ([`GearDef`]) and its wheel touches the ground
-//! below its axle. The strut is a spring, stiff enough that the load it is built for sits
+//! Each leg is a part of the vessel ([`PartKind::Gear`]): its strut runs out along the part's
+//! −Z and its wheel rolls along the part's +Y, wherever the part is and however it is turned.
+//! The wheel touches the ground below its axle. The strut is a spring, stiff enough that the load it is built for sits
 //! it a third of the way into its travel, damped a little under critical, and much stiffer
 //! once it bottoms out. The ground pushes up along its normal; along the ground the wheel
 //! rolls the way it points (rolling resistance, plus brakes) and grips sideways like a
@@ -17,8 +18,14 @@
 use glam::{DQuat, DVec3};
 
 use crate::{
-    attitude::Attitude, body::Body, constants::G0, data::GearDef, orbit::StateVector,
-    propulsion::Section, time::SimTime,
+    attitude::Attitude,
+    body::Body,
+    constants::G0,
+    data::GearDef,
+    orbit::StateVector,
+    parts::{PartId, PartKind},
+    propulsion::Propulsion,
+    time::SimTime,
 };
 
 /// Rolling resistance of a tyre on paving.
@@ -50,6 +57,8 @@ pub struct Leg {
     pub mount: DVec3,
     /// Along the strut, out from the hull.
     pub direction: DVec3,
+    /// The way the wheel rolls, straight ahead (across the strut).
+    pub roll: DVec3,
     /// Hull to axle, fully extended, m.
     pub length: f64,
     pub wheel_radius: f64,
@@ -63,19 +72,36 @@ pub struct Leg {
     pub steering: f64,
     /// kg.
     pub mass: f64,
+    /// The part it belongs to, on a vessel.
+    pub part: Option<PartId>,
 }
 
 impl Leg {
-    /// The legs of `def` on a stage `hull_radius` wide whose base is `base` up the stack.
+    /// The legs of `def` on a stage `hull_radius` wide whose base is `base` up the stack,
+    /// standing out from its side and rolling along the nose.
     pub fn of(def: &GearDef, hull_radius: f64, base: f64) -> Vec<Leg> {
         let (s, c) = def.angle.to_radians().sin_cos();
         let direction = DVec3::new(c, s, 0.0);
+        let mount = direction * hull_radius + DVec3::Z * (base + def.position);
+        Self::placed(def, mount, direction, DVec3::Z)
+    }
+
+    /// The legs of `def` on a part at `mount` (stack coordinates) turned by `rotation`: the
+    /// strut runs out along its −Z and the wheel rolls along its +Y.
+    pub fn at(def: &GearDef, mount: DVec3, rotation: DQuat) -> Vec<Leg> {
+        Self::placed(def, mount, rotation * DVec3::NEG_Z, rotation * DVec3::Y)
+    }
+
+    /// `def` as a leg at `mount`, and its mirror image across the vessel's plane of symmetry
+    /// if it has one.
+    fn placed(def: &GearDef, mount: DVec3, direction: DVec3, roll: DVec3) -> Vec<Leg> {
         let stroke = def.stroke.max(1e-3);
         let stiffness = def.load * G0 / (stroke / 3.0);
         let count = if def.mirror { 2 } else { 1 };
         let leg = Leg {
-            mount: direction * hull_radius + DVec3::Z * (base + def.position),
+            mount,
             direction,
+            roll,
             length: def.length,
             wheel_radius: def.wheel_radius,
             stroke,
@@ -84,6 +110,7 @@ impl Leg {
             brakes: def.brakes,
             steering: def.steering.to_radians(),
             mass: def.mass / count as f64,
+            part: None,
         };
         let mut legs = vec![leg];
         if def.mirror {
@@ -91,6 +118,7 @@ impl Leg {
             legs.push(Leg {
                 mount: flip(leg.mount),
                 direction: flip(leg.direction),
+                roll: flip(leg.roll),
                 ..leg
             });
         }
@@ -107,20 +135,32 @@ impl Leg {
         let r = self.wheel_radius;
         0.6 * 2.0 * r * 0.7 * r + 0.08 * self.length
     }
+
+    /// The way the wheel rolls in the world when the vessel is turned to `orientation` and
+    /// steered by `steer` (−1..1), along the ground whose normal is `up`; zero if the wheel
+    /// would roll straight into or out of the ground.
+    fn heading(&self, orientation: DQuat, steer: f64, up: DVec3) -> DVec3 {
+        let turn = DQuat::from_axis_angle(self.direction, self.steering * steer.clamp(-1.0, 1.0));
+        (orientation * (turn * self.roll))
+            .reject_from(up)
+            .normalize_or_zero()
+    }
 }
 
-/// Every gear leg of a stack of stages, bottom first. A stage hanging beside the vessel's
-/// axis (a dolly under the belly) carries its legs out with it.
-pub fn legs(stages: &[Section]) -> Vec<Leg> {
+/// Every gear leg of a vessel, in the order of its parts. A stage hanging beside the
+/// vessel's axis (a dolly under the belly) carries its legs out with it, and a leg that is
+/// let go with its part is gone.
+pub fn legs(propulsion: &Propulsion) -> Vec<Leg> {
+    let tree = propulsion.parts();
+    let base = DVec3::Z * tree.base();
     let mut legs = Vec::new();
-    for (base, stage) in crate::propulsion::placed(stages) {
-        let offset = stage.bottom.truncate().extend(0.0);
-        for def in &stage.gear {
+    for part in tree.parts() {
+        if let PartKind::Gear(def) = &part.kind {
             legs.extend(
-                Leg::of(def, stage.diameter / 2.0, base)
+                Leg::at(def, part.position - base, part.rotation)
                     .into_iter()
                     .map(|leg| Leg {
-                        mount: leg.mount + offset,
+                        part: Some(part.id),
                         ..leg
                     }),
             );
@@ -202,11 +242,8 @@ pub fn contact(
         let spring = leg.stiffness * (compression + BOTTOMED * bottomed);
         let normal = (spring + leg.damping * rate).max(0.0);
 
-        // The way the wheel rolls: the nose, turned about the strut by the steering.
-        let turn = DQuat::from_axis_angle(leg.direction, leg.steering * steer.clamp(-1.0, 1.0));
-        let forward = (orientation * (turn * DVec3::Z))
-            .reject_from(up)
-            .normalize_or_zero();
+        // The way the wheel rolls: where it points, turned about the strut by the steering.
+        let forward = leg.heading(orientation, steer, up);
         let side = up.cross(forward);
         let braking = if brakes && leg.brakes { BRAKING } else { 0.0 };
         let roll = -(ROLLING + braking) * normal * (velocity.dot(forward) / ROLL_SLIP).tanh();
@@ -263,6 +300,7 @@ pub fn skid(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{data::CraftDef, test_data::records, vessel::tests::catalog};
 
     fn leg(angle: f64, mirror: bool) -> GearDef {
         GearDef {
@@ -300,5 +338,118 @@ mod tests {
         // Hull 0.5, strut 1.0 less 0.1 settled, wheel 0.3.
         assert!((rest_height(&legs).unwrap() - 1.7).abs() < 1e-12);
         assert_eq!(rest_height(&Leg::of(&leg(0.0, false), 0.5, 0.0)), None);
+    }
+
+    /// The pose the stage converter gives a leg standing out at `angle` from the hull: its
+    /// −Z along the strut, its +Y along the nose.
+    fn stage_pose(angle: f64) -> DQuat {
+        let out = glam::DVec2::from_angle(angle.to_radians()).extend(0.0);
+        DQuat::from_mat3(&glam::DMat3::from_cols(
+            DVec3::Z.cross(-out),
+            DVec3::Z,
+            -out,
+        ))
+    }
+
+    #[test]
+    fn a_leg_at_a_pose_runs_out_along_minus_z_and_rolls_along_y() {
+        let def = leg(90.0, false);
+        let mount = DVec3::new(1.0, 2.0, 3.0);
+        let [leg] = Leg::at(&def, mount, DQuat::IDENTITY).try_into().unwrap();
+        assert_eq!(leg.mount, mount);
+        assert_eq!(leg.direction, DVec3::NEG_Z);
+        assert_eq!(leg.roll, DVec3::Y);
+        // Turned a quarter about the strut, the wheel rolls the other way.
+        let turned = DQuat::from_rotation_z(std::f64::consts::FRAC_PI_2);
+        let [leg] = Leg::at(&def, mount, turned).try_into().unwrap();
+        assert!((leg.roll - DVec3::NEG_X).length() < 1e-12);
+        assert!((leg.direction - DVec3::NEG_Z).length() < 1e-12);
+    }
+
+    #[test]
+    fn a_leg_placed_as_a_stage_places_it_is_the_stage_s_leg() {
+        for (angle, mirror) in [(60.0, true), (90.0, false), (35.0, true)] {
+            let def = leg(angle, mirror);
+            let old = Leg::of(&def, 0.5, 10.0);
+            let (s, c) = angle.to_radians().sin_cos();
+            let mount = DVec3::new(c, s, 0.0) * 0.5 + DVec3::Z * 12.0;
+            let new = Leg::at(&def, mount, stage_pose(angle));
+            assert_eq!(old.len(), new.len());
+            for (old, new) in old.iter().zip(&new) {
+                assert!((old.mount - new.mount).length() < 1e-12);
+                assert!((old.direction - new.direction).length() < 1e-12);
+                assert!((old.roll - new.roll).length() < 1e-12);
+                assert_eq!(
+                    (old.stiffness, old.damping, old.mass),
+                    (new.stiffness, new.damping, new.mass)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_wheel_rolls_the_way_it_points_turned_by_its_steering() {
+        let mut def = leg(90.0, false);
+        def.steering = 30.0;
+        // On level ground, the vessel upright, a wheel built to roll along X goes along X.
+        let sideways = Leg {
+            roll: DVec3::X,
+            ..Leg::of(&def, 0.5, 0.0)[0]
+        };
+        let up = DVec3::Y;
+        let orientation = DQuat::IDENTITY;
+        let straight = sideways.heading(orientation, 0.0, up);
+        assert!((straight - DVec3::X).length() < 1e-12);
+        // Full steering swings it 30° about the strut (here along +Y, the ground's normal).
+        let steered = sideways.heading(orientation, 1.0, up);
+        assert!((steered.angle_between(DVec3::X) - 30f64.to_radians()).abs() < 1e-9);
+        assert!(steered.dot(up).abs() < 1e-12);
+        // Rolling straight into the ground, it has no heading.
+        let into = Leg {
+            roll: DVec3::Y,
+            ..sideways
+        };
+        assert_eq!(into.heading(orientation, 0.0, up), DVec3::ZERO);
+    }
+
+    /// A shell hanging a wheel under its tail as `placement` says.
+    fn wheel_under_a_tail(placement: &str) -> Propulsion {
+        let text = format!(
+            r#"{{ id: "wheel_test", name: "", parts: [
+                {{ id: "host", shape: {{ shell: {{ bottom_diameter: 1.0,
+                    sections: [{{ length: 3.0 }}], cap_bottom: true, cap_top: true }} }},
+                  structure: {{ mass: 120 }}, components: [{{ container: {{}} }}] }},
+                {{ id: "wheel", on: "host.bottom", by: "mount", {placement},
+                  shape: {{ ring: {{ diameter: 0.12, height: 0.2, thickness: 0.06 }} }},
+                  structure: {{ mass: 1 }},
+                  nodes: [{{ name: "mount", position: [0, 0, 0], direction: [0, 0, 1], size: 0.1 }}],
+                  components: [{{ gear: {{ length: 0.8, load: 300, mass: 10 }} }}] }}
+            ] }}"#
+        );
+        let def: CraftDef = records(&text).remove(0);
+        Propulsion::from_craft(&def, &catalog()).unwrap()
+    }
+
+    #[test]
+    fn a_vessels_legs_are_its_gear_parts_however_they_are_turned() {
+        let ahead = wheel_under_a_tail("roll: 0");
+        let turned = wheel_under_a_tail("roll: 90");
+        for p in [&ahead, &turned] {
+            let legs = legs(p);
+            let [leg] = legs.as_slice() else {
+                panic!("{legs:?}")
+            };
+            // Out of the tail, down the stack, from the base.
+            assert!((leg.mount - DVec3::ZERO).length() < 1e-9, "{}", leg.mount);
+            assert!((leg.direction - DVec3::NEG_Z).length() < 1e-9);
+            assert!(leg.roll.dot(leg.direction).abs() < 1e-9);
+            let part = p.parts().get(leg.part.unwrap()).unwrap();
+            assert!(matches!(part.kind, PartKind::Gear(_)));
+        }
+        // A quarter turn about the strut turns the way it rolls a quarter.
+        let (a, b) = (legs(&ahead)[0].roll, legs(&turned)[0].roll);
+        assert!(a.dot(b).abs() < 1e-9 && (a.cross(b).length() - 1.0).abs() < 1e-9);
+        // The whole part weighs, not only the leg.
+        assert!((turned.mass() - (120.0 + 11.0)).abs() < 1e-9);
     }
 }

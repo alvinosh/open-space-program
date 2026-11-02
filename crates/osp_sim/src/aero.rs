@@ -578,10 +578,14 @@ impl Shape {
 
         let mut shape = Self::from_stations(stations, fins, &engines);
         shape.surfaces = with_downwash(surfaces);
-        shape.gear = gear::legs(stages)
+        // A leg's drag is at its middle; it is shielded only if its wheel is inside the body
+        // as well (a strut lying along the skin has its wheel out in the air).
+        shape.gear = gear::legs(propulsion)
             .iter()
+            .filter(|leg| {
+                !(body.encloses(leg.axle(0.0)) && body.encloses(leg.axle(leg.length / 2.0)))
+            })
             .map(|leg| (leg.axle(leg.length / 2.0), leg.drag_area()))
-            .filter(|&(at, _)| !body.encloses(at))
             .collect();
         shape
     }

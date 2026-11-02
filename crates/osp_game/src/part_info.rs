@@ -20,9 +20,7 @@ use bevy::{
 };
 use osp_sim::{
     data::{ShellProfile, TankShape},
-    gear::Leg,
     parts::{Part, PartId, PartKind, PartTree},
-    propulsion::Section,
     staging::Activation,
     structure::{self, Mode},
     vessel::{Vessel, VesselId},
@@ -65,27 +63,13 @@ pub struct ShowsPart {
     pub part: PartId,
 }
 
-/// The parts of craft stage `stage` that `kind` picks, in the order its [`Section`] lists
+/// The parts of craft stage `stage` that `kind` picks, in the order its `Section` lists
 /// them (it is gathered from the tree in this order).
 pub fn stage_parts(tree: &PartTree, stage: usize, kind: fn(&PartKind) -> bool) -> Vec<PartId> {
     tree.stage(stage)
         .filter(|p| kind(&p.kind))
         .map(|p| p.id)
         .collect()
-}
-
-/// The part of each gear leg of a stack, in the order of [`osp_sim::gear::legs`]. A part
-/// marked `mirror` has two legs (craft files list each leg as a part of its own).
-pub fn leg_parts(tree: &PartTree, stages: &[Section]) -> Vec<Option<PartId>> {
-    let mut parts = Vec::new();
-    for stage in stages {
-        let ids = stage_parts(tree, stage.id, is_gear);
-        for (g, def) in stage.gear.iter().enumerate() {
-            let legs = Leg::of(def, stage.diameter / 2.0, 0.0).len();
-            parts.extend(std::iter::repeat_n(ids.get(g).copied(), legs));
-        }
-    }
-    parts
 }
 
 /// The left half of a mirrored wing: the stage's `Mirror` part across the vessel's plane
@@ -107,10 +91,6 @@ pub fn is_wing(kind: &PartKind) -> bool {
 
 pub fn is_fins(kind: &PartKind) -> bool {
     matches!(kind, PartKind::Fins(_))
-}
-
-fn is_gear(kind: &PartKind) -> bool {
-    matches!(kind, PartKind::Gear(_))
 }
 
 fn is_tank(kind: &PartKind) -> bool {
@@ -469,10 +449,10 @@ fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
         }
         PartKind::Gear(def) => {
             // How far into its travel the strut is: the most of its legs.
-            let travel = leg_parts(tree, stages)
+            let travel = osp_sim::gear::legs(&vessel.propulsion)
                 .iter()
                 .zip(vessel.gear_compression())
-                .filter(|(id, _)| **id == Some(part.id))
+                .filter(|(leg, _)| leg.part == Some(part.id))
                 .map(|(_, &c)| c)
                 .fold(0.0, f64::max);
             set("compression", (travel / def.stroke.max(1e-9)).into());

@@ -47,13 +47,6 @@ pub const RULES: &[Rule] = &[
               second is refused",
     },
     Rule {
-        row: "gear",
-        columns: &[],
-        except: false,
-        expect: Expect::Red(LOADS, "T014"),
-        why: "the gatherer only takes a gear leg standing straight out of its stage's side",
-    },
-    Rule {
         row: "wing",
         columns: &["fairing"],
         except: false,

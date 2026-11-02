@@ -7,10 +7,7 @@
 //! part's visuals say which part they show, so the player can right-click it (see
 //! [`crate::part_info`]).
 
-use std::{
-    collections::{HashMap, HashSet},
-    f32::consts::FRAC_PI_2,
-};
+use std::collections::{HashMap, HashSet};
 
 use bevy::{light::NotShadowCaster, prelude::*};
 use osp_sim::{
@@ -28,7 +25,7 @@ use crate::{
     FrameSet,
     content::{GameContent, mod_asset_path},
     frame::{RenderFrame, rotation_to_render, to_render},
-    part_info::{ShowsPart, leg_parts},
+    part_info::ShowsPart,
     part_mesh::{Canvas, Looks, axes, bevy_mesh, part_meshes},
     plume::{
         AXIS_LAG, Jet, JetKind, MAX_JETS, PlumeCluster, PlumeDef, PlumeMaterial, PlumeParams,
@@ -500,14 +497,9 @@ fn rebuild_on_change(
                 }
             }
             let strut = meshes.add(Cylinder::new(1.0, 1.0));
-            let leg_parts = leg_parts(tree, stages);
-            for (k, leg) in osp_sim::gear::legs(stages).iter().enumerate() {
+            for (k, leg) in osp_sim::gear::legs(propulsion).iter().enumerate() {
                 let r = leg.wheel_radius as f32;
-                let shows = leg_parts
-                    .get(k)
-                    .copied()
-                    .flatten()
-                    .map(|part| ShowsPart { vessel, part });
+                let shows = leg.part.map(|part| ShowsPart { vessel, part });
                 let mut visual = parent.spawn((
                     GearVisual {
                         vessel,
@@ -886,7 +878,7 @@ fn update_gear(sim: Res<Sim>, mut parts: Query<(&GearVisual, &mut Transform)>) {
         let Some(vessel) = sim.universe.vessel(visual.vessel) else {
             continue;
         };
-        let legs = osp_sim::gear::legs(&vessel.propulsion.sections);
+        let legs = osp_sim::gear::legs(&vessel.propulsion);
         let Some(leg) = legs.get(visual.leg) else {
             continue;
         };
@@ -900,8 +892,17 @@ fn update_gear(sim: Res<Sim>, mut parts: Query<(&GearVisual, &mut Transform)>) {
         let along = to_render(leg.direction);
         *transform = if visual.wheel {
             let steer = (leg.steering * vessel.flight.control.y.clamp(-1.0, 1.0)) as f32;
+            // The axle lies across the way the wheel rolls and level (across the pilot's
+            // down); a wheel that rolls along the pilot's down has it across its strut.
+            let level = leg.roll.cross(DVec3::Y);
+            let across = if level.length() > 0.2 {
+                level
+            } else {
+                leg.direction.cross(leg.roll)
+            };
             Transform::from_translation(axle).with_rotation(
-                Quat::from_axis_angle(along, steer) * Quat::from_rotation_z(FRAC_PI_2),
+                Quat::from_axis_angle(along, steer)
+                    * Quat::from_rotation_arc(Vec3::Y, to_render(across).normalize()),
             )
         } else {
             let width = 0.25 * leg.wheel_radius as f32;

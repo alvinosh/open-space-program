@@ -235,7 +235,9 @@ component works with any shape that has what it needs:
   `control` surface as on wings.
 - `container`: things can mount on the inside of its walls and on its inside `nodes`.
 - `gear`: a leg's `length`, `wheel_radius`, `stroke`, `load`, `mass`, `brakes` and
-  `steering`, its strut out along the part's −Z.
+  `steering`, its strut out along the part's −Z and its wheel rolling along the part's +Y
+  (turn the part about the strut, with `roll`, to roll the wheel another way). The leg can
+  stand anywhere on the craft at any angle; it is the part that weighs, not only the leg.
 
 `{ mirrored: <shape> }` reflects a shape left to right, for the left wing of a right one.
 Engine, pod, RCS and reaction wheel records become parts of this kind when placed.
@@ -525,7 +527,7 @@ gear: [
 ],
 ```
 
-Wheels roll along the nose, grip sideways like tyres and brake up to the friction their
+Wheels roll along the nose (in a craft's parts: along the part's +Y), grip sideways like tyres and brake up to the friction their
 load allows; fixed gear adds drag in the air. Near the ground a vessel on gear is
 integrated in 2 ms substeps. Anything else that touches the ground (the hull, a wing tip)
 skids on it; hitting the ground with it faster than 5 m/s is a crash. Standing still on its

@@ -412,7 +412,7 @@ impl Vessel {
             body.orientation(time) * attitude,
             time,
         )?;
-        let legs = gear::legs(&vessel.propulsion.sections);
+        let legs = gear::legs(&vessel.propulsion);
         let height = gear::rest_height(&legs)
             .unwrap_or_else(|| vessel.propulsion.sections[0].diameter / 2.0);
         let ground = body.radius + body.terrain_height(up);
@@ -1289,7 +1289,7 @@ impl Vessel {
         // On or near the ground on landing gear, rotation and translation are integrated
         // together in short substeps (`roll`). Parked on its wheels, a vessel rolls away as
         // soon as anything pushes it; come to rest on anything else, it stays put.
-        let legs = gear::legs(&self.propulsion.sections);
+        let legs = gear::legs(&self.propulsion);
         let rolling = !legs.is_empty()
             && match &self.motion {
                 Motion::Integrated(encke) => near_ground(body, &encke.state(), t0, &legs, com),
