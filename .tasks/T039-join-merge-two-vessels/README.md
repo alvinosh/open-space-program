@@ -22,7 +22,7 @@
 
 - Nothing in the game calls it yet, so no one has seen a joined stack drawn: T040.
 - What an ordinary decoupler sheds still loses its sequences (`from_released`). The lunar module coming off the CSM with the S-IVB must keep its own: T041 or T044.
-- A joined vessel's rows in `stage_info` leave out the mass of the vessel it joined, so its delta-v reads high.
+- A joined vessel's rows in `stage_info` left out the mass of the vessel it joined: fixed with T040.
 - A fin set on a section turned round is placed as if upright (`Shape::new`): wrong only for a joined stack with fins in air.
 - The push at letting go adds no turn when it does not pass through the centres of mass, as in all staging.
 - An empty sequence the player made on the vessel that joined stays with the other one when they part.

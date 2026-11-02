@@ -11,6 +11,9 @@
 // a group of identical parts goes first.
 // `self.mark` is the window's colour: its frame wears it (`accent`), and the part is tinted
 // in it on the vessel, so several open windows can be told apart.
+// `self.can_target` says it is a part of another vessel that the one flown could head for, and
+// `self.targeted` that it is: a part with a docking port means that port, the one to dock with,
+// and `self.target_label` says so.
 {
   id: "part_info",
   instanced: true,
@@ -42,6 +45,8 @@
           },
         ],
       },
+      { widget: "button", class: "step_button", visible: "self.can_target", text: "{self.target_label}", action: "target.part:{self.key}" },
+      { widget: "button", class: "step_button", visible: "self.targeted", active: "self.targeted", text: "Clear target", action: "target.clear" },
       {
         id: "actions",
         widget: "column",

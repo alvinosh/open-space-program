@@ -10,9 +10,9 @@
 //! Neither vessel was built to hang from the other: their sections keep the relations they were
 //! built with ([`crate::parts::PartTree::holders`]), and neither gets in the way of the other's
 //! exhaust. An engine of the vessel that joined goes out, unless it is a solid, which nothing
-//! stops: it stays off until lit by hand, and is armed again when the vessel lets go. What the
-//! burn executor and the readouts call the bottom of the stack is that of the vessel flown from
-//! ([`Propulsion::flown`]).
+//! stops: it stays off until lit by hand, and is armed again when the vessel lets go. Only the
+//! vessel flown from ([`Propulsion::flown`]) fires its RCS, and what the burn executor and the
+//! readouts call the bottom of the stack is its own.
 //!
 //! A [`Joined`] remembers what the joined vessel takes back. Letting go of the joint gives it
 //! that, its own numbers, its old root and its own frame ([`Propulsion::go_home`]). A piece that
@@ -102,7 +102,7 @@ impl Propulsion {
 
     /// Take `other`'s parts on, its node `to` joined to this vessel's `at`, turned `roll`. Returns
     /// what its part at the join is called here: the joint hanging from it lets go
-    /// ([`crate::staging::Activation::decoupler`]). Nothing changes on an error.
+    /// ([`crate::staging::Activation::undock`]). Nothing changes on an error.
     pub fn join(
         &mut self,
         mut other: Propulsion,
@@ -198,6 +198,11 @@ impl Propulsion {
         self.joined.iter().map(|j| j.part)
     }
 
+    /// The vessels that have joined it, as they were: nothing of their parts.
+    pub fn joined_vessels(&self) -> impl Iterator<Item = &Vessel> {
+        self.joined.iter().filter_map(|j| j.vessel.as_deref())
+    }
+
     /// Each engine and RCS block where its part is.
     fn follow_parts(&mut self) {
         for engine in &mut self.engines {
@@ -223,7 +228,7 @@ impl Propulsion {
 
     /// Whether section `id` belongs to the vessel it is flown from: this one, unless it is
     /// controlled from a part of one that joined it.
-    pub(super) fn flown(&self, id: usize) -> bool {
+    pub fn flown(&self, id: usize) -> bool {
         if self.joined.is_empty() {
             return true;
         }

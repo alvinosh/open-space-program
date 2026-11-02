@@ -15,7 +15,8 @@
           proxy: { compound: [{ shape: { prism: { sides: 8, diameter: 4.0, length: 3.7 } }, position: [0, 0, -0.89] }] },
           nodes: [
             { name: "interstage", position: [0, 0, -0.89], direction: [0, 0, -1], size: 2.0 },
-            { name: "dock", position: [0, 0, 2.85], direction: [0, 0, 1], size: 0.8 },
+            // The rim of the tunnel on the cabin's roof, which the command module's nose meets.
+            { name: "dock", position: [0, 0, 2.0], direction: [0, 0, 1], size: 1.0 },
             { name: "aps", position: [0, 0, 0], direction: [0, 0, -1], size: 0.9 },
             { name: "fuel", position: [-1.6, 0, 0.1], direction: [0, 0, 1], size: 1.2 },
             { name: "oxidizer", position: [1.0, 0, 0.1], direction: [0, 0, 1], size: 1.2 },
@@ -35,6 +36,7 @@
         { avionics: { controlled_mass: 20000, interplanetary: true } },
         { antenna: { power: 20, data_rate: 51.2 } },
         { battery: { charge: 59675 } },
+        { docking_port: { node: "dock", kind: "drogue" } },
       ],
     },
     { id: "aps_engine", name: "Ascent engine", on: "ascent_stage.aps", by: "top", template: "LMAE" },

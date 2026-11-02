@@ -767,8 +767,8 @@ impl PartTree {
         self.break_off(id)
     }
 
-    /// What the decouplers at the joint `id` hangs from push its two sides apart with,
-    /// N·s: those of either part whose `node` is the connector the joint holds it by.
+    /// What the decouplers and docking ports at the joint `id` hangs from push its two sides
+    /// apart with, N·s: those of either part whose `node` is the connector the joint holds it by.
     pub fn release_impulse(&self, id: PartId) -> f64 {
         let Some((part, joint)) = self.get(id).and_then(|p| Some((p, p.joint?))) else {
             return 0.0;
@@ -785,6 +785,11 @@ impl PartTree {
                     .flat_map(|b| &b.components)
                     .filter_map(move |component| match component {
                         crate::component::Component::Decoupler(d)
+                            if Some(d.node.as_str()) == name =>
+                        {
+                            Some(d.impulse)
+                        }
+                        crate::component::Component::DockingPort(d)
                             if Some(d.node.as_str()) == name =>
                         {
                             Some(d.impulse)

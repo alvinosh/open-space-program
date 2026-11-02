@@ -1,7 +1,7 @@
 //! The mission world: a universe flown the way a player flies it (throttle, stage key, SAS,
 //! RCS, burns on the map), with everything that happens written down for the report.
 
-use std::{collections::BTreeMap, path::Path};
+use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 use osp_sim::{
     DVec3,
@@ -238,6 +238,9 @@ impl World {
             Universe::new_game(&system, Vec::new(), &sites, &catalog, craft_of, &scenario).unwrap();
         let stations: Vec<GroundStationDef> = registry.all("ground_stations", &mut diagnostics);
         universe.set_stations(&stations);
+        universe
+            .colliders
+            .set_files(Arc::new(content.file_reader()));
         let focus = universe.focus.unwrap();
         let start = universe.time();
         let phases = plan
@@ -450,6 +453,8 @@ impl World {
             VesselEventKind::Destroyed => "Vessel destroyed".to_owned(),
             VesselEventKind::BurnDue => "Burn due".to_owned(),
             VesselEventKind::BurnEnded => return,
+            VesselEventKind::Docked => "Docked".to_owned(),
+            VesselEventKind::Bumped { speed } => format!("Bumped at {speed:.2} m/s"),
         };
         let _ = met;
         self.event(text);

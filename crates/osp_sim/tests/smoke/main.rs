@@ -14,6 +14,7 @@
 //! The report lands in `target/smoke/<mission>/index.html` (see `docs/smoke-tests.md`).
 
 mod audit;
+mod docking;
 mod first_orbit;
 mod lunar_module;
 mod pilot;
@@ -92,6 +93,11 @@ fn saturn_v() {
 #[test]
 fn lunar_module() {
     run(&lunar_module::MISSION);
+}
+
+#[test]
+fn docking() {
+    run(&docking::MISSION);
 }
 
 #[test]

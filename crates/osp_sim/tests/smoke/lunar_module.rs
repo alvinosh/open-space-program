@@ -334,8 +334,8 @@ fn fly(w: &mut World) -> Flight {
     w.gap(
         Area::Docking,
         "Back to the command module",
-        "It has reached orbit and stops there: nothing can dock yet (T040), so it cannot get the \
-         crew back to the command module.",
+        "It has reached orbit and stops there: this mission has no command module up there to \
+         meet. The `docking` mission flies that part, and T180 joins them up.",
     );
     Ok(())
 }

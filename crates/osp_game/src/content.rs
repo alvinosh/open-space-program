@@ -223,6 +223,10 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
         .map_err(|e| e.to_string())?;
     let stations = registry.all::<GroundStationDef>("ground_stations", &mut diagnostics);
     universe.set_stations(&stations);
+    // What vessels collide with is what is drawn, models included.
+    universe
+        .colliders
+        .set_files(Arc::new(content.file_reader()));
     let tech = TechTree::new(registry.all::<TechNodeDef>("tech_nodes", &mut diagnostics));
     check_dates(&tech, &catalog, registry, &scenario, &mut diagnostics);
     Ok(NewGame {

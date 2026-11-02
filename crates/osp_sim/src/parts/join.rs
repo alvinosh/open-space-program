@@ -22,7 +22,7 @@ impl Part {
     }
 
     /// Whether the part's connector `name` holds a joint.
-    fn holds_joint(&self, tree: &PartTree, name: &str) -> bool {
+    pub(crate) fn holds_joint(&self, tree: &PartTree, name: &str) -> bool {
         (self.connectors.iter().enumerate())
             .filter(|(_, c)| c.name == name)
             .any(|(k, _)| {
@@ -105,9 +105,11 @@ impl PartTree {
                 port.node, part.name
             ));
         }
-        // As a craft's own joints: only a decoupler says otherwise, and it may not pass propellant.
+        // As a craft's own joints: only a decoupler or a docking port says otherwise, and it may
+        // not pass propellant.
         let crossfeed = built.components.iter().find_map(|c| match c {
             Component::Decoupler(d) if d.node == port.node => Some(d.crossfeed),
+            Component::DockingPort(d) if d.node == port.node => Some(d.crossfeed),
             _ => None,
         });
         let connector = Connector {

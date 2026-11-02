@@ -2,7 +2,7 @@
   "id": "T074",
   "title": "Decide the contact solver",
   "kind": "decision",
-  "status": "todo",
+  "status": "done",
   "area": "physics",
   "size": "S",
   "parent": "T072",
@@ -11,8 +11,8 @@
     "Early feature checklist (since removed), Decisions to make"
   ],
   "created": "2026-10-30",
-  "updated": "2026-10-30",
-  "done": null,
+  "updated": "2026-11-02",
+  "done": "2026-11-02",
   "milestone": "M0",
   "priority": 1
 }

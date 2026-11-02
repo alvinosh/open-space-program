@@ -87,6 +87,7 @@ pub fn inspect(w: &mut World) -> Audit {
                     runs.push(format!("crew: {seats} seats"));
                 }
                 Component::Decoupler(_) => runs.push("decoupler".into()),
+                Component::DockingPort(_) => runs.push("docking port".into()),
                 Component::LiftingSurface(_) => runs.push("lifting surface".into()),
                 Component::Container(_) => runs.push("container".into()),
                 Component::Gear(_) => runs.push("landing gear".into()),

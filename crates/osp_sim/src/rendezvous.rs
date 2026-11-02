@@ -12,6 +12,7 @@ use glam::DVec3;
 use crate::{
     body::BodyId,
     orbit::{Orbit, StateVector},
+    parts::PartId,
     plan::Burn,
     time::SimTime,
     vessel::VesselId,
@@ -22,6 +23,19 @@ use crate::{
 pub enum Target {
     Body(BodyId),
     Vessel(VesselId),
+    /// One part of a vessel: its docking port if it has one, or else its middle. The vessel
+    /// itself once the part has left it.
+    Part(VesselId, PartId),
+}
+
+impl Target {
+    /// The vessel it is, or is a part of.
+    pub fn vessel(self) -> Option<VesselId> {
+        match self {
+            Target::Body(_) => None,
+            Target::Vessel(id) | Target::Part(id, _) => Some(id),
+        }
+    }
 }
 
 /// A local minimum of the distance between two motions.

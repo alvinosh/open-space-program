@@ -29,6 +29,7 @@ use crate::{
         CraftDef, EngineDef, GearDef, PartCatalog, PodDef, RcsDef, StagedCraftDef, TankShape,
         WingDef,
     },
+    docking::DockingPort,
     environment::Environment,
     parts::{JointWay, Part, PartId, PartKind, PartTree},
     shell::Shell,
@@ -678,6 +679,8 @@ pub struct Propulsion {
     feeds: BTreeMap<PartId, Vec<usize>>,
     /// How the air sees the parts, once worked out.
     shape: OnceLock<Arc<Shape>>,
+    /// The docking ports on the parts, once worked out.
+    ports: OnceLock<Vec<DockingPort>>,
     /// Sections hollow along the axis of the section they hang from: nothing lies across
     /// it, so that section's exhaust goes straight through (an interstage ring, the
     /// Atlas's booster skirt).
@@ -807,19 +810,36 @@ impl Propulsion {
         self.needs_control = true;
     }
 
-    /// How the part it is flown from is turned on the vessel.
+    /// How the part it is flown from is turned on the vessel: its port's frame if it has one, so
+    /// that flying from it is looking out of the port.
     pub fn control_rotation(&self) -> DQuat {
-        (self.control_part)
-            .and_then(|part| self.parts.get(part))
-            .map_or(DQuat::IDENTITY, |part| part.rotation)
+        let Some(part) = self.control_part.and_then(|part| self.parts.get(part)) else {
+            return DQuat::IDENTITY;
+        };
+        self.docking_ports()
+            .iter()
+            .find(|port| port.part == part.id)
+            .map_or(part.rotation, |port| port.frame)
     }
 
     /// Whether `part` can be flown from.
     fn controls(&self, part: PartId) -> bool {
-        self.systems
-            .on(part)
-            .iter()
-            .any(|s| s.kind() == "avionics" || s.kind() == "crew")
+        self.docking_ports().iter().any(|port| port.part == part)
+            || self
+                .systems
+                .on(part)
+                .iter()
+                .any(|s| s.kind() == "avionics" || s.kind() == "crew")
+    }
+
+    /// The docking ports on its parts.
+    pub fn docking_ports(&self) -> &[DockingPort] {
+        self.ports.get_or_init(|| DockingPort::all(&self.parts))
+    }
+
+    /// The part it is flown from, if not its own axes.
+    pub fn control_part(&self) -> Option<PartId> {
+        self.control_part
     }
 
     /// Fire what is due of the avionics' triggers: `since_liftoff` (s, if it has lifted off),
@@ -1093,6 +1113,7 @@ impl Propulsion {
             ignition_pending: false,
             feeds: BTreeMap::new(),
             shape: OnceLock::new(),
+            ports: OnceLock::new(),
             hollow: BTreeSet::new(),
             systems: Systems::default(),
             triggers: Vec::new(),
@@ -1125,6 +1146,7 @@ impl Propulsion {
             ignition_pending: lit_late,
             feeds: BTreeMap::new(),
             shape: OnceLock::new(),
+            ports: OnceLock::new(),
             hollow: BTreeSet::new(),
             systems: released.systems,
             triggers: Vec::new(),
@@ -1184,6 +1206,7 @@ impl Propulsion {
         self.systems.retain_on(&self.parts);
         self.plumb();
         self.shape = OnceLock::new();
+        self.ports = OnceLock::new();
         self.hollow = self.hollow_rings();
     }
 
@@ -1656,8 +1679,17 @@ impl Propulsion {
                 out.push(Activation::new(part, Action::CUTOFF));
             }
         }
-        // What holds a panel that a vessel joined is that join, not its own hinge.
+        // A join lets go by undocking, from either side of it. What holds a panel that a vessel
+        // joined is that join, not its own hinge.
         let joined = found.joint.is_some_and(|j| j.way == JointWay::Join);
+        if joined {
+            out.push(Activation::undock(part));
+        }
+        out.extend(
+            tree.children(part)
+                .filter(|child| child.joint.is_some_and(|j| j.way == JointWay::Join))
+                .map(|child| Activation::undock(child.id)),
+        );
         if found.is_fairing_half() && !joined {
             if tree.joint_capabilities(part).is_some_and(|c| c.release) {
                 out.push(Activation::fairing(part));
@@ -1666,7 +1698,7 @@ impl Propulsion {
             let releases = |p: PartId| tree.joint_capabilities(p).is_some_and(|c| c.release);
             // The joint it hangs from, and the joints under it that a decoupler of its
             // own holds.
-            if releases(part) {
+            if releases(part) && !joined {
                 out.push(Activation::decoupler(part));
             }
             let nodes: Vec<&str> = (found.built.iter())
@@ -1677,7 +1709,10 @@ impl Propulsion {
                 })
                 .collect();
             for child in tree.parts() {
-                let Some(joint) = child.joint.filter(|j| j.parent == part) else {
+                let Some(joint) = child
+                    .joint
+                    .filter(|j| j.parent == part && j.way != JointWay::Join)
+                else {
                     continue;
                 };
                 let node = found.connectors.get(joint.parent_connector);
@@ -1729,7 +1764,7 @@ impl Propulsion {
             let id = part.stage;
             let target = activation.part();
             match activation.kind() {
-                "decoupler" => {
+                "decoupler" | "undock" => {
                     let decoupler = target;
                     let impulse = self.parts.release_impulse(decoupler);
                     let Some(parts) = self.parts.release(decoupler) else {
@@ -1948,6 +1983,7 @@ impl Propulsion {
     pub fn rcs_propellant_mass(&self) -> f64 {
         self.sections
             .iter()
+            .filter(|s| self.flown(s.id))
             .map(|s| self.rcs_propellant_mass_of(s.id))
             .sum()
     }
@@ -1958,7 +1994,7 @@ impl Propulsion {
         for block in self
             .rcs
             .iter()
-            .filter(|b| self.rcs_propellant_mass_of(b.section) > 0.0)
+            .filter(|b| self.flown(b.section) && self.rcs_propellant_mass_of(b.section) > 0.0)
         {
             thrust += block.def.thrust;
             flow += block.nozzle_mass_flow();
@@ -2009,7 +2045,8 @@ impl Propulsion {
 
     /// Delta-v of each remaining section in vacuum, in firing order. A section burns
     /// together with the sections hanging beside it until they run out and fall away, then
-    /// on its own: its row counts both, and theirs count no delta-v of their own.
+    /// on its own: its row counts both, and theirs count no delta-v of their own. With another
+    /// vessel joined, only the one flown from has any, pushing the other as well.
     pub fn stage_info(&self) -> Vec<StageInfo> {
         // Averaged over the burn, for engines whose thrust follows a curve.
         let flow = |id: usize| {
@@ -2062,9 +2099,25 @@ impl Propulsion {
             .enumerate()
             .map(|(i, section)| {
                 let id = section.id;
+                if !self.flown(id) {
+                    return StageInfo {
+                        name: section.name.clone(),
+                        delta_v_vac: 0.0,
+                        burn_time: 0.0,
+                        start_mass: self.section_mass(id),
+                    };
+                }
+                // What is above it in the stack, and the vessels it pushes that came before.
+                let carried: f64 = (sections[..i].iter())
+                    .filter(|s| !self.flown(s.id))
+                    .map(|s| self.section_mass(s.id))
+                    .sum();
                 if let Some(&(parent, time)) = fed.get(&id) {
-                    let start_mass: f64 =
-                        sections[i..].iter().map(|s| self.section_mass(s.id)).sum();
+                    let start_mass: f64 = carried
+                        + sections[i..]
+                            .iter()
+                            .map(|s| self.section_mass(s.id))
+                            .sum::<f64>();
                     let total_flow = flow(id) + flow(parent);
                     let thrust = thrust(id) + thrust(parent);
                     let used = total_flow * time;
@@ -2080,10 +2133,11 @@ impl Propulsion {
                     .iter()
                     .filter(|s| s.beside && s.parent == Some(id))
                     .collect();
-                let start_mass = sections[i..]
-                    .iter()
-                    .map(|s| self.section_mass(s.id))
-                    .sum::<f64>()
+                let start_mass = carried
+                    + sections[i..]
+                        .iter()
+                        .map(|s| self.section_mass(s.id))
+                        .sum::<f64>()
                     + sides.iter().map(|s| self.section_mass(s.id)).sum::<f64>();
                 let own = flow(id);
                 let mut row = StageInfo {

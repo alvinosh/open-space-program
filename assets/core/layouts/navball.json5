@@ -9,9 +9,11 @@
 // air pressure, full at sea level and empty in space. Click the speed tab to switch
 // between surface, orbital and target speed (and the frame the navball markers and SAS
 // directions use). RCS and SAS are the switches on the ring's upper corners. The SAS mode
-// buttons beside the housing carry the navball's own markers, opposites side by side;
-// hover one for its name, click the selected one again to go back to holding attitude.
-// Propellant, RCS included, is in the Resources window.
+// buttons right of the housing carry the navball's own markers, opposites side by side; hover
+// one for its name, click the selected one again to go back to killing rotation, and that one
+// again to let go. Manoeuvre is dimmed with no burn planned, and a row for the target comes
+// with a target. Propellant, RCS included, is in the Resources window; the pilot's pitch, yaw
+// and roll are a tab under the staging stack.
 {
   id: "navball",
   group: "flight",
@@ -78,62 +80,45 @@
         class: "sas_strip",
         children: [
           {
-            id: "sas_modes",
-            widget: "column",
-            style: { gap: 3, align_items: "center" },
+            widget: "row",
+            style: { gap: 3 },
             children: [
-              {
-                widget: "row",
-                style: { gap: 3 },
-                children: [
-                  { widget: "button", class: "sas_button", tooltip: "Prograde", action: "vessel.sas_mode:prograde", active: "vessel.sas_mode == prograde", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_prograde.svg" }] },
-                  { widget: "button", class: "sas_button", tooltip: "Retrograde", action: "vessel.sas_mode:retrograde", active: "vessel.sas_mode == retrograde", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_retrograde.svg" }] },
-                ],
-              },
-              {
-                widget: "row",
-                style: { gap: 3 },
-                children: [
-                  { widget: "button", class: "sas_button", tooltip: "Normal", action: "vessel.sas_mode:normal", active: "vessel.sas_mode == normal", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_normal.svg" }] },
-                  { widget: "button", class: "sas_button", tooltip: "Anti-normal", action: "vessel.sas_mode:anti_normal", active: "vessel.sas_mode == anti_normal", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_anti_normal.svg" }] },
-                ],
-              },
-              {
-                widget: "row",
-                style: { gap: 3 },
-                children: [
-                  { widget: "button", class: "sas_button", tooltip: "Radial out", action: "vessel.sas_mode:radial_out", active: "vessel.sas_mode == radial_out", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_radial_out.svg" }] },
-                  { widget: "button", class: "sas_button", tooltip: "Radial in", action: "vessel.sas_mode:radial_in", active: "vessel.sas_mode == radial_in", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_radial_in.svg" }] },
-                ],
-              },
-              {
-                widget: "row",
-                visible: "plan.count",
-                style: { gap: 3 },
-                children: [
-                  { widget: "button", class: "sas_button", tooltip: "Planned burn", action: "vessel.sas_mode:burn", active: "vessel.sas_mode == burn", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_burn.svg" }] },
-                ],
-              },
-              {
-                widget: "row",
-                visible: "target.has",
-                style: { gap: 3 },
-                children: [
-                  { widget: "button", class: "sas_button", tooltip: "Target", action: "vessel.sas_mode:target", active: "vessel.sas_mode == target", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_target.svg" }] },
-                  { widget: "button", class: "sas_button", tooltip: "Anti-target", action: "vessel.sas_mode:anti_target", active: "vessel.sas_mode == anti_target", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_anti_target.svg" }] },
-                ],
-              },
+              { widget: "button", class: "sas_button", tooltip: "Kill rotation", action: "vessel.sas_mode:stability", active: "vessel.sas_mode == stability", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_hold.svg" }] },
+              { widget: "button", class: "sas_button", visible: "plan.count", tooltip: "Manoeuvre", action: "vessel.sas_mode:burn", active: "vessel.sas_mode == burn", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_burn.svg" }] },
+              { widget: "button", class: "sas_button sas_button_off", visible: "!plan.count", tooltip: "Manoeuvre: none planned", children: [{ widget: "image", class: "sas_icon sas_icon_off", image: "icons/sas_burn.svg" }] },
             ],
           },
           {
-            id: "inputs",
-            widget: "column",
-            style: { gap: 4, margin: [4, 0, 1, 0] },
-            tooltip: "Pitch, yaw and roll input",
+            widget: "row",
+            style: { gap: 3 },
             children: [
-              { widget: "row", style: { gap: 4 }, children: [{ widget: "label", class: "caption", style: { min_width: 8, font_size: 9 }, text: "P" }, { widget: "bar", class: "ibar", value: "control.pitch", min: -1 }] },
-              { widget: "row", style: { gap: 4 }, children: [{ widget: "label", class: "caption", style: { min_width: 8, font_size: 9 }, text: "Y" }, { widget: "bar", class: "ibar", value: "control.yaw", min: -1 }] },
-              { widget: "row", style: { gap: 4 }, children: [{ widget: "label", class: "caption", style: { min_width: 8, font_size: 9 }, text: "R" }, { widget: "bar", class: "ibar", value: "control.roll", min: -1 }] },
+              { widget: "button", class: "sas_button", tooltip: "Prograde", action: "vessel.sas_mode:prograde", active: "vessel.sas_mode == prograde", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_prograde.svg" }] },
+              { widget: "button", class: "sas_button", tooltip: "Retrograde", action: "vessel.sas_mode:retrograde", active: "vessel.sas_mode == retrograde", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_retrograde.svg" }] },
+            ],
+          },
+          {
+            widget: "row",
+            style: { gap: 3 },
+            children: [
+              { widget: "button", class: "sas_button", tooltip: "Normal", action: "vessel.sas_mode:normal", active: "vessel.sas_mode == normal", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_normal.svg" }] },
+              { widget: "button", class: "sas_button", tooltip: "Anti-normal", action: "vessel.sas_mode:anti_normal", active: "vessel.sas_mode == anti_normal", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_anti_normal.svg" }] },
+            ],
+          },
+          {
+            widget: "row",
+            style: { gap: 3 },
+            children: [
+              { widget: "button", class: "sas_button", tooltip: "Radial out", action: "vessel.sas_mode:radial_out", active: "vessel.sas_mode == radial_out", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_radial_out.svg" }] },
+              { widget: "button", class: "sas_button", tooltip: "Radial in", action: "vessel.sas_mode:radial_in", active: "vessel.sas_mode == radial_in", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_radial_in.svg" }] },
+            ],
+          },
+          {
+            widget: "row",
+            visible: "target.has",
+            style: { gap: 3 },
+            children: [
+              { widget: "button", class: "sas_button", tooltip: "Target", action: "vessel.sas_mode:target", active: "vessel.sas_mode == target", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_target.svg" }] },
+              { widget: "button", class: "sas_button", tooltip: "Anti-target", action: "vessel.sas_mode:anti_target", active: "vessel.sas_mode == anti_target", children: [{ widget: "image", class: "sas_icon", image: "icons/sas_anti_target.svg" }] },
             ],
           },
         ],

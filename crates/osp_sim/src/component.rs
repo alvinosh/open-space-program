@@ -316,6 +316,7 @@ pub enum ComponentDef {
     Battery(BatteryPackDef),
     Crew(CrewDef),
     Decoupler(DecouplerDef),
+    DockingPort(DockingPortDef),
     LiftingSurface(LiftingSurfaceDef),
     Container(ContainerDef),
     Gear(GearLegDef),
@@ -487,6 +488,46 @@ pub struct DecouplerDef {
     pub strength: f64,
 }
 
+/// What a docking port mates with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PortKind {
+    /// The active half of a pair: goes into a drogue.
+    Probe,
+    Drogue,
+    /// Mates with its own kind, either side active.
+    #[default]
+    Androgynous,
+    /// A wide hatch for modules brought together: mates with its own kind.
+    Berthing,
+}
+
+impl PortKind {
+    pub fn mates(self, other: Self) -> bool {
+        match self {
+            Self::Probe => other == Self::Drogue,
+            Self::Drogue => other == Self::Probe,
+            Self::Androgynous | Self::Berthing => other == self,
+        }
+    }
+}
+
+/// A ring at one of the part's nodes, as wide as the node, that can capture another vessel's in
+/// flight ([`crate::docking`]). The two vessels are then one until they undock.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DockingPortDef {
+    pub node: String,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub kind: PortKind,
+    /// What its springs push the two vessels apart with when they undock, N·s.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub impulse: f64,
+    /// Propellant flows across while docked. Power and data always do.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub crossfeed: bool,
+}
+
 /// A small solid motor's nozzle and case: burns what the part's own grain holds, at full thrust
 /// until it is gone.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -595,6 +636,7 @@ pub enum Component {
         seats: u32,
     },
     Decoupler(DecouplerDef),
+    DockingPort(DockingPortDef),
     LiftingSurface(LiftingSurface),
     Container(Container),
     Gear(GearLegDef),
@@ -782,6 +824,12 @@ impl PartDef {
                     }
                     Component::Decoupler(def.clone())
                 }
+                ComponentDef::DockingPort(def) => {
+                    if !(def.impulse >= 0.0 && def.impulse.is_finite()) {
+                        return Err(bad("a docking port's impulse cannot be negative".into()));
+                    }
+                    Component::DockingPort(def.clone())
+                }
                 ComponentDef::LiftingSurface(def) => {
                     Component::LiftingSurface(lifting_surface(def, &geometry).map_err(&bad)?)
                 }
@@ -918,6 +966,11 @@ impl PartDef {
                 && assembly.node(&d.node).is_none()
             {
                 return Err(bad(format!("it has no node `{}` to let go of", d.node)));
+            }
+            if let Component::DockingPort(d) = component
+                && assembly.node(&d.node).is_none()
+            {
+                return Err(bad(format!("it has no node `{}` to dock at", d.node)));
             }
         }
 
@@ -1184,6 +1237,15 @@ fn assembly_part(
     for component in components {
         match component {
             Component::Decoupler(d) => {
+                let carries = Carries {
+                    fluid: d.crossfeed,
+                    ..Carries::NODE
+                };
+                part.carries.insert(d.node.clone(), carries);
+                part.releases.insert(d.node.clone());
+            }
+            // Built docked, it lets go as it would if it had docked in flight.
+            Component::DockingPort(d) => {
                 let carries = Carries {
                     fluid: d.crossfeed,
                     ..Carries::NODE

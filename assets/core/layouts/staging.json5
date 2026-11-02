@@ -4,8 +4,9 @@
 // with how many and, for engines and RCS, the fuel feeding them as a thin bar in the
 // stage's colour (as in the Resources window). Engines are liquid, vacuum or solid; the
 // rest are decouplers, fairing panels and RCS. Hover a tile for what it does with its
-// thrust, Isp, burn time and fuel; hover a row's number for the whole row. The delta-v and
-// thrust-to-weight of the stage burning are in a box at the very bottom.
+// thrust, Isp, burn time and fuel; hover a row's number for the whole row. The box at the very
+// bottom has two tabs: the delta-v and thrust-to-weight of the stage burning, and the pitch, yaw
+// and roll being commanded, whether by the pilot or by SAS.
 //
 // Reorder by dragging: a row anywhere on it, onto another row to put it there, or onto
 // the thin strip under a row (it lights up) to put it at exactly that place. A tile
@@ -153,25 +154,53 @@
           },
         ],
       },
-      // What the stage burning gives.
+      // What the stage burning gives, or what the controls are doing.
       {
+        id: "stage_tabs",
         widget: "column",
         class: "seq_row seq_stats",
         children: [
           {
             widget: "row",
-            style: { gap: 4 },
+            class: "seq_tabs",
             children: [
-              { widget: "label", class: "seq_key", style: { min_width: 24 }, text: "dV" },
-              { widget: "label", class: "seq_stat", text: "{vessel.delta_v|speed}" },
+              { widget: "button", class: "seq_tab", text: "dV / TWR", tooltip: "Delta-v and thrust-to-weight of the stage burning", action: "ui.tab:staging:stage", active: "ui.tab.staging != inputs" },
+              { widget: "button", class: "seq_tab", text: "P / Y / R", tooltip: "Pitch, yaw and roll input", action: "ui.tab:staging:inputs", active: "ui.tab.staging == inputs" },
             ],
           },
           {
-            widget: "row",
-            style: { gap: 4 },
+            id: "stage_stats",
+            widget: "column",
+            class: "seq_page",
+            visible: "ui.tab.staging != inputs",
             children: [
-              { widget: "label", class: "seq_key", style: { min_width: 24 }, text: "TWR" },
-              { widget: "label", class: "seq_stat", text: "{vessel.stage_twr|fixed:2}" },
+              {
+                widget: "row",
+                style: { gap: 4 },
+                children: [
+                  { widget: "label", class: "seq_key", style: { min_width: 24 }, text: "dV" },
+                  { widget: "label", class: "seq_stat", text: "{vessel.delta_v|speed}" },
+                ],
+              },
+              {
+                widget: "row",
+                style: { gap: 4 },
+                children: [
+                  { widget: "label", class: "seq_key", style: { min_width: 24 }, text: "TWR" },
+                  { widget: "label", class: "seq_stat", text: "{vessel.stage_twr|fixed:2}" },
+                ],
+              },
+            ],
+          },
+          {
+            id: "inputs",
+            widget: "column",
+            class: "seq_page",
+            visible: "ui.tab.staging == inputs",
+            children: [
+              { widget: "row", class: "seq_input", tooltip: "Pitch input", children: [{ widget: "label", class: "seq_key", style: { min_width: 8 }, text: "P" }, { widget: "bar", class: "ibar", value: "control.pitch", min: -1 }] },
+              { widget: "row", class: "seq_input", tooltip: "Yaw input", children: [{ widget: "label", class: "seq_key", style: { min_width: 8 }, text: "Y" }, { widget: "bar", class: "ibar", value: "control.yaw", min: -1 }] },
+              { widget: "row", class: "seq_input", tooltip: "Roll input", children: [{ widget: "label", class: "seq_key", style: { min_width: 8 }, text: "R" }, { widget: "bar", class: "ibar", value: "control.roll", min: -1 }] },
             ],
           },
         ],

@@ -284,19 +284,14 @@
     plate_cell: { width: "33.3%", direction: "row", gap: 4, justify_content: "center", align_items: "baseline" },
     plate_key: { color: "#7f94a6", font_size: 9.5, font_weight: 600, letter_spacing: 0.8 },
     plate_value: { color: "#ffffff", font_size: 13, font_weight: 600 },
-    // The SAS mode buttons beside the housing, with the navball's own markers on them.
+    // The SAS mode buttons right against the housing's ring, with the navball's own markers on
+    // them. Four rows level with the ball; the target's row comes in below them.
     sas_strip: {
       position: "absolute",
-      left: 280,
-      top: 58,
-      padding: 5,
+      left: 254,
+      top: 62,
       gap: 3,
       align_items: "center",
-      radius: 10,
-      gradient: ["#16263aeb", "#0b1520e6"],
-      border: 1,
-      border_gradient: ["#a6d0f055", "#6f98c014"],
-      shadow: { color: [0, 0, 0, 0.45], y: 4, blur: 16 },
     },
     sas_button: {
       width: 28,
@@ -309,6 +304,9 @@
       active_background: "#0e3a35",
     },
     sas_icon: { width: 20, height: 20, color: "#ffffff" },
+    // A mode with nothing to steer by: dimmed, and nothing happens under the pointer.
+    sas_button_off: { background: "#111c27", hover_background: "#111c27" },
+    sas_icon_off: { color: [1, 1, 1, 0.25] },
     // Small +/- and step buttons (flight plan).
     step_button: { min_width: 26, padding: [1, 6], font_size: 12 },
     // Buttons that take something out of the game, and recovery (Universe Manifest).
@@ -319,7 +317,7 @@
     value: { min_width: 86, font_size: 13 },
     vbar: { width: 8, min_width: 8, height: 170, grow: 0 },
     thin: { width: 3, min_width: 3 },
-    ibar: { width: 46, min_width: 46, grow: 0, height: 3 },
+    ibar: { min_width: 46, height: 3 },
     // The Resources window (layouts/resources.json5): a row per propellant and stage, bars in
     // the stage's colour, the bottom stage's names lit.
     res_row: { gap: 7, padding: [2, 3], radius: 4, hover_background: "#ffffff06" },
@@ -400,7 +398,26 @@
     // Under the stack: the engines already lit.
     seq_armed: { background: "#3b2c13d9", border_color: "#b07a2a", margin: [3, 0, 0, 0] },
     seq_add: { align_self: "start", margin: [0, 0, 1, 0] },
-    seq_stats: { align_items: "start", gap: 2, padding: [4, 7], margin: [5, 0, 0, 0] },
+    seq_stats: { align_items: "stretch", gap: 3, padding: [3, 5, 5, 5], margin: [5, 0, 0, 0], hover_background: "#0f1c28ee" },
+    // Its tabs, and the pages under them: as tall as each other, so the stack stays put.
+    seq_tabs: { gap: 2 },
+    seq_tab: {
+      grow: 1,
+      padding: [1, 6],
+      radius: 3,
+      border: 0,
+      background: "#00000000",
+      hover_background: "#1f3142",
+      active_background: "#0e3a35",
+      color: "#7f94a6",
+      active_color: "#38e0c4",
+      font_size: 10,
+      font_weight: 600,
+      letter_spacing: 0.6,
+      uppercase: true,
+    },
+    seq_page: { gap: 2, min_height: 40, padding: [0, 2], justify_content: "center" },
+    seq_input: { gap: 5, align_items: "center" },
     stage_row: {
       padding: [4, 6],
       radius: 5,

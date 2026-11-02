@@ -265,7 +265,7 @@ impl TimeWarp {
         let next = (self.index + 1).min(WARP_RATES.len() - 1);
         if WARP_RATES[next] > MAX_PHYSICS_WARP && !sim.universe.can_use_rails() {
             self.notify(
-                "Cannot warp faster: under power, in atmosphere or near terrain",
+                "Cannot warp faster: under power, in atmosphere, near terrain or closing on a vessel",
                 now,
             );
             return;
@@ -368,6 +368,7 @@ fn stop_reason(events: &[SimEvent]) -> String {
             VesselEventKind::Destroyed => "Warp stopped: structural failure".into(),
             VesselEventKind::BurnDue => "Warp stopped: burn coming up".into(),
             VesselEventKind::BurnEnded => "Warp stopped: burn ended".into(),
+            VesselEventKind::Docked => "Warp stopped: docked".into(),
             _ => "Warp stopped".into(),
         })
 }

@@ -71,10 +71,12 @@ enum Marker {
     /// Towards the target, and away from it.
     Target,
     AntiTarget,
+    /// Facing the port on the target.
+    TargetPort,
 }
 
 impl Marker {
-    const ALL: [Marker; 9] = [
+    const ALL: [Marker; 10] = [
         Marker::Prograde,
         Marker::Retrograde,
         Marker::Normal,
@@ -84,6 +86,7 @@ impl Marker {
         Marker::Burn,
         Marker::Target,
         Marker::AntiTarget,
+        Marker::TargetPort,
     ];
 }
 
@@ -232,11 +235,16 @@ fn orient_navball(
         .target
         .and_then(|_| sim.universe.target_state(sim.active_index(), now))
         .and_then(|t| (t.position - own).try_normalize());
+    let port = sim
+        .universe
+        .port_approach(sim.active_index(), now)
+        .map(|approach| -approach.alignment.out);
     for (marker, mut transform, mut visibility) in &mut markers {
         let direction = match marker {
             Marker::Burn => burn,
             Marker::Target => toward,
             Marker::AntiTarget => toward.map(|d| -d),
+            Marker::TargetPort => port,
             nav => basis.map(|basis| match nav {
                 Marker::Prograde => basis.prograde,
                 Marker::Retrograde => -basis.prograde,
@@ -515,6 +523,12 @@ fn marker_texture(marker: Marker) -> Image {
         }),
         Marker::AntiTarget => paint(size, size, target, |p| {
             ring(p, 0.55).min(spokes(p, &diagonal, 0.0, 0.55))
+        }),
+        Marker::TargetPort => paint(size, size, target, |p| {
+            let ticks = [Vec2::X, Vec2::NEG_X, Vec2::Y, Vec2::NEG_Y];
+            ring(p, 0.65)
+                .min(ring(p, 0.28))
+                .min(spokes(p, &ticks, 0.65, 0.88))
         }),
         // A ring with three fins outwards, like KSP's maneuver marker.
         Marker::Burn => paint(size, size, burn, |p| {

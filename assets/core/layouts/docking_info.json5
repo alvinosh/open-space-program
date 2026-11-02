@@ -1,0 +1,45 @@
+// Docking: how the port the vessel would dock by stands towards the one on its target, measured
+// on that port's axis. Off axis and sliding are in the pilot's axes, the ones the translation keys
+// push along. It opens by itself when a target's port comes within 500 m.
+{
+  id: "docking_info",
+  visible: false,
+  group: "flight",
+  dock: "left",
+  dock_order: 25,
+  root: {
+    widget: "window",
+    icon: "icons/sas_target_port.svg",
+    title: "Docking - {target.name}",
+    style: { width: 290 },
+    children: [
+      { widget: "label", class: "dim", visible: "!dock.has", text: "No port on the target that fits." },
+      {
+        widget: "column",
+        visible: "dock.has",
+        children: [
+          { widget: "label", class: "warning", visible: "dock.rcs_off", text: "RCS is off: the translation keys do nothing" },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Port" }, { widget: "label", text: "{dock.port}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Gap" }, { widget: "label", text: "{dock.gap|fixed:2} m" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Closing at (under 0.5)" }, { widget: "label", text: "{dock.closing|fixed:2} m/s" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Off axis, right" }, { widget: "label", text: "{dock.off_right|fixed:2} m" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Off axis, up" }, { widget: "label", text: "{dock.off_up|fixed:2} m" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Sliding, right" }, { widget: "label", text: "{dock.slide_right|fixed:2} m/s" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Sliding, up" }, { widget: "label", text: "{dock.slide_up|fixed:2} m/s" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Off facing (under 15)" }, { widget: "label", text: "{dock.angle|degrees:1}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Turning (under 3)" }, { widget: "label", text: "{dock.turning|fixed:2} deg/s" }] },
+          { widget: "label", visible: "dock.ready", text: "{dock.status}" },
+          { widget: "label", class: "warning", visible: "!dock.ready", text: "{dock.status}" },
+          {
+            widget: "row",
+            style: { gap: 4, margin: [6, 0, 0, 0] },
+            children: [
+              { widget: "button", class: "step_button", text: "Port view (C)", action: "camera.port_view", active: "dock.port_view" },
+              { widget: "button", class: "step_button", text: "Face the port", action: "vessel.sas_mode:target_port", active: "vessel.sas_mode == target_port" },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

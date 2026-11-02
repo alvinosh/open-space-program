@@ -1,10 +1,12 @@
-//! Targets: choosing one (Shift+click a body or vessel in map view, or the Universe
-//! Manifest window), and what is shown about it: distance and relative speed, the closest
-//! approaches along the planned trajectory, and where the orbit crosses the target's plane.
+//! Targets: choosing one (Shift+click a body or vessel in map view, the Universe Manifest
+//! window, or a part's own window for one part of a vessel), and what is shown about it: distance
+//! and relative speed, the closest approaches along the planned trajectory, and where the orbit
+//! crosses the target's plane.
 //!
 //! | Action | Effect |
 //! | --- | --- |
 //! | `target.body:<id>`, `target.vessel:<key>`, `target.clear` | Choose or drop the target |
+//! | `target.part:<vessel>-<part>` | Target one part of another vessel: a docking port is then the one to dock with |
 //! | `vessel.fly:<key>` | Fly another vessel (`key` as in `manifest.items`) |
 //! | `plan.match_plane` | Plan a burn at the next node that matches the target's plane |
 //! | `warp.to:approach` | Warp to the first closest approach |
@@ -17,7 +19,7 @@ use osp_sim::{
     time::SimTime,
     vessel::VesselId,
 };
-use osp_ui::{UiAction, UiData};
+use osp_ui::{LayoutVisibility, UiAction, UiData};
 
 use crate::{
     FrameSet,
@@ -29,6 +31,7 @@ use crate::{
         HoverPoint, OrbitLinesSet, Prediction, TARGET_COLOR, ViewPointer, countdown,
         distance_label, project,
     },
+    part_info::{has_port, parse_key, part_title},
     sim::{Sim, TimeWarp},
 };
 
@@ -50,6 +53,7 @@ impl Plugin for TargetingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TargetInfo>()
             .add_systems(Update, target_actions.in_set(FrameSet::Input))
+            .add_systems(Update, open_docking_window.in_set(FrameSet::Render))
             .add_systems(
                 Update,
                 (pick_target, update_target_info, draw_target, publish_target)
@@ -116,6 +120,16 @@ fn target_actions(
                     .filter(|&id| id != sim.active_id() && sim.universe.vessel(id).is_some());
                 if let Some(id) = id {
                     sim.active_vessel_mut().target = Some(Target::Vessel(id));
+                }
+            }
+            "target.part" => {
+                let found = parse_key(arg).filter(|&(id, part)| {
+                    id != sim.active_id()
+                        && (sim.universe.vessel(id))
+                            .is_some_and(|v| v.propulsion.parts().get(part).is_some())
+                });
+                if let Some((id, part)) = found {
+                    sim.active_vessel_mut().target = Some(Target::Part(id, part));
                 }
             }
             "vessel.fly" => {
@@ -235,7 +249,7 @@ fn update_target_info(sim: Res<Sim>, prediction: Res<Prediction>, mut info: ResM
     // On course for the target body itself: the encounter says it all.
     let encounter = prediction.patches.iter().any(|p| match target {
         Target::Body(body) => p.frame == body,
-        Target::Vessel(_) => false,
+        Target::Vessel(_) | Target::Part(..) => false,
     });
     for patch in prediction.patches.iter().filter(|_| !encounter) {
         // Inside a target body's sphere of influence its distance is the altitude.
@@ -404,6 +418,14 @@ fn publish_target(sim: Res<Sim>, info: Res<TargetInfo>, mut data: ResMut<UiData>
             .universe
             .find_vessel(id)
             .map(|i| sim.universe.vessels[i].name.clone()),
+        Some(Target::Part(id, part)) => sim.universe.vessel(id).map(|v| {
+            let part = v.propulsion.parts().get(part);
+            match part {
+                Some(part) if has_port(v, part) => format!("{}, {} port", v.name, part_title(part)),
+                Some(part) => format!("{}, {}", v.name, part_title(part)),
+                None => v.name.clone(),
+            }
+        }),
         None => None,
     };
     data.set("target.name", name.unwrap_or_default());
@@ -413,6 +435,7 @@ fn publish_target(sim: Res<Sim>, info: Res<TargetInfo>, mut data: ResMut<UiData>
         .target_state(active, now)
         .filter(|_| target.is_some())
         .map(|t| t - own);
+    set_docking_data(&mut data, &sim, active, now);
     data.set("target.distance", relative.map(|r| r.position.length()));
     data.set("target.speed", relative.map(|r| r.velocity.length()));
     data.set(
@@ -450,4 +473,58 @@ fn publish_target(sim: Res<Sim>, info: Res<TargetInfo>, mut data: ResMut<UiData>
             .and_then(|n| n.descending)
             .map(|t| t.seconds_since(now)),
     );
+}
+
+/// How near the target's port the docking window opens by itself, m.
+const DOCKING_WINDOW: f64 = 500.0;
+
+/// The docking window's readout: how the port it would dock by stands towards the one on the
+/// target. Off axis and sliding are in the pilot's axes, the ones the translation keys push along.
+fn set_docking_data(data: &mut UiData, sim: &Sim, active: usize, now: SimTime) {
+    let approach = sim.universe.port_approach(active, now);
+    data.set("dock.has", approach.is_some());
+    let Some(approach) = approach else {
+        return;
+    };
+    let a = approach.alignment;
+    let port = (sim.universe.vessel(approach.target))
+        .and_then(|v| v.propulsion.parts().get(approach.target_port.part))
+        .map_or(String::new(), |part| part.name.clone());
+    let vessel = &sim.universe.vessels[active];
+    let turned = vessel
+        .control_attitude(&sim.universe.system, now)
+        .orientation;
+    let (right, up) = (turned * DVec3::X, turned * DVec3::NEG_Y);
+    data.set("dock.port", port);
+    data.set("dock.near", a.distance() < DOCKING_WINDOW);
+    data.set("dock.gap", a.gap);
+    data.set("dock.closing", a.closing);
+    data.set("dock.off_right", a.off_axis.dot(right));
+    data.set("dock.off_up", a.off_axis.dot(up));
+    data.set("dock.slide_right", a.drift.dot(right));
+    data.set("dock.slide_up", a.drift.dot(up));
+    data.set("dock.angle", a.angle.to_degrees());
+    data.set("dock.turning", a.turning.to_degrees());
+    data.set("dock.rcs_off", !vessel.rcs());
+    let problem = a.problem();
+    let catching = sim.universe.in_soft_capture(vessel.id());
+    data.set("dock.ready", catching || problem.is_none());
+    let status = if catching {
+        "Soft capture: closing the latches"
+    } else {
+        problem.map_or("Will capture", |p| p.label())
+    };
+    data.set("dock.status", status);
+}
+
+/// Open the docking window when a target's port comes within reach, once each time it does.
+fn open_docking_window(sim: Res<Sim>, mut ui: ResMut<LayoutVisibility>, mut open: Local<bool>) {
+    let near = sim
+        .universe
+        .port_approach(sim.active_index(), sim.render_time)
+        .is_some_and(|a| a.alignment.distance() < DOCKING_WINDOW);
+    if near != *open {
+        *open = near;
+        ui.layouts.insert("docking_info".into(), near);
+    }
 }

@@ -454,7 +454,7 @@ fn draw_orbits(
         if i == sim.active_index() {
             continue;
         }
-        let targeted = target == Some(Target::Vessel(other.id()));
+        let targeted = target.and_then(Target::vessel) == Some(other.id());
         let color = if targeted {
             TARGET_COLOR
         } else if other.is_debris() {

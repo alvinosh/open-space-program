@@ -90,6 +90,10 @@ pub enum Condition {
         #[serde(default)]
         speed: Option<f64>,
     },
+    /// Docked with the vessel called `target`.
+    Docked { target: String },
+    /// Has docked, let go of the vessel called `target` and is further than `distance` from it.
+    Undocked { target: String, distance: f64 },
     /// On the ground, on `body` and within `radius` of `site` (a `launch_sites` id), if given.
     Landed {
         #[serde(default)]
@@ -179,6 +183,8 @@ pub struct Stats {
     pub flown: bool,
     pub crashed: bool,
     pub destroyed: bool,
+    /// Has docked with something.
+    pub docked: bool,
 }
 
 /// How a mission stands.
@@ -269,7 +275,9 @@ pub(crate) fn resolve(
                 );
             }
         }
-        Condition::Near { target, .. } => {
+        Condition::Near { target, .. }
+        | Condition::Docked { target }
+        | Condition::Undocked { target, .. } => {
             let starts = scenario
                 .others
                 .iter()
@@ -445,6 +453,7 @@ impl Mission {
             match event.event.kind {
                 VesselEventKind::Crashed { .. } => stats.crashed = true,
                 VesselEventKind::Destroyed => stats.destroyed = true,
+                VesselEventKind::Docked => stats.docked = true,
                 _ => {}
             }
         }
@@ -545,6 +554,22 @@ impl View<'_> {
                     && speed
                         .is_none_or(|limit| (theirs.velocity - state.velocity).length() <= limit)
             }
+            Condition::Undocked { target, distance } => {
+                let other = self.universe.vessels.iter().find(|v| &v.name == target);
+                let Some(other) = other.filter(|_| self.stats.docked) else {
+                    return false;
+                };
+                let theirs = self.system().transform(
+                    other.state_at(self.system(), time),
+                    other.parent(),
+                    self.vessel.parent(),
+                    time,
+                );
+                (theirs.position - state.position).length() > *distance
+            }
+            Condition::Docked { target } => (self.vessel.propulsion)
+                .joined_vessels()
+                .any(|v| &v.name == target),
             Condition::Landed {
                 body: on,
                 site,

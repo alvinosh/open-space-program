@@ -139,6 +139,12 @@ pub enum VesselEventKind {
     BurnDue,
     /// The burn executor finished a burn, or gave up on it.
     BurnEnded,
+    /// Its port captured another vessel's: the two are one.
+    Docked,
+    /// It hit another vessel, closing at this speed, m/s.
+    Bumped {
+        speed: f64,
+    },
 }
 
 impl VesselEventKind {
@@ -263,6 +269,8 @@ pub struct Vessel {
     /// The target's state relative to this vessel's parent, as of the last physics tick
     /// (set by the universe, which can see other vessels).
     target_state: Option<StateVector>,
+    /// The way to face the target's port, as of the last physics tick, while SAS asks for it.
+    target_port: Option<DVec3>,
 }
 
 impl Vessel {
@@ -343,6 +351,7 @@ impl Vessel {
             id: VesselId::default(),
             target: None,
             target_state: None,
+            target_port: None,
         }
     }
 
@@ -356,6 +365,10 @@ impl Vessel {
 
     pub(crate) fn set_target_state(&mut self, state: Option<StateVector>) {
         self.target_state = state;
+    }
+
+    pub(crate) fn set_target_port(&mut self, direction: Option<DVec3>) {
+        self.target_port = direction;
     }
 
     /// Standing on the surface at a launch site, nose up, its feet (+Y) to the east so
@@ -725,6 +738,34 @@ impl Vessel {
     pub fn set_sas_mode(&mut self, system: &SolarSystem, time: SimTime, mode: SasMode) {
         self.rebase_attitude(system, time);
         self.sas.set_mode(mode);
+    }
+
+    /// The pilot pressed a SAS mode's button: it selects that mode. Pressed again, a mode goes
+    /// back to killing rotation, and killing rotation lets go, switching SAS off. With no burn
+    /// planned the burn's does nothing.
+    pub fn press_sas_mode(&mut self, system: &SolarSystem, time: SimTime, mode: SasMode) {
+        if mode == SasMode::Burn && self.plan.is_empty() {
+            return;
+        }
+        let again = self.sas.enabled() && self.sas.mode() == mode;
+        match mode {
+            SasMode::Stability if again => self.set_sas(system, time, false),
+            _ if again => self.set_sas_mode(system, time, SasMode::Stability),
+            _ => self.set_sas_mode(system, time, mode),
+        }
+    }
+
+    /// A mode whose burn or target has gone is only holding attitude, so it says so.
+    fn drop_lost_sas_mode(&mut self) {
+        let lost = match self.sas.mode() {
+            SasMode::Burn => self.plan.is_empty(),
+            SasMode::Target | SasMode::AntiTarget => self.target.is_none(),
+            SasMode::TargetPort => self.target_port.is_none(),
+            _ => false,
+        };
+        if lost {
+            self.sas.fall_back();
+        }
     }
 
     pub fn rcs(&self) -> bool {
@@ -1187,7 +1228,7 @@ impl Vessel {
             };
         }
         match flew_as {
-            Some(vessel) => vessel.fly_again(debris, time),
+            Some(vessel) => vessel.fly_again(debris, &self.name, time),
             None => debris,
         }
     }
@@ -1472,6 +1513,7 @@ impl Vessel {
             authority += shape.control_authority(&flow_at(start, DVec3::ZERO), com);
         }
         let controlled = self.controlled(system);
+        self.drop_lost_sas_mode();
         let command = if self.is_landed() || self.destroyed || !controlled {
             DVec3::ZERO
         } else {
@@ -1491,7 +1533,9 @@ impl Vessel {
             } else {
                 DVec3::ZERO
             };
-            let translation = (self.translation_input + push).clamp(DVec3::NEG_ONE, DVec3::ONE);
+            // The pilot translates in the axes of the part it is flown from, as it turns.
+            let asked = self.propulsion.control_rotation() * self.translation_input;
+            let translation = (asked + push).clamp(DVec3::NEG_ONE, DVec3::ONE);
             let (f, t) = rcs::fire(
                 &mut self.propulsion,
                 com.z,
@@ -1905,6 +1949,7 @@ impl Vessel {
                 .and_then(DVec3::try_normalize),
             SasMode::Target => self.toward_target(state),
             SasMode::AntiTarget => self.toward_target(state).map(|d| -d),
+            SasMode::TargetPort => self.target_port,
             mode => self.basis_at(body, state).and_then(|b| mode.direction(&b)),
         }
     }
@@ -2008,7 +2053,7 @@ impl Vessel {
         }
     }
 
-    fn record(&mut self, time: SimTime, message: String) {
+    pub(crate) fn record(&mut self, time: SimTime, message: String) {
         if self.log.len() == MAX_LOG {
             self.log.remove(0);
         }
@@ -2877,6 +2922,68 @@ pub(crate) mod tests {
         let left = t.add_seconds(3_600.0).seconds_since(universe.time());
         assert!(left > autopilot::WARP_MARGIN && left < 60.0, "{left}");
         assert!(!universe.can_use_rails());
+    }
+
+    #[test]
+    fn the_kill_rotation_button_toggles_and_the_others_go_back_to_it() {
+        let system = rss();
+        let (mut v, t) = leo_vessel(&system);
+        let mode = |v: &Vessel| (v.sas().enabled(), v.sas().mode());
+
+        v.press_sas_mode(&system, t, SasMode::Stability);
+        assert_eq!(mode(&v), (true, SasMode::Stability));
+        v.press_sas_mode(&system, t, SasMode::Stability);
+        assert!(!mode(&v).0);
+        // Off, it does not count as selected: it comes back on.
+        v.press_sas_mode(&system, t, SasMode::Stability);
+        assert_eq!(mode(&v), (true, SasMode::Stability));
+
+        v.press_sas_mode(&system, t, SasMode::Prograde);
+        assert_eq!(mode(&v), (true, SasMode::Prograde));
+        v.press_sas_mode(&system, t, SasMode::Prograde);
+        assert_eq!(mode(&v), (true, SasMode::Stability));
+        // From any other mode it takes over rather than letting go.
+        v.press_sas_mode(&system, t, SasMode::Retrograde);
+        v.press_sas_mode(&system, t, SasMode::Stability);
+        assert_eq!(mode(&v), (true, SasMode::Stability));
+    }
+
+    #[test]
+    fn the_burn_button_needs_a_burn_and_sas_says_when_its_aim_has_gone() {
+        let system = rss();
+        let (mut v, mut t) = leo_vessel(&system);
+        assert!(v.plan.is_empty());
+        v.press_sas_mode(&system, t, SasMode::Prograde);
+        v.press_sas_mode(&system, t, SasMode::Burn);
+        assert_eq!(v.sas().mode(), SasMode::Prograde);
+
+        v.plan.add(Burn {
+            time: t.add_seconds(600.0),
+            delta_v: DVec3::X,
+        });
+        v.press_sas_mode(&system, t, SasMode::Burn);
+        assert_eq!(v.sas().mode(), SasMode::Burn);
+        run(&mut v, &system, &mut t, 1.0);
+        assert_eq!(v.sas().mode(), SasMode::Burn);
+        // The burn deleted: it goes back to killing rotation.
+        v.plan.remove(0);
+        run(&mut v, &system, &mut t, 1.0);
+        assert_eq!(v.sas().mode(), SasMode::Stability);
+        assert!(v.sas().enabled());
+
+        // And the same for a target that is gone, without switching a SAS that is off back on.
+        v.target = Some(Target::Body(v.parent()));
+        v.press_sas_mode(&system, t, SasMode::Target);
+        v.target = None;
+        run(&mut v, &system, &mut t, 1.0);
+        assert_eq!(v.sas().mode(), SasMode::Stability);
+        v.target = Some(Target::Body(v.parent()));
+        v.press_sas_mode(&system, t, SasMode::AntiTarget);
+        v.set_sas(&system, t, false);
+        v.target = None;
+        run(&mut v, &system, &mut t, 1.0);
+        assert_eq!(v.sas().mode(), SasMode::Stability);
+        assert!(!v.sas().enabled());
     }
 
     #[test]

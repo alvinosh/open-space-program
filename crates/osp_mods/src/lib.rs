@@ -216,6 +216,18 @@ impl Content {
             .find(|p| p.is_file())
     }
 
+    /// How to read the mods' files from anywhere, later: their contents by relative path.
+    pub fn file_reader(&self) -> impl Fn(&str) -> Option<Vec<u8>> + Send + Sync + 'static {
+        let roots: Vec<PathBuf> = self.mods.iter().rev().map(|m| m.root.clone()).collect();
+        move |relative| {
+            roots
+                .iter()
+                .map(|root| root.join(relative))
+                .find(|path| path.is_file())
+                .and_then(|path| std::fs::read(path).ok())
+        }
+    }
+
     pub fn error_count(&self) -> usize {
         self.diagnostics
             .iter()

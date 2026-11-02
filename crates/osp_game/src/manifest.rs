@@ -257,7 +257,10 @@ fn publish_manifest(
             ),
             ("distance", distance.into()),
             ("speed", speed.into()),
-            ("is_target", (target == Some(Target::Vessel(id))).into()),
+            (
+                "is_target",
+                (target.and_then(Target::vessel) == Some(id)).into(),
+            ),
             ("is_active", is_active.into()),
             ("is_followed", followed(Follow::Vessel(id)).into()),
             ("target_body", false.into()),

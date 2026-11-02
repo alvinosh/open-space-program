@@ -20,6 +20,7 @@ mod map_labels;
 mod menu;
 mod meshgen;
 mod mission;
+mod docking_view;
 mod navball;
 mod orbit_lines;
 mod part_highlight;
@@ -171,6 +172,7 @@ fn main() -> AppExit {
             map_labels::MapLabelsPlugin,
             body_markers::BodyMarkersPlugin,
             targeting::TargetingPlugin,
+            docking_view::DockingViewPlugin,
             manifest::ManifestPlugin,
             transfer_planner::TransferPlannerPlugin,
         ))

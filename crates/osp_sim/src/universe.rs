@@ -16,15 +16,22 @@
 //! never holds up time warp. Debris that needs physics when rails warp starts, or enters an
 //! atmosphere on rails, is left behind (removed), as Kerbal Space Program does.
 
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use thiserror::Error;
 
 use crate::{
+    attitude::SasMode,
     body::BodyId,
+    collision::Colliders,
     comms::{self, Link, Station, best_link, relay_link},
+    contact,
     data::{
         CraftDef, GroundStationDef, LaunchSiteDef, PartCatalog, ScenarioDef, StartDef, SystemDef,
+    },
+    docking::{
+        Alignment, DockingPort, LATCH_ANGLE, LATCH_GAP, LATCH_TIME, PortApproach, PortState,
+        RETRACT, roll_between,
     },
     mission::Mission,
     orbit::{Orbit, StateVector},
@@ -40,6 +47,29 @@ use crate::{
 
 /// Fixed physics tick.
 pub const PHYSICS_STEP: Ticks = Ticks::from_millis(20);
+/// Vessels further apart than this have no ports near each other, m.
+const CAPTURE_SEARCH: f64 = 500.0;
+/// Rails hand over to physics this far from a vessel the flown one is closing on, m, so that
+/// nothing that happens between them is jumped over.
+const CLOSE_CALL: f64 = 200.0;
+/// Closing faster than this is passing by, not coming to meet, m/s, and slower is not closing.
+const MEETING_SPEED: f64 = 100.0;
+const NOT_CLOSING: f64 = 1e-3;
+/// A vessel that closes more slowly than this gets no word of it in the log, m/s.
+const QUIET_BUMP: f64 = 0.03;
+/// How far apart two vessels must have been before they can bump, m. A stage just let go is flush
+/// with what it left, and may yet drift back on its last thrust.
+const DAYLIGHT: f64 = 5.0;
+/// Vessels further apart than this are not worth a closer look, m.
+const FAR_APART: f64 = 2_000.0;
+/// How far surfaces may move through each other between looks in a tick, m.
+const LOOK_EVERY: f64 = 0.1;
+/// The most looks in a tick: past that, they are passing at a speed nothing would survive anyway.
+const MOST_LOOKS: f64 = 32.0;
+/// How often the moment of first touch is halved.
+const BISECTIONS: usize = 6;
+/// Closing faster than this, what hits and what is hit both break up, m/s.
+const BREAK_SPEED: f64 = 15.0;
 
 #[derive(Debug, Error)]
 pub enum UniverseError {
@@ -55,6 +85,17 @@ pub enum UniverseError {
     UnknownTarget(String),
     #[error("{0}")]
     Mission(String),
+}
+
+/// Two ports that have caught, being drawn together.
+#[derive(Debug, Clone)]
+struct SoftCapture {
+    /// The vessel that stays the vessel, and its port.
+    stay: VesselId,
+    at: DockingPort,
+    leave: VesselId,
+    to: DockingPort,
+    since: SimTime,
 }
 
 /// An event attributed to a vessel.
@@ -87,6 +128,13 @@ pub struct Universe {
     link_ticks: u32,
     /// The guided run the player is on, if any (see [`crate::tutorial`]). A restart ends it.
     pub tutorial: Option<Tutorial>,
+    /// Pairs of vessels that have been [`DAYLIGHT`] apart. Only those can bump: a stage or a
+    /// vessel that has let go starts out touching what it let go of.
+    clear_of: BTreeSet<(VesselId, VesselId)>,
+    /// What vessels collide with.
+    pub colliders: Colliders,
+    /// Ports that have caught and are closing.
+    captures: Vec<SoftCapture>,
     time: SimTime,
     next_id: u64,
 }
@@ -102,6 +150,9 @@ impl Universe {
             link_ticks: 0,
             mission: None,
             tutorial: None,
+            clear_of: BTreeSet::new(),
+            colliders: Colliders::default(),
+            captures: Vec::new(),
             time,
             next_id: 0,
         };
@@ -134,7 +185,7 @@ impl Universe {
     pub fn remove_vessel(&mut self, id: VesselId) {
         self.vessels.retain(|v| v.id() != id);
         for vessel in &mut self.vessels {
-            if vessel.target == Some(Target::Vessel(id)) {
+            if vessel.target.and_then(Target::vessel) == Some(id) {
                 vessel.target = None;
             }
         }
@@ -200,7 +251,7 @@ impl Universe {
         let time = self.time;
         self.vessels[first].join(other, at, to, roll, &self.system, time)?;
         for vessel in &mut self.vessels {
-            if vessel.target == Some(Target::Vessel(b)) {
+            if vessel.target.and_then(Target::vessel) == Some(b) {
                 vessel.target = None;
             }
         }
@@ -208,6 +259,394 @@ impl Universe {
             self.focus = Some(a);
         }
         Ok(())
+    }
+
+    /// The ports vessel `index` would dock with its target by, if it has targeted a vessel or a
+    /// part of one and they have ports that fit: the one it is flown from if that is a port, and
+    /// the nearest otherwise, on its target's side the port it has targeted if it has.
+    pub fn port_approach(&self, index: usize, time: SimTime) -> Option<PortApproach> {
+        let own = self.vessels.get(index)?;
+        let id = own.target?.vessel()?;
+        let other = self.vessel(id)?;
+        let flown = own.propulsion.control_part();
+        let mine = own.propulsion.docking_ports();
+        let from_it = mine.iter().any(|p| Some(p.part) == flown);
+        let mine = mine.iter().filter(|p| !from_it || Some(p.part) == flown);
+        let theirs = other.propulsion.docking_ports();
+        let chosen = theirs
+            .iter()
+            .find(|p| own.target == Some(Target::Part(id, p.part)))
+            .map(|p| p.part);
+        let theirs: Vec<_> = (theirs.iter())
+            .filter(|p| chosen.is_none_or(|part| p.part == part))
+            .collect();
+        mine.flat_map(|port| theirs.iter().map(move |&far| (port, far)))
+            .filter(|(port, far)| port.fits(far))
+            .map(|(port, far)| {
+                let (near_state, far_state) = self.port_states(own, port, other, far, time);
+                PortApproach {
+                    alignment: Alignment::of(&near_state, &far_state),
+                    near: near_state,
+                    far: far_state,
+                    port: port.clone(),
+                    target: id,
+                    target_port: far.clone(),
+                }
+            })
+            .min_by(|a, b| a.alignment.distance().total_cmp(&b.alignment.distance()))
+    }
+
+    /// Put vessel `index` `gap` metres off the port its target would dock by, facing it, closing
+    /// at `closing` m/s. For scenarios and captures: nothing a player can do. Whether it could.
+    pub fn line_up_ports(&mut self, index: usize, gap: f64, closing: f64) -> bool {
+        let time = self.time;
+        let Some(approach) = self.port_approach(index, time) else {
+            return false;
+        };
+        let Some(other) = self.vessel(approach.target) else {
+            return false;
+        };
+        let far = other.port_state(&self.system, &approach.target_port, time);
+        let place = StateVector::new(
+            far.at.position + far.out * gap,
+            far.at.velocity - far.out * closing,
+        );
+        let place =
+            (self.system).transform(place, other.parent(), self.vessels[index].parent(), time);
+        let vessel = &mut self.vessels[index];
+        vessel.put_port(&self.system, &approach.port, place, -far.out, time);
+        true
+    }
+
+    /// Where `own`'s `port` and `other`'s `far` are, in `own`'s parent's frame.
+    fn port_states(
+        &self,
+        own: &Vessel,
+        port: &DockingPort,
+        other: &Vessel,
+        far: &DockingPort,
+        time: SimTime,
+    ) -> (PortState, PortState) {
+        let near = own.port_state(&self.system, port, time);
+        let mut far = other.port_state(&self.system, far, time);
+        far.at = (self.system).transform(far.at, other.parent(), own.parent(), time);
+        (near, far)
+    }
+
+    /// How `own`'s `port` stands towards `other`'s `far`, in `own`'s parent's frame.
+    fn alignment(
+        &self,
+        own: &Vessel,
+        port: &DockingPort,
+        other: &Vessel,
+        far: &DockingPort,
+        time: SimTime,
+    ) -> Alignment {
+        let (near, far) = self.port_states(own, port, other, far, time);
+        Alignment::of(&near, &far)
+    }
+
+    /// Whether two vessels' ports have caught and are closing.
+    fn capturing(&self, a: VesselId, b: VesselId) -> bool {
+        self.captures
+            .iter()
+            .any(|c| (c.stay == a && c.leave == b) || (c.stay == b && c.leave == a))
+    }
+
+    /// Whether the vessel with `id` is in soft capture, its ports closing.
+    pub fn in_soft_capture(&self, id: VesselId) -> bool {
+        (self.captures.iter()).any(|c| c.stay == id || c.leave == id)
+    }
+
+    /// Start soft capture for the first two vessels whose free ports fit and catch now. The one
+    /// being flown stays the vessel, or else the heavier.
+    fn catch_ports(&mut self) {
+        let time = self.time;
+        let can = |v: &Vessel| {
+            !v.is_landed()
+                && !v.is_destroyed()
+                && v.propulsion.docking_ports().iter().any(|p| p.free)
+        };
+        let ready: Vec<usize> = (0..self.vessels.len())
+            .filter(|&i| can(&self.vessels[i]))
+            .collect();
+        let mut found = None;
+        'pairs: for (k, &i) in ready.iter().enumerate() {
+            for &j in &ready[k + 1..] {
+                let (a, b) = (&self.vessels[i], &self.vessels[j]);
+                if self.capturing(a.id(), b.id()) {
+                    continue;
+                }
+                let theirs = self.system.transform(
+                    b.state_at(&self.system, time),
+                    b.parent(),
+                    a.parent(),
+                    time,
+                );
+                let apart = theirs.position - a.state_at(&self.system, time).position;
+                if apart.length() > CAPTURE_SEARCH {
+                    continue;
+                }
+                for port in a.propulsion.docking_ports() {
+                    for far in b.propulsion.docking_ports() {
+                        if port.fits(far) && self.alignment(a, port, b, far, time).captures() {
+                            found = Some((i, port.clone(), j, far.clone()));
+                            break 'pairs;
+                        }
+                    }
+                }
+            }
+        }
+        let Some((i, port, j, far)) = found else {
+            return;
+        };
+        let (first, second) = (&self.vessels[i], &self.vessels[j]);
+        let (stay, at, leave, to) = if self.focus == Some(second.id())
+            || (self.focus != Some(first.id())
+                && second.propulsion.mass() > first.propulsion.mass())
+        {
+            (j, far, i, port)
+        } else {
+            (i, port, j, far)
+        };
+        let (kept, taken) = (
+            self.vessels[stay].name.clone(),
+            self.vessels[leave].name.clone(),
+        );
+        self.vessels[stay].record(time, format!("Soft capture of {taken}"));
+        self.vessels[leave].record(time, format!("Soft capture by {kept}"));
+        self.captures.push(SoftCapture {
+            stay: self.vessels[stay].id(),
+            at,
+            leave: self.vessels[leave].id(),
+            to,
+            since: time,
+        });
+    }
+
+    /// Draw ports in soft capture together, with a critically damped spring between them that each
+    /// vessel takes equally and oppositely, and close the latches when they are home. The vessels
+    /// that docked.
+    fn close_captures(&mut self) -> Vec<VesselId> {
+        let time = self.time;
+        let dt = PHYSICS_STEP.as_seconds();
+        let mut docked = Vec::new();
+        for capture in std::mem::take(&mut self.captures) {
+            let (Some(i), Some(j)) = (
+                self.find_vessel(capture.stay),
+                self.find_vessel(capture.leave),
+            ) else {
+                continue;
+            };
+            let (near, far) = self.port_states(
+                &self.vessels[i],
+                &capture.at,
+                &self.vessels[j],
+                &capture.to,
+                time,
+            );
+            let apart = far.at.position - near.at.position;
+            let moving = far.at.velocity - near.at.velocity;
+            let angle = far.out.angle_between(-near.out);
+            let home = apart.length() < LATCH_GAP && angle < LATCH_ANGLE;
+            if home || time.seconds_since(capture.since) >= LATCH_TIME {
+                let roll = roll_between(
+                    self.vessels[i].port_turn(&self.system, &capture.at, time),
+                    self.vessels[j].port_turn(&self.system, &capture.to, time),
+                );
+                let joined = self.join(
+                    capture.stay,
+                    Port {
+                        part: capture.at.part,
+                        node: &capture.at.node,
+                    },
+                    capture.leave,
+                    Port {
+                        part: capture.to.part,
+                        node: &capture.to.node,
+                    },
+                    roll,
+                );
+                if joined.is_ok() {
+                    docked.push(capture.stay);
+                }
+                continue;
+            }
+            let mut stay = self.vessels[i].as_body(&self.system, time, 0.0);
+            let mut leave = self.vessels[j].as_body(&self.system, time, 0.0);
+            let pair_mass = stay.mass.mass * leave.mass.mass / (stay.mass.mass + leave.mass.mass);
+            let pull = apart * (RETRACT * RETRACT) + moving * (2.0 * RETRACT);
+            let impulse = pull * (pair_mass * dt);
+            leave.push(-impulse, far.at.position);
+            stay.push(impulse, near.at.position);
+            // And turn them to face each other, and stop them turning against each other.
+            let moment = |b: &contact::Body| b.mass.inertia.diagonal().max_element();
+            let (ma, mb) = (moment(&stay), moment(&leave));
+            let pair_moment = ma * mb / (ma + mb);
+            let wrong = far.out.cross(-near.out);
+            let rate = far.turning - near.turning;
+            let twist = (wrong * (RETRACT * RETRACT) - rate * (2.0 * RETRACT)) * (pair_moment * dt);
+            leave.twist(twist);
+            stay.twist(-twist);
+            self.vessels[i].set_body(&self.system, &stay, time);
+            self.vessels[j].set_body(&self.system, &leave, time);
+            self.captures.push(capture);
+        }
+        docked
+    }
+
+    /// Stop what has hit something at the moment of first touch and resolve the impact, between
+    /// every two vessels that have been clear of each other, at least one of them more than debris.
+    fn collide_vessels(&mut self) -> Vec<SimEvent> {
+        let time = self.time;
+        let dt = PHYSICS_STEP.as_seconds();
+        let mut events = Vec::new();
+        for i in 0..self.vessels.len() {
+            for j in (i + 1)..self.vessels.len() {
+                let (a, b) = (&self.vessels[i], &self.vessels[j]);
+                if (a.is_debris() && b.is_debris())
+                    || (a.is_landed() && b.is_landed())
+                    || a.parent() != b.parent()
+                    || self.capturing(a.id(), b.id())
+                {
+                    continue;
+                }
+                let pair = (a.id().min(b.id()), a.id().max(b.id()));
+                let (body_a, body_b) = (
+                    a.as_body(&self.system, time, 0.0),
+                    b.as_body(&self.system, time, 0.0),
+                );
+                let distance = body_a.center.distance(body_b.center);
+                let rough = |v: &Vessel| {
+                    let widest = (v.propulsion.sections.iter())
+                        .map(|s| s.diameter)
+                        .fold(0.0, f64::max);
+                    v.propulsion.length() + widest + 30.0
+                };
+                if distance > FAR_APART || distance > rough(a) + rough(b) {
+                    self.clear_of.insert(pair);
+                    continue;
+                }
+                // What it cannot dock with counts as clear once it is well away, with no need to
+                // read any meshes for a stage falling off the stack.
+                let clear = self.clear_of.contains(&pair);
+                let fit = {
+                    let theirs = b.propulsion.docking_ports();
+                    (a.propulsion.docking_ports().iter())
+                        .any(|p| theirs.iter().any(|far| p.fits(far)))
+                };
+                if !clear && (a.is_debris() || b.is_debris()) && !fit {
+                    continue;
+                }
+                let mesh_a = self.colliders.of(a.propulsion.parts());
+                let mesh_b = self.colliders.of(b.propulsion.parts());
+                let frame_a = a.frame_of(&body_a);
+                let frame_b = b.frame_of(&body_b);
+                if !clear {
+                    if !mesh_a.within(frame_a, &mesh_b, frame_b, DAYLIGHT) {
+                        self.clear_of.insert(pair);
+                    }
+                    continue;
+                }
+                let speed = (body_a.velocity - body_b.velocity).length()
+                    + (body_a.turned * body_a.spin).length() * distance
+                    + (body_b.turned * body_b.spin).length() * distance;
+                if !mesh_a.within(frame_a, &mesh_b, frame_b, speed * dt + 0.01) {
+                    continue;
+                }
+                // Where in the tick they first touch: `back` is how long before its end.
+                let look = |back: f64| {
+                    let (ba, bb) = (
+                        a.as_body(&self.system, time, back),
+                        b.as_body(&self.system, time, back),
+                    );
+                    mesh_a.touches(a.frame_of(&ba), &mesh_b, b.frame_of(&bb))
+                };
+                let looks = (speed * dt / LOOK_EVERY).ceil().clamp(1.0, MOST_LOOKS);
+                let mut first = None;
+                let mut before = dt;
+                for k in 1..=looks as usize {
+                    let back = dt * (1.0 - k as f64 / looks);
+                    if look(back) {
+                        first = Some(back);
+                        break;
+                    }
+                    before = back;
+                }
+                let Some(mut hit) = first else {
+                    continue;
+                };
+                // Already through each other at the start of the tick: nothing to go back to.
+                if look(dt) {
+                    before = hit;
+                } else {
+                    for _ in 0..BISECTIONS {
+                        let middle = (hit + before) / 2.0;
+                        if look(middle) {
+                            hit = middle;
+                        } else {
+                            before = middle;
+                        }
+                    }
+                }
+                let (at_a, at_b) = (
+                    a.as_body(&self.system, time, hit),
+                    b.as_body(&self.system, time, hit),
+                );
+                let contacts = mesh_a.contacts(a.frame_of(&at_a), &mesh_b, b.frame_of(&at_b));
+                if contacts.is_empty() {
+                    continue;
+                }
+                // Just short of touching, and go on from there.
+                let mut stopped_a = a.as_body(&self.system, time, before);
+                let mut stopped_b = b.as_body(&self.system, time, before);
+                let closing = contact::solve(&mut stopped_a, &mut stopped_b, &contacts);
+                // Why the ports did not catch, if that is what they were trying to do.
+                let theirs = b.propulsion.docking_ports();
+                let why = (a.propulsion.docking_ports().iter())
+                    .flat_map(|p| theirs.iter().map(move |far| (p, far)))
+                    .filter(|(p, far)| p.fits(far))
+                    .map(|(p, far)| self.alignment(a, p, b, far, time))
+                    .min_by(|x, y| x.distance().total_cmp(&y.distance()))
+                    .and_then(|ports| ports.problem())
+                    .map_or(String::new(), |problem| format!(": {}", problem.label()));
+                let (id_a, id_b) = (a.id(), b.id());
+                let (name_a, name_b) = (a.name.clone(), b.name.clone());
+                self.vessels[i].set_body(&self.system, &stopped_a, time);
+                self.vessels[j].set_body(&self.system, &stopped_b, time);
+                if closing >= QUIET_BUMP {
+                    let said = format!("Bumped {name_b} at {closing:.2} m/s{why}");
+                    self.vessels[i].record(time, said);
+                    let said = format!("Bumped {name_a} at {closing:.2} m/s{why}");
+                    self.vessels[j].record(time, said);
+                    for id in [id_a, id_b] {
+                        events.push(SimEvent {
+                            vessel: id,
+                            event: VesselEvent {
+                                time,
+                                kind: VesselEventKind::Bumped { speed: closing },
+                            },
+                        });
+                    }
+                }
+                if closing >= BREAK_SPEED {
+                    let said = format!("Broke up, hitting at {closing:.0} m/s");
+                    for (k, id) in [(i, id_a), (j, id_b)] {
+                        if !self.vessels[k].is_destroyed() {
+                            self.vessels[k].break_up(time, said.clone());
+                            events.push(SimEvent {
+                                vessel: id,
+                                event: VesselEvent {
+                                    time,
+                                    kind: VesselEventKind::Destroyed,
+                                },
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        events
     }
 
     /// Debris other than the focus: removed when it crashes, never holds up warp.
@@ -223,7 +662,7 @@ impl Universe {
                 let body = self.system.body(body);
                 Some((body.parent?, body.orbit?))
             }
-            Target::Vessel(id) => {
+            Target::Vessel(id) | Target::Part(id, _) => {
                 let vessel = &self.vessels[self.find_vessel(id)?];
                 Some((vessel.parent(), vessel.orbit(&self.system, time)))
             }
@@ -238,6 +677,13 @@ impl Universe {
             Target::Vessel(id) => {
                 let other = self.vessels.get(self.find_vessel(id)?)?;
                 (other.parent(), other.state_at(&self.system, time))
+            }
+            Target::Part(id, part) => {
+                let other = self.vessels.get(self.find_vessel(id)?)?;
+                let state = other
+                    .part_state(&self.system, part, time)
+                    .unwrap_or_else(|| other.state_at(&self.system, time));
+                (other.parent(), state)
             }
         };
         Some(self.system.transform(state, frame, vessel.parent(), time))
@@ -303,10 +749,18 @@ impl Universe {
         for _ in 0..scenario.sequences_done {
             vessels[0].activate_next_stage(system, time);
         }
+        vessels[0].set_rcs(scenario.rcs);
         for other in &scenario.others {
             let mut vessel = spawn(&other.craft, &other.start)?;
             if let Some(name) = &other.name {
                 vessel.name = name.clone();
+            }
+            for _ in 0..other.sequences_done {
+                vessel.activate_next_stage(system, time);
+            }
+            if other.holds_attitude {
+                vessel.set_rcs(true);
+                vessel.set_sas(system, time, true);
             }
             vessels.push(vessel);
         }
@@ -320,6 +774,8 @@ impl Universe {
         let mission =
             Mission::new(scenario, sites, &self.system).map_err(UniverseError::Mission)?;
         self.vessels.clear();
+        self.clear_of.clear();
+        self.captures.clear();
         self.time = time;
         for mut vessel in vessels {
             // In a game, nothing flies without avionics or a crew to fly it.
@@ -349,10 +805,40 @@ impl Universe {
     /// and none has reached the point where it needs physics again (a burn coming up).
     /// Debris does not count: rails leave behind what of it needs physics.
     pub fn can_use_rails(&self) -> bool {
-        !self.vessels.iter().any(|v| {
+        let quiet = !self.vessels.iter().any(|v| {
             !self.expendable(v)
                 && (v.needs_physics() || v.attention_time().is_some_and(|t| t <= self.time))
-        })
+        });
+        quiet && self.captures.is_empty() && !self.next_close_call().is_some_and(|wait| wait <= 0.0)
+    }
+
+    /// How long until the vessel being flown comes within [`CLOSE_CALL`] of a vessel it is slowly
+    /// closing on, s, if it is: at once if it is there. Debris that it could not dock with does
+    /// not count, as for time warp in general.
+    fn next_close_call(&self) -> Option<f64> {
+        let own = self.vessel(self.focus?)?;
+        let here = own.state_at(&self.system, self.time);
+        let ports = own.propulsion.docking_ports();
+        (self.vessels.iter())
+            .filter(|other| other.id() != own.id() && !other.is_landed())
+            .filter(|other| {
+                let theirs = other.propulsion.docking_ports();
+                !self.expendable(other)
+                    || ports.iter().any(|p| theirs.iter().any(|far| p.fits(far)))
+            })
+            .filter_map(|other| {
+                let there = self.system.transform(
+                    other.state_at(&self.system, self.time),
+                    other.parent(),
+                    own.parent(),
+                    self.time,
+                );
+                let apart = there.position - here.position;
+                let closing = -(there.velocity - here.velocity).dot(apart.normalize_or_zero());
+                ((NOT_CLOSING..MEETING_SPEED).contains(&closing))
+                    .then(|| (apart.length() - CLOSE_CALL) / closing)
+            })
+            .reduce(f64::min)
     }
 
     /// The earliest time some vessel needs physics again, if any does, and which vessel.
@@ -459,6 +945,19 @@ impl Universe {
         for (vessel, state) in self.vessels.iter_mut().zip(targets) {
             vessel.set_target_state(state);
         }
+        // Those facing a port need to know which way it looks.
+        let ports: Vec<_> = (0..self.vessels.len())
+            .map(|i| {
+                let sas = self.vessels[i].sas();
+                (sas.enabled() && sas.mode() == SasMode::TargetPort)
+                    .then(|| self.port_approach(i, t0))
+                    .flatten()
+                    .map(|approach| -approach.alignment.out)
+            })
+            .collect();
+        for (vessel, port) in self.vessels.iter_mut().zip(ports) {
+            vessel.set_target_port(port);
+        }
         let mut events = Vec::new();
         for vessel in &mut self.vessels {
             let mut local = Vec::new();
@@ -478,6 +977,17 @@ impl Universe {
                 self.remove_vessel(event.vessel);
             }
         }
+        self.catch_ports();
+        for vessel in self.close_captures() {
+            events.push(SimEvent {
+                vessel,
+                event: VesselEvent {
+                    time: t1,
+                    kind: VesselEventKind::Docked,
+                },
+            });
+        }
+        events.extend(self.collide_vessels());
         self.observe_mission(&events, true);
         events
     }
@@ -515,6 +1025,10 @@ impl Universe {
         for vessel in &mut self.vessels {
             vessel.enter_rails(&self.system, self.time);
         }
+        // Stop short of another vessel the flown one is closing on: physics takes it from there.
+        let target = (self.next_close_call()).map_or(target, |wait| {
+            target.min(self.time.add_seconds(wait.max(0.0)))
+        });
         // Hand over to physics where a vessel needs it.
         let due = self
             .attention()

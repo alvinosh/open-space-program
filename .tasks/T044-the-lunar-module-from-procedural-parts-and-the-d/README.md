@@ -11,6 +11,10 @@ A procedural cabin shell with crew, descent tanks, the LMDE and LMAE (records ex
 
 - The smoke test lands at under 3 m/s on a slope under 12 degrees, stays, lifts off from the descent stage, meets the CSM and docks.
 
+## Notes
+
+- 2026-11-02: the scenario `apollo11_docking` starts the Saturn V with `sequences_done: 8` to leave the CSM alone, so changing the Saturn V's sequences has to keep that right.
+
 ## Where it comes from
 
 - docs/systems-plan.md (step 19, Landing legs and the lunar module)

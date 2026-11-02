@@ -543,10 +543,12 @@ pub enum SasMode {
     /// Towards the target, and away from it.
     Target,
     AntiTarget,
+    /// Facing the port on the target it would dock with.
+    TargetPort,
 }
 
 impl SasMode {
-    pub const ALL: [SasMode; 10] = [
+    pub const ALL: [SasMode; 11] = [
         SasMode::Stability,
         SasMode::Prograde,
         SasMode::Retrograde,
@@ -557,6 +559,7 @@ impl SasMode {
         SasMode::Burn,
         SasMode::Target,
         SasMode::AntiTarget,
+        SasMode::TargetPort,
     ];
 
     /// Name used in actions and UI data.
@@ -572,6 +575,7 @@ impl SasMode {
             SasMode::Burn => "burn",
             SasMode::Target => "target",
             SasMode::AntiTarget => "anti_target",
+            SasMode::TargetPort => "target_port",
         }
     }
 
@@ -581,7 +585,7 @@ impl SasMode {
 
     pub fn label(self) -> &'static str {
         match self {
-            SasMode::Stability => "Stability",
+            SasMode::Stability => "Kill rotation",
             SasMode::Prograde => "Prograde",
             SasMode::Retrograde => "Retrograde",
             SasMode::Normal => "Normal",
@@ -591,6 +595,7 @@ impl SasMode {
             SasMode::Burn => "Burn",
             SasMode::Target => "Target",
             SasMode::AntiTarget => "Anti-target",
+            SasMode::TargetPort => "Target port",
         }
     }
 
@@ -599,7 +604,11 @@ impl SasMode {
     /// target rather than the frame.
     pub fn direction(self, basis: &NavBasis) -> Option<DVec3> {
         match self {
-            SasMode::Stability | SasMode::Burn | SasMode::Target | SasMode::AntiTarget => None,
+            SasMode::Stability
+            | SasMode::Burn
+            | SasMode::Target
+            | SasMode::AntiTarget
+            | SasMode::TargetPort => None,
             SasMode::Prograde => Some(basis.prograde),
             SasMode::Retrograde => Some(-basis.prograde),
             SasMode::Normal => Some(basis.normal),
@@ -654,6 +663,12 @@ impl Sas {
     pub fn set_mode(&mut self, mode: SasMode) {
         self.enabled = true;
         self.mode = mode;
+        self.hold = None;
+    }
+
+    /// What the mode steered by has gone: back to holding attitude, on or off as it was.
+    pub(crate) fn fall_back(&mut self) {
+        self.mode = SasMode::Stability;
         self.hold = None;
     }
 

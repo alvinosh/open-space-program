@@ -187,17 +187,10 @@ fn apply_actions(
             }
             "vessel.sas_mode" => match action.arg().and_then(SasMode::from_id) {
                 Some(mode) => {
-                    // Selecting the current mode again goes back to holding attitude.
-                    let sas = vessel.sas();
-                    let mode = if sas.enabled() && sas.mode() == mode {
-                        SasMode::Stability
-                    } else {
-                        mode
-                    };
-                    if mode != SasMode::Burn {
+                    vessel.press_sas_mode(system, ut, mode);
+                    if vessel.sas().mode() != SasMode::Burn || !vessel.sas().enabled() {
                         vessel.disengage_burn(ut);
                     }
-                    vessel.set_sas_mode(system, ut, mode);
                 }
                 None => warn!("unknown SAS mode in `{}`", action.0),
             },

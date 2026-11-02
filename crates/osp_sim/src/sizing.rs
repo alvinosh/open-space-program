@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     component::{
-        AntennaDef, AvionicsUnitDef, BatteryPackDef, ComponentDef, DecouplerDef, FuelCellDef,
-        RtgDef, SolarArrayDef, SolidMotorDef, StorageDef, StructureDef,
+        AntennaDef, AvionicsUnitDef, BatteryPackDef, ComponentDef, DecouplerDef, DockingPortDef,
+        FuelCellDef, PortKind, RtgDef, SolarArrayDef, SolidMotorDef, StorageDef, StructureDef,
     },
     constants::G0,
     data::{BatteryDef, PartCatalog},
@@ -23,6 +23,7 @@ use crate::{
         Fill, ShapeDef,
         preset::{BoxDef, CylinderTankDef, RingDef},
     },
+    skip::is_default,
     structure::DOME_RATIO,
 };
 
@@ -48,6 +49,7 @@ pub enum ProceduralDef {
     Avionics(AvionicsRequirement),
     Antenna(AntennaRequirement),
     Decoupler(DecouplerRequirement),
+    DockingPort(DockingPortRequirement),
     SeparationMotor(SeparationMotorRequirement),
 }
 
@@ -70,6 +72,7 @@ impl ProceduralDef {
             Self::Avionics(requirement) => requirement.size(catalog),
             Self::Antenna(requirement) => requirement.size(),
             Self::Decoupler(requirement) => requirement.size(),
+            Self::DockingPort(requirement) => requirement.size(),
             Self::SeparationMotor(requirement) => requirement.size(catalog),
         }
     }
@@ -84,6 +87,7 @@ impl ProceduralDef {
             Self::Avionics(_) => AvionicsRequirement::FIELDS,
             Self::Antenna(_) => AntennaRequirement::FIELDS,
             Self::Decoupler(_) => DecouplerRequirement::FIELDS,
+            Self::DockingPort(_) => DockingPortRequirement::FIELDS,
             Self::SeparationMotor(_) => SeparationMotorRequirement::FIELDS,
         }
     }
@@ -522,6 +526,84 @@ impl DecouplerRequirement {
                 crossfeed: self.crossfeed,
                 // What its wall carries at the stress it yields at.
                 strength: circumference * wall * RING_STRESS,
+            })],
+        })
+    }
+}
+
+/// A docking port's ring against its diameter, and what its latches, collar and seals weigh
+/// against its wall: a rough allowance, which makes a 0.8 m port for 100 kN about 30 kg.
+const PORT_HEIGHT: f64 = 0.25;
+const PORT_HARDWARE: f64 = 10.0;
+
+/// A docking port: a ring of so much diameter carrying so much load, sized from its wall, with
+/// the port on its top node. It stands on what carries it by its bottom one.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DockingPortRequirement {
+    /// m.
+    pub diameter: f64,
+    /// What it has to carry, N.
+    pub load: f64,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub kind: PortKind,
+    /// What its springs push two vessels apart with, N·s.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub impulse: f64,
+    /// Propellant flows across while docked.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub crossfeed: bool,
+}
+
+impl DockingPortRequirement {
+    pub const FIELDS: &'static [Field] = &[
+        Field {
+            id: "diameter",
+            label: "Diameter",
+            unit: "m",
+            range: [0.3, 5.0],
+            default: 0.8,
+        },
+        Field {
+            id: "load",
+            label: "Carries",
+            unit: "N",
+            range: [1e3, 1e7],
+            default: 1e5,
+        },
+    ];
+
+    fn size(&self) -> Result<Design, String> {
+        if !(self.diameter > 0.0 && self.load > 0.0) {
+            return Err(format!(
+                "a docking port is a ring of some size carrying some load, not {} m and {} N",
+                self.diameter, self.load
+            ));
+        }
+        let circumference = PI * self.diameter;
+        let wall = (RING_SAFETY * self.load / (circumference * RING_STRESS)).max(RING_MIN_WALL);
+        if wall > self.diameter / 4.0 {
+            return Err(format!(
+                "a {} m ring cannot carry {} N: its wall would be {wall:.3} m",
+                self.diameter, self.load
+            ));
+        }
+        let height = PORT_HEIGHT * self.diameter;
+        Ok(Design {
+            shape: ShapeDef::Ring(RingDef {
+                diameter: self.diameter,
+                height,
+                thickness: wall,
+            }),
+            structure: StructureDef {
+                mass: Some(PORT_HARDWARE * circumference * height * wall * RING_DENSITY),
+                ..StructureDef::default()
+            },
+            components: vec![ComponentDef::DockingPort(DockingPortDef {
+                node: "top".into(),
+                kind: self.kind,
+                impulse: self.impulse,
+                crossfeed: self.crossfeed,
             })],
         })
     }

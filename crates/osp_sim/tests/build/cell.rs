@@ -37,7 +37,7 @@ pub struct Row {
     pub aero: Aero,
 }
 
-pub const ROWS: [Row; 12] = [
+pub const ROWS: [Row; 13] = [
     Row {
         id: "storage",
         title: "Storage",
@@ -86,6 +86,15 @@ pub const ROWS: [Row; 12] = [
         title: "Crew",
         part: r#"{ id: "x", shape: { ring: { diameter: 0.5, height: 0.6, thickness: 0.25 } },
             structure: { mass: 150 }, components: [{ crew: { seats: 1 } }] }"#,
+        stack: "bottom",
+        hang: "top",
+        aero: Aero::Body,
+    },
+    Row {
+        id: "docking_port",
+        title: "Docking port",
+        part: r#"{ id: "x", shape: { ring: { diameter: 0.6, height: 0.1, thickness: 0.3 } },
+            structure: { mass: 8 }, components: [{ docking_port: { node: "top" } }] }"#,
         stack: "bottom",
         hang: "top",
         aero: Aero::Body,

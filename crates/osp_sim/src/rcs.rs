@@ -55,6 +55,11 @@ pub fn fire(
     let base = propulsion.parts().base();
     for k in 0..propulsion.rcs.len() {
         let block = &propulsion.rcs[k];
+        // A vessel that has joined this one keeps its thrusters to itself.
+        if !propulsion.flown(block.section) {
+            propulsion.rcs[k].firing = [0.0; 4];
+            continue;
+        }
         let (part, lever) = (block.part, lever(block, base, center_of_mass));
         let throttles = throttles(block, lever, rotation, translation);
         let throttle: f64 = throttles.iter().sum();
@@ -99,7 +104,7 @@ pub fn torque_authority(propulsion: &Propulsion, center_of_mass: f64, pressure: 
     for block in propulsion
         .rcs
         .iter()
-        .filter(|b| has_propellant(propulsion, b))
+        .filter(|b| propulsion.flown(b.section) && has_propellant(propulsion, b))
     {
         let lever = lever(block, base, center_of_mass);
         let about = |axis: DVec3| {

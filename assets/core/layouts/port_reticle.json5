@@ -1,0 +1,25 @@
+// The crosshair of the view out of the vessel's port (C): the port's axis, as Apollo's alignment
+// sight showed it. Put the far ring round it, and the line down the target's axis on it.
+{
+  id: "port_reticle",
+  group: "flight",
+  root: {
+    id: "port_reticle",
+    widget: "column",
+    visible: "dock.port_view",
+    style: { left: "50%", top: "50%", margin: [-110, 0, 0, -110], width: 220, align_items: "center", gap: 4 },
+    children: [
+      { widget: "image", image: "icons/port_reticle.svg", style: { width: 220, height: 220 } },
+      {
+        widget: "panel",
+        class: "module",
+        visible: "dock.has",
+        style: { align_items: "center", gap: 1, padding: [4, 10] },
+        children: [
+          { widget: "label", text: "{dock.gap|fixed:2} m   {dock.closing|fixed:2} m/s" },
+          { widget: "label", class: "dim", text: "{dock.status}" },
+        ],
+      },
+    ],
+  },
+}

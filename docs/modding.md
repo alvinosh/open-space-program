@@ -248,6 +248,27 @@ component works with any shape that has what it needs:
 - `battery`: a set `charge` (kJ), or a `technology` (a `batteries` record) that fills one of
   the part's solids and weighs what such a battery does.
 - `crew`: `seats`.
+- `docking_port`: a ring at one of its nodes, as wide as the node, that another vessel's can
+  capture in flight: the `node`, its `kind` (`probe` mates with `drogue`, `androgynous` and
+  `berthing` each with their own kind; the default is `androgynous`), the `impulse` its springs push
+  the two apart with when they undock (N·s, added to the other port's) and `crossfeed` (propellant
+  flows across while docked; power and data always do). Put the node on the part's real mating
+  surface, facing out of it: a test holds the game's own craft to this, and on a model it is rarely
+  at the top of the model's bounds. Two free ports of a kind and size that fit capture when they are
+  within 15 cm, within 40 cm of each other's axis and 15° of facing, closing at under 0.5 m/s,
+  sliding under 0.3 m/s and turning under 3°/s. That is soft capture: a spring and damper draw them
+  together and line them up, the latches close within 8 s, and the two are one vessel, flown as the
+  one the player was flying, until Undock in a part window lets the other go as it was. Only the
+  vessel flown from fires its RCS and what the burn executor lights; flying from a part of the other
+  (Control from here) swaps them. A part with a port is flown from out of that port. Time warp stops
+  200 m short of a vessel being closed on.
+
+  What vessels collide with is what is drawn: each part's surfaces and the triangles of its models,
+  with a strut and foot for a landing leg (F9 shows them). A model's `proxy` is for the air and for
+  mass only, unless its file cannot be read. Vessels stop at the moment of first touch and take an
+  equal and opposite impulse, with friction; closing at over 15 m/s, both break up. They can only
+  bump once they have been 5 m apart, so that stages coming off do not count, and a stage's debris
+  does not collide with other debris. The ground does not use these yet.
 - `decoupler`: the `node` it lets go of (which decides which side keeps the part), the
   `impulse` it pushes the two sides apart with (N·s; without one they part at 1 m/s), and
   `crossfeed`: propellant flows across it until it lets go (an asparagus stage, a booster
@@ -287,7 +308,8 @@ component works with any shape that has what it needs:
   (kJ, a `batteries` record): a solid drum as big as the energy takes at the technology's Wh/L,
   weighing what its Wh/kg says. `{ fuel_cell: { power } }` (W, the Apollo CSM's 78 kg/kW),
   `{ solar_array: { power, efficiency, tracking } }` (W at 1 AU, 3 kg/m²) and `{ rtg: { power } }`
-  (W, Voyager's 0.24 kg/W). `{ decoupler: { diameter, load, impulse, crossfeed } }` is a ring with
+  (W, Voyager's 0.24 kg/W). `{ docking_port: { diameter, load, kind, impulse, crossfeed } }` is a ring with a port on its
+  `top`, sized the same way with an allowance for its latches. `{ decoupler: { diameter, load, impulse, crossfeed } }` is a ring with
   a wall for that load (N), which breaks past what it holds and takes the vessel with it.
   `{ separation_motor: { impulse, burn_time } }` is a small solid motor, tank and engine on one
   part; mounted `by: "top"` on a node facing down it pushes up, on one facing up it pushes down.
@@ -820,7 +842,11 @@ nothing else.
   ],
   fail: [{ id: "lost", text: "The rocket was lost", when: { type: "Destroyed" } }],
   ordered: false, // true: a goal only counts once the ones before it are met
-  sequences_done: 1, // sequences already fired at the start, with the throttle shut (default 0)
+  sequences_done: 1, // sequences already fired at the start, with the throttle shut (default 0);
+                     // an entry of `others` can say the same for itself
+  rcs: true, // the player's vessel starts with RCS on
+  // In an entry of `others`, `holds_attitude: true` starts it with SAS holding and RCS on, as a
+  // vessel with someone aboard waiting to be docked with: what hits it does not leave it tumbling.
 }
 ```
 
@@ -839,13 +865,15 @@ stops the scenario from starting, with the reason.
 | `Speed` | `min` / `max`: speed over the ground (the air), or with `orbital: true` relative to the body's centre |
 | `Orbit` | In a stable orbit (the lowest point clear of the air) round `body`, with `apoapsis`, `periapsis` (altitudes) and `inclination` (to the body's equator) each a `{ min, max }` range, open ends allowed |
 | `Near` | Within `distance` of the vessel called `target` (a name from the scenario's `others`) and, with `speed`, slower than that relative to it; give the goal a `hold` to keep station |
+| `Docked` | Docked with the vessel called `target` |
+| `Undocked` | Has docked, let go of the vessel called `target` and is further than `distance` from it |
 | `Landed` | On the ground, on `body` if given and within `radius` (500 by default) of the `launch_sites` id `site` if given; a crash is not landed |
 | `Recovered` | Back on the ground in one piece after flying, with the peak acceleration under `max_g`. There is no crew model yet, so "crew alive" is "vessel intact" |
 | `Propellant` | `min` / `max`: propellant left in the main tanks (not the RCS), kg |
 | `Destroyed` | The vessel broke up or hit the ground too hard |
 | `Elapsed` | `seconds` have passed since the mission began |
 | `Throttle` | `min` / `max`: the throttle setting, 0 to 1 |
-| `Sas` | SAS is on, in `mode` if given (`stability`, `prograde`, `retrograde`, `normal`, `anti_normal`, `radial_out`, `radial_in`, `burn`, `target`, `anti_target`) |
+| `Sas` | SAS is on, in `mode` if given (`stability`, `prograde`, `retrograde`, `normal`, `anti_normal`, `radial_out`, `radial_in`, `burn`, `target`, `anti_target`, `target_port`) |
 | `Engines` | `min` / `max`: how many engines are running |
 | `Pitch` | `min` / `max`: the nose's angle above the local horizon, degrees (negative below it) |
 | `Plan` | `min` / `max`: how many burns are planned |
@@ -1150,8 +1178,8 @@ The flight UI is a set of modules, each its own layout in the `flight` group:
 | `time` | Warp buttons, a chevron per warp level (`time.warp_levels`: `lit`, `rails`), UT and mission time (top of the left dock) | `#time` |
 | `altimeter` | Altitude, vessel and situation (top centre) | `#altimeter` |
 | `messages` | Latest event, warp notices and lag warning | `#messages` |
-| `navball` | Navball in a housing picture (`icons/navball_housing.svg`) with arc gauges for thrust, throttle and air pressure, the speed tab (click to change frame), RCS and SAS switches, a heading plate, and beside it the SAS mode buttons (the navball's markers as icons) and control inputs (bottom centre) | `#navball`, `#speed`, `#plate`, `#sas`, `#sas_modes`, `#inputs` |
-| `staging` | Sequence stack (bottom of the left dock, F8), with the lit engines under it | `#staging`, `#sequences`, `#armed` |
+| `navball` | Navball in a housing picture (`icons/navball_housing.svg`) with arc gauges for thrust, throttle and air pressure, the speed tab (click to change frame), RCS and SAS switches, a heading plate, and right of it the SAS mode buttons (the navball's markers as icons), two to a row (bottom centre) | `#navball`, `#speed`, `#plate`, `#sas` |
+| `staging` | Sequence stack (bottom of the left dock, F8), with the lit engines under it and a box of two tabs under them: the stage's delta-v and thrust-to-weight, and the control inputs | `#staging`, `#sequences`, `#armed`, `#stage_tabs`, `#stage_stats`, `#inputs` |
 | `resources` | Every propellant on board, a row per stage coloured by stage, and the RCS delta-v | `#rcs_supply`, `#list` |
 | `flight_info` | Speeds, Mach, pressures | `#flight` |
 | `orbit_info` | Apsides, inclination, period, warp-to buttons, predicted events | `#orbit`, `#warp_to`, `#events` |
@@ -1208,7 +1236,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.throttle`, `vessel.thrust`, `vessel.twr`, `vessel.mass`, `vessel.accel_g` | 0..1, N, -, kg, g |
 | `vessel.engine_level`, `vessel.min_throttle` | Thrust the bottom stage's engines give as a share of full (0..1, follows the throttle through spool-up, throttling and tail-off); the highest minimum throttle among them |
 | `vessel.delta_v`, `vessel.stage_count`, `vessel.landed`, `vessel.engines_running` | |
-| `vessel.sas`, `vessel.sas_mode`, `vessel.sas_mode_label` | SAS on; mode (`off`, `stability`, `prograde`, `retrograde`, `normal`, `anti_normal`, `radial_out`, `radial_in`, `burn`, `target`, `anti_target`) |
+| `vessel.sas`, `vessel.sas_mode`, `vessel.sas_mode_label` | SAS on; mode (`off`, `stability`, `prograde`, `retrograde`, `normal`, `anti_normal`, `radial_out`, `radial_in`, `burn`, `target`, `anti_target`, `target_port`); the label calls `stability` Kill rotation |
 | `vessel.rcs`, `vessel.has_rcs`, `vessel.rcs_fuel` | RCS on; any RCS with a propellant supply in the stack; scarcest RCS propellant left (0..1) |
 | `vessel.rcs_mass`, `vessel.rcs_delta_v` | RCS propellant left (kg) and the delta-v it can still give the whole vessel in vacuum (m/s) |
 | `vessel.structure_load`, `vessel.destroyed` | The most loaded part's load over its strength (1 = failing); broke up |
@@ -1223,7 +1251,8 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `screen.message` | The latest log message, for a few seconds |
 | `ui.shown.<layout>` | Whether a layout is showing |
 | `ui.pinned.<layout>` | Whether a popup is pinned (copies of instanced layouts by their `<layout>:<key>` id) |
-| `part_info.<vessel>-<part>.*` | An open part window's part: `name`, `type` (`engine`, `tank`, `rcs`, `wheel`, `pod`, `fins`, `wing`, `gear`, `shell`, `fairing`, `hull`, `decoupler`), `kind` (its label), `stage`, `vessel`, `mass` (kg, dry), `manufacturer`, `description`. `has_actions`, `actions[]` (what can be done to the part by hand now: `label`, `do`, the `part.do` argument). Engines: `status`, `lit`, `thrust` (N), `level` (0..1), `thrust_vac`, `thrust_sl`, `isp` (s, here), `isp_vac`, `isp_sl`, `min_throttle`, `gimbal`, `gimbal_range` (deg), `ignitions`, `limited`, `propellants`. Tanks: `resources[]` (`name`, `amount`, `capacity` in kg, `fraction`), `contents_mass`, `size`, `material`, `volume` (m³), `wall` (mm), `max_pressure` (bar), `max_axial_load` (N). RCS: `on`, `firing` (0..1), `nozzle_thrust`, `isp_vac`, `isp_sl`, `propellants`. Wheels `torque`; pods `crew`, `diameter`, `height`; fins (one per part) `count`, `area`, `span`, `thickness`, `material`, `max_fin_force`; wings (per part, a mirrored wing's left half too) `span`, `area`, `sweep`, `mirrored`, `control`, `deflection`; gear `compression` (0..1), `length`, `stroke`, `rated_mass`, `brakes`, `steering`, `mirrored`; shells `profile`, `length`, `bottom_diameter`, `top_diameter`; hulls and fairing halves `diameter`, `length`. Tanks and fins also `load` (0..1+) and `mode` |
+| `ui.tab.<group>` | The tab chosen in a group of tabs (`ui.tab:<group>:<tab>`); nothing until one is, so the first tab's condition is `ui.tab.<group> != <the other>` |
+| `part_info.<vessel>-<part>.*` | An open part window's part: `name`, `type` (`engine`, `tank`, `rcs`, `wheel`, `pod`, `fins`, `wing`, `gear`, `shell`, `fairing`, `hull`, `decoupler`), `kind` (its label), `stage`, `vessel`, `mass` (kg, dry), `manufacturer`, `description`. `key` (`<vessel>-<part>`), `can_target` (a part of another vessel, not the target), `targeted` (the part is the target), `target_label` (what targeting it means: its docking port if it has one). `has_actions`, `actions[]` (what can be done to the part by hand now: `label`, `do`, the `part.do` argument). Engines: `status`, `lit`, `thrust` (N), `level` (0..1), `thrust_vac`, `thrust_sl`, `isp` (s, here), `isp_vac`, `isp_sl`, `min_throttle`, `gimbal`, `gimbal_range` (deg), `ignitions`, `limited`, `propellants`. Tanks: `resources[]` (`name`, `amount`, `capacity` in kg, `fraction`), `contents_mass`, `size`, `material`, `volume` (m³), `wall` (mm), `max_pressure` (bar), `max_axial_load` (N). RCS: `on`, `firing` (0..1), `nozzle_thrust`, `isp_vac`, `isp_sl`, `propellants`. Wheels `torque`; pods `crew`, `diameter`, `height`; fins (one per part) `count`, `area`, `span`, `thickness`, `material`, `max_fin_force`; wings (per part, a mirrored wing's left half too) `span`, `area`, `sweep`, `mirrored`, `control`, `deflection`; gear `compression` (0..1), `length`, `stroke`, `rated_mass`, `brakes`, `steering`, `mirrored`; shells `profile`, `length`, `bottom_diameter`, `top_diameter`; hulls and fairing halves `diameter`, `length`. Tanks and fins also `load` (0..1+) and `mode` |
 | `vessel.stages[]` | `name`, `active`, `delta_v`, `burn_time`, `fuel` (0..1), `has_fuel`, `ignitions`, `engines` |
 | `vessel.sequences[]` | The activation sequences, next first: `index`, `number`, `next`, `empty`, `caption` (what firing it does), `lines[]` (`tiles[]`: `items[]` in lines of four), `items[]` (`seq`, `index`, `kind`, `is_engines` (a liquid engine), `is_vacuum`, `is_solid`, `is_decoupler`, `is_fairing`, `is_rcs`, `stage`, `count`, `multiple`, `fuel`, `has_fuel`, `color`: the stage's colour, `caption`, `tip`: the caption with thrust, Isp, burn time and fuel) |
 | `vessel.next_caption`, `vessel.armed_lines[]` | What the stage key does next; the lit engines in lines of four (`tiles[]`) |
@@ -1242,8 +1271,9 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `burn.time_to`, `burn.duration`, `burn.start_in`, `burn.apoapsis`, `burn.periapsis` | When, how long, and the apsis altitudes (m) after it |
 | `autoburn.engaged`, `autoburn.state`, `autoburn.remaining` | Burn executor on; `Off`, `Waiting` or `Burning`; delta-v still to give (m/s) |
 | `map.hovering`, `map.hover_time_to`, `map.hover_altitude` | Map view: the trajectory point under the mouse (s, m) |
-| `target.has`, `target.name` | A target is set; its name |
+| `target.has`, `target.name` | A target is set; its name (`<vessel>, <part>` for one part of a vessel) |
 | `target.distance`, `target.speed`, `target.closing_speed` | Now: m, relative m/s, m/s closing (negative when opening) |
+| `dock.has`, `dock.near`, `dock.port`, `dock.gap`, `dock.closing`, `dock.off_right`, `dock.off_up`, `dock.slide_right`, `dock.slide_up`, `dock.angle`, `dock.turning`, `dock.status`, `dock.ready`, `dock.rcs_off`, `dock.port_view` | The port the active vessel would dock by, against the target's: whether there is a pair that fits; whether it is within 500 m; the name of the target's part; how far in front of its port along its axis, m; how fast that closes, m/s; how far off its axis to the pilot's right and up, m; how fast across it, the same ways, m/s; degrees from facing it; °/s turning against it; what would stop a capture, `Will capture`, or that soft capture is closing the latches; whether nothing would stop it; whether RCS is off; and whether the camera is looking out of the port |
 | `target.has_approach`, `target.approach_distance`, `target.approach_time_to`, `target.approach_speed` | First closest approach on the planned trajectory (m, s, m/s); `target.approach2_*` the next |
 | `target.has_plane`, `target.inclination`, `target.an_time_to`, `target.dn_time_to` | Plane crossings when the target orbits the same body (deg, s) |
 | `transfer.has`, `transfer.computing`, `transfer.stale`, `transfer.kind` | A plot exists; being computed; made for another target; what kind |
@@ -1277,14 +1307,16 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | Action | |
 | --- | --- |
 | `vessel.stage` | Fire the next activation sequence |
-| `part.do:<vessel>:<kind>:<part>` | Do one activation by hand, outside the sequences: `<kind>` is `engines` (ignite), `decoupler` (release the joint the part hangs from), `fairing` (jettison a panel) or `rcs`; the part window's buttons fire it, and it leaves the sequence that listed it |
+| `part.do:<vessel>:<kind>:<part>` | Do one activation by hand, outside the sequences: `<kind>` is `engines` (ignite), `decoupler` (release the joint the part hangs from), `undock` (let go of the vessel docked there), `fairing` (jettison a panel) or `rcs`; the part window's buttons fire it, and it leaves the sequence that listed it |
 | `vessel.throttle_full`, `vessel.throttle_cut` | press |
 | `staging.drop:<dragged>:<sequence>` | `<dragged>` is `item:<sequence>:<index>` (an activation, moves into that sequence) or `seq:<sequence>` (a sequence, moves to its place) |
 | `staging.drop_at:<dragged>:<place>` | Put an activation in a new sequence before the one at `<place>` (the strip between two rows), or move a sequence there |
 | `staging.drop_new:<dragged>`, `staging.add`, `staging.remove:<sequence>` | Give an activation a new last sequence (or move a sequence to the end); add an empty sequence at the end; remove an empty one |
 | `vessel.throttle_up`, `vessel.throttle_down` | hold |
 | `vessel.pitch_up`, `vessel.pitch_down`, `vessel.yaw_left`, `vessel.yaw_right`, `vessel.roll_left`, `vessel.roll_right` | hold |
-| `vessel.sas_toggle`, `vessel.sas_mode:<mode>` | SAS on/off; select a mode (switches SAS on; the selected mode again goes back to `stability`) |
+| `camera.port_view` | Look out of the vessel's docking port through a crosshair, or back at the vessel |
+| `debug.colliders` | Draw what vessels collide with, or stop |
+| `vessel.sas_toggle`, `vessel.sas_mode:<mode>` | SAS on/off; select a mode (switches SAS on). The selected mode again goes back to `stability`, and `stability` again switches SAS off. `burn` does nothing with no burn planned. A `burn` or target mode whose burn or target goes falls back to `stability` |
 | `vessel.rcs_toggle` | RCS on/off |
 | `vessel.translate_forward`, `vessel.translate_back`, `vessel.translate_left`, `vessel.translate_right`, `vessel.translate_up`, `vessel.translate_down` | hold; RCS translation |
 | `nav.toggle_frame` | Cycle prograde and speed through surface, orbit and (with a target) target |
@@ -1294,6 +1326,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `manifest.remove:<key>`, `manifest.clear_debris` | Ask to recover (landed on a world with a launch site) or destroy a vessel other than the active one, or to remove all debris |
 | `manifest.confirm`, `manifest.cancel` | Answer that question |
 | `target.body:<id>`, `target.vessel:<key>`, `target.clear` | Choose or drop the target (also Shift+click in map view) |
+| `target.part:<vessel>-<part>` | Target one part of another vessel: SAS and the navball's target markers point at it, at its docking port if it has one, and that port is the one to dock with. If the part leaves the vessel, the vessel is the target (a part window's Set as target) |
 | `plan.match_plane` | Plan a burn at the next plane crossing that matches the target's plane |
 | `warp.increase`, `warp.decrease`, `warp.stop` | |
 | `warp.to:<ap|pe|soi|burn|approach>` | Warp to the next apoapsis, periapsis, SOI change, burn start or closest approach, slowing on the way in |

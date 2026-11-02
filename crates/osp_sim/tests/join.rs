@@ -253,7 +253,7 @@ fn any_two_craft_join_and_come_apart_unchanged() {
             assert_eq!(bottom, a.bottom().map(|s| s.id).collect(), "{what}");
 
             let staged = both
-                .perform(Activation::decoupler(port), false)
+                .perform(Activation::undock(port), false)
                 .unwrap_or_else(|| panic!("{what}: nothing lets go"));
             let [released] = <[_; 1]>::try_from(staged.released)
                 .unwrap_or_else(|_| panic!("{what}: not one piece"));
@@ -422,7 +422,7 @@ fn a_stack_turned_round_flies_and_sheds_pieces_in_their_own_frame() {
         assert!(z(piece.parts().get(engine.part).unwrap().rotation).z > 0.99);
     }
     // What is left still undocks, a lander without its descent stage.
-    let staged = both.perform(Activation::decoupler(port), false).unwrap();
+    let staged = both.perform(Activation::undock(port), false).unwrap();
     let ascent = Propulsion::come_home(staged.released.into_iter().next().unwrap());
     assert!(ascent.mass() < lander.mass());
     assert_same(&print(&stack), &print(&both), "the stack that stayed");
@@ -482,13 +482,11 @@ fn a_vessel_that_leaves_takes_what_joined_it() {
         .unwrap();
     assert_eq!(all.joined_parts().count(), 2);
 
-    let staged = all.perform(Activation::decoupler(b_port), false).unwrap();
+    let staged = all.perform(Activation::undock(b_port), false).unwrap();
     assert_same(&a_print, &print(&all), "the first");
     let mut middle = Propulsion::come_home(staged.released.into_iter().next().unwrap());
     assert_eq!(middle.joined_parts().collect::<Vec<_>>(), [c_port]);
-    let staged = middle
-        .perform(Activation::decoupler(c_port), false)
-        .unwrap();
+    let staged = middle.perform(Activation::undock(c_port), false).unwrap();
     assert_same(&b_print, &print(&middle), "the middle one");
     let third = Propulsion::come_home(staged.released.into_iter().next().unwrap());
     assert_same(&c_print, &print(&third), "the third");

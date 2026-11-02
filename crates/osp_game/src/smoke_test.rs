@@ -22,7 +22,9 @@ use bevy::{
     ui::UiGlobalTransform,
 };
 
-use osp_sim::{attitude::SasMode, prediction::PatchEnd, propulsion::Propulsion};
+use osp_sim::{
+    attitude::SasMode, prediction::PatchEnd, propulsion::Propulsion, staging::Activation,
+};
 use osp_ui::{
     ActionSource, ContextAction, DragPayload, DropAction, Formatters, Template, UiAction, UiData,
 };
@@ -95,6 +97,10 @@ impl Plugin for SmokeTestPlugin {
                 MAP_UI_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_RENDEZVOUS").is_some() {
                 RENDEZVOUS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_SAS").is_some() {
+                SAS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_DOCKING").is_some() {
+                DOCKING_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_DEORBIT").is_some() {
                 DEORBIT_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_TRANSFER").is_some() {
@@ -212,9 +218,15 @@ enum Action {
     /// the first point in sight after that), or on planned burn `i`'s node.
     PointAt(f64),
     PointAtBurn(usize),
+    /// Put the scripted pointer on the port the active vessel would dock with.
+    PointAtTargetPort,
     /// Press or release a mouse button (where the scripted pointer is).
     Press(MouseButton),
     Release(MouseButton),
+    /// Put the active vessel this far off its target's port, facing it, closing this fast.
+    LineUpPorts(f64, f64),
+    /// Let go of what has docked with the active vessel.
+    Undock,
     /// Let the actions through, as they are when a player flies.
     Unlock,
     /// Move the pointer the UI sees onto the middle of the node with this action, `drag`
@@ -408,6 +420,67 @@ const MAP_UI_SCRIPT: &[(f64, Action)] = &[
 
 /// `OSP_SCENARIO=rendezvous OSP_CAPTURE_RENDEZVOUS=1`: the target windows, the map with
 /// the station, closest approaches and plane nodes, then a planned plane match.
+/// In `apollo11_docking` (`OSP_CAPTURE_DOCKING=1`): the guides, what the two collide with drawn
+/// over them, the view out of the port, a bump, and a dock let go again.
+const DOCKING_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::LineUpPorts(6.0, 0.0)),
+    (3.0, Action::Capture("docking_guides.png")),
+    (3.1, Action::Ui("debug.colliders")),
+    (3.6, Action::Capture("docking_colliders.png")),
+    (3.7, Action::Ui("debug.colliders")),
+    (3.8, Action::Ui("camera.port_view")),
+    (4.4, Action::Capture("docking_port_view.png")),
+    (4.5, Action::Ui("camera.port_view")),
+    // Too fast: it bumps and bounces.
+    (4.7, Action::LineUpPorts(0.8, 0.8)),
+    (7.0, Action::Capture("docking_bumped.png")),
+    (7.2, Action::LineUpPorts(0.6, 0.2)),
+    (9.5, Action::Capture("docking_soft_capture.png")),
+    (16.0, Action::Capture("docking_docked.png")),
+    (16.5, Action::Undock),
+    (22.0, Action::Capture("docking_undocked.png")),
+    (22.5, Action::Exit),
+];
+
+/// In `apollo11_docking` (`OSP_CAPTURE_SAS=1`), all by clicks: the SAS buttons with no target or
+/// burn and with both, kill rotation on and off, the tabs under the staging stack, and a
+/// right-click on the target's port to make that port the target.
+const SAS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (0.6, Action::Unlock),
+    (1.0, Action::LineUpPorts(6.0, 0.0)),
+    (1.2, Action::Ui("target.clear")),
+    (2.5, Action::Capture("sas_no_target.png")),
+    (2.6, Action::UiPointAt("vessel.sas_mode:stability")),
+    (2.8, Action::UiPress(PointerButton::Primary)),
+    (2.9, Action::UiRelease(PointerButton::Primary)),
+    (3.4, Action::Capture("sas_kill_rot_on.png")),
+    (3.5, Action::UiPress(PointerButton::Primary)),
+    (3.6, Action::UiRelease(PointerButton::Primary)),
+    (4.1, Action::Capture("sas_kill_rot_off.png")),
+    (4.2, Action::UiPointAt("ui.tab:staging:inputs")),
+    (4.4, Action::UiPress(PointerButton::Primary)),
+    (4.5, Action::UiRelease(PointerButton::Primary)),
+    (5.0, Action::Steer(DVec3::new(1.0, -0.5, 0.0))),
+    (5.5, Action::Capture("sas_inputs_tab.png")),
+    (5.6, Action::Steer(DVec3::ZERO)),
+    (5.7, Action::Ui("target.vessel:1")),
+    (6.0, Action::PointAtTargetPort),
+    (6.2, Action::Press(MouseButton::Right)),
+    (6.3, Action::Release(MouseButton::Right)),
+    (7.0, Action::Capture("sas_part_window.png")),
+    (7.1, Action::UiPointAt("target.part:")),
+    (7.3, Action::UiPress(PointerButton::Primary)),
+    (7.4, Action::UiRelease(PointerButton::Primary)),
+    (7.5, Action::Ui("ui.show:target_info")),
+    (7.6, Action::Ui("vessel.sas_mode:target")),
+    (8.5, Action::Capture("sas_part_targeted.png")),
+    (8.7, Action::Ui("plan.add:pe")),
+    (9.5, Action::Capture("sas_all_rows.png")),
+    (9.7, Action::Exit),
+];
+
 const RENDEZVOUS_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("ui.show:target_info")),
@@ -856,6 +929,22 @@ fn run_script(
         Action::Ui(action) => {
             ui.write(UiAction(action.into()));
         }
+        Action::LineUpPorts(gap, closing) => {
+            let index = sim.active_index();
+            if !sim.universe.line_up_ports(index, gap, closing) {
+                error!("smoke test: no ports to line up");
+                exit.write(AppExit::error());
+            }
+        }
+        Action::Undock => {
+            let id = sim.active_id();
+            let port = sim.active_vessel().propulsion.joined_parts().next();
+            let done = port.is_some_and(|port| sim.perform(id, Activation::undock(port)));
+            if !done {
+                error!("smoke test: nothing to undock");
+                exit.write(AppExit::error());
+            }
+        }
         Action::MapView(on) => rig.map_view = on,
         Action::MapDistance(radii) => rig.map_distance = radii,
         Action::Warp(index) => warp.set_index(index, &sim, time.elapsed_secs_f64()),
@@ -881,6 +970,17 @@ fn run_script(
                     frame.to_render(patch.frame, state.position),
                 ),
                 PatchEnd::Event(_) => None,
+            });
+        }
+        Action::PointAtTargetPort => {
+            let approach = sim
+                .universe
+                .port_approach(sim.active_index(), sim.render_time);
+            let parent = sim.active_vessel().parent();
+            // A little behind the port's face, to be on the part rather than just off its edge.
+            pointer.0 = approach.and_then(|approach| {
+                let behind = approach.far.at.position - approach.far.out * 0.3;
+                project(camera.0, camera.1, frame.to_render(parent, behind))
             });
         }
         Action::Press(button) => buttons.press(button),

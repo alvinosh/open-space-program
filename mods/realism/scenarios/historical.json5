@@ -215,6 +215,40 @@
     }
   },
   {
+    "id": "apollo11_docking",
+    "name": "Apollo 11: docking in lunar orbit (1969-07-21)",
+    "description": "Collins in Columbia, with Eagle's ascent stage holding still just behind: turn round, line up, dock, then let Eagle go.",
+    "start_time": -960819900.0,
+    "craft": "saturn_v",
+    "sequences_done": 8,
+    "rcs": true,
+    "start": {
+      "type": "Orbit",
+      "body": "Moon",
+      "periapsis_altitude": 110000,
+      "apoapsis_altitude": 110000
+    },
+    "others": [
+      {
+        "craft": "lunar_module",
+        "name": "Eagle",
+        "sequences_done": 2,
+        "holds_attitude": true,
+        "start": {
+          "type": "Orbit",
+          "body": "Moon",
+          "periapsis_altitude": 110000,
+          "apoapsis_altitude": 110000
+        }
+      }
+    ],
+    "target": "Eagle",
+    "goals": [
+      { "id": "dock", "text": "Dock with Eagle", "when": { "type": "Docked", "target": "Eagle" } },
+      { "id": "away", "text": "Let Eagle go and back off 30 m", "when": { "type": "Undocked", "target": "Eagle", "distance": 30 } }
+    ]
+  },
+  {
     "id": "apollo11",
     "name": "Apollo 11: Armstrong, Collins and Aldrin (1969-07-16)",
     "description": "The first Moon landing, from LC-39A.",

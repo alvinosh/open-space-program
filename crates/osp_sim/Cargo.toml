@@ -8,6 +8,8 @@ license.workspace = true
 serde = { workspace = true }
 thiserror = { workspace = true }
 glam = { version = "0.33", features = ["serde"] }
+# To read the meshes of models: they are what vessels collide with.
+gltf = { version = "1.4", default-features = false, features = ["utils"] }
 
 [dev-dependencies]
 json5 = { workspace = true }

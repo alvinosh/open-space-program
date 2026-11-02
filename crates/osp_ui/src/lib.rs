@@ -13,9 +13,11 @@
 //!
 //! Built-in actions: `ui.toggle:<layout>`, `ui.show:<layout>`, `ui.hide:<layout>`, and
 //! `ui.toggle_group:<group>`, `ui.show_group:<group>`, `ui.hide_group:<group>` for every
-//! layout in a group at once, and `ui.pin:<layout>` to pin or unpin a popup.
-//! `ui.shown.<layout>` tells whether a layout is showing, `ui.pinned.<layout>` whether a
-//! popup is pinned. The `data_inspector` layout, when shown, lists every bindable key.
+//! layout in a group at once, `ui.pin:<layout>` to pin or unpin a popup, and
+//! `ui.tab:<group>:<tab>` to choose a tab. `ui.shown.<layout>` tells whether a layout is
+//! showing, `ui.pinned.<layout>` whether a popup is pinned, `ui.tab.<group>` which tab is
+//! chosen (nothing until one is). The `data_inspector` layout, when shown, lists every
+//! bindable key.
 //!
 //! Windows can stack into docks (see [`layout`]) and come to the front when opened or
 //! clicked; [`PointerOverUi`] tells the game when the mouse belongs to the UI. Instanced

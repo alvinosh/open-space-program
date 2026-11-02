@@ -281,6 +281,8 @@ fn listen(
         match message.0.event.kind {
             VesselEventKind::Crashed { .. } | VesselEventKind::Destroyed => mix.bang(1.0),
             VesselEventKind::Landed { speed } => mix.bang((0.1 * speed as f32).clamp(0.05, 0.6)),
+            VesselEventKind::Docked => mix.bang(0.3),
+            VesselEventKind::Bumped { speed } => mix.bang((0.5 * speed as f32).clamp(0.05, 0.8)),
             _ => {}
         }
     }

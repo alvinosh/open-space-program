@@ -2,7 +2,7 @@
   "id": "T040",
   "title": "Docking ports",
   "kind": "feature",
-  "status": "todo",
+  "status": "in_progress",
   "area": "docking",
   "size": "L",
   "parent": "T007",

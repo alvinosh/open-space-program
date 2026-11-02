@@ -957,6 +957,9 @@ pub struct ScenarioDef {
     /// shut: a lander on the ground has already used the one that lights its descent engine.
     #[serde(default)]
     pub sequences_done: u32,
+    /// The player's vessel starts with RCS on.
+    #[serde(default)]
+    pub rcs: bool,
     /// Other vessels in the game from the start (stations, targets).
     #[serde(default)]
     pub others: Vec<VesselStartDef>,
@@ -983,6 +986,13 @@ pub struct VesselStartDef {
     #[serde(default)]
     pub name: Option<String>,
     pub start: StartDef,
+    /// Activation sequences it has already fired, as the player's vessel can have.
+    #[serde(default)]
+    pub sequences_done: u32,
+    /// Starts with SAS holding its attitude and RCS on, as a vessel with someone aboard waiting
+    /// to be docked with: what hits it does not leave it tumbling.
+    #[serde(default)]
+    pub holds_attitude: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

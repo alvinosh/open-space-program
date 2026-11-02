@@ -20,6 +20,7 @@ use bevy::{
 use osp_sim::{
     data::{ShellProfile, TankShape},
     parts::{Part, PartId, PartKind, PartTree},
+    rendezvous::Target,
     staging::Activation,
     structure::{self, Mode},
     vessel::{Vessel, VesselId},
@@ -45,11 +46,13 @@ pub struct PartInfoPlugin;
 
 impl Plugin for PartInfoPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (pick_part, open_tile_part).in_set(FrameSet::Input))
+        app.add_systems(Update, open_tile_part.in_set(FrameSet::Input))
             .add_systems(
                 Update,
-                publish_parts
-                    .after(crate::part_highlight::sync_marks)
+                (
+                    pick_part.before(publish_parts),
+                    publish_parts.after(crate::part_highlight::sync_marks),
+                )
                     .in_set(FrameSet::Render),
             );
     }
@@ -201,6 +204,19 @@ fn publish_parts(
                 // The colour that ties the window to its part on the vessel.
                 let color: &str = marks.color_of_window(&key).unwrap_or_default();
                 data.set(format!("{prefix}mark"), UiValue::from(color));
+                // Any part of another vessel can be what the active one is heading for.
+                let active = sim.active_vessel();
+                let targeted = active.target == Some(Target::Part(vessel.id(), part.id));
+                let can_target = vessel.id() != active.id() && !targeted;
+                let label = if has_port(vessel, part) {
+                    "Target the docking port"
+                } else {
+                    "Set as target"
+                };
+                data.set(format!("{prefix}key"), key.as_str());
+                data.set(format!("{prefix}targeted"), targeted);
+                data.set(format!("{prefix}can_target"), can_target);
+                data.set(format!("{prefix}target_label"), label);
             }
             None => {
                 shown.layouts.insert(instance_id(LAYOUT, &key), false);
@@ -229,6 +245,27 @@ fn kind_label(kind: &PartKind, body: bool) -> (&'static str, &'static str) {
     }
 }
 
+/// What the catalogue says about a part, if it is an engine or a pod.
+fn catalog(part: &Part) -> Option<&osp_sim::data::CatalogInfo> {
+    part.kinds.iter().find_map(|kind| match kind {
+        PartKind::Engine(def) => Some(&def.catalog),
+        PartKind::Pod(def) => Some(&def.catalog),
+        _ => None,
+    })
+}
+
+/// The name a window gives a part.
+pub(crate) fn part_title(part: &Part) -> &str {
+    catalog(part)
+        .and_then(|c| c.title.as_deref())
+        .unwrap_or(&part.name)
+}
+
+/// Whether a docking port is on the part: targeting the part then means targeting the port.
+pub(crate) fn has_port(vessel: &Vessel, part: &Part) -> bool {
+    (vessel.propulsion.docking_ports().iter()).any(|p| p.part == part.id)
+}
+
 /// What a part is and what it is doing, as fields under `prefix`. `type` is the first thing
 /// it does; `is_<type>` says which of the per-kind fields there are, one for each thing.
 fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
@@ -244,13 +281,8 @@ fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
         .collect::<Vec<_>>()
         .join(", ");
     let mass = part.built.as_ref().map_or(0.0, |built| built.mass.mass);
-    let catalog = part.kinds.iter().find_map(|kind| match kind {
-        PartKind::Engine(def) => Some(&def.catalog),
-        PartKind::Pod(def) => Some(&def.catalog),
-        _ => None,
-    });
-    let title = catalog.and_then(|c| c.title.as_deref());
-    set("name", title.unwrap_or(&part.name).into());
+    let catalog = catalog(part);
+    set("name", part_title(part).into());
     set("type", type_.into());
     for (type_, _) in &labels {
         set(&format!("is_{type_}"), true.into());

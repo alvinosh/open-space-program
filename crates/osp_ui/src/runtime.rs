@@ -1543,11 +1543,21 @@ pub fn read_keybindings(
     }
 }
 
-pub fn builtin_actions(mut actions: MessageReader<UiAction>, mut shown: ResMut<LayoutVisibility>) {
+pub fn builtin_actions(
+    mut actions: MessageReader<UiAction>,
+    mut shown: ResMut<LayoutVisibility>,
+    mut data: ResMut<UiData>,
+) {
     for action in actions.read() {
         let Some(target) = action.arg() else {
             continue;
         };
+        if action.name() == "ui.tab" {
+            if let Some((group, tab)) = target.split_once(':') {
+                data.set(format!("ui.tab.{group}"), tab);
+            }
+            continue;
+        }
         if action.name() == "ui.pin" {
             if !shown.pinned.remove(target) {
                 shown.pinned.insert(target.to_owned());
@@ -1952,6 +1962,20 @@ mod popup_tests {
         click(&mut app);
         app.update();
         assert_eq!(roots(&mut app), ["menu"]);
+    }
+
+    #[test]
+    fn a_tab_is_chosen_by_group_and_the_first_needs_no_choosing() {
+        let mut app = app();
+        let chosen =
+            |app: &App, condition: &str| app.world().resource::<UiData>().condition(condition);
+        app.update();
+        assert!(chosen(&app, "ui.tab.staging != inputs"));
+        act(&mut app, "ui.tab:staging:inputs");
+        assert!(chosen(&app, "ui.tab.staging == inputs"));
+        assert!(!chosen(&app, "ui.tab.other == inputs"));
+        act(&mut app, "ui.tab:staging:stage");
+        assert!(chosen(&app, "ui.tab.staging != inputs"));
     }
 
     #[test]

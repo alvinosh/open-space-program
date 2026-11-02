@@ -22,6 +22,9 @@
 //! air (a small box below its mount): their drag rose by 1 to 4%, and the Scout's blocks moved
 //! inside its skin, where the real jets were.
 //!
+//! The Saturn V and Saturn IB were rerecorded when the service module's RCS became the R-4D
+//! quads it really had, half the mass and about an eighth of the thrust.
+//!
 //! Everything was rerecorded when each joint that lets go got a separation ring of its own
 //! (a part named Decoupler, 4% of its diameter tall): the stacks grew by those rings, so
 //! their centres of mass, inertias and outlines moved. A ring's mass came out of its stage's

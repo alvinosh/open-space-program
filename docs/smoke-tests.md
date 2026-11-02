@@ -6,7 +6,7 @@ the entry. `saturn_ib` flies Apollo 7 from LC-34 to orbit on the craft's own seq
 controls and checks that the scenario's goals (see Missions in `docs/modding.md`) are met on the
 way. `the_controls_tutorial_plays_through` plays the base game's `controls` tutorial the same
 way, step by step, with the control each step names. `lunar_module` flies Eagle by itself from lunar
-orbit down to the Moon and back to orbit. Dragon on a Falcon 9, the Shuttle, Soyuz and the rest will be more missions in the same
+orbit down to the Moon and back to orbit. `docking` flies Columbia to Eagle's ascent stage in lunar orbit as a player does, on/off translation keys and the docking window's numbers: too fast the first time, so it bumps and bounces off the real meshes, and then it catches, on soft capture. It flies the two as one on the service module's engine and lets Eagle go. Dragon on a Falcon 9, the Shuttle, Soyuz and the rest will be more missions in the same
 harness.
 
 ```sh
@@ -114,7 +114,7 @@ The page is `target/smoke/build/index.html`, with `report.json` beside it, and t
 
 ### The placement matrix
 
-Rows are the kinds of part the sim has: storage, engine, RCS block, reaction wheel, battery, crew, decoupler, lifting surface, container, gear leg, and two more, a pod and a part with two components. Columns are the ways to put one on a craft: on a top node, under a bottom node, radially on a surface at (u, v) with a standoff, in a ring of 2, 3, 4 or 6, inside a container, inside a fairing (on a deck, fitted by `CraftDef::fit_fairings`), canted 15 and 90 degrees, and as a mirrored pair. Each cell builds a 1 m host with the part placed on it (`cell.rs`) and checks (`checks.rs`):
+Rows are the kinds of part the sim has: storage, engine, RCS block, reaction wheel, battery, crew, docking port, decoupler, lifting surface, container, gear leg, and two more, a pod and a part with two components. Columns are the ways to put one on a craft: on a top node, under a bottom node, radially on a surface at (u, v) with a standoff, in a ring of 2, 3, 4 or 6, inside a container, inside a fairing (on a deck, fitted by `CraftDef::fit_fairings`), canted 15 and 90 degrees, and as a mirrored pair. Each cell builds a 1 m host with the part placed on it (`cell.rs`) and checks (`checks.rs`):
 
 | Check | Passes when |
 | --- | --- |

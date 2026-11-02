@@ -4685,6 +4685,7 @@ name = "osp_sim"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "gltf",
  "json5",
  "osp_mods",
  "serde",

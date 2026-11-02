@@ -1,6 +1,6 @@
 // Target window: where the target is relative to the vessel, the closest approaches along
 // the planned trajectory, and the plane crossings. Choose a target with Shift+click in map
-// view or from the Universe Manifest (F11).
+// view or from the Universe Manifest (F11), or one part of a vessel from that part's window.
 {
   id: "target_info",
   visible: false,
@@ -13,7 +13,7 @@
     title: "Target - {target.name}",
     style: { width: 290 },
     children: [
-      { widget: "label", class: "dim", visible: "!target.has", text: "No target. Shift+click a body or vessel in map view (M), or pick one in the Universe Manifest (F11)." },
+      { widget: "label", class: "dim", visible: "!target.has", text: "No target. Shift+click a body or vessel in map view (M), pick one in the Universe Manifest (F11), or right-click a part of another vessel." },
       {
         id: "target",
         widget: "column",

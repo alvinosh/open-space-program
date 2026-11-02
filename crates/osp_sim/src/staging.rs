@@ -39,6 +39,8 @@ impl Action {
     pub const CUTOFF: Self = Self::new("cutoff", "Cut off");
     /// Release the joint a part hangs from: it and everything hanging from it fall away.
     pub const DECOUPLE: Self = Self::new("decoupler", "Decouple");
+    /// Let go of the join a part hangs from: the vessel that joined leaves.
+    pub const UNDOCK: Self = Self::new("undock", "Undock");
     /// Jettison a fairing panel.
     pub const JETTISON: Self = Self::new("fairing", "Jettison");
     /// Switch RCS on.
@@ -75,6 +77,10 @@ impl Activation {
 
     pub const fn decoupler(part: PartId) -> Self {
         Self::new(part, Action::DECOUPLE)
+    }
+
+    pub const fn undock(part: PartId) -> Self {
+        Self::new(part, Action::UNDOCK)
     }
 
     pub const fn fairing(part: PartId) -> Self {
@@ -117,6 +123,7 @@ impl Activation {
                 Action::IGNITE,
                 Action::CUTOFF,
                 Action::DECOUPLE,
+                Action::UNDOCK,
                 Action::JETTISON,
                 Action::RCS_ON,
                 Action::CONTROL,
@@ -463,7 +470,7 @@ impl Sequences {
     /// them follows.
     pub(crate) fn rename_joints(&mut self, renamed: &[(PartId, PartId)]) {
         for activation in self.list.iter_mut().flatten() {
-            if matches!(activation.kind(), "decoupler" | "fairing")
+            if matches!(activation.kind(), "decoupler" | "undock" | "fairing")
                 && let Some(&(_, new)) = renamed.iter().find(|(old, _)| *old == activation.part)
             {
                 activation.part = new;

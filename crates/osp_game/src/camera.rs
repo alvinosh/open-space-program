@@ -98,6 +98,8 @@ pub struct CameraRig {
     /// Flight view: look at this height above the base of the stack instead of its middle
     /// (debugging, `OSP_CAMERA`).
     focus_height: Option<f64>,
+    /// Flight view: look out of the vessel's docking port (see [`crate::docking_view`]).
+    pub port_view: bool,
     /// Camera position relative to the render origin (f64, sim axes), for systems such as
     /// planet LOD that need more precision than the f32 transform.
     pub position: DVec3,
@@ -115,6 +117,7 @@ impl Default for CameraRig {
             flight_distance: 120.0,
             map_distance: 4.0,
             focus_height: None,
+            port_view: false,
             position: DVec3::ZERO,
         };
         // Debugging and screenshots: `OSP_CAMERA=<yaw°>,<pitch°>,<distance m>[,<focus m>]`,
@@ -399,7 +402,7 @@ fn apply_render_scale(
     }
 }
 
-fn update_camera(
+pub(crate) fn update_camera(
     mut rig: ResMut<CameraRig>,
     buttons: Res<ButtonInput<MouseButton>>,
     motion: Res<AccumulatedMouseMotion>,

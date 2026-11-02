@@ -624,7 +624,7 @@ fn transposition(w: &mut World) -> Flight {
     w.gap(
         Area::Docking,
         "Transposition, docking and extraction",
-        "The real CSM separated from the adapter, turned round, docked nose to nose with the lunar module and pulled it out of the S-IVB. Two vessels can be joined in flight now (T039), but the game has no docking port and nothing that brings them together (T040). The lunar module in this craft is a 15 t drum above the S-IVB, not a spacecraft.",
+        "The real CSM separated from the adapter, turned round, docked nose to nose with the lunar module and pulled it out of the S-IVB. Docking itself works now (the `docking` mission), but this flight has nothing to dock with. The lunar module in this craft is a 15 t drum above the S-IVB, not a spacecraft.",
     );
     // The adapter and the drum go together so that the SPS has a clear nozzle.
     w.stage();
@@ -716,11 +716,14 @@ fn fly_correction(w: &mut World, planned: f64) -> Flight {
     // What the burn really did to the velocity, from the orbits either side of it.
     let (now, after) = (w.now(), w.vessel().orbit(&w.universe.system, w.now()));
     let flown = (after.state_at(now).velocity - orbit.state_at(now).velocity).length();
+    // Under the engine, the service module's RCS holds the nose only so well against a thrust line
+    // a little off the centre of mass, so a burn ends a little off: 1% of it, or 0.1 m/s.
+    let limit = (0.01 * planned).max(0.1);
     w.within(
         Area::Control,
         "The burn executor delivers the planned Δv",
         flown - planned,
-        -0.1..=0.1,
+        -limit..=limit,
         "m/s over",
         "",
     );
@@ -937,7 +940,7 @@ fn landing(w: &mut World) -> Flight {
         Area::Landing,
         "There is no lander to land",
         "T044",
-        "This craft has no lunar module: the 15 t drum between the S-IVB and the adapter has no engine, no legs and no crew. The lander exists as a craft of its own and flies its own mission (`lunar_module`), but it cannot ride here yet: a stage cannot let go from inside another, and nothing can dock.",
+        "This craft has no lunar module: the 15 t drum between the S-IVB and the adapter has no engine, no legs and no crew. The lander exists as a craft of its own and flies its own mission (`lunar_module`), but it cannot ride here yet: a stage cannot let go from inside another (T041).",
     );
     w.gap(
         Area::Landing,
@@ -959,7 +962,7 @@ fn landing(w: &mut World) -> Flight {
     w.gap(
         Area::Docking,
         "Ascent, rendezvous and docking",
-        "The rendezvous tools exist (targets, closest approach, SAS target mode), but with no lander there is nothing to rendezvous with, and docking is not in the game.",
+        "The rendezvous tools exist (targets, closest approach, SAS target mode), but with no lander there is nothing to rendezvous with. Docking itself works (the `docking` mission).",
     );
     // The command module waits in lunar orbit for the surface stay: 21 h of rails.
     let stay = 24.0 * 3600.0;

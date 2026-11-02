@@ -43,6 +43,8 @@
     { key: "F10", action: "ui.toggle:perf" },
     { key: "F4", action: "ui.toggle:transfer_planner", label: "Transfer planner" },
     { key: "F11", action: "ui.toggle:manifest", label: "Universe manifest" },
+    { key: "KeyC", action: "camera.port_view", label: "Look out of the docking port" },
+    { key: "F9", action: "debug.colliders", label: "Show what vessels collide with" },
     { key: "F12", action: "ui.toggle:data_inspector" },
   ],
 }

@@ -315,6 +315,7 @@ fn components(
     for component in &part.built.components {
         match component {
             Component::Decoupler(_)
+            | Component::DockingPort(_)
             | Component::Container(_)
             | Component::Crew { .. }
             | Component::Battery(_)
@@ -621,6 +622,7 @@ fn fin(part: &CraftPart) -> bool {
                 c,
                 Component::LiftingSurface(_)
                     | Component::Decoupler(_)
+                    | Component::DockingPort(_)
                     | Component::Container(_)
                     | Component::Crew { .. }
                     | Component::Battery(_)
