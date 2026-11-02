@@ -45,7 +45,7 @@
         ],
       },
       structure: { thickness: 0, mass: 35 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 770, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.3 },
         { name: "top", position: [0, 0, 4.9], direction: [0, 0, 1], size: 0.3 },
@@ -176,14 +176,23 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "booster_rods_decoupler",
+      name: "Decoupler",
+      on: "wac_corporal.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.3, height: 0.012, thickness: 0.006 } },
+      structure: { mass: 0.09 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       // Three rods with a ring at each end: the sustainer's nozzle sits between them.
       id: "booster_rods",
       name: "Booster rods",
-      on: "wac_corporal.bottom",
+      on: "booster_rods_decoupler.bottom",
       by: "top",
       shape: { truss: { bottom_diameter: 0.3, length: 0.5, around: 3, bracing: "none" } },
       structure: { material: "Steel 4130", member_area: 0.0002 },
-      components: [{ decoupler: { node: "top" } }],
+      components: [],
       paint: {
         color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
         finish: "metal",
@@ -231,7 +240,7 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 45 },
+      structure: { thickness: 0, mass: 44.91 },
       components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.3 },

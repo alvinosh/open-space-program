@@ -5,11 +5,13 @@
 //! together: it loads content, steps the universe, renders it relative to a floating
 //! origin and publishes state for the UI.
 
+mod alerts;
 mod atmosphere;
 mod body_markers;
 mod camera;
 mod content;
 mod controls;
+mod exhaust_trail;
 mod flight_plan;
 mod frame;
 mod launch_site;
@@ -32,6 +34,7 @@ mod settings;
 mod sim;
 mod sky_light;
 mod smoke_test;
+mod sound;
 mod stars;
 mod surface;
 mod targeting;
@@ -140,7 +143,12 @@ fn main() -> AppExit {
             ),
             trees::TreesPlugin,
             launch_site::LaunchSitePlugin,
-            plume::PlumePlugin,
+            (
+                plume::PlumePlugin,
+                exhaust_trail::ExhaustTrailPlugin,
+                sound::SoundPlugin,
+                alerts::AlertsPlugin,
+            ),
             (
                 vessel_render::VesselRenderPlugin,
                 part_info::PartInfoPlugin,

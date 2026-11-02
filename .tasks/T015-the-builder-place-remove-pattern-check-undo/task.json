@@ -2,7 +2,7 @@
   "id": "T015",
   "title": "The builder: place, remove, pattern, check, undo",
   "kind": "feature",
-  "status": "todo",
+  "status": "in_progress",
   "area": "builder",
   "size": "L",
   "parent": "T002",
@@ -13,7 +13,7 @@
     "docs/build-editor-plan.md (E3)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
+  "updated": "2026-11-02",
   "done": null,
   "milestone": "M3",
   "priority": 35

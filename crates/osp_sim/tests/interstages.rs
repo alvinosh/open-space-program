@@ -97,10 +97,10 @@ fn the_s_ii_fires_through_the_ring_the_s_ic_leaves() {
     // that sit in the ring.
     p.activate_next_sequence();
     assert!(names(&p).contains(&"S-IC/S-II interstage"));
-    assert_eq!(firing(&p), ["J-2-230K", "S-II-Ullage"]);
+    assert_eq!(firing(&p), ["J-2-230K", "Ullage motor solid motor"]);
     // The S-II's own sequence, then the ring goes with its motors.
     p.activate_next_sequence();
-    assert_eq!(firing(&p), ["J-2-230K", "S-II-Ullage"]);
+    assert_eq!(firing(&p), ["J-2-230K", "Ullage motor solid motor"]);
     p.activate_next_sequence();
     assert!(!names(&p).contains(&"S-IC/S-II interstage"));
     assert_eq!(firing(&p), ["J-2-230K"]);

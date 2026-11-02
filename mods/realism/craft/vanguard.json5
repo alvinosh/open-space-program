@@ -43,7 +43,7 @@
         ],
       },
       structure: { thickness: 0, mass: 1.5 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 13000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.5 },
         { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 0.25 },
@@ -152,9 +152,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "third_stage_decoupler",
+      name: "Decoupler",
+      on: "vanguard_1.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.5, height: 0.02, thickness: 0.01 } },
+      structure: { mass: 0.42 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "third_stage",
       name: "Third Stage",
-      on: "vanguard_1.bottom",
+      on: "third_stage_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -193,8 +202,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 11 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 10.58 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.5 },
         { name: "top", position: [0, 0, 1.5], direction: [0, 0, 1], size: 0.5 },
@@ -231,9 +240,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "second_stage_decoupler",
+      name: "Decoupler",
+      on: "third_stage.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.5, height: 0.02, thickness: 0.01 } },
+      structure: { mass: 0.42 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "second_stage",
       name: "Second Stage",
-      on: "third_stage.bottom",
+      on: "second_stage_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -275,8 +293,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 524 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 523.58 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.81 },
         { name: "top", position: [0, 0, 5.8], direction: [0, 0, 1], size: 0.5 },
@@ -325,9 +343,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "first_stage_decoupler",
+      name: "Decoupler",
+      on: "second_stage.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.81, height: 0.0324, thickness: 0.0162 } },
+      structure: { mass: 1.8 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "first_stage",
       name: "First Stage",
-      on: "second_stage.bottom",
+      on: "first_stage_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -369,8 +396,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 361 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 359.2 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.14 },
         { name: "top", position: [0, 0, 13.4], direction: [0, 0, 1], size: 0.81 },

@@ -1,0 +1,10 @@
+// Ground stations: dishes on a body that talk to vessels. `dish` is its diameter in metres and
+// `noise` its receiver's system noise temperature in kelvin.
+[
+  { id: "goldstone", name: "Goldstone", body: "Earth", latitude: 35.4267, longitude: -116.89, dish: 26, noise: 50 },
+  { id: "madrid", name: "Madrid", body: "Earth", latitude: 40.4314, longitude: -4.2486, dish: 26, noise: 50 },
+  { id: "honeysuckle", name: "Honeysuckle Creek", body: "Earth", latitude: -35.5831, longitude: 148.9778, dish: 26, noise: 50 },
+  { id: "parkes", name: "Parkes", body: "Earth", latitude: -32.9983, longitude: 148.2636, dish: 64, noise: 50 },
+  { id: "merritt_island", name: "Merritt Island", body: "Earth", latitude: 28.5086, longitude: -80.6936, dish: 9, noise: 150 },
+  { id: "houston", name: "Houston", body: "Earth", latitude: 29.5583, longitude: -95.0853, dish: 9, noise: 150 },
+]

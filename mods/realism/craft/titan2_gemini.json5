@@ -15,7 +15,7 @@
         shell: { bottom_diameter: 2.286, sections: [{ length: 0.12 }], cap_bottom: true },
       },
       structure: { mass: 260 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 190000, interplanetary: true } }, { container: {} }],
       paint: { finish: "char" },
     },
     { id: "cabin", on: "reentry.top", template: "Gemini Cabin" },
@@ -34,15 +34,24 @@
       paint: { color: [0.019999999552965164, 0.019999999552965164, 0.02199999988079071] },
     },
     {
+      id: "retro_decoupler",
+      name: "Decoupler",
+      on: "reentry.bottom",
+      by: "top",
+      shape: { ring: { diameter: 2.286, height: 0.0914, thickness: 0.0457 } },
+      structure: { mass: 40.5 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "retro",
       name: "Retrograde section",
-      on: "reentry.bottom",
+      on: "retro_decoupler.bottom",
       by: "top",
       shape: {
         shell: { bottom_diameter: 2.6, sections: [{ length: 0.9, top_diameter: 2.286 }] },
       },
-      structure: { mass: 240 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { mass: 199.5 },
+      components: [{ container: {} }],
       nodes: [
         { name: "propellant", position: [0, 0, 0.12], direction: [0, 0, 1] },
         {
@@ -79,18 +88,25 @@
     { id: "retro_motor_3", on: "retro.retro_motor_3", by: "attach", template: "Star-13E" },
     { id: "retro_motor_4", on: "retro.retro_motor_4", by: "attach", template: "Star-13E" },
     {
+      id: "equipment_decoupler",
+      name: "Decoupler",
+      on: "retro.bottom",
+      by: "top",
+      shape: { ring: { diameter: 2.6, height: 0.104, thickness: 0.052 } },
+      structure: { mass: 59.58 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "equipment",
       name: "Equipment section",
-      on: "retro.bottom",
+      on: "equipment_decoupler.bottom",
       by: "top",
       shape: {
         shell: { bottom_diameter: 3.05, sections: [{ length: 1.4, top_diameter: 2.6 }] },
       },
-      structure: { mass: 758 },
+      structure: { mass: 602.24 },
       components: [
-        { container: {} },
-        { decoupler: { node: "top" } },
-        { decoupler: { node: "bottom" } },
+        { container: {} }
       ],
       nodes: [
         { name: "oams_fuel", position: [0, 0.75, 0.35], direction: [0, 0, 1] },
@@ -98,6 +114,15 @@
         { name: "fuel_cell_1", position: [0.9, 0, 0.3], direction: [0, 0, 1] },
         { name: "fuel_cell_2", position: [-0.9, 0, 0.3], direction: [0, 0, 1] },
       ],
+    },
+    {
+      id: "equipment_lower_decoupler",
+      name: "Decoupler",
+      on: "equipment.bottom",
+      by: "top",
+      shape: { ring: { diameter: 3.05, height: 0.122, thickness: 0.061 } },
+      structure: { mass: 96.18 },
+      components: [{ decoupler: { node: "top" } }],
     },
     {
       id: "oams_fuel",
@@ -134,7 +159,7 @@
     {
       id: "stage2",
       name: "Titan II second stage",
-      on: "equipment.bottom",
+      on: "equipment_lower_decoupler.bottom",
       by: "top",
       shape: {
         revolved: {
@@ -211,9 +236,18 @@
       },
     },
     {
+      id: "interstage_decoupler",
+      name: "Decoupler",
+      on: "stage2.bottom",
+      by: "top",
+      shape: { ring: { diameter: 3.05, height: 0.122, thickness: 0.061 } },
+      structure: { mass: 96.18 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "interstage",
       name: "Titan II interstage",
-      on: "stage2.bottom",
+      on: "interstage_decoupler.bottom",
       by: "upper",
       shape: {
         compound: [
@@ -285,7 +319,7 @@
         ],
       },
       structure: { material: "Al 2014-T6", thickness: 0.002, mass: 160 },
-      components: [{ decoupler: { node: "upper" } }],
+      components: [],
       nodes: [
         { name: "lower", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
         { name: "upper", position: [0, 0, 2.2], direction: [0, 0, 1], size: 3.05 },
@@ -331,7 +365,7 @@
           ],
         },
       },
-      structure: { material: "Al 2014-T6", thickness: 0.002, mass: 1150 },
+      structure: { material: "Al 2014-T6", thickness: 0.002, mass: 1053.82 },
       components: [{ container: {} }],
       nodes: [
         { name: "engine_1", position: [0.68, 0, 2], direction: [0, 0, -1], size: 1.2 },

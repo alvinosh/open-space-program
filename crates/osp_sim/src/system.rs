@@ -136,6 +136,7 @@ impl SolarSystem {
                 orbit,
                 soi,
                 color: body_def.color,
+                albedo: body_def.albedo,
             });
         }
         let roots = bodies.iter().filter(|b| b.parent.is_none()).count();

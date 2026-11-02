@@ -1,0 +1,29 @@
+// The menu of a row in the staging window: right-click a row (not one of its tiles, which open
+// their part's window). Opens beside the pointer and closes on a click anywhere else or once an
+// item is chosen.
+{
+  id: "staging_menu",
+  visible: false,
+  popup: true,
+  group: "flight",
+  root: {
+    widget: "column",
+    class: "context_menu",
+    children: [
+      { widget: "label", class: "context_title", text: "Sequence {staging_menu.number}" },
+      { widget: "button", class: "context_item", text: "Add one above", action: "staging.add_at:{staging_menu.above}" },
+      { widget: "button", class: "context_item", text: "Add one below", action: "staging.add_at:{staging_menu.row}" },
+      { widget: "button", class: "context_item", text: "Move up", visible: "staging_menu.can_up", action: "staging.drop:seq:{staging_menu.row}:{staging_menu.above}" },
+      { widget: "button", class: "context_item", text: "Move down", visible: "staging_menu.can_down", action: "staging.drop:seq:{staging_menu.row}:{staging_menu.below}" },
+      { widget: "button", class: "context_item", text: "Merge with the one below", visible: "staging_menu.can_down", action: "staging.merge:{staging_menu.row}" },
+      {
+        id: "splits",
+        widget: "column",
+        repeat: "staging_menu.splits",
+        children: [
+          { widget: "button", class: "context_item", text: "{item.label}", action: "staging.drop_at:one:{staging_menu.row}:{item.group}:{staging_menu.row}" },
+        ],
+      },
+    ],
+  },
+}

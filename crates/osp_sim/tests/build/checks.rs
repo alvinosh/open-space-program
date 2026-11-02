@@ -14,6 +14,7 @@ use osp_sim::{
     mass::Mass,
     propulsion::Propulsion,
     structure::{self, Conditions},
+    systems::{Battery, Crew},
     universe::{PHYSICS_STEP, Universe},
 };
 use serde::Serialize;
@@ -22,10 +23,6 @@ use crate::{
     cell::{self, Aero, Built, Column, Row},
     content,
 };
-
-/// The text the gatherer refuses with when the physics cannot hold a craft yet. A refusal
-/// that says this is a limit of the sim, not a rule of building.
-pub const LIMIT: &str = "until the physics runs on parts";
 
 /// How close sums must agree, relative to their size.
 const EXACT: f64 = 1e-9;
@@ -43,7 +40,7 @@ const PAD_SECONDS: f64 = 5.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Check {
-    /// It builds, or is refused with the rule that stops it.
+    /// It builds, or is refused with the rule of building that stops it.
     Loads,
     /// Every part and component is in the physics.
     Kept,
@@ -93,11 +90,9 @@ pub enum Outcome {
     Skip(String),
 }
 
-/// How a cell was refused.
+/// How a cell was refused: by a rule of building.
 #[derive(Debug, Clone, Serialize)]
 pub struct Refusal {
-    /// A limit of the sim ("until the physics runs on parts"), not a rule of building.
-    pub limit: bool,
     pub reason: String,
 }
 
@@ -118,7 +113,7 @@ impl CellResult {
 
     /// Refused by a rule: nothing to run, nothing wrong.
     pub fn grey(&self) -> bool {
-        self.refusal.as_ref().is_some_and(|r| !r.limit)
+        self.refusal.is_some()
     }
 }
 
@@ -135,16 +130,12 @@ impl Pad {
 
 /// Builds the cell's craft and runs every check on it.
 pub fn run(row: &Row, column: Column, pad: &mut Pad) -> CellResult {
-    let refused = |limit: bool, reason: String| CellResult {
-        refusal: Some(Refusal {
-            limit,
-            reason: reason.clone(),
-        }),
+    let refused = |reason: String| CellResult {
+        refusal: Some(Refusal { reason }),
         checks: Check::ALL
             .iter()
             .map(|&c| {
                 let outcome = match c {
-                    Check::Loads if limit => Outcome::Fail(reason.clone()),
                     Check::Loads => Outcome::Pass,
                     _ => Outcome::Skip("it did not load".into()),
                 };
@@ -154,16 +145,16 @@ pub fn run(row: &Row, column: Column, pad: &mut Pad) -> CellResult {
     };
     let built = match cell::build(row, column) {
         Ok(built) => built,
-        Err(reason) => return refused(reason.contains(LIMIT), reason),
+        Err(reason) => return refused(reason),
     };
     let catalog = &content::get().catalog;
     let craft = match Craft::build(&built.def, catalog) {
         Ok(craft) => craft,
-        Err(e) => return refused(e.to_string().contains(LIMIT), e.to_string()),
+        Err(e) => return refused(e.to_string()),
     };
     let propulsion = match Propulsion::from_craft(&built.def, catalog) {
         Ok(p) => p,
-        Err(e) => return refused(e.to_string().contains(LIMIT), e.to_string()),
+        Err(e) => return refused(e.to_string()),
     };
     let mut checks = vec![(Check::Loads, Outcome::Pass)];
     checks.push((Check::Kept, kept(&craft, &propulsion)));
@@ -258,12 +249,7 @@ pub fn kept(craft: &Craft, p: &Propulsion) -> Outcome {
             _ => None,
         })
         .sum();
-    let crew: u32 = p
-        .sections
-        .iter()
-        .flat_map(|s| &s.pods)
-        .map(|pod| pod.crew)
-        .sum();
+    let crew: u32 = p.systems.all::<Crew>().map(|(_, c)| c.seats).sum();
     if seats > crew {
         problems.push(format!(
             "{seats} crew seats in the craft, {crew} in the physics"
@@ -278,12 +264,7 @@ pub fn kept(craft: &Craft, p: &Propulsion) -> Outcome {
             _ => None,
         })
         .sum();
-    let stored: f64 = p
-        .sections
-        .iter()
-        .flat_map(|s| &s.pods)
-        .map(|pod| pod.electric_charge)
-        .sum();
+    let stored: f64 = p.systems.all::<Battery>().map(|(_, b)| b.charge).sum();
     if charge > stored + 1e-9 {
         problems.push(format!(
             "{charge:.0} kJ of battery in the craft, {stored:.0} kJ in the physics"

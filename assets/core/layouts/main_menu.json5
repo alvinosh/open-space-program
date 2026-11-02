@@ -11,6 +11,11 @@
 // (`graphics.preset:<low|medium|high|ultra>`), the one recommended for the GPU
 // (`graphics.detect`), or each setting (`graphics.set:<key>:<value>`, current values in
 // `graphics.<key>`). The frame rate below it updates live over the scene behind the menu.
+// The Sound page (`menu.page:sound`) sets how loud each part of the sound is
+// (`audio.set:<key>:<percent>`, current values in `audio.<key>`). The Controls page
+// (`menu.page:controls`) rebinds keys (`keys.listen:<id>`, `keys.reset`, the list in `keys.rows`).
+// The Interface page (`menu.page:interface`) sets the rest (`interface.set:<key>:<value>`, current
+// values in `interface.<key>`).
 {
   id: "main_menu",
   visible: false,
@@ -30,6 +35,9 @@
               { widget: "button", class: "menu_tab", text: "Scenarios", action: "menu.page:scenarios", active: "menu.page == scenarios" },
               { widget: "button", class: "menu_tab", text: "Tutorials", action: "menu.page:tutorials", active: "menu.page == tutorials", visible: "menu.tutorials" },
               { widget: "button", class: "menu_tab", text: "Graphics", action: "menu.page:graphics", active: "menu.page == graphics" },
+              { widget: "button", class: "menu_tab", text: "Sound", action: "menu.page:sound", active: "menu.page == sound" },
+              { widget: "button", class: "menu_tab", text: "Controls", action: "menu.page:controls", active: "menu.page == controls" },
+              { widget: "button", class: "menu_tab", text: "Interface", action: "menu.page:interface", active: "menu.page == interface" },
             ],
           },
           {
@@ -179,6 +187,133 @@
                       { widget: "label", class: "dim", text: "{item.description}", visible: "item.description" },
                     ],
                   },
+                ],
+              },
+            ],
+          },
+          {
+            id: "controls",
+            widget: "column",
+            class: "menu_page menu_list",
+            visible: "menu.page == controls",
+            children: [
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "dim", style: { grow: 1 }, text: "Click a key, then press the one you want; Esc to leave it" },
+                  { widget: "button", class: "menu_option", text: "Reset all", action: "keys.reset" },
+                ],
+              },
+              {
+                id: "keys",
+                widget: "column",
+                repeat: "keys.rows",
+                style: { gap: 2 },
+                children: [
+                  {
+                    widget: "row",
+                    children: [
+                      { widget: "label", class: "key", text: "{item.label}" },
+                      { widget: "label", class: "warning", visible: "item.clash", text: "also {item.clash}" },
+                      { widget: "button", class: "menu_option", active: "item.listening", text: "{item.key}", action: "keys.listen:{item.id}" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            id: "interface",
+            widget: "column",
+            class: "menu_page menu_list",
+            visible: "menu.page == interface",
+            children: [
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Scale" },
+                  { widget: "button", class: "menu_option", text: "75%", action: "interface.set:scale:75", active: "interface.scale == 75" },
+                  { widget: "button", class: "menu_option", text: "90%", action: "interface.set:scale:90", active: "interface.scale == 90" },
+                  { widget: "button", class: "menu_option", text: "100%", action: "interface.set:scale:100", active: "interface.scale == 100" },
+                  { widget: "button", class: "menu_option", text: "110%", action: "interface.set:scale:110", active: "interface.scale == 110" },
+                  { widget: "button", class: "menu_option", text: "125%", action: "interface.set:scale:125", active: "interface.scale == 125" },
+                  { widget: "button", class: "menu_option", text: "150%", action: "interface.set:scale:150", active: "interface.scale == 150" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Alerts" },
+                  { widget: "button", class: "menu_option", text: "Off", action: "interface.set:alerts:off", active: "interface.alerts == off" },
+                  { widget: "button", class: "menu_option", text: "On", action: "interface.set:alerts:on", active: "interface.alerts == on" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Alert tone" },
+                  { widget: "button", class: "menu_option", text: "Off", action: "interface.set:alert_tone:off", active: "interface.alert_tone == off" },
+                  { widget: "button", class: "menu_option", text: "On", action: "interface.set:alert_tone:on", active: "interface.alert_tone == on" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Warp stops at signal changes" },
+                  { widget: "button", class: "menu_option", text: "Off", action: "interface.set:warp_stops_at_signal:off", active: "interface.warp_stops_at_signal == off" },
+                  { widget: "button", class: "menu_option", text: "On", action: "interface.set:warp_stops_at_signal:on", active: "interface.warp_stops_at_signal == on" },
+                ],
+              },
+            ],
+          },
+          {
+            id: "sound",
+            widget: "column",
+            class: "menu_page menu_list",
+            visible: "menu.page == sound",
+            children: [
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Volume" },
+                  { widget: "button", class: "menu_option", text: "0%", action: "audio.set:master:0", active: "audio.master == 0" },
+                  { widget: "button", class: "menu_option", text: "25%", action: "audio.set:master:25", active: "audio.master == 25" },
+                  { widget: "button", class: "menu_option", text: "50%", action: "audio.set:master:50", active: "audio.master == 50" },
+                  { widget: "button", class: "menu_option", text: "75%", action: "audio.set:master:75", active: "audio.master == 75" },
+                  { widget: "button", class: "menu_option", text: "100%", action: "audio.set:master:100", active: "audio.master == 100" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Engines" },
+                  { widget: "button", class: "menu_option", text: "0%", action: "audio.set:engines:0", active: "audio.engines == 0" },
+                  { widget: "button", class: "menu_option", text: "25%", action: "audio.set:engines:25", active: "audio.engines == 25" },
+                  { widget: "button", class: "menu_option", text: "50%", action: "audio.set:engines:50", active: "audio.engines == 50" },
+                  { widget: "button", class: "menu_option", text: "75%", action: "audio.set:engines:75", active: "audio.engines == 75" },
+                  { widget: "button", class: "menu_option", text: "100%", action: "audio.set:engines:100", active: "audio.engines == 100" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Wind" },
+                  { widget: "button", class: "menu_option", text: "0%", action: "audio.set:wind:0", active: "audio.wind == 0" },
+                  { widget: "button", class: "menu_option", text: "25%", action: "audio.set:wind:25", active: "audio.wind == 25" },
+                  { widget: "button", class: "menu_option", text: "50%", action: "audio.set:wind:50", active: "audio.wind == 50" },
+                  { widget: "button", class: "menu_option", text: "75%", action: "audio.set:wind:75", active: "audio.wind == 75" },
+                  { widget: "button", class: "menu_option", text: "100%", action: "audio.set:wind:100", active: "audio.wind == 100" },
+                ],
+              },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Effects" },
+                  { widget: "button", class: "menu_option", text: "0%", action: "audio.set:effects:0", active: "audio.effects == 0" },
+                  { widget: "button", class: "menu_option", text: "25%", action: "audio.set:effects:25", active: "audio.effects == 25" },
+                  { widget: "button", class: "menu_option", text: "50%", action: "audio.set:effects:50", active: "audio.effects == 50" },
+                  { widget: "button", class: "menu_option", text: "75%", action: "audio.set:effects:75", active: "audio.effects == 75" },
+                  { widget: "button", class: "menu_option", text: "100%", action: "audio.set:effects:100", active: "audio.effects == 100" },
                 ],
               },
             ],

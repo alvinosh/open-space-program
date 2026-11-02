@@ -23,6 +23,21 @@ const LEVEL: f64 = 1e-9;
 /// thrust firing, is no force, so that turning does not end exact coasting.
 const CANCELLED: f64 = 1e-9;
 
+/// What the blocks with propellant give pushing along the nose, N: one nozzle each.
+pub fn forward_thrust(propulsion: &Propulsion, pressure: f64) -> f64 {
+    (propulsion.rcs.iter())
+        .filter(|block| {
+            propulsion
+                .rcs_fraction(block.section)
+                .is_some_and(|f| f > 0.0)
+        })
+        .map(|block| {
+            let along = (block.rotation * DVec3::Z).z.max(0.0);
+            block.nozzle_thrust(pressure) * along
+        })
+        .sum()
+}
+
 /// Fire the RCS of every stage for `dt` seconds, each block on the tanks that feed it.
 /// `rotation` and `translation` are commands per vessel axis, −1..1 (translation: right,
 /// down, forward). Returns the force and the torque about the centre of mass

@@ -9,6 +9,15 @@
     class: "module",
     style: { left: "50%", margin: [0, 0, 0, -300], top: 110, width: 600, align_items: "center", gap: 4 },
     children: [
+      // What wants attention right now (see `alerts`).
+      {
+        id: "alerts",
+        widget: "row",
+        visible: "alerts.any",
+        repeat: "alerts.list",
+        style: { gap: 6 },
+        children: [{ widget: "label", class: "alert_chip", text: "{item.text}" }],
+      },
       { widget: "label", class: "warning notice", style: { font_size: 16 }, text: "{screen.message}", visible: "screen.message" },
       { widget: "label", class: "warning notice", text: "{time.notice}", visible: "time.notice" },
       // A goal met or the mission passed, and the mission failed.

@@ -122,8 +122,14 @@ pub enum Finish {
 enum Phase {
     #[default]
     Idle,
-    /// Engaged, pointing, waiting for the start time.
-    Waiting,
+    /// Engaged, pointing, waiting for the start time, with what an ullage push has given so far.
+    Waiting { pushed: DVec3 },
+    /// A burn too small for the engine, or with none to light: the RCS pushes it, forward.
+    Pushing {
+        remaining: DVec3,
+        total: f64,
+        aim: DVec3,
+    },
     /// Engines lit (or being lit); `remaining` is the Δv still to give.
     Burning {
         remaining: DVec3,
@@ -131,6 +137,10 @@ enum Phase {
         aim: DVec3,
     },
 }
+
+/// A burn that would take the engine less than this at full thrust, s, is the RCS's: the engine
+/// starting up and tailing off is most of such a burn.
+const MIN_ENGINE_BURN: f64 = 2.0;
 
 /// The burn executor's state. One per vessel; it flies the vessel's first planned burn.
 #[derive(Debug, Clone, Default)]
@@ -149,6 +159,8 @@ pub struct Situation<'a> {
     pub nose: DVec3,
     pub settled: bool,
     pub has_rcs: bool,
+    /// What the RCS gives pushing forward, m/s².
+    pub rcs_acceleration: f64,
     /// Engines of the bottom stage are burning.
     pub running: bool,
 }
@@ -159,12 +171,14 @@ impl BurnExecutor {
     }
 
     pub fn burning(&self) -> bool {
-        matches!(self.phase, Phase::Burning { .. })
+        matches!(self.phase, Phase::Burning { .. } | Phase::Pushing { .. })
     }
 
     pub fn engage(&mut self) {
         if self.phase == Phase::Idle {
-            self.phase = Phase::Waiting;
+            self.phase = Phase::Waiting {
+                pushed: DVec3::ZERO,
+            };
         }
     }
 
@@ -175,7 +189,7 @@ impl BurnExecutor {
     /// Δv still to give, inertial, once the burn has started.
     pub fn remaining(&self) -> Option<DVec3> {
         match self.phase {
-            Phase::Burning { remaining, .. } => Some(remaining),
+            Phase::Burning { remaining, .. } | Phase::Pushing { remaining, .. } => Some(remaining),
             _ => None,
         }
     }
@@ -183,7 +197,7 @@ impl BurnExecutor {
     /// Direction the burn wants the nose (inertial), if one is being flown.
     pub fn aim(&self) -> Option<DVec3> {
         match self.phase {
-            Phase::Burning { aim, .. } => Some(aim),
+            Phase::Burning { aim, .. } | Phase::Pushing { aim, .. } => Some(aim),
             _ => None,
         }
     }
@@ -193,18 +207,39 @@ impl BurnExecutor {
         let mut command = Command::default();
         match self.phase {
             Phase::Idle => {}
-            Phase::Waiting => {
-                let Some(capability) = s.capability else {
-                    return self.abort("no armed engine can burn; stage first");
-                };
-                let total = s.delta_v.length();
+            Phase::Waiting { pushed } => {
+                // What an ullage push has given already is part of the burn.
+                let wanted = s.delta_v - pushed;
+                let total = wanted.length();
                 if total <= 0.0 {
                     return self.finish(0.0);
                 }
-                let aim = s.delta_v / total;
+                let aim = wanted / total;
                 command.direction = Some(aim);
                 // The executor owns the throttle once engaged; engines light at the start.
                 command.throttle = Some(0.0);
+                // A burn the engine would overshoot, or with none to light: the RCS's.
+                let full = s.capability.map_or(0.0, |c| c.thrust / s.mass);
+                if s.has_rcs && s.rcs_acceleration > 0.0 && total < full.max(0.0) * MIN_ENGINE_BURN
+                    || (s.capability.is_none() && s.has_rcs && s.rcs_acceleration > 0.0)
+                {
+                    let half = total / s.rcs_acceleration / 2.0;
+                    if s.time < s.burn.time.add_seconds(-half) {
+                        return command;
+                    }
+                    if s.nose.angle_between(aim) > ALIGNED {
+                        return command;
+                    }
+                    self.phase = Phase::Pushing {
+                        remaining: wanted,
+                        total,
+                        aim,
+                    };
+                    return self.command(s);
+                }
+                let Some(capability) = s.capability else {
+                    return self.abort("no armed engine can burn; stage first");
+                };
                 let timing = BurnTiming::of(s.burn, &capability, s.mass);
                 if !timing.duration.is_finite() {
                     return self.abort("the active stage has no thrust");
@@ -224,11 +259,19 @@ impl BurnExecutor {
                     return command;
                 }
                 self.phase = Phase::Burning {
-                    remaining: s.delta_v,
+                    remaining: wanted,
                     total,
                     aim,
                 };
                 return self.command(s);
+            }
+            Phase::Pushing { aim, .. } => {
+                command.direction = Some(aim);
+                command.throttle = Some(0.0);
+                command.ullage = true;
+                if !s.has_rcs {
+                    return self.abort("the RCS ran dry before the burn was complete");
+                }
             }
             Phase::Burning {
                 remaining,
@@ -265,6 +308,29 @@ impl BurnExecutor {
     /// left is no more than the engines' tail-off would still give (`tail_off`, m/s) or
     /// would be overshot by more than this tick's share.
     pub fn account(&mut self, given: DVec3, running: bool, tail_off: f64) -> Option<Finish> {
+        if let Phase::Waiting { pushed } = self.phase {
+            self.phase = Phase::Waiting {
+                pushed: pushed + given,
+            };
+            return None;
+        }
+        if let Phase::Pushing {
+            remaining,
+            total,
+            aim,
+        } = self.phase
+        {
+            let left = remaining - given;
+            if left.dot(aim) <= 0.5 * given.length() {
+                return self.finish(left.length()).finished;
+            }
+            self.phase = Phase::Pushing {
+                remaining: left,
+                total,
+                aim,
+            };
+            return None;
+        }
         let Phase::Burning {
             remaining,
             total,
@@ -329,5 +395,74 @@ mod tests {
         // Big ones take less than that, as the vessel lightens.
         let t = c.burn_time(10_000.0, 1_000.0);
         assert!(t < 100.0 && t > 80.0, "{t}");
+    }
+
+    fn situation(burn: &Burn, capability: Option<Capability>, settled: bool) -> Situation<'_> {
+        Situation {
+            time: burn.time,
+            burn,
+            delta_v: DVec3::Z * burn.delta_v.length(),
+            capability,
+            mass: 1000.0,
+            nose: DVec3::Z,
+            settled,
+            has_rcs: true,
+            rcs_acceleration: 1.0,
+            running: false,
+        }
+    }
+
+    fn engine() -> Capability {
+        Capability {
+            thrust: 100_000.0,
+            mass_flow: 30.0,
+            min_throttle: 1.0,
+            needs_ullage: true,
+        }
+    }
+
+    /// What the RCS gave settling the propellant is part of the burn, not over and above it.
+    #[test]
+    fn the_ullage_push_counts_towards_the_burn() {
+        let burn = Burn {
+            time: SimTime::J2000,
+            delta_v: DVec3::X * 500.0,
+        };
+        let mut executor = BurnExecutor::default();
+        executor.engage();
+        let command = executor.command(&situation(&burn, Some(engine()), false));
+        assert!(command.ullage);
+        assert_eq!(executor.account(DVec3::Z * 0.9, false, 0.0), None);
+        executor.command(&situation(&burn, Some(engine()), true));
+        assert!(executor.burning());
+        let left = executor.remaining().unwrap();
+        assert!((left.z - 499.1).abs() < 1e-9, "{left}");
+    }
+
+    /// A burn the engine would overshoot goes on the RCS, and ends when it has been given.
+    #[test]
+    fn a_small_burn_is_the_rcs_s() {
+        let burn = Burn {
+            time: SimTime::J2000,
+            delta_v: DVec3::X * 2.0,
+        };
+        let mut executor = BurnExecutor::default();
+        executor.engage();
+        let command = executor.command(&situation(&burn, Some(engine()), false));
+        assert!(executor.burning() && command.ullage);
+        assert_eq!(command.throttle, Some(0.0));
+        for _ in 0..9 {
+            assert_eq!(executor.account(DVec3::Z * 0.2, false, 0.0), None);
+        }
+        assert!(matches!(
+            executor.account(DVec3::Z * 0.2, false, 0.0),
+            Some(Finish::Done { .. })
+        ));
+        assert!(!executor.engaged());
+        // With no engine to light at all it goes on the RCS as well.
+        let mut executor = BurnExecutor::default();
+        executor.engage();
+        executor.command(&situation(&burn, None, false));
+        assert!(executor.burning());
     }
 }

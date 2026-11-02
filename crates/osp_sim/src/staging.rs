@@ -1,66 +1,135 @@
 //! Activation sequences: what each press of the stage key does.
 //!
-//! An activation is one action on one part: ignite an engine, release the joint a part
-//! hangs from (decouple), jettison a fairing panel, switch RCS on. The player can do any of
-//! them by hand from the part's window ([`crate::propulsion::Propulsion::part_actions`]).
-//! A sequence is only a list of them, done in the order listed when the stage key is
-//! pressed; one done by hand leaves the list. The player can move activations between
-//! sequences, reorder sequences and add empty ones; the staging panel shows identical
-//! parts in a sequence as one icon with a count
+//! An activation is one [`Action`] on one part: ignite an engine, cut it off or limit its
+//! thrust, release the joint a part hangs from (decouple), jettison a fairing panel, switch RCS
+//! on, or anything a part's system offers ([`crate::systems::System::actions`]). The player can
+//! do any of them by hand from the part's window
+//! ([`crate::propulsion::Propulsion::part_actions`]). A sequence is only a list of them, done
+//! in the order listed when the stage key is pressed; one done by hand leaves the list. The
+//! player can move activations between sequences, reorder sequences and add empty ones; the
+//! staging panel shows identical parts in a sequence as one icon with a count
 //! ([`crate::propulsion::Propulsion::groups`]), and moves them together or one at a time.
 //! [`crate::propulsion::Propulsion`] carries them out.
 
 use crate::{parts::PartId, propulsion::Section};
 
-/// Something a sequence activates, by the part that does it.
+/// Something a part can do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Activation {
+pub struct Action {
+    /// As written in craft files: `engines`, `decoupler`, or whatever a system calls it.
+    pub kind: &'static str,
+    /// What doing it is called on a button.
+    pub verb: &'static str,
+    /// What it is set to, for an action that has a setting: a thrust limit in percent.
+    pub setting: Option<u16>,
+}
+
+impl Action {
+    pub const fn new(kind: &'static str, verb: &'static str) -> Self {
+        Self {
+            kind,
+            verb,
+            setting: None,
+        }
+    }
+
     /// Light (arm) an engine.
-    Engine(PartId),
+    pub const IGNITE: Self = Self::new("engines", "Ignite");
+    /// Shut an engine down; it can be lit again if it has ignitions left.
+    pub const CUTOFF: Self = Self::new("cutoff", "Cut off");
     /// Release the joint a part hangs from: it and everything hanging from it fall away.
-    Decoupler(PartId),
+    pub const DECOUPLE: Self = Self::new("decoupler", "Decouple");
     /// Jettison a fairing panel.
-    Fairing(PartId),
+    pub const JETTISON: Self = Self::new("fairing", "Jettison");
     /// Switch RCS on.
-    Rcs(PartId),
+    pub const RCS_ON: Self = Self::new("rcs", "RCS on");
+
+    /// Fly the vessel from this part: its axes are the nose, the pilot's right and feet.
+    pub const CONTROL: Self = Self::new("control", "Control from here");
+
+    /// Limit an engine's thrust to `percent` of full.
+    pub const fn throttle(percent: u16) -> Self {
+        Self {
+            kind: "throttle",
+            verb: "Limit thrust",
+            setting: Some(percent),
+        }
+    }
+}
+
+/// Something a sequence activates: an action, by the part that does it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Activation {
+    pub part: PartId,
+    pub action: Action,
 }
 
 impl Activation {
+    pub const fn new(part: PartId, action: Action) -> Self {
+        Self { part, action }
+    }
+
+    pub const fn engine(part: PartId) -> Self {
+        Self::new(part, Action::IGNITE)
+    }
+
+    pub const fn decoupler(part: PartId) -> Self {
+        Self::new(part, Action::DECOUPLE)
+    }
+
+    pub const fn fairing(part: PartId) -> Self {
+        Self::new(part, Action::JETTISON)
+    }
+
+    pub const fn rcs(part: PartId) -> Self {
+        Self::new(part, Action::RCS_ON)
+    }
+
     pub fn part(self) -> PartId {
-        match self {
-            Self::Engine(p) | Self::Decoupler(p) | Self::Fairing(p) | Self::Rcs(p) => p,
-        }
+        self.part
     }
 
-    /// `engines`, `decoupler`, `fairing` or `rcs`, as written in craft files.
+    /// As written in craft files.
     pub fn kind(self) -> &'static str {
-        match self {
-            Self::Engine(_) => "engines",
-            Self::Decoupler(_) => "decoupler",
-            Self::Fairing(_) => "fairing",
-            Self::Rcs(_) => "rcs",
-        }
+        self.action.kind
     }
 
-    /// What doing it is called on a button: `Ignite`, `Decouple`, `Jettison` or `RCS on`.
+    /// What doing it is called on a button.
     pub fn verb(self) -> &'static str {
-        match self {
-            Self::Engine(_) => "Ignite",
-            Self::Decoupler(_) => "Decouple",
-            Self::Fairing(_) => "Jettison",
-            Self::Rcs(_) => "RCS on",
-        }
+        self.action.verb
     }
 
-    /// The activation of `part` that `kind` names (see [`Self::kind`]).
-    pub fn of_kind(kind: &str, part: PartId) -> Option<Self> {
-        Some(match kind {
-            "engines" => Self::Engine(part),
-            "decoupler" => Self::Decoupler(part),
-            "fairing" => Self::Fairing(part),
-            "rcs" => Self::Rcs(part),
-            _ => return None,
-        })
+    pub fn is_engine(self) -> bool {
+        self.action == Action::IGNITE
+    }
+
+    pub fn is_decoupler(self) -> bool {
+        self.action == Action::DECOUPLE
+    }
+
+    /// The activation of `part` that `kind` names (see [`Self::kind`]), with its `setting` if it
+    /// takes one: one of the built-in actions, or one a kind of system declares.
+    pub fn of_kind(kind: &str, part: PartId, setting: Option<u16>) -> Option<Self> {
+        let action = match (kind, setting) {
+            ("throttle", Some(percent)) => Action::throttle(percent),
+            (_, Some(_)) | ("throttle", None) => return None,
+            _ => [
+                Action::IGNITE,
+                Action::CUTOFF,
+                Action::DECOUPLE,
+                Action::JETTISON,
+                Action::RCS_ON,
+                Action::CONTROL,
+            ]
+            .into_iter()
+            .chain(
+                crate::systems::KINDS
+                    .iter()
+                    .flat_map(|k| k.actions.iter().copied()),
+            )
+            .find(|a| a.kind == kind)?,
+        };
+        Some(Self::new(part, action))
     }
 }
 
@@ -76,6 +145,10 @@ pub enum SectionActivation {
     Fairing(usize),
     /// Switch RCS on with its blocks.
     Rcs(usize),
+    /// Cut off all its engines.
+    Cutoff(usize),
+    /// Limit all its engines' thrust to this percent of full.
+    Throttle(usize, u16),
 }
 
 /// Where to put an activation that is moved.
@@ -85,6 +158,8 @@ pub enum Target {
     Into(usize),
     /// Into a new sequence inserted at this position.
     New(usize),
+    /// Into a sequence, before the activation at this index of it.
+    Before(usize, usize),
 }
 
 /// The sequences still to fire, the next first.
@@ -105,20 +180,14 @@ impl Sequences {
     /// release the decoupler, light the stage above (and those beside it) and switch on its
     /// RCS together (so the engine lights while the propellant is still settled), and release
     /// what is beside it in turn; jettison a fairing once the stage below it is lit; a stage
-    /// without engines (a payload) is released on its own. `parts` gives each section's part of
-    /// it.
+    /// without engines (a payload) is released on its own. A stage that hangs on the axis from
+    /// one that already has another under it goes as one beside it does. `parts` gives each
+    /// section's part of it.
     pub fn default_for(
         stages: &[Section],
         parts: impl Fn(SectionActivation) -> Vec<Activation>,
     ) -> Self {
         use SectionActivation as S;
-        let beside = |stage: &Section| -> Vec<usize> {
-            stages
-                .iter()
-                .filter(|s| s.beside && s.parent == Some(stage.id))
-                .map(|s| s.id)
-                .collect()
-        };
         // The stack, bottom first: from the root down through the stages hanging under.
         let mut stack = Vec::new();
         let mut at = stages.iter().rposition(|s| s.parent.is_none());
@@ -129,6 +198,14 @@ impl Sequences {
                 .position(|s| s.parent == Some(stages[i].id) && !s.beside);
         }
         stack.reverse();
+        let in_stack: Vec<usize> = stack.iter().map(|&i| stages[i].id).collect();
+        let beside = |stage: &Section| -> Vec<usize> {
+            stages
+                .iter()
+                .filter(|s| s.parent == Some(stage.id) && !in_stack.contains(&s.id))
+                .map(|s| s.id)
+                .collect()
+        };
         let mut list = Vec::new();
         let mut placed = Vec::new();
         let mut light = |list: &mut Vec<Vec<Activation>>, seq: &mut Vec<Activation>, k: usize| {
@@ -179,21 +256,32 @@ impl Sequences {
         Self::new(list)
     }
 
-    /// From a craft file's `sequences`, each activation written `<kind>:<part id>` and
-    /// turned into activations by `parse`.
+    /// From a craft file's `sequences`, each activation written `<kind>:<part id>`, or
+    /// `<kind>:<part id>:<setting>` for one that takes a setting, and turned into activations
+    /// by `parse`.
     pub fn parse(
         def: &[Vec<String>],
-        parse: impl Fn(&str, &str) -> Result<Vec<Activation>, String>,
+        parse: impl Fn(&str, &str, Option<u16>) -> Result<Vec<Activation>, String>,
     ) -> Result<Self, String> {
         let mut list = Vec::new();
         for seq in def {
             let mut out = Vec::new();
             for text in seq {
-                let (kind, part) = text
+                let (kind, rest) = text
                     .split_once(':')
                     .ok_or_else(|| format!("`{text}`: write it as `<kind>:<part id>`"))?;
-                let found =
-                    parse(kind.trim(), part.trim()).map_err(|e| format!("`{text}`: {e}"))?;
+                let (part, setting) = match rest.split_once(':') {
+                    Some((part, setting)) => {
+                        let setting = setting
+                            .trim()
+                            .parse::<u16>()
+                            .map_err(|_| format!("`{text}`: its setting is a whole number"))?;
+                        (part, Some(setting))
+                    }
+                    None => (rest, None),
+                };
+                let found = parse(kind.trim(), part.trim(), setting)
+                    .map_err(|e| format!("`{text}`: {e}"))?;
                 for a in found {
                     if !out.contains(&a) {
                         out.push(a);
@@ -218,6 +306,16 @@ impl Sequences {
 
     pub fn is_empty(&self) -> bool {
         self.list.is_empty()
+    }
+
+    /// Whether `other` holds the same activations at the same point in the flight, however they
+    /// are arranged: nothing has fired or fallen away between the two.
+    pub fn same_activations(&self, other: &Self) -> bool {
+        let all = |s: &Self| s.list.iter().flatten().copied().collect::<Vec<_>>();
+        let (mine, theirs) = (all(self), all(other));
+        self.fired == other.fired
+            && mine.len() == theirs.len()
+            && mine.iter().all(|a| theirs.contains(a))
     }
 
     /// Take the next sequence, its activations in the order they were listed.
@@ -249,16 +347,34 @@ impl Sequences {
         let mut indices = indices.to_vec();
         indices.sort_unstable();
         indices.dedup();
+        // What it goes before, which is not one of those moved: their leaving may shift it.
+        let before = match to {
+            Target::Before(to, at) => {
+                let Some(&anchor) = self.list.get(to).and_then(|seq| seq.get(at)) else {
+                    return false;
+                };
+                if to == from && indices.contains(&at) {
+                    return false;
+                }
+                Some((to, anchor))
+            }
+            _ => None,
+        };
         let moved: Vec<Activation> = indices.iter().map(|&i| self.list[from][i]).collect();
         for &i in indices.iter().rev() {
             self.list[from].remove(i);
         }
-        match to {
-            Target::Into(to) => self.list[to].extend(moved),
-            Target::New(at) => {
+        match (to, before) {
+            (Target::Into(to), _) => self.list[to].extend(moved),
+            (Target::New(at), _) => {
                 let at = at.min(self.list.len());
                 self.list.insert(at, moved);
             }
+            (_, Some((to, anchor))) => {
+                let at = self.list[to].iter().position(|a| *a == anchor).unwrap_or(0);
+                self.list[to].splice(at..at, moved);
+            }
+            (Target::Before(..), None) => unreachable!("worked out above"),
         }
         true
     }
@@ -288,6 +404,36 @@ impl Sequences {
         false
     }
 
+    /// Put sequence `from` into the one before it, its activations after theirs.
+    pub fn merge_down(&mut self, from: usize) -> bool {
+        if from == 0 || from >= self.list.len() {
+            return false;
+        }
+        let moved = self.list.remove(from);
+        self.list[from - 1].extend(moved);
+        true
+    }
+
+    /// Give `part` a sequence of its own, just before the one that holds it: it fires first.
+    /// Returns false if it is in none, or has that one to itself already.
+    pub fn split_off(&mut self, part: PartId) -> bool {
+        let Some(from) = self
+            .list
+            .iter()
+            .position(|seq| seq.iter().any(|a| a.part() == part))
+        else {
+            return false;
+        };
+        if self.list[from].iter().all(|a| a.part() == part) {
+            return false;
+        }
+        let indices: Vec<usize> = (self.list[from].iter().enumerate())
+            .filter(|(_, a)| a.part() == part)
+            .map(|(i, _)| i)
+            .collect();
+        self.move_activations(from, &indices, Target::New(from))
+    }
+
     /// Take `activation` out of whatever sequence holds it (it happened some other way).
     pub fn take(&mut self, activation: Activation) {
         for seq in &mut self.list {
@@ -307,7 +453,90 @@ impl Sequences {
 
 #[cfg(test)]
 mod tests {
-    use super::{Activation::*, *};
+    use super::*;
+
+    #[allow(non_snake_case)]
+    fn Engine(part: PartId) -> Activation {
+        Activation::engine(part)
+    }
+
+    #[test]
+    fn an_activation_can_go_before_another_in_its_own_sequence_or_another() {
+        let (a, b, c, d) = (PartId(1), PartId(2), PartId(3), PartId(4));
+        let mut sequences =
+            Sequences::new(vec![vec![Engine(a), Engine(b), Engine(c)], vec![Engine(d)]]);
+        // Within a row: the last one first.
+        assert!(sequences.move_activations(0, &[2], Target::Before(0, 0)));
+        assert_eq!(sequences.list()[0], [Engine(c), Engine(a), Engine(b)]);
+        // Its leaving shifts what it goes before.
+        assert!(sequences.move_activations(0, &[0], Target::Before(0, 2)));
+        assert_eq!(sequences.list()[0], [Engine(a), Engine(c), Engine(b)]);
+        // Into another row, in front.
+        assert!(sequences.move_activations(1, &[0], Target::Before(0, 1)));
+        assert_eq!(
+            sequences.list()[0],
+            [Engine(a), Engine(d), Engine(c), Engine(b)]
+        );
+        // Not before itself, nor anything that is not there.
+        assert!(!sequences.move_activations(0, &[1], Target::Before(0, 1)));
+        assert!(!sequences.move_activations(0, &[0], Target::Before(0, 9)));
+    }
+
+    #[test]
+    fn a_part_split_off_fires_before_the_rest_of_its_sequence() {
+        let (a, b, c) = (PartId(1), PartId(2), PartId(3));
+        let mut sequences = Sequences::new(vec![vec![Engine(a), Engine(b)], vec![Engine(c)]]);
+        assert!(sequences.split_off(b));
+        assert_eq!(
+            sequences.list(),
+            [vec![Engine(b)], vec![Engine(a)], vec![Engine(c)]]
+        );
+        // On its own already, or not in any.
+        assert!(!sequences.split_off(b));
+        assert!(!sequences.split_off(PartId(9)));
+    }
+
+    #[test]
+    fn a_sequence_merges_into_the_one_before_it() {
+        let (a, b, c) = (PartId(1), PartId(2), PartId(3));
+        let mut sequences = Sequences::new(vec![vec![Engine(a)], vec![Engine(b)], vec![Engine(c)]]);
+        assert!(!sequences.merge_down(0));
+        assert!(!sequences.merge_down(3));
+        assert!(sequences.merge_down(2));
+        assert_eq!(
+            sequences.list(),
+            [vec![Engine(a)], vec![Engine(b), Engine(c)]]
+        );
+    }
+
+    #[test]
+    fn rearranging_keeps_the_same_activations_and_firing_does_not() {
+        let (a, b) = (PartId(1), PartId(2));
+        let before = Sequences::new(vec![vec![Engine(a)], vec![Engine(b)]]);
+        let mut moved = before.clone();
+        assert!(moved.move_sequence(0, 1));
+        assert!(moved.same_activations(&before));
+        moved.pop_next();
+        assert!(!moved.same_activations(&before));
+        let mut lost = before.clone();
+        lost.forget(|p| p == a);
+        assert!(!lost.same_activations(&before));
+    }
+
+    #[allow(non_snake_case)]
+    fn Decoupler(part: PartId) -> Activation {
+        Activation::decoupler(part)
+    }
+
+    #[allow(non_snake_case)]
+    fn Fairing(part: PartId) -> Activation {
+        Activation::fairing(part)
+    }
+
+    #[allow(non_snake_case)]
+    fn Rcs(part: PartId) -> Activation {
+        Activation::rcs(part)
+    }
 
     fn seqs(list: Vec<Vec<Activation>>) -> Sequences {
         Sequences::new(list)
@@ -402,7 +631,7 @@ mod tests {
     fn a_craft_names_parts_or_their_section() {
         // `engines:core` lights both of the core's engines; naming one engine lights it
         // alone, once however often it is named.
-        let parse = |kind: &str, part: &str| match (kind, part) {
+        let parse = |kind: &str, part: &str, _: Option<u16>| match (kind, part) {
             ("engines", "core") => Ok(vec![Engine(P[0]), Engine(P[1])]),
             ("engines", "core_engine_2") => Ok(vec![Engine(P[1])]),
             ("decoupler", "booster") => Ok(vec![Decoupler(P[2])]),

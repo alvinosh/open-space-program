@@ -18,6 +18,7 @@ mod first_orbit;
 mod pilot;
 mod planning;
 mod report;
+mod saturn_ib;
 mod saturn_v;
 mod site;
 mod world;
@@ -90,6 +91,11 @@ fn saturn_v() {
 #[test]
 fn first_orbit() {
     run(&first_orbit::MISSION);
+}
+
+#[test]
+fn saturn_ib() {
+    run(&saturn_ib::MISSION);
 }
 
 /// The base game's `controls` tutorial, played headless over the pad scenario the way a player

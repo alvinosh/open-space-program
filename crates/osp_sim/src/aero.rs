@@ -400,37 +400,38 @@ pub fn wing_panel(propulsion: &Propulsion, part: PartId, index: usize) -> Option
     part_panels(tree.get(part)?, base).nth(index)
 }
 
-/// The panels of `part` if it is a wing, with the stack standing at `base`.
+/// The panels of `part` if it is a wing, with the stack standing at `base`: of each wing it has,
+/// numbered through them.
 fn part_panels(part: &Part, base: DVec3) -> impl Iterator<Item = PartPanel<'_>> {
-    let PartKind::Wing(wing) = &part.kind else {
-        return Vec::new().into_iter();
-    };
     let position = part.position - base;
-    let lifting = part.built.as_ref().and_then(|built| {
-        built.components.iter().find_map(|c| match c {
+    let mut surfaces = part.built.iter().flat_map(|built| {
+        built.components.iter().filter_map(|c| match c {
             Component::LiftingSurface(surface) => Some(surface),
             _ => None,
         })
     });
-    let panels: Vec<Panel> = match lifting {
-        Some(surface) => (surface.panels.iter())
-            .map(|plan| Panel::at(plan, position, part.rotation))
-            .collect(),
-        // A stage's record, not a part's loft.
-        None => Panel::of_wing(wing, position, part.rotation),
-    };
-    let id = part.id;
-    panels
-        .into_iter()
-        .enumerate()
-        .map(|(index, panel)| PartPanel {
-            part: id,
-            index,
-            wing,
-            panel,
-        })
-        .collect::<Vec<_>>()
-        .into_iter()
+    let mut out = Vec::new();
+    for kind in &part.kinds {
+        let PartKind::Wing(wing) = kind else {
+            continue;
+        };
+        let panels: Vec<Panel> = match surfaces.next() {
+            Some(surface) => (surface.panels.iter())
+                .map(|plan| Panel::at(plan, position, part.rotation))
+                .collect(),
+            // A stage's record, not a part's loft.
+            None => Panel::of_wing(wing, position, part.rotation),
+        };
+        for panel in panels {
+            out.push(PartPanel {
+                part: part.id,
+                index: out.len(),
+                wing,
+                panel,
+            });
+        }
+    }
+    out.into_iter()
 }
 
 /// How far a control surface on `panel` deflects for the rotation `command` (−1..1 about
@@ -518,7 +519,7 @@ impl Surface {
             strips,
             aspect: 2.0 * span * span / area,
             tan_sweep: (sweep + chord_change / 2.0) / span,
-            incidence: panel.incidence,
+            incidence: panel.incidence + wing.camber_incidence.to_radians(),
             thickness: wing.thickness,
             max_lift: 0.9 * section_max * tan_quarter.atan().cos(),
             control: wing.control.clone(),
@@ -1295,13 +1296,14 @@ mod tests {
     /// The sounder's outline as its parts are drawn: base, booster barrel up to its
     /// separation ring, the capsule's heat shield a little wider, closed top. (Its stages
     /// tapered the barrel out to the capsule's width from the top of its tanks.)
-    const SOUNDER: [(f64, f64); 6] = [
+    const SOUNDER: [(f64, f64); 7] = [
         (0.0, 0.0),
         (0.0, 0.9),
         (12.0, 0.9),
         (12.0, 0.95),
-        (14.9, 0.365),
-        (14.9, 0.0),
+        (12.076, 0.95),
+        (14.976, 0.365),
+        (14.976, 0.0),
     ];
 
     /// The radius of `outline` at `z`, between its points.
@@ -1318,7 +1320,7 @@ mod tests {
     fn the_body_is_cut_from_the_parts() {
         let p = sounder();
         let shape = Shape::new(&p);
-        assert!((shape.length - 14.9).abs() < 1e-3, "{}", shape.length);
+        assert!((shape.length - 14.976).abs() < 1e-3, "{}", shape.length);
         let outline = shape.outline();
         for z in [1.0, 5.0, 9.5, 11.0, 13.0, 14.5] {
             let (got, want) = (radius_at(&outline, z), radius_at(&SOUNDER, z));
@@ -1512,6 +1514,7 @@ mod tests {
             sweep: 0.0,
             dihedral: 0.0,
             incidence: 0.0,
+            camber_incidence: 0.0,
             thickness: 0.12,
             mass: 0.0,
             mirror: true,

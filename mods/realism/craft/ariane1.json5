@@ -43,7 +43,7 @@
         ],
       },
       structure: { thickness: 0, mass: 1600 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 260000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.2 },
         { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 1.6 },
@@ -163,9 +163,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "h8_decoupler",
+      name: "Decoupler",
+      on: "cat_1.bottom",
+      by: "top",
+      shape: { ring: { diameter: 3.2, height: 0.128, thickness: 0.064 } },
+      structure: { mass: 111.08 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "h8",
       name: "H8",
-      on: "cat_1.bottom",
+      on: "h8_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -205,8 +214,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 590 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 478.92 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.6 },
         { name: "top", position: [0, 0, 9.1], direction: [0, 0, 1], size: 2.6 },
@@ -291,7 +300,7 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 1950 },
+      structure: { thickness: 0, mass: 1890.42 },
       components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.6 },
@@ -315,12 +324,21 @@
       },
     },
     {
-      id: "l33_shell_1",
-      name: "Adapter",
+      id: "l33_shell_1_decoupler",
+      name: "Decoupler",
       on: "h8.bottom",
       by: "top",
-      shape: { shell: { bottom_diameter: 2.6, sections: [{ length: 0.5 }] } },
+      shape: { ring: { diameter: 2.6, height: 0.104, thickness: 0.052 } },
+      structure: { mass: 59.58 },
       components: [{ decoupler: { node: "top" } }],
+    },
+    {
+      id: "l33_shell_1",
+      name: "Adapter",
+      on: "l33_shell_1_decoupler.bottom",
+      by: "top",
+      shape: { shell: { bottom_diameter: 2.6, sections: [{ length: 0.5 }] } },
+      components: [],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     { id: "l33_engine_1", on: "l33.engine_1", by: "top", template: "Viking-4" },
@@ -335,9 +353,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "l140_decoupler",
+      name: "Decoupler",
+      on: "l33.bottom",
+      by: "top",
+      shape: { ring: { diameter: 2.6, height: 0.104, thickness: 0.052 } },
+      structure: { mass: 59.58 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "l140",
       name: "L140",
-      on: "l33.bottom",
+      on: "l140_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -383,8 +410,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 7970 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 7910.42 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.8 },
         { name: "top", position: [0, 0, 18.4], direction: [0, 0, 1], size: 2.6 },

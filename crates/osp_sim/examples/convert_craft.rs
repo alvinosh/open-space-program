@@ -39,6 +39,7 @@ fn main() {
         rcs: registry.all::<RcsDef>("rcs", &mut diagnostics),
         pods: registry.all::<PodDef>("pods", &mut diagnostics),
         batteries: registry.all::<BatteryDef>("batteries", &mut diagnostics),
+        avionics: registry.all("avionics", &mut diagnostics),
         liveries: registry.all::<LiveryDef>("liveries", &mut diagnostics),
     };
     let mut failed = 0;

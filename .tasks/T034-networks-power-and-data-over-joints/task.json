@@ -2,7 +2,7 @@
   "id": "T034",
   "title": "Networks: power and data over joints",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "environment",
   "size": "M",
   "parent": "T004",
@@ -13,8 +13,8 @@
     "docs/systems-plan.md (step 9)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
-  "done": null,
+  "updated": "2026-11-02",
+  "done": "2026-11-02",
   "milestone": "M2",
   "priority": 28
 }

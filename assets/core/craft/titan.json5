@@ -41,7 +41,7 @@
         ],
       },
       structure: { thickness: 0, mass: 2500 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 200000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
         { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 1.525 },
@@ -151,9 +151,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "second_stage_decoupler",
+      name: "Decoupler",
+      on: "payload.bottom",
+      by: "top",
+      shape: { ring: { diameter: 3.05, height: 0.122, thickness: 0.061 } },
+      structure: { mass: 96.18 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "second_stage",
       name: "Second Stage",
-      on: "payload.bottom",
+      on: "second_stage_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -199,8 +208,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 2000 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 1903.82 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
         { name: "top", position: [0, 0, 9], direction: [0, 0, 1], size: 3.05 },
@@ -251,9 +260,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "first_stage_decoupler",
+      name: "Decoupler",
+      on: "second_stage.bottom",
+      by: "top",
+      shape: { ring: { diameter: 3.05, height: 0.122, thickness: 0.061 } },
+      structure: { mass: 96.18 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "first_stage",
       name: "First Stage",
-      on: "second_stage.bottom",
+      on: "first_stage_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -299,8 +317,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 5000 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 4903.82 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
         { name: "top", position: [0, 0, 20], direction: [0, 0, 1], size: 3.05 },

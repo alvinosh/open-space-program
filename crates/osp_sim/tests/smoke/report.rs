@@ -44,6 +44,13 @@ fn columns(world: &World, liftoff: f64) -> Value {
         .map(|s| {
             let mut row = serde_json::to_value(s).unwrap();
             row["t"] = json!(s.t - liftoff);
+            // A column for each thing the systems report, by its name; its name says it is one.
+            if let Value::Object(fields) = &mut row {
+                fields.remove("systems");
+                for (name, value) in &s.systems {
+                    fields.insert(format!("system_{name}"), json!(value));
+                }
+            }
             row
         })
         .collect();

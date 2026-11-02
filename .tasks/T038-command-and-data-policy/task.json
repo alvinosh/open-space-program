@@ -2,7 +2,7 @@
   "id": "T038",
   "title": "Command and data policy",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "comms",
   "size": "S",
   "parent": "T006",
@@ -14,8 +14,8 @@
     "docs/systems-plan.md (step 13)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
-  "done": null,
+  "updated": "2026-11-02",
+  "done": "2026-11-02",
   "milestone": "M2",
   "priority": 33
 }

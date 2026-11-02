@@ -321,6 +321,34 @@ fn build_part(part: &CraftPartDef, catalog: &PartCatalog) -> Result<CraftPart, C
         part: part.id.clone(),
         problem: problem.into(),
     };
+    if let Some(procedural) = &part.procedural {
+        if part.template.is_some() || part.shape.is_some() {
+            return Err(bad("a part has a `template`, a `shape` or `procedural`"));
+        }
+        let design = procedural
+            .size(catalog)
+            .map_err(|problem| CraftError::BadPart {
+                part: part.id.clone(),
+                problem,
+            })?;
+        let mut def = PartDef {
+            name: part.name.clone().unwrap_or_else(|| part.id.clone()),
+            shape: design.shape,
+            structure: design.structure,
+            components: design.components,
+            nodes: part.nodes.clone(),
+            paint: part.paint.clone(),
+        };
+        def.components.extend(part.components.iter().cloned());
+        let built = def.build(catalog)?;
+        return Ok(CraftPart {
+            id: part.id.clone(),
+            name: def.name.clone(),
+            template: None,
+            def,
+            built: Arc::new(built),
+        });
+    }
     let (template, mut def) = match (&part.template, &part.shape) {
         (Some(id), None) => {
             if part.structure != Default::default() {

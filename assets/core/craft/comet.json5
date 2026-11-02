@@ -38,7 +38,7 @@
       },
       // Pilot, ejection seat, canopy, instruments and the forward fuselage.
       structure: { thickness: 0, mass: 700 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 6300, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.4 },
         { name: "top", position: [0, 0, 2.5], direction: [0, 0, 1], size: 1.4 },
@@ -85,9 +85,18 @@
       ],
     },
     {
+      id: "fuselage_decoupler",
+      name: "Decoupler",
+      on: "cockpit.bottom",
+      by: "top",
+      shape: { ring: { diameter: 1.4, height: 0.056, thickness: 0.028 } },
+      structure: { mass: 9.3 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "fuselage",
       name: "Fuselage",
-      on: "cockpit.bottom",
+      on: "fuselage_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -127,8 +136,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 900 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 890.7 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.4 },
         { name: "top", position: [0, 0, 7], direction: [0, 0, 1], size: 1.4 },

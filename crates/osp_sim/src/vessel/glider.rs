@@ -1,4 +1,5 @@
-//! The glider rockets off the runway on a dolly, then lets go of its boosters and wheels.
+//! The glider rockets off the runway on a dolly, then lets go of its boosters and wheels, and
+//! comes home on its belly.
 
 use glam::DVec3;
 
@@ -47,7 +48,7 @@ fn the_dolly_carries_its_wheels_out_from_the_belly() {
 }
 
 #[test]
-fn the_glider_rockets_off_the_runway_and_lets_go_of_its_boosters_and_wheels() {
+fn the_glider_rockets_off_the_runway_lets_go_of_its_wheels_and_lands_on_its_belly() {
     let system = rss();
     let (mut v, mut t) = on_runway(&system);
     run(&mut v, &system, &mut t, 2.0);
@@ -118,4 +119,31 @@ fn the_glider_rockets_off_the_runway_and_lets_go_of_its_boosters_and_wheels() {
         "{:?}",
         v.log
     );
+    // Down the glide, levelling off over the last few metres, and onto its belly.
+    let mut touched: Option<f64> = None;
+    for _ in 0..(300 * 50) {
+        let (height, speed, _) = on_the_ground(&v, &system, t);
+        hold(
+            &mut v,
+            &system,
+            &mut t,
+            if height > 6.0 { -5.0 } else { 4.0 },
+        );
+        if v.wheels_down && touched.is_none() {
+            touched = Some(speed);
+        }
+        if v.is_landed() {
+            break;
+        }
+    }
+    let touched = touched.expect("never touched down");
+    assert!((15.0..60.0).contains(&touched), "{touched} m/s");
+    assert!(v.is_landed() && !v.is_destroyed(), "{:?}", v.log);
+    assert!(
+        !v.log.iter().any(|e| e.message.starts_with("Crashed")),
+        "{:?}",
+        v.log
+    );
+    let (_, speed, _) = on_the_ground(&v, &system, t);
+    assert!(speed < 0.1, "{speed} m/s");
 }

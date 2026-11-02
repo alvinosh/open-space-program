@@ -25,6 +25,6 @@ Right-clicking a part (or its tile in the staging window) opens its window; the 
 
 ## Open
 
-- Checked in a capture only (`OSP_CAPTURE_PARTS=1`, the scripted run in `smoke_test.rs`): a nine-engine tile and a fairing window got two colours on frames, tiles and parts, and closing one took its tint off. No z-fighting seen. Not tried with the pointer by hand, with more than two windows, or on engines with heat glow.
+- Checked in captures only (`OSP_CAPTURE_PARTS=1`, and `OSP_CAPTURE_STAGING_POINTER=1` now opens one from a tile through the pointer's picking): frames, tiles and parts take the colours, and closing a window takes its tint off. Not tried with a real mouse.
 - Windows opened one after another at the same pointer spot overlap; they can be dragged apart.
 - The tint has no outline; T157 may want a real outline pass for hover.

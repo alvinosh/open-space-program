@@ -159,6 +159,7 @@ pub fn body_spheres(sim: &Sim, frame: &RenderFrame) -> Vec<(Vec3, f32)> {
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn place(
     mut commands: Commands,
+    ui_scale: Res<UiScale>,
     labels: Res<MapLabels>,
     sim: Res<Sim>,
     frame: Res<RenderFrame>,
@@ -226,8 +227,8 @@ fn place(
             missing_icons += 1;
             continue;
         };
-        node.left = Val::Px(at.x - size / 2.0);
-        node.top = Val::Px(at.y - size / 2.0);
+        node.left = Val::Px(at.x / ui_scale.0 - size / 2.0);
+        node.top = Val::Px(at.y / ui_scale.0 - size / 2.0);
         node.width = Val::Px(size);
         node.height = Val::Px(size);
         if image.image != *picture {
@@ -289,8 +290,8 @@ fn place(
             missing_tags.push(label.to_owned());
             continue;
         };
-        node.left = Val::Px(corner.x);
-        node.top = Val::Px(corner.y);
+        node.left = Val::Px(corner.x / ui_scale.0);
+        node.top = Val::Px(corner.y / ui_scale.0);
         let padding = if detail {
             UiRect::axes(Val::Px(6.0), Val::Px(3.0))
         } else {

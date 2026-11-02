@@ -80,7 +80,7 @@ pub fn inspect(w: &mut World) -> Audit {
                 Component::ReactionWheel(r) => runs.push(format!("reaction wheel {}", r.id)),
                 Component::Battery(b) => {
                     audit.charge += b.charge;
-                    runs.push(format!("battery: {:.0} kJ (a stored number)", b.charge));
+                    runs.push(format!("battery: {:.0} kJ", b.charge));
                 }
                 Component::Crew { seats } => {
                     audit.crew += seats;
@@ -90,6 +90,19 @@ pub fn inspect(w: &mut World) -> Audit {
                 Component::LiftingSurface(_) => runs.push("lifting surface".into()),
                 Component::Container(_) => runs.push("container".into()),
                 Component::Gear(_) => runs.push("landing gear".into()),
+                Component::FuelCell(f) => runs.push(format!("fuel cell: {:.0} W", f.power)),
+                Component::SolarArray(a) => runs.push(format!("solar array: {:.0} m²", a.area)),
+                Component::Rtg(r) => runs.push(format!("RTG: {:.0} W", r.power)),
+                Component::ElectricLoad(l) => runs.push(format!("load: {:.0} W", l.watts)),
+                Component::Antenna(a) => {
+                    runs.push(format!("antenna: {:.1} m, {:.0} W", a.diameter, a.power))
+                }
+                Component::Avionics(a) => {
+                    runs.push(format!("avionics for {:.0} t", a.controlled_mass / 1e3))
+                }
+                Component::SurfaceLayer(l) => {
+                    runs.push(format!("layer: {:.0} kg of {}", l.mass, l.material))
+                }
             }
         }
         let mass = part.built.mass.mass;
@@ -179,28 +192,6 @@ pub fn report(w: &mut World, audit: &Audit) {
             ),
         );
     }
-
-    if audit.charge > 0.0 {
-        w.gap(
-            Area::Power,
-            "Electrical power is a stored number",
-            format!(
-                "The Command Module carries {:.0} kJ ({:.1} kWh) of battery, but the vessel has no electrical state: batteries are dropped when the part tree is built (parts/gather.rs), so nothing draws or recharges them. Engines name an `ElectricCharge` ignition cost and nothing pays it. The real Apollo flew on three fuel cells and five batteries.",
-                audit.charge,
-                audit.charge / 3600.0
-            ),
-        );
-    }
-    w.gap(
-        Area::Avionics,
-        "No avionics or instrument unit to build",
-        "The Saturn V's guidance (the instrument unit, the CSM computer) is part of each stage's flat structure mass. The `avionics` records (RP-1's procedural avionics, with mass and power formulas) are loaded but nothing in the sim reads them: a vessel needs none to fly, and cannot lose control without one.",
-    );
-    w.gap(
-        Area::Comms,
-        "No communications",
-        "There is no antenna part, link budget, ground station or signal delay. The real mission was in contact through the S-band network and the Honeysuckle Creek and Parkes dishes; here every craft is always controllable.",
-    );
 }
 
 fn capitalised(s: &str) -> String {

@@ -43,7 +43,7 @@
         ],
       },
       structure: { thickness: 0, mass: 7 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 20000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.46 },
         { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 0.23 },
@@ -152,9 +152,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "altair_decoupler",
+      name: "Decoupler",
+      on: "explorer_9.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.46, height: 0.0184, thickness: 0.0092 } },
+      structure: { mass: 0.33 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "altair",
       name: "Altair",
-      on: "explorer_9.bottom",
+      on: "altair_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -193,8 +202,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 15 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 14.67 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.46 },
         { name: "top", position: [0, 0, 1.8], direction: [0, 0, 1], size: 0.46 },
@@ -231,9 +240,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "antares_decoupler",
+      name: "Decoupler",
+      on: "altair.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.46, height: 0.0184, thickness: 0.0092 } },
+      structure: { mass: 0.33 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "antares",
       name: "Antares",
-      on: "altair.bottom",
+      on: "antares_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -272,8 +290,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 94 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 93.67 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.76 },
         { name: "top", position: [0, 0, 3], direction: [0, 0, 1], size: 0.46 },
@@ -286,25 +304,25 @@
         { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 0.76 },
         {
           name: "rcs_1",
-          position: [0.268701, 0.268701, 1.9],
+          position: [0.176777, 0.176777, 1.9],
           direction: [0.7071067811865477, 0.7071067811865477, 0],
           size: 0.2,
         },
         {
           name: "rcs_2",
-          position: [-0.268701, 0.268701, 1.9],
+          position: [-0.176777, 0.176777, 1.9],
           direction: [-0.7071067811865477, 0.7071067811865477, 0],
           size: 0.2,
         },
         {
           name: "rcs_3",
-          position: [-0.268701, -0.268701, 1.9],
+          position: [-0.176777, -0.176777, 1.9],
           direction: [-0.7071067811865477, -0.7071067811865477, 0],
           size: 0.2,
         },
         {
           name: "rcs_4",
-          position: [0.268701, -0.268701, 1.9],
+          position: [0.176777, -0.176777, 1.9],
           direction: [0.7071067811865477, -0.7071067811865477, 0],
           size: 0.2,
         },
@@ -374,9 +392,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "castor_decoupler",
+      name: "Decoupler",
+      on: "antares.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.76, height: 0.0304, thickness: 0.0152 } },
+      structure: { mass: 1.49 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "castor",
       name: "Castor",
-      on: "antares.bottom",
+      on: "castor_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -421,8 +448,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 242 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 240.51 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.79 },
         { name: "top", position: [0, 0, 6.2], direction: [0, 0, 1], size: 0.76 },
@@ -435,25 +462,25 @@
         { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 0.79 },
         {
           name: "rcs_1",
-          position: [0.279307, 0.279307, 5.9],
+          position: [0.187383, 0.187383, 5.9],
           direction: [0.7071067811865476, 0.7071067811865476, 0],
           size: 0.2,
         },
         {
           name: "rcs_2",
-          position: [-0.279307, 0.279307, 5.9],
+          position: [-0.187383, 0.187383, 5.9],
           direction: [-0.7071067811865476, 0.7071067811865476, 0],
           size: 0.2,
         },
         {
           name: "rcs_3",
-          position: [-0.279307, -0.279307, 5.9],
+          position: [-0.187383, -0.187383, 5.9],
           direction: [-0.7071067811865476, -0.7071067811865476, 0],
           size: 0.2,
         },
         {
           name: "rcs_4",
-          position: [0.279307, -0.279307, 5.9],
+          position: [0.187383, -0.187383, 5.9],
           direction: [0.7071067811865476, -0.7071067811865476, 0],
           size: 0.2,
         },
@@ -523,9 +550,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "algol_decoupler",
+      name: "Decoupler",
+      on: "castor.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.79, height: 0.0316, thickness: 0.0158 } },
+      structure: { mass: 1.67 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "algol",
       name: "Algol",
-      on: "castor.bottom",
+      on: "algol_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -570,8 +606,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 134 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 132.33 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.01 },
         { name: "top", position: [0, 0, 9.1], direction: [0, 0, 1], size: 0.79 },

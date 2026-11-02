@@ -172,14 +172,17 @@ fn the_parts_weigh_and_sit_as_the_stages_did() {
         // Tanks, fins, wings, shells and fairings weigh as the shapes they are now, not as
         // tubes and plates; everything else exactly as before.
         let reshaped = |part: &Part| {
-            matches!(
-                part.kind,
-                PartKind::Tank(_)
-                    | PartKind::Fins(_)
-                    | PartKind::Wing(_)
-                    | PartKind::Shell(_)
-                    | PartKind::FairingHalf { .. }
-            )
+            part.is(|kind| {
+                matches!(
+                    kind,
+                    PartKind::Decoupler { .. }
+                        | PartKind::Tank(_)
+                        | PartKind::Fins(_)
+                        | PartKind::Wing(_)
+                        | PartKind::Shell(_)
+                        | PartKind::FairingHalf { .. }
+                )
+            })
         };
         let sum = |tree: &PartTree, keep: &dyn Fn(&Part) -> bool| -> Mass {
             tree.parts()

@@ -222,10 +222,8 @@ fn next_engines(sequences: &[Vec<Activation>]) -> Vec<PartId> {
         return Vec::new();
     };
     (next.iter())
-        .filter_map(|a| match a {
-            Activation::Engine(part) => Some(*part),
-            _ => None,
-        })
+        .filter(|a| a.is_engine())
+        .map(|a| a.part())
         .collect()
 }
 
@@ -437,14 +435,14 @@ mod tests {
 
     #[test]
     fn the_next_engines_are_those_of_the_first_sequence_only() {
-        use Activation::*;
+        let (engine, decoupler) = (Activation::engine, Activation::decoupler);
         let sequences = vec![
-            vec![Engine(PartId(2)), Decoupler(PartId(9)), Engine(PartId(3))],
-            vec![Engine(PartId(4))],
+            vec![engine(PartId(2)), decoupler(PartId(9)), engine(PartId(3))],
+            vec![engine(PartId(4))],
         ];
         assert_eq!(next_engines(&sequences), [PartId(2), PartId(3)]);
         // A sequence that only lets go lights nothing.
-        assert!(next_engines(&[vec![Decoupler(PartId(9))]]).is_empty());
+        assert!(next_engines(&[vec![decoupler(PartId(9))]]).is_empty());
         assert!(next_engines(&[]).is_empty());
     }
 

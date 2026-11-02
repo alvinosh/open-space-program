@@ -2,7 +2,7 @@
   "id": "T028",
   "title": "Open components with state",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "physics",
   "size": "L",
   "parent": "T003",
@@ -13,8 +13,8 @@
     "docs/systems-plan.md (step 3, The build core)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
-  "done": null,
+  "updated": "2026-11-02",
+  "done": "2026-11-02",
   "milestone": "M2",
   "priority": 23
 }

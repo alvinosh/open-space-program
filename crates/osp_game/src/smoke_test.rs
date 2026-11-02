@@ -7,16 +7,25 @@
 use std::path::PathBuf;
 
 use bevy::{
+    camera::{ImageRenderTarget, NormalizedRenderTarget},
+    ecs::system::SystemParam,
     math::DVec3,
+    picking::{
+        backend::prelude::PointerId,
+        pointer::{Location, PointerAction, PointerButton, PointerInput},
+    },
     prelude::*,
     render::{
         render_resource::TextureFormat,
         view::screenshot::{Screenshot, save_to_disk},
     },
+    ui::UiGlobalTransform,
 };
 
-use osp_sim::{attitude::SasMode, prediction::PatchEnd};
-use osp_ui::UiAction;
+use osp_sim::{attitude::SasMode, prediction::PatchEnd, propulsion::Propulsion};
+use osp_ui::{
+    ActionSource, ContextAction, DragPayload, DropAction, Formatters, Template, UiAction, UiData,
+};
 
 use crate::{
     FrameSet,
@@ -108,6 +117,10 @@ impl Plugin for SmokeTestPlugin {
                 HOVER_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_PARTS").is_some() {
                 PARTS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_SETTINGS").is_some() {
+                SETTINGS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_STAGING_POINTER").is_some() {
+                STAGING_POINTER_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_STAGING").is_some() {
                 STAGING_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_GLIDER_RUNWAY").is_some() {
@@ -123,6 +136,12 @@ impl Plugin for SmokeTestPlugin {
             } else {
                 PAD_SCRIPT.to_vec()
             };
+            // `OSP_CAPTURE_PART=<vessel>-<part>`: that part's window open from the start.
+            if let Ok(part) = std::env::var("OSP_CAPTURE_PART") {
+                let show: &'static str =
+                    Box::leak(format!("ui.show:part_info:{part}").into_boxed_str());
+                actions.insert(0, (0.8, Action::Ui(show)));
+            }
             // `OSP_CAPTURE_HIDE_UI=1`: the vehicle and world only (checking part models).
             if std::env::var_os("OSP_CAPTURE_HIDE_UI").is_some() {
                 actions.insert(0, (0.6, Action::Ui("ui.hide_group:flight")));
@@ -132,6 +151,7 @@ impl Plugin for SmokeTestPlugin {
                 step: 0,
                 target: Handle::default(),
                 actions,
+                ui_pointer: Vec2::ZERO,
             })
             .add_systems(PostStartup, render_offscreen)
             .add_systems(
@@ -148,6 +168,8 @@ struct Script {
     step: usize,
     target: Handle<Image>,
     actions: Vec<(f64, Action)>,
+    /// Where the pointer the UI sees is, physical px.
+    ui_pointer: Vec2,
 }
 
 fn render_offscreen(
@@ -193,6 +215,20 @@ enum Action {
     /// Press or release a mouse button (where the scripted pointer is).
     Press(MouseButton),
     Release(MouseButton),
+    /// Let the actions through, as they are when a player flies.
+    Unlock,
+    /// Move the pointer the UI sees onto the middle of the node with this action, `drag`
+    /// payload, `drop` or `context` as they read now, or that start with this if it ends in
+    /// `:` (the capture has no real pointer).
+    UiPointAt(&'static str),
+    /// The same, near its left edge: on a row, its number rather than one of its tiles.
+    UiPointAtEdge(&'static str),
+    /// Press or release that pointer's button.
+    UiPress(PointerButton),
+    UiRelease(PointerButton),
+    /// Stop the capture with a failure unless the sequences start like this: `<kind>x<count>`
+    /// for each group, `,` between groups, ` | ` between sequences, the next first.
+    ExpectSequences(&'static str),
     Exit,
 }
 
@@ -233,6 +269,25 @@ const GLIDER_RUNWAY_SCRIPT: &[(f64, Action)] = &[
 
 /// `OSP_CAPTURE_MENU=1`: open the main menu, look at the spacecraft on the pad and in
 /// orbit, start the rocket plane on the runway from it, take off and climb out.
+/// `OSP_CAPTURE_SETTINGS=1`: the menu's pages of settings, then the flight view and the map at a
+/// bigger interface, the map's labels still on what they name.
+const SETTINGS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.2, Action::Ui("menu.page:sound")),
+    (1.8, Action::Capture("settings_sound.png")),
+    (1.9, Action::Ui("menu.page:controls")),
+    (2.5, Action::Capture("settings_controls.png")),
+    (2.6, Action::Ui("menu.page:interface")),
+    (3.2, Action::Capture("settings_interface.png")),
+    (3.3, Action::Ui("interface.set:scale:125")),
+    (3.4, Action::Ui("game.resume")),
+    (4.2, Action::Capture("settings_flight_125.png")),
+    (4.3, Action::MapView(true)),
+    (6.0, Action::Capture("settings_map_125.png")),
+    (6.5, Action::Exit),
+];
+
 const MENU_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.menu")),
@@ -407,10 +462,10 @@ const TRANSFER_SCRIPT: &[(f64, Action)] = &[
 const PARTS_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (2.0, Action::Capture("parts_start.png")),
-    (2.2, Action::Ui("part.group:0:18,19,20,21,22,23,24,25,26")),
+    (2.2, Action::Ui("part.group:0:20,21,22,23,24,25,26,27,28")),
     (2.4, Action::Ui("ui.show:part_info:0-1")),
     (3.5, Action::Capture("parts_marked.png")),
-    (3.6, Action::Ui("ui.hide:part_info:0-18")),
+    (3.6, Action::Ui("ui.hide:part_info:0-20")),
     (4.5, Action::Capture("parts_closed.png")),
     (4.7, Action::Exit),
 ];
@@ -474,6 +529,93 @@ const STAGING_SCRIPT: &[(f64, Action)] = &[
     (5.0, Action::Capture("staging_fairing.png")),
     (5.5, Action::Exit),
 ];
+
+/// On the pad and lit (`OSP_SCENARIO=apollo11 OSP_CAPTURE_STAGING_POINTER=1`): the staging
+/// window with the pointer, as a player would use it, while the data under it changes every
+/// frame. Swap two rows by dragging, undo that; drag one engine of a cluster onto the strip
+/// under its row, so it fires first; put a row with its arrow; use a row's menu.
+const STAGING_POINTER_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (0.6, Action::Unlock),
+    (2.5, Action::Launch),
+    (3.0, Action::ExpectSequences(STAGED)),
+    (3.0, Action::Capture("pointer_start.png")),
+    (3.2, Action::UiPointAtEdge("seq:1")),
+    (3.4, Action::UiPress(PointerButton::Primary)),
+    (3.6, Action::UiPointAt("staging.drop:$drag:0")),
+    (4.0, Action::Capture("pointer_dragging.png")),
+    (4.2, Action::UiRelease(PointerButton::Primary)),
+    (4.6, Action::ExpectSequences(SWAPPED)),
+    (4.6, Action::Capture("pointer_swapped.png")),
+    (4.8, Action::UiPointAt("staging.undo")),
+    (5.0, Action::UiPress(PointerButton::Primary)),
+    (5.1, Action::UiRelease(PointerButton::Primary)),
+    (5.4, Action::ExpectSequences(STAGED)),
+    (5.6, Action::UiPointAt("one:1:0")),
+    (5.8, Action::UiPress(PointerButton::Primary)),
+    (6.0, Action::UiPointAt("staging.drop_at:$drag:1")),
+    (6.3, Action::Capture("pointer_splitting.png")),
+    (6.5, Action::UiRelease(PointerButton::Primary)),
+    (6.9, Action::ExpectSequences(SPLIT)),
+    (6.9, Action::Capture("pointer_split.png")),
+    (7.0, Action::UiPointAt("staging.undo")),
+    (7.2, Action::UiPress(PointerButton::Primary)),
+    (7.3, Action::UiRelease(PointerButton::Primary)),
+    (7.6, Action::ExpectSequences(STAGED)),
+    (7.8, Action::UiPointAt("staging.drop:seq:0:1")),
+    (8.0, Action::UiPress(PointerButton::Primary)),
+    (8.1, Action::UiRelease(PointerButton::Primary)),
+    (8.4, Action::ExpectSequences(SWAPPED)),
+    (8.5, Action::UiPointAt("staging.undo")),
+    (8.7, Action::UiPress(PointerButton::Primary)),
+    (8.8, Action::UiRelease(PointerButton::Primary)),
+    (9.1, Action::ExpectSequences(STAGED)),
+    (9.3, Action::UiPointAtEdge("staging.menu:0")),
+    (9.5, Action::UiPress(PointerButton::Secondary)),
+    (9.6, Action::UiRelease(PointerButton::Secondary)),
+    (10.0, Action::Capture("pointer_menu.png")),
+    (10.1, Action::UiPointAt("staging.add_at:0")),
+    (10.3, Action::UiPress(PointerButton::Primary)),
+    (10.4, Action::UiRelease(PointerButton::Primary)),
+    (10.8, Action::ExpectSequences(ADDED)),
+    (10.8, Action::Capture("pointer_added.png")),
+    (11.0, Action::UiPointAt("staging.undo")),
+    (11.2, Action::UiPress(PointerButton::Primary)),
+    (11.3, Action::UiRelease(PointerButton::Primary)),
+    (11.6, Action::ExpectSequences(STAGED)),
+    // A tile onto another of its row goes just before it.
+    (11.8, Action::UiPointAt("item:0:2")),
+    (12.0, Action::UiPress(PointerButton::Primary)),
+    (12.2, Action::UiPointAt("staging.drop_before:$drag:0:0")),
+    (12.5, Action::UiRelease(PointerButton::Primary)),
+    (12.8, Action::ExpectSequences(REORDERED)),
+    (12.9, Action::UiPointAt("staging.undo")),
+    (13.1, Action::UiPress(PointerButton::Primary)),
+    (13.2, Action::UiRelease(PointerButton::Primary)),
+    (13.5, Action::ExpectSequences(STAGED)),
+    // A right-click on a tile opens its part's window, whose button does it by hand and takes
+    // it out of its sequence.
+    (13.7, Action::UiPointAt("item:0:1")),
+    (13.9, Action::UiPress(PointerButton::Secondary)),
+    (14.0, Action::UiRelease(PointerButton::Secondary)),
+    (14.5, Action::Capture("pointer_window.png")),
+    (14.6, Action::UiPointAt("part.do:0:decoupler:")),
+    (14.8, Action::UiPress(PointerButton::Primary)),
+    (14.9, Action::UiRelease(PointerButton::Primary)),
+    (15.4, Action::ExpectSequences(BY_HAND)),
+    (15.4, Action::Capture("pointer_by_hand.png")),
+    (15.6, Action::Exit),
+];
+
+/// The sequences of Apollo 11's Saturn V once the first has fired, and what the pointer script
+/// makes of them.
+const STAGED: &str = "enginesx4,decouplerx1,enginesx4 | enginesx5 | decouplerx1 | ";
+const SWAPPED: &str = "enginesx5 | enginesx4,decouplerx1,enginesx4 | decouplerx1 | ";
+const SPLIT: &str = "enginesx4,decouplerx1,enginesx4 | enginesx1 | enginesx4 | decouplerx1 | ";
+const ADDED: &str = " | enginesx4,decouplerx1,enginesx4 | enginesx5 | decouplerx1 | ";
+const REORDERED: &str = "enginesx4,enginesx4,decouplerx1 | enginesx5 | decouplerx1 | ";
+// The S-IC's retro motors went with it.
+const BY_HAND: &str = "enginesx4 | enginesx5 | decouplerx1 | ";
 
 /// In LEO (`OSP_CAPTURE_DEBRIS=1`): warp into daylight, jettison the fairing and watch the
 /// halves swing open, release the payload from the upper stage, then the Universe Manifest
@@ -581,6 +723,75 @@ const PAD_SCRIPT: &[(f64, Action)] = &[
     (44.0, Action::Exit),
 ];
 
+/// The sequences as [`Action::ExpectSequences`] reads them.
+fn sequences_summary(propulsion: &Propulsion) -> String {
+    (propulsion.sequences.list().iter())
+        .map(|seq| {
+            (propulsion.groups(seq).iter())
+                .map(|g| format!("{}x{}", g.kind, g.members.len()))
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+/// The pointer a capture moves about the UI, through the picking the real one goes through.
+#[derive(SystemParam)]
+struct UiPointer<'w, 's> {
+    input: MessageWriter<'w, PointerInput>,
+    data: Res<'w, UiData>,
+    formatters: Res<'w, Formatters>,
+    nodes: Query<
+        'w,
+        's,
+        (
+            &'static ComputedNode,
+            &'static UiGlobalTransform,
+            &'static InheritedVisibility,
+            Option<&'static ActionSource>,
+            Option<&'static DragPayload>,
+            Option<&'static DropAction>,
+            Option<&'static ContextAction>,
+        ),
+    >,
+}
+
+impl UiPointer<'_, '_> {
+    /// The middle and size of the shown node that says `what`, physical px.
+    fn find(&self, what: &str) -> Option<(Vec2, Vec2)> {
+        self.nodes
+            .iter()
+            .find(|(node, _, visible, click, drag, drop, context)| {
+                let says = |template: Option<&Template>| {
+                    template.is_some_and(|t| {
+                        let said = t.render(&self.data, &self.formatters);
+                        said == what || (what.ends_with(':') && said.starts_with(what))
+                    })
+                };
+                visible.get()
+                    && node.size().min_element() > 0.0
+                    && (says(click.map(|t| &t.0))
+                        || says(drag.map(|t| &t.0))
+                        || says(drop.map(|t| &t.0))
+                        || says(context.map(|t| &t.0)))
+            })
+            .map(|(node, transform, ..)| (transform.translation, node.size()))
+    }
+
+    fn send(&mut self, target: &Handle<Image>, position: Vec2, action: PointerAction) {
+        let target = NormalizedRenderTarget::Image(ImageRenderTarget {
+            handle: target.clone(),
+            scale_factor: 1.0,
+        });
+        self.input.write(PointerInput::new(
+            PointerId::Mouse,
+            Location { target, position },
+            action,
+        ));
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_script(
     mut commands: Commands,
@@ -598,6 +809,8 @@ fn run_script(
     ),
     mut pointer: ResMut<ScriptedPointer>,
     mut buttons: ResMut<ButtonInput<MouseButton>>,
+    mut ui_pointer: UiPointer,
+    mut locked: ResMut<InputLocked>,
 ) {
     let Some(&(at, action)) = script.actions.get(script.step) else {
         return;
@@ -672,6 +885,36 @@ fn run_script(
         }
         Action::Press(button) => buttons.press(button),
         Action::Release(button) => buttons.release(button),
+        Action::Unlock => locked.0 = false,
+        Action::UiPointAt(what) | Action::UiPointAtEdge(what) => {
+            let Some((middle, size)) = ui_pointer.find(what) else {
+                panic!("smoke test: nothing on screen is `{what}`");
+            };
+            let to = match action {
+                Action::UiPointAtEdge(_) => middle - Vec2::new(0.5 * size.x - 6.0, 0.0),
+                _ => middle,
+            };
+            let delta = to - script.ui_pointer;
+            script.ui_pointer = to;
+            let target = script.target.clone();
+            ui_pointer.send(&target, to, PointerAction::Move { delta });
+        }
+        Action::UiPress(button) => {
+            let (target, at) = (script.target.clone(), script.ui_pointer);
+            ui_pointer.send(&target, at, PointerAction::Press(button));
+        }
+        Action::UiRelease(button) => {
+            let (target, at) = (script.target.clone(), script.ui_pointer);
+            ui_pointer.send(&target, at, PointerAction::Release(button));
+        }
+        Action::ExpectSequences(expected) => {
+            let got = sequences_summary(&sim.active_vessel().propulsion);
+            info!("smoke test: sequences {got}");
+            assert!(
+                got.starts_with(expected),
+                "the sequences are not as they should be: {got}"
+            );
+        }
         Action::Exit => {
             let system = &sim.universe.system;
             let v = sim.active_vessel();

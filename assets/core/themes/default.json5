@@ -125,9 +125,9 @@
       shadow: { color: [0, 0, 0, 0.6], y: 10, blur: 40 },
     },
     menu_title: { font_size: 28, font_weight: 600, letter_spacing: 2.5, uppercase: true, color: "#f2f7fa" },
-    menu_tab: { padding: [6, 14], letter_spacing: 0.8, uppercase: true, font_size: 12 },
+    menu_tab: { padding: [6, 10], letter_spacing: 0.8, uppercase: true, font_size: 12 },
     menu_page: { gap: 6, shrink: 1, min_height: 0 },
-    menu_list: { gap: 6, scroll: true, shrink: 1, min_height: 0 },
+    menu_list: { gap: 6, scroll: true, shrink: 1, min_height: 0, padding: [0, 12, 0, 0] },
     // A choice in a row of them (graphics settings); the selected one is `active`.
     menu_option: { min_width: 52, padding: [3, 6], font_size: 12 },
     menu_item: {
@@ -343,8 +343,20 @@
       font_size: 13,
       font_weight: 600,
     },
-    // The strip between two rows, a drop place that lights up under a dragged row or tile.
-    seq_gap: { height: 5, radius: 2, background: "#00000000", hover_background: "#38e0c4" },
+    // The arrows at the end of a row.
+    seq_arrows: { gap: 0, justify_content: "center" },
+    seq_arrow: {
+      padding: [0, 1],
+      background: "#00000000",
+      hover_background: "#ffffff1a",
+      border: 0,
+      radius: 2,
+    },
+    seq_arrow_icon: { width: 10, height: 10, color: "#8fa3b4" },
+    seq_glyph_icon: { width: 13, height: 13, color: "#8fa3b4" },
+    // The strip between two rows, a drop place that lights up under a dragged row or tile. It
+    // takes the row's width, which the stack it sits in would not give it.
+    seq_gap: { align_self: "stretch", height: 5, radius: 2, background: "#00000000", hover_background: "#38e0c4" },
     seq_row: {
       padding: [3, 4],
       gap: 5,
@@ -478,6 +490,16 @@
     // Wrapped to the window (290 wide), or a long step would stretch the dock.
     tutorial_text: { color: "#ffffff", font_size: 14, max_width: 264 },
     tutorial_hint: { color: "#ffc24a", font_size: 12.5, max_width: 264 },
+    alert_chip: {
+      color: "#ffe2dc",
+      background: "#5a1c14e8",
+      border: 1,
+      border_color: "#ff6a55",
+      radius: 4,
+      padding: [2, 8],
+      font_size: 12.5,
+      font_weight: 600,
+    },
     goal_notice: { color: "#38e0c4", border_color: [0.22, 0.88, 0.77, 0.5] },
   },
 }

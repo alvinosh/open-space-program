@@ -2,7 +2,7 @@
   "id": "T027",
   "title": "The burn executor counts its RCS ullage push",
   "kind": "bug",
-  "status": "todo",
+  "status": "done",
   "area": "propulsion",
   "size": "S",
   "parent": "T001",
@@ -12,8 +12,8 @@
     "old issue list, issue 10 (docs/issues.md, removed; see git history)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-10-30",
-  "done": null,
+  "updated": "2026-11-02",
+  "done": "2026-11-02",
   "milestone": "M1",
   "priority": 12
 }

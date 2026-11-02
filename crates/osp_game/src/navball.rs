@@ -208,7 +208,7 @@ fn orient_navball(
     let now = sim.render_time;
     let vessel = sim.active_vessel();
     let body = system.body(vessel.parent());
-    let attitude = vessel.attitude_state(system, now);
+    let attitude = vessel.control_attitude(system, now);
     let up = vessel.state_at(system, now).position.normalize();
     let north = (body.pole() - up * body.pole().dot(up)).normalize_or(DVec3::X);
     let east = north.cross(up);

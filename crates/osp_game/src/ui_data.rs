@@ -9,7 +9,7 @@ use osp_sim::{
     data::TankShape,
     events::EventKind,
     parts::PartId,
-    propulsion::Group,
+    propulsion::{Group, Propulsion},
     staging::Activation,
     structure::{Mode, Part, PartLoad},
     time::SimTime,
@@ -21,6 +21,7 @@ use crate::{
     FrameSet,
     camera::CameraRig,
     content::GameContent,
+    controls::SequenceEdits,
     orbit_lines::Prediction,
     part_highlight::PartMarks,
     sim::{MAX_PHYSICS_WARP, Sim, SimEventMessage, TimeWarp, WARP_RATES},
@@ -51,7 +52,7 @@ impl Plugin for UiDataPlugin {
         });
         app.add_systems(
             Update,
-            (publish_flight, publish_mods).in_set(FrameSet::Render),
+            (publish_flight, publish_mods, publish_link_change).in_set(FrameSet::Render),
         );
     }
 }
@@ -71,6 +72,7 @@ fn publish_flight(
     rig: Res<CameraRig>,
     prediction: Res<Prediction>,
     marks: Res<PartMarks>,
+    edits: Res<SequenceEdits>,
     time: Res<Time>,
     mut memory: Local<FlightMemory>,
     mut data: ResMut<UiData>,
@@ -230,7 +232,7 @@ fn publish_flight(
     data.set("screen.message", message);
 
     // Attitude, SAS and the navball readouts.
-    let attitude = vessel.attitude_state(system, now);
+    let attitude = vessel.control_attitude(system, now);
     let sas = vessel.sas();
     data.set("vessel.sas", sas.enabled());
     let (mode, label) = if sas.enabled() {
@@ -241,6 +243,16 @@ fn publish_flight(
     data.set("vessel.sas_mode", mode);
     data.set("vessel.sas_mode_label", label);
     data.set("vessel.rcs", vessel.rcs());
+    data.set("vessel.has_radio", vessel.radio().is_some());
+    data.set("vessel.commandable", vessel.commandable());
+    let link = vessel.link();
+    data.set("vessel.link", link.is_some());
+    data.set(
+        "vessel.link_station",
+        link.map_or("", |l| l.station.as_str()),
+    );
+    data.set("vessel.link_margin", link.map_or(0.0, |l| l.margin));
+    data.set("vessel.link_delay", link.map_or(0.0, |l| l.delay));
     let rcs_fuel = vessel
         .propulsion
         .sections
@@ -378,7 +390,7 @@ fn publish_flight(
         stage_info.iter().map(|s| s.delta_v_vac).sum::<f64>(),
     );
     data.set("vessel.stages", rows);
-    publish_sequences(&mut data, vessel, mass * local_g, &marks);
+    publish_sequences(&mut data, vessel, mass * local_g, &marks, &edits);
     publish_resources(&mut data, propulsion);
 
     // Procedural tanks and fins: what each is made of and how hard it is working.
@@ -507,6 +519,27 @@ fn publish_flight(
     data.set("orbit.events", events);
 }
 
+/// How long until the focused vessel's link changes, while the comms window is open. It looks an
+/// hour ahead, every few seconds: finding it takes more than a frame should.
+fn publish_link_change(
+    sim: Res<Sim>,
+    shown: Res<osp_ui::runtime::LayoutVisibility>,
+    time: Res<Time>,
+    mut next_look: Local<f64>,
+    mut data: ResMut<UiData>,
+) {
+    if !shown.shown("comms_info") || time.elapsed_secs_f64() < *next_look {
+        return;
+    }
+    *next_look = time.elapsed_secs_f64() + 5.0;
+    let now = sim.universe.time();
+    let change = sim.universe.next_link_change(now.add_seconds(3600.0));
+    data.set(
+        "vessel.link_next",
+        change.map_or(0.0, |at| at.seconds_since(now)),
+    );
+}
+
 fn publish_mods(content: Res<GameContent>, mut data: ResMut<UiData>) {
     if !content.is_changed() {
         return;
@@ -589,6 +622,7 @@ fn publish_sequences(
     vessel: &osp_sim::vessel::Vessel,
     weight: f64,
     marks: &PartMarks,
+    edits: &SequenceEdits,
 ) {
     let propulsion = &vessel.propulsion;
     let stages = &propulsion.sections;
@@ -608,10 +642,10 @@ fn publish_sequences(
             .filter_map(|p| propulsion.engines.iter().find(|e| e.part == *p))
             .collect();
         let first = engines.first().map(|e| &e.def);
-        let solid = first.is_some_and(|d| d.kind.as_deref() == Some("solid"));
+        let solid = first.is_some_and(|d| d.is_solid());
         // Made for vacuum: gives far less thrust at sea level.
         let vacuum = first.is_some_and(|d| d.isp_vac > 0.0 && d.isp_sl / d.isp_vac < 0.6);
-        let caption = group_caption(group.kind, count, &group.look, stage_name);
+        let caption = group_caption(group.kind, group.verb, count, &group.look, stage_name);
         let tip = match first {
             Some(def) => {
                 let thrust: f64 = engines.iter().map(|e| e.def.thrust_vac).sum();
@@ -652,6 +686,17 @@ fn publish_sequences(
             ("is_decoupler", (group.kind == "decoupler").into()),
             ("is_fairing", (group.kind == "fairing").into()),
             ("is_rcs", (group.kind == "rcs").into()),
+            ("is_cutoff", (group.kind == "cutoff").into()),
+            ("is_throttle", (group.kind == "throttle").into()),
+            // What no icon was drawn for: a system's own action.
+            (
+                "is_other",
+                (!matches!(
+                    group.kind,
+                    "engines" | "decoupler" | "fairing" | "rcs" | "cutoff" | "throttle"
+                ))
+                .into(),
+            ),
             ("stage", stage_name.into()),
             ("count", count.into()),
             ("multiple", (count > 1).into()),
@@ -691,6 +736,11 @@ fn publish_sequences(
                 ("index", i.into()),
                 ("number", sequences.number(i).into()),
                 ("next", (i == 0).into()),
+                // Rows stack from the next at the bottom: up is later.
+                ("above", (i + 1).into()),
+                ("below", i.saturating_sub(1).into()),
+                ("can_up", (i + 1 < sequences.list().len()).into()),
+                ("can_down", (i > 0).into()),
                 ("window", window.into()),
                 ("empty", seq.is_empty().into()),
                 ("caption", caption.into()),
@@ -699,6 +749,8 @@ fn publish_sequences(
             ])
         })
         .collect();
+    publish_sequence_menu(data, propulsion, edits);
+    data.set("vessel.can_undo_sequences", edits.can_undo(vessel));
     data.set("vessel.sequence_count", rows.len());
     // What the stage key does next, under the stack.
     let next = rows.first().and_then(|row| row.get("caption"));
@@ -708,7 +760,7 @@ fn publish_sequences(
     // under the stack, with the propellant they have left, until their stage falls away.
     let lit: Vec<Activation> = (propulsion.engines.iter())
         .filter(|e| propulsion.engine_armed(e.part))
-        .map(|e| Activation::Engine(e.part))
+        .map(|e| Activation::engine(e.part))
         .collect();
     let armed: Vec<_> = (propulsion.groups(&lit).iter())
         .map(|g| icon(0, 0, g))
@@ -729,6 +781,33 @@ fn publish_sequences(
     );
 }
 
+/// What the menu of a row in the staging window offers (`staging_menu.*`): to add a sequence
+/// each side of it, to move it, to merge it with the one below, and to split one part off each
+/// group of several (`splits`).
+fn publish_sequence_menu(data: &mut UiData, propulsion: &Propulsion, edits: &SequenceEdits) {
+    let sequences = &propulsion.sequences;
+    let Some((row, seq)) = edits.menu.and_then(|i| Some((i, sequences.list().get(i)?))) else {
+        return;
+    };
+    let count = sequences.list().len();
+    data.set("staging_menu.row", row);
+    data.set("staging_menu.number", sequences.number(row));
+    data.set("staging_menu.above", row + 1);
+    data.set("staging_menu.below", row.saturating_sub(1));
+    data.set("staging_menu.can_up", row + 1 < count);
+    data.set("staging_menu.can_down", row > 0);
+    let splits: Vec<_> = (propulsion.groups(seq).iter().enumerate())
+        .filter(|(_, g)| g.members.len() > 1)
+        .map(|(j, g)| {
+            record([
+                ("group", j.into()),
+                ("label", format!("Split one {} off", g.look).into()),
+            ])
+        })
+        .collect();
+    data.set("staging_menu.splits", splits);
+}
+
 /// Most tiles to a line in the staging window.
 const TILES_PER_LINE: usize = 4;
 
@@ -743,7 +822,7 @@ fn tile_lines(tiles: &[osp_ui::UiRecord]) -> Vec<osp_ui::UiRecord> {
 
 /// What a group of identical parts does when its sequence fires: "Ignite 9 × K-1 Booster",
 /// "Decouple S-IC". `name` is the engines' record, `stage` the stage the parts belong to.
-fn group_caption(kind: &str, count: usize, name: &str, stage: &str) -> String {
+fn group_caption(kind: &str, verb: &str, count: usize, name: &str, stage: &str) -> String {
     let times = if count > 1 {
         format!("{count} × ")
     } else {
@@ -754,7 +833,10 @@ fn group_caption(kind: &str, count: usize, name: &str, stage: &str) -> String {
         "decoupler" => format!("Decouple {stage}"),
         "fairing" => format!("Jettison {stage} fairing"),
         "rcs" => "RCS on".to_owned(),
-        other => format!("{other} {times}{name}"),
+        "cutoff" => format!("Cut off {times}{name}"),
+        "throttle" => format!("Limit thrust of {times}{name}"),
+        // A system's own action: it says what it is called.
+        _ => format!("{verb} {times}{name}"),
     }
 }
 
@@ -831,14 +913,23 @@ mod tests {
 
     #[test]
     fn a_group_says_what_it_does() {
-        assert_eq!(group_caption("engines", 5, "F-1", "S-IC"), "Ignite 5 × F-1");
-        assert_eq!(group_caption("engines", 1, "J-2", "S-II"), "Ignite J-2");
-        assert_eq!(group_caption("decoupler", 1, "", "S-IC"), "Decouple S-IC");
         assert_eq!(
-            group_caption("fairing", 2, "", "Payload"),
+            group_caption("engines", "Do it", 5, "F-1", "S-IC"),
+            "Ignite 5 × F-1"
+        );
+        assert_eq!(
+            group_caption("engines", "Do it", 1, "J-2", "S-II"),
+            "Ignite J-2"
+        );
+        assert_eq!(
+            group_caption("decoupler", "Do it", 1, "", "S-IC"),
+            "Decouple S-IC"
+        );
+        assert_eq!(
+            group_caption("fairing", "Do it", 2, "", "Payload"),
             "Jettison Payload fairing"
         );
-        assert_eq!(group_caption("rcs", 1, "", "S-IVB"), "RCS on");
+        assert_eq!(group_caption("rcs", "Do it", 1, "", "S-IVB"), "RCS on");
     }
 
     #[test]

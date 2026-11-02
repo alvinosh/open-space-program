@@ -30,7 +30,8 @@ pub use self::storage::{Storage, StorageDef, TankContent};
 use crate::{
     assembly::{AssemblyPart, Carries},
     data::{
-        ControlSurfaceDef, EngineDef, PartCatalog, PodDef, RcsDef, ReactionWheelDef, ShellProfile,
+        ControlSurfaceDef, EngineDef, EngineResponse, PartCatalog, PodDef, RcsDef,
+        ReactionWheelDef, ShellProfile,
     },
     geometry::{
         Element, Fill, Geometry, Kind, Measure, Node, ShapeDef,
@@ -318,6 +319,125 @@ pub enum ComponentDef {
     LiftingSurface(LiftingSurfaceDef),
     Container(ContainerDef),
     Gear(GearLegDef),
+    SurfaceLayer(SurfaceLayerDef),
+    FuelCell(FuelCellDef),
+    SolarArray(SolarArrayDef),
+    Rtg(RtgDef),
+    ElectricLoad(ElectricLoadDef),
+    Avionics(AvionicsUnitDef),
+    Antenna(AntennaDef),
+    SolidMotor(SolidMotorDef),
+}
+
+/// What talks to the ground and to other vessels, in S-band.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AntennaDef {
+    /// Of its dish, m; an omni if left out.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub diameter: f64,
+    /// What it sends, W; it draws about four times that.
+    pub power: f64,
+    /// bit/s.
+    pub data_rate: f64,
+}
+
+/// Guidance and control electronics: with power, it controls a vessel of up to its
+/// `controlled_mass`. A vessel with no unit at all flies as it always has, until T087.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AvionicsUnitDef {
+    /// kg.
+    pub controlled_mass: f64,
+    /// What it draws, W; none if it is on another load's account.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub power: f64,
+    /// It works beyond the Earth's sphere of influence.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub interplanetary: bool,
+}
+
+/// Burns hydrogen and oxygen from the tanks its part can reach for electricity.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FuelCellDef {
+    /// The most it makes, W.
+    pub power: f64,
+}
+
+/// Makes electricity from sunlight. Its face is the part's +X unless it tracks the Sun.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SolarArrayDef {
+    /// m².
+    pub area: f64,
+    /// The share of the sunlight it turns into electricity, new.
+    #[serde(default = "default_solar_efficiency")]
+    pub efficiency: f64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub tracking: bool,
+    /// What it loses a year, as a share.
+    #[serde(default = "default_solar_degradation")]
+    pub degradation: f64,
+}
+
+fn default_solar_efficiency() -> f64 {
+    0.14
+}
+
+fn default_solar_degradation() -> f64 {
+    0.01
+}
+
+/// Makes electricity from a decaying isotope's heat.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RtgDef {
+    /// New, W.
+    pub power: f64,
+    /// Years; plutonium-238's if left out.
+    #[serde(default = "default_half_life")]
+    pub half_life: f64,
+}
+
+fn default_half_life() -> f64 {
+    87.7
+}
+
+/// Uses electricity: avionics, a transmitter, a cabin, heaters.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ElectricLoadDef {
+    /// W.
+    pub watts: f64,
+    /// The lowest on a network is shed first.
+    #[serde(default = "default_load_priority")]
+    pub priority: u8,
+    /// Without it the vessel has no SAS and lights no engine.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub essential: bool,
+}
+
+fn default_load_priority() -> u8 {
+    5
+}
+
+/// A coat on a part's walls: an ablator, insulation, solar cells, a radiator's panel. It weighs
+/// by its area, thickness and material and looks as it says, and has no shape of its own: what
+/// has one (a dish, a leg, a hinged panel) is a part. A wall can carry any number of them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SurfaceLayerDef {
+    /// The wall it covers, by element name; every wall of the part if left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wall: Option<String>,
+    /// Id of a `materials` record.
+    pub material: String,
+    /// m.
+    pub thickness: f64,
+    /// What it looks like from outside; the wall keeps its own look if left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<Look>,
 }
 
 /// A catalogue record, by id.
@@ -362,6 +482,25 @@ pub struct DecouplerDef {
     /// Propellant flows across until it lets go.
     #[serde(default, skip_serializing_if = "is_false")]
     pub crossfeed: bool,
+    /// What the joint carries before it breaks, N; without limit if left out.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub strength: f64,
+}
+
+/// A small solid motor's nozzle and case: burns what the part's own grain holds, at full thrust
+/// until it is gone.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SolidMotorDef {
+    /// N, in a vacuum.
+    pub thrust: f64,
+    /// s, in a vacuum and at sea level.
+    pub isp_vac: f64,
+    pub isp_sl: f64,
+    /// Its case, kg.
+    pub mass: f64,
+    /// What it burns.
+    pub propellant: String,
 }
 
 /// A wing, fin or tail surface: the part's loft is its planform and airfoil.
@@ -456,6 +595,27 @@ pub enum Component {
     LiftingSurface(LiftingSurface),
     Container(Container),
     Gear(GearLegDef),
+    SurfaceLayer(SurfaceLayer),
+    FuelCell(FuelCellDef),
+    SolarArray(SolarArrayDef),
+    Rtg(RtgDef),
+    ElectricLoad(ElectricLoadDef),
+    Avionics(AvionicsUnitDef),
+    Antenna(AntennaDef),
+}
+
+/// A coat on a part's walls, as built.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SurfaceLayer {
+    /// The walls it covers, by element name.
+    pub walls: Vec<String>,
+    pub material: String,
+    /// m.
+    pub thickness: f64,
+    /// m².
+    pub area: f64,
+    /// kg.
+    pub mass: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -567,6 +727,7 @@ impl PartDef {
         }
         let mut hardware = Mass::ZERO;
         let mut components = Vec::new();
+        let mut looks: Vec<(String, Look)> = Vec::new();
         for component in &self.components {
             let built = match component {
                 ComponentDef::Storage(_) => {
@@ -648,6 +809,102 @@ impl PartDef {
                     hardware = hardware + Mass::point(def.mass, DVec3::NEG_Z * def.length / 2.0);
                     Component::Gear(def.clone())
                 }
+                ComponentDef::FuelCell(def) => {
+                    if !(def.power > 0.0 && def.power.is_finite()) {
+                        return Err(bad("a fuel cell makes some power".into()));
+                    }
+                    Component::FuelCell(def.clone())
+                }
+                ComponentDef::SolarArray(def) => {
+                    let fair = def.area > 0.0
+                        && (0.0..=1.0).contains(&def.efficiency)
+                        && (0.0..1.0).contains(&def.degradation);
+                    if !fair {
+                        return Err(bad(
+                            "a solar array has an area, and its efficiency and degradation are \
+                             shares"
+                                .into(),
+                        ));
+                    }
+                    Component::SolarArray(def.clone())
+                }
+                ComponentDef::Rtg(def) => {
+                    if !(def.power > 0.0 && def.half_life > 0.0) {
+                        return Err(bad("an RTG has a power and a half life".into()));
+                    }
+                    Component::Rtg(def.clone())
+                }
+                ComponentDef::ElectricLoad(def) => {
+                    if !(def.watts >= 0.0 && def.watts.is_finite()) {
+                        return Err(bad("a load draws some power, not less than none".into()));
+                    }
+                    Component::ElectricLoad(def.clone())
+                }
+                ComponentDef::SolidMotor(def) => {
+                    let fair = def.thrust > 0.0 && def.isp_vac > 0.0 && def.mass >= 0.0;
+                    if !fair {
+                        return Err(bad("a solid motor has some thrust and impulse".into()));
+                    }
+                    let mut engine = EngineDef {
+                        id: format!("{} solid motor", self.name),
+                        mass: def.mass,
+                        thrust_vac: def.thrust,
+                        isp_vac: def.isp_vac,
+                        isp_sl: def.isp_sl,
+                        min_throttle: 1.0,
+                        response: EngineResponse::default(),
+                        ignitions: Some(1),
+                        requires_ullage: false,
+                        gimbal_range: 0.0,
+                        propellants: [(def.propellant.clone(), 1.0)].into_iter().collect(),
+                        thrust_curve: None,
+                        length: 0.0,
+                        exit_diameter: 0.0,
+                        model: None,
+                        model_scale: 1.0,
+                        nodes: Vec::new(),
+                        exit_pressure: None,
+                        plume: None,
+                        turbine_exhaust: None,
+                        family: Some(crate::propulsion::SEPARATION_MOTOR.into()),
+                        kind: Some("solid".into()),
+                        pressure_fed: false,
+                        electric_power: None,
+                        reliability: None,
+                        catalog: Default::default(),
+                    };
+                    normalise(&mut engine.propellants);
+                    hardware = hardware + Mass::point(def.mass, DVec3::ZERO);
+                    Component::Engine(Box::new(engine))
+                }
+                ComponentDef::Antenna(def) => {
+                    if !(def.power > 0.0 && def.data_rate > 0.0 && def.diameter >= 0.0) {
+                        return Err(bad(
+                            "an antenna sends some power at some data rate, from a dish of no \
+                             negative size"
+                                .into(),
+                        ));
+                    }
+                    Component::Antenna(def.clone())
+                }
+                ComponentDef::Avionics(def) => {
+                    if !(def.controlled_mass > 0.0 && def.power >= 0.0) {
+                        return Err(bad(
+                            "avionics control some mass, on no negative power".into()
+                        ));
+                    }
+                    Component::Avionics(def.clone())
+                }
+                ComponentDef::SurfaceLayer(def) => {
+                    let (layer, mass) = surface_layer(def, &elements, catalog).map_err(&bad)?;
+                    hardware = hardware + mass;
+                    if let Some(look) = def.look {
+                        for wall in &layer.walls {
+                            looks.push((wall.clone(), look));
+                        }
+                    }
+                    Component::SurfaceLayer(layer)
+                }
             };
             components.push(built);
         }
@@ -687,7 +944,11 @@ impl PartDef {
             geometry,
             components,
             nodes,
-            paint: self.paint.clone(),
+            paint: {
+                let mut paint = self.paint.clone();
+                paint.pieces.extend(looks);
+                paint
+            },
             member: self
                 .structure
                 .member_area
@@ -705,16 +966,34 @@ impl PartDef {
                 name: String::new(),
                 shape: ShapeDef::Shell(ShellDef {
                     bottom_diameter: def.exit_diameter,
-                    sections: vec![ShellSection {
-                        length: def.length,
-                        top_diameter: Some(def.exit_diameter / 3.0),
-                        profile: ShellProfile::Parabolic,
-                    }],
+                    sections: if def.is_solid() {
+                        // A straight cone from a wide throat, and the housing of the joint it
+                        // swivels on above that: no bell, no pumps.
+                        let length = def.nozzle_length();
+                        vec![
+                            ShellSection {
+                                length: 0.75 * length,
+                                top_diameter: Some(0.45 * def.exit_diameter),
+                                profile: ShellProfile::Conic,
+                            },
+                            ShellSection {
+                                length: 0.25 * length,
+                                top_diameter: Some(0.7 * def.exit_diameter),
+                                profile: ShellProfile::Conic,
+                            },
+                        ]
+                    } else {
+                        vec![ShellSection {
+                            length: def.length,
+                            top_diameter: Some(def.exit_diameter / 3.0),
+                            profile: ShellProfile::Parabolic,
+                        }]
+                    },
                     span: None,
                     cap_bottom: false,
                     cap_top: false,
                 }),
-                position: [0.0, 0.0, -def.length],
+                position: [0.0, 0.0, -def.nozzle_length()],
                 rotation: [0.0; 3],
                 unseen: false,
             }])
@@ -825,23 +1104,25 @@ impl PartDef {
     /// `mount` node at its origin, +Z towards the nose.
     pub fn rcs(def: &RcsDef) -> Self {
         let mount = node("mount", [0.0; 3], [-1.0, 0.0, 0.0], 0.0);
+        let block = ShapeDef::Compound(vec![PlacedShapeDef {
+            name: String::new(),
+            shape: ShapeDef::Cuboid(BoxDef {
+                size: [0.12, 0.12, 0.2],
+                fill: Fill::Solid,
+            }),
+            // Below the mount, so that a block on a stage's rim stays on its stage.
+            position: [0.06, 0.0, -0.2],
+            rotation: [0.0; 3],
+            unseen: false,
+        }]);
         let shape = match &def.model {
             Some(path) => ShapeDef::Model(ModelDef {
                 path: path.clone(),
                 scale: 1.0,
-                proxy: None,
+                proxy: Some(Box::new(block)),
                 nodes: vec![mount],
             }),
-            None => ShapeDef::Compound(vec![PlacedShapeDef {
-                name: String::new(),
-                shape: ShapeDef::Cuboid(BoxDef {
-                    size: [0.2, 0.2, 0.3],
-                    fill: Fill::Solid,
-                }),
-                position: [0.1, 0.0, -0.15],
-                rotation: [0.0; 3],
-                unseen: false,
-            }]),
+            None => block,
         };
         Self {
             name: def.id.clone(),
@@ -977,6 +1258,48 @@ fn battery(
         }
         _ => Err("a battery has a charge (kJ), or a technology and the solid it fills".into()),
     }
+}
+
+/// A coat of `def` on its walls, and what it weighs where it lies.
+fn surface_layer(
+    def: &SurfaceLayerDef,
+    elements: &[Element],
+    catalog: &PartCatalog,
+) -> Result<(SurfaceLayer, Mass), String> {
+    if !(def.thickness > 0.0 && def.thickness.is_finite()) {
+        return Err(format!("a layer's thickness is {} m", def.thickness));
+    }
+    let material = find(&catalog.materials, &def.material, |m| &m.id)
+        .ok_or_else(|| format!("unknown material `{}`", def.material))?;
+    let walls: Vec<&Element> = match &def.wall {
+        Some(name) => {
+            let wall = element(elements, name)?;
+            if wall.measure != Measure::Area {
+                return Err(format!("a layer lies on a wall, and `{name}` is none"));
+            }
+            vec![wall]
+        }
+        None => elements
+            .iter()
+            .filter(|e| e.measure == Measure::Area && !e.proxy)
+            .collect(),
+    };
+    if walls.is_empty() {
+        return Err("a layer needs a wall to lie on".into());
+    }
+    let areal = material.density * def.thickness;
+    let mass = walls.iter().map(|w| w.moments.mass(areal)).sum();
+    let area: f64 = walls.iter().map(|w| w.moments.measure).sum();
+    Ok((
+        SurfaceLayer {
+            walls: walls.iter().map(|w| w.name.clone()).collect(),
+            material: def.material.clone(),
+            thickness: def.thickness,
+            area,
+            mass: area * areal,
+        },
+        mass,
+    ))
 }
 
 /// The panels of the loft named in `def`, or of the part's only loft.

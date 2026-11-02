@@ -1,11 +1,12 @@
 //! The mission world: a universe flown the way a player flies it (throttle, stage key, SAS,
 //! RCS, burns on the map), with everything that happens written down for the report.
 
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 
 use osp_sim::{
     DVec3,
     attitude::SasMode,
+    data::GroundStationDef,
     data::{CraftDef, LaunchSiteDef, PartCatalog, ScenarioDef, SystemDef},
     system::SolarSystem,
     time::SimTime,
@@ -130,6 +131,12 @@ pub struct Sample {
     /// Distance to the centres of the Earth and the Moon, m.
     pub earth: f64,
     pub moon: f64,
+    /// What the vessel's systems report, by `<kind>_<reading>`: whatever there are.
+    pub systems: BTreeMap<String, f64>,
+    /// How far over what it needs its link to the ground is, dB, and how long a word takes on
+    /// it, s; none without one.
+    pub link_margin: Option<f64>,
+    pub link_delay: Option<f64>,
 }
 
 /// A moment worth marking on the timeline.
@@ -227,8 +234,10 @@ impl World {
                 .map_err(|e| format!("{e:?}"))
         };
         let craft = craft_of(&scenario.craft).unwrap();
-        let universe =
+        let mut universe =
             Universe::new_game(&system, Vec::new(), &sites, &catalog, craft_of, &scenario).unwrap();
+        let stations: Vec<GroundStationDef> = registry.all("ground_stations", &mut diagnostics);
+        universe.set_stations(&stations);
         let focus = universe.focus.unwrap();
         let start = universe.time();
         let phases = plan
@@ -569,6 +578,9 @@ impl World {
             engines: p.engines.iter().filter(|e| e.running).count() as u32,
             earth: here(earth),
             moon: here(moon),
+            systems: v.propulsion.systems.totals(),
+            link_margin: v.link().map(|l| l.margin),
+            link_delay: v.link().map(|l| l.delay),
         }
     }
 

@@ -45,6 +45,8 @@ impl UiAction {
 #[derive(Resource, Default, Debug)]
 pub struct ActionState {
     held: HashSet<String>,
+    /// Keys do nothing while set: the next one pressed is being asked for.
+    pub suspended: bool,
 }
 
 impl ActionState {
@@ -576,9 +578,10 @@ pub fn spawn_node(
     }
     if let Some(key) = text("accent") {
         let width = def.extra.get("accent_width").and_then(|v| v.as_f64());
-        commands
-            .entity(entity)
-            .insert(BoundAccent::new(key.to_owned(), width.unwrap_or(2.0) as f32));
+        commands.entity(entity).insert(BoundAccent::new(
+            key.to_owned(),
+            width.unwrap_or(2.0) as f32,
+        ));
     }
     let builder = widgets.get(&def.widget);
     let children_parent = builder(&mut WidgetContext {
@@ -740,9 +743,7 @@ pub fn update_instances(
             dock_order: template.dock_order,
             instanced: true,
             popup: template.popup,
-            root: template
-                .root
-                .bind_self(&instance_data(&template.id, &key)),
+            root: template.root.bind_self(&instance_data(&template.id, &key)),
         };
         let root = spawn_layout(&mut commands, &widgets, &docs.theme, index, &copy);
         commands.entity(root).insert(Instance);
@@ -880,6 +881,7 @@ pub fn raise_opened(
     mut commands: Commands,
     shown: Res<LayoutVisibility>,
     window: Option<Single<&Window, With<PrimaryWindow>>>,
+    scale: Option<Res<UiScale>>,
     mut raised: Local<HashSet<String>>,
     mut placed: Local<HashSet<String>>,
     mut stack: ResMut<WindowStack>,
@@ -895,7 +897,11 @@ pub fn raise_opened(
         Or<(With<Raise>, With<Popup>)>,
     >,
 ) {
-    let cursor = window.and_then(|w| w.cursor_position());
+    // Nodes are placed in UI units, the cursor is in the window's.
+    let units = scale.map_or(1.0, |s| s.0);
+    let cursor = window
+        .and_then(|w| w.cursor_position())
+        .map(|at| at / units);
     let mut present = HashSet::new();
     for (entity, root, mut z, mut node, member, popup) in &mut windows {
         present.insert(root.id.clone());
@@ -946,13 +952,13 @@ pub fn keep_on_screen(
         let size = computed.size() * scale;
         let screen = target.physical_size().as_vec2() * scale;
         let fit = |at: Val, size: f32, screen: f32| match at {
-            Val::Px(at) => Val::Px(
-                at.min(screen - size - SCREEN_MARGIN)
-                    .max(SCREEN_MARGIN),
-            ),
+            Val::Px(at) => Val::Px(at.min(screen - size - SCREEN_MARGIN).max(SCREEN_MARGIN)),
             other => other,
         };
-        let (left, top) = (fit(node.left, size.x, screen.x), fit(node.top, size.y, screen.y));
+        let (left, top) = (
+            fit(node.left, size.x, screen.x),
+            fit(node.top, size.y, screen.y),
+        );
         if (node.left, node.top) != (left, top) {
             (node.left, node.top) = (left, top);
         }
@@ -1190,12 +1196,13 @@ pub fn update_tooltip(
         &ComputedUiRenderTargetInfo,
     )>,
     mut rows: Query<&mut Node>,
+    dragged: Query<(), (With<DragPayload>, With<GlobalZIndex>)>,
     mut shown: Local<Option<(Entity, Entity)>>,
 ) {
-    // Not before the node has been laid out.
-    let hovered = sources
-        .iter()
-        .find(|(_, _, hovered, computed, ..)| hovered.get() && computed.size().x > 0.0);
+    // Not before the node has been laid out, nor while something is being dragged over it.
+    let hovered = sources.iter().find(|(_, _, hovered, computed, ..)| {
+        hovered.get() && computed.size().x > 0.0 && dragged.is_empty()
+    });
     if let Some((source, tip)) = *shown
         && hovered.is_none_or(|(e, ..)| e != source)
     {
@@ -1522,6 +1529,9 @@ pub fn read_keybindings(
     mut actions: MessageWriter<UiAction>,
 ) {
     state.held.clear();
+    if state.suspended {
+        return;
+    }
     for binding in &docs.bindings {
         if binding.hold {
             if keys.pressed(binding.key) {
@@ -1909,7 +1919,12 @@ mod popup_tests {
         let data = world.resource::<UiData>();
         assert_eq!(data.get("part.a.name"), None);
         assert!(data.get("part.b.name").is_some());
-        assert!(!world.resource::<LayoutVisibility>().layouts.contains_key("part:a"));
+        assert!(
+            !world
+                .resource::<LayoutVisibility>()
+                .layouts
+                .contains_key("part:a")
+        );
         let open: Vec<_> = world
             .resource::<LayoutVisibility>()
             .instances("part")
@@ -1923,7 +1938,11 @@ mod popup_tests {
         act(&mut app, "ui.show:menu");
         act(&mut app, "ui.show:part:a");
         act(&mut app, "ui.pin:part:a");
-        assert!(app.world().resource::<UiData>().condition("ui.pinned.part:a"));
+        assert!(
+            app.world()
+                .resource::<UiData>()
+                .condition("ui.pinned.part:a")
+        );
         click(&mut app);
         let shown = app.world().resource::<LayoutVisibility>();
         assert!(!shown.shown("menu"));
@@ -1950,7 +1969,8 @@ mod popup_tests {
             state: ButtonState::Released,
             window: Entity::PLACEHOLDER,
         });
-        app.world_mut().write_message(UiAction("ui.show:menu".into()));
+        app.world_mut()
+            .write_message(UiAction("ui.show:menu".into()));
         app.update();
         assert!(app.world().resource::<LayoutVisibility>().shown("menu"));
     }

@@ -11,9 +11,9 @@ use osp_mods::{Content, Diagnostic, Registry, Severity};
 use osp_sim::{
     data::{
         AirBreathingEngineDef, AvionicsDef, BatteryDef, BodyDef, CraftDef, EngineDef,
-        EngineFamilyDef, LaunchSiteDef, LiveryDef, MaterialDef, PartCatalog, PodDef, RcsDef,
-        ReactionWheelDef, ResourceDef, ScenarioDef, SolarPanelDef, SystemDef, TankTypeDef,
-        TechNodeDef,
+        EngineFamilyDef, GroundStationDef, LaunchSiteDef, LiveryDef, MaterialDef, PartCatalog,
+        PodDef, RcsDef, ReactionWheelDef, ResourceDef, ScenarioDef, SolarPanelDef, SystemDef,
+        TankTypeDef, TechNodeDef,
     },
     tech::{TechTree, calendar_year},
     terrain::HeightSource,
@@ -219,8 +219,10 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
         })
         .collect();
     let craft_of = |id: &str| craft(registry, id);
-    let universe = Universe::new_game(&system, heights, &sites, &catalog, craft_of, &scenario)
+    let mut universe = Universe::new_game(&system, heights, &sites, &catalog, craft_of, &scenario)
         .map_err(|e| e.to_string())?;
+    let stations = registry.all::<GroundStationDef>("ground_stations", &mut diagnostics);
+    universe.set_stations(&stations);
     let tech = TechTree::new(registry.all::<TechNodeDef>("tech_nodes", &mut diagnostics));
     check_dates(&tech, &catalog, registry, &scenario, &mut diagnostics);
     Ok(NewGame {
@@ -297,6 +299,7 @@ pub(crate) fn catalog(registry: &Registry, diagnostics: &mut Vec<Diagnostic>) ->
         rcs: registry.all::<RcsDef>("rcs", diagnostics),
         pods: registry.all::<PodDef>("pods", diagnostics),
         batteries: registry.all::<BatteryDef>("batteries", diagnostics),
+        avionics: registry.all::<AvionicsDef>("avionics", diagnostics),
         liveries: registry.all::<LiveryDef>("liveries", diagnostics),
     }
 }

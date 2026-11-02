@@ -42,7 +42,7 @@
         ],
       },
       structure: { thickness: 0, mass: 15000 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 660000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 8.4 },
         { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 4.2 },
@@ -157,9 +157,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "upper_stage_decoupler",
+      name: "Decoupler",
+      on: "payload.bottom",
+      by: "top",
+      shape: { ring: { diameter: 8.4, height: 0.336, thickness: 0.168 } },
+      structure: { mass: 300 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "upper_stage",
       name: "Upper Stage",
-      on: "payload.bottom",
+      on: "upper_stage_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -202,8 +211,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 3000 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 2700 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 8.4 },
         { name: "top", position: [0, 0, 12], direction: [0, 0, 1], size: 8.4 },
@@ -288,9 +297,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "core_stage_decoupler",
+      name: "Decoupler",
+      on: "upper_stage.bottom",
+      by: "top",
+      shape: { ring: { diameter: 8.4, height: 0.336, thickness: 0.168 } },
+      structure: { mass: 2009.27 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "core_stage",
       name: "Core Stage",
-      on: "upper_stage.bottom",
+      on: "core_stage_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -334,8 +352,8 @@
         ],
       },
       // Engine section, intertank, avionics.
-      structure: { thickness: 0, mass: 22000 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 19990.73 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 8.4 },
         { name: "top", position: [0, 0, 32], direction: [0, 0, 1], size: 8.4 },

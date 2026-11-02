@@ -2,7 +2,7 @@
 
 Whole-mission flights, start to finish, to find what the simulation cannot do yet. The first is
 the Saturn V on Apollo 11: pad, parking orbit, translunar injection, lunar orbit, the return and
-the entry. `first_orbit` flies the Pathfinder from the `pad` scenario to orbit with a player's
+the entry. `saturn_ib` flies Apollo 7 from LC-34 to orbit on the craft's own sequences. `first_orbit` flies the Pathfinder from the `pad` scenario to orbit with a player's
 controls and checks that the scenario's goals (see Missions in `docs/modding.md`) are met on the
 way. `the_controls_tutorial_plays_through` plays the base game's `controls` tutorial the same
 way, step by step, with the control each step names. Dragon on a Falcon 9, the Shuttle, Soyuz and the rest will be more missions in the same
@@ -110,11 +110,11 @@ The page is `target/smoke/build/index.html`, with `report.json` beside it, and t
 
 ### The placement matrix
 
-Rows are the kinds of part the sim has: storage, engine, RCS block, reaction wheel, battery, crew, decoupler, lifting surface, container, gear leg, and two that the stage gatherer treats on their own, a pod and a part with two components. Columns are the ways to put one on a craft: on a top node, under a bottom node, radially on a surface at (u, v) with a standoff, in a ring of 2, 3, 4 or 6, inside a container, inside a fairing (on a deck, fitted by `CraftDef::fit_fairings`), canted 15 and 90 degrees, and as a mirrored pair. Each cell builds a 1 m host with the part placed on it (`cell.rs`) and checks (`checks.rs`):
+Rows are the kinds of part the sim has: storage, engine, RCS block, reaction wheel, battery, crew, decoupler, lifting surface, container, gear leg, and two more, a pod and a part with two components. Columns are the ways to put one on a craft: on a top node, under a bottom node, radially on a surface at (u, v) with a standoff, in a ring of 2, 3, 4 or 6, inside a container, inside a fairing (on a deck, fitted by `CraftDef::fit_fairings`), canted 15 and 90 degrees, and as a mirrored pair. Each cell builds a 1 m host with the part placed on it (`cell.rs`) and checks (`checks.rs`):
 
 | Check | Passes when |
 | --- | --- |
-| Loads | The craft builds, or is refused with a rule of building. A refusal that says "until the physics runs on parts" is a limit of the sim, not a rule, and fails. |
+| Loads | The craft builds, or is refused with a rule of building (grey), which names the rule. |
 | Kept | Every part and component is in the physics: the tanks, engines, RCS blocks, wheels, wings, gear legs, crew seats and battery charge of the craft are all there. |
 | Mass | The craft weighs what its parts and their propellant weigh, summed apart from the physics. |
 | Balance | Each part sits where the assembly puts it, and the dry centre of mass and inertia are the parts' sum. |

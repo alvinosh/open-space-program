@@ -215,6 +215,8 @@ const CHARTS = [
   { title: "Attitude", unit: "°", series: [["pitch", "nose above horizon", 1], ["aoa", "angle of attack", 1]] },
   { title: "Distance from the Earth and the Moon", unit: "×1000 km", series: [["earth", "to the Earth", 1e-6], ["moon", "to the Moon", 1e-6]] },
   { title: "Structure load", unit: "× limit", series: [["load", "most loaded part", 1]] },
+  { title: "Link to the ground", unit: "dB", series: [["link_margin", "margin", 1]] },
+  { title: "Signal delay", unit: "s", series: [["link_delay", "one way", 1]] },
 ];
 function niceTicks(lo, hi, n) {
   const span = hi - lo || 1, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -297,6 +299,11 @@ function makeChart(def) {
   canvas.addEventListener("mouseleave", () => { hover = null; draw(); });
   redraw.push(draw);
 }
+// One chart for each thing the vessel's systems report, whatever they are.
+Object.keys(S).filter(k => k.startsWith("system_")).sort().forEach(key => {
+  const name = key.slice("system_".length).replaceAll("_", " ");
+  CHARTS.push({ title: name[0].toUpperCase() + name.slice(1), unit: "", series: [[key, name, 1]] });
+});
 CHARTS.forEach(makeChart);
 window.addEventListener("resize", () => redraw.forEach(f => f()));
 

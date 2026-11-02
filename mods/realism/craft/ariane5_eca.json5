@@ -43,7 +43,7 @@
         ],
       },
       structure: { thickness: 0, mass: 6160 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 940000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 5.4 },
         { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 2.7 },
@@ -158,9 +158,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "esc_a_decoupler",
+      name: "Decoupler",
+      on: "jwst.bottom",
+      by: "top",
+      shape: { ring: { diameter: 5.4, height: 0.216, thickness: 0.108 } },
+      structure: { mass: 533.8 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "esc_a",
       name: "ESC-A",
-      on: "jwst.bottom",
+      on: "esc_a_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -196,8 +205,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 3780 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 3246.2 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 5.4 },
         { name: "top", position: [0, 0, 4.7], direction: [0, 0, 1], size: 5.4 },
@@ -237,9 +246,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "epc_core_decoupler",
+      name: "Decoupler",
+      on: "esc_a.bottom",
+      by: "top",
+      shape: { ring: { diameter: 5.4, height: 0.216, thickness: 0.108 } },
+      structure: { mass: 533.8 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "epc_core",
       name: "EPC Core",
-      on: "esc_a.bottom",
+      on: "epc_core_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -285,8 +303,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 6298.2 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 5764.4 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 5.4 },
         { name: "top", position: [0, 0, 29.005534], direction: [0, 0, 1], size: 5.4 },
@@ -341,9 +359,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "eap_1_body_decoupler",
+      name: "Decoupler",
+      on: "epc_core.booster_1",
+      by: "top",
+      shape: { ring: { diameter: 0.7625, height: 0.0305, thickness: 0.3812 } },
+      structure: { mass: 1.5 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "eap_1_body",
       name: "EAP",
-      on: "epc_core.booster_1",
+      on: "eap_1_body_decoupler.bottom",
       by: "attach",
       shape: {
         compound: [
@@ -393,7 +420,7 @@
         ],
       },
       structure: { thickness: 0, mass: 0 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
         { name: "top", position: [0, 0, 31.6], direction: [0, 0, 1] },
@@ -425,11 +452,20 @@
       paint: { color: [0.8999999761581421, 0.8999999761581421, 0.8799999952316284] },
     },
     {
+      id: "eap_2_body_decoupler",
+      name: "Decoupler",
+      on: "epc_core.booster_2",
+      by: "top",
+      roll: -180,
+      shape: { ring: { diameter: 0.7625, height: 0.0305, thickness: 0.3812 } },
+      structure: { mass: 1.5 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "eap_2_body",
       name: "EAP",
-      on: "epc_core.booster_2",
+      on: "eap_2_body_decoupler.bottom",
       by: "attach",
-      roll: -180,
       shape: {
         compound: [
           {
@@ -478,7 +514,7 @@
         ],
       },
       structure: { thickness: 0, mass: 0 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
         { name: "top", position: [0, 0, 31.6], direction: [0, 0, 1] },

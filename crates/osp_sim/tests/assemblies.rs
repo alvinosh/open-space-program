@@ -29,9 +29,16 @@ fn the_gemini_titan_is_its_two_assemblies_placed_together() {
         name: craft.name.clone(),
         parts: spacecraft.parts.clone(),
         sequences: craft.sequences.clone(),
+        triggers: Vec::new(),
     };
     built
-        .place(&assembly("titan2_glv"), "", "equipment.bottom", None, 0.0)
+        .place(
+            &assembly("titan2_glv"),
+            "",
+            "equipment_lower_decoupler.bottom",
+            None,
+            0.0,
+        )
         .unwrap();
     assert_eq!(
         serde_json::to_value(&built.parts).unwrap(),
@@ -159,7 +166,7 @@ fn radial_craft_are_boosters_placed_round_a_core() {
             let held = craft
                 .parts
                 .iter()
-                .find(|p| p.id == format!("{prefix}body"))
+                .find(|p| p.id == format!("{prefix}body_decoupler"))
                 .unwrap();
             let on = held.on.as_deref().unwrap();
             built
@@ -274,9 +281,15 @@ fn service_modules_carry_their_contents() {
     let assembly = |id: &str| -> AssemblyDef { registry.get("assemblies", id).unwrap() };
     let value = |parts: &[osp_sim::data::CraftPartDef]| serde_json::to_value(parts).unwrap();
 
-    // The Saturn V and IB carry the Apollo CSM as it is, at their top.
+    // The Saturn V carries the Apollo CSM as it is, at its top. The Saturn IB's has the same
+    // parts, but less room for propellant: Apollo 7 flew with a part load.
     let csm = assembly("apollo_csm");
-    for id in ["saturn_v", "saturn_ib"] {
+    let ib: CraftDef = registry.get("craft", "saturn_ib").unwrap();
+    let ids = |parts: &[osp_sim::data::CraftPartDef]| -> Vec<String> {
+        parts.iter().map(|p| p.id.clone()).collect()
+    };
+    assert_eq!(ids(&ib.parts[..csm.parts.len()]), ids(&csm.parts));
+    for id in ["saturn_v"] {
         let craft: CraftDef = registry.get("craft", id).unwrap();
         assert_eq!(
             value(&craft.parts[..csm.parts.len()]),
@@ -296,7 +309,8 @@ fn service_modules_carry_their_contents() {
         .find(|s| s.name == "Service Module")
         .unwrap()
         .id;
-    assert_eq!(p.tanks_of(sm).count(), 7);
+    // Propellant and helium, and the fuel cells' hydrogen and oxygen.
+    assert_eq!(p.tanks_of(sm).count(), 11);
     assert_eq!(p.rcs_of(sm).count(), 4);
     p.set_throttle(1.0);
     p.arm(sm);

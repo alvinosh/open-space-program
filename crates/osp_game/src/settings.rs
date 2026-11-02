@@ -1,5 +1,6 @@
-//! Graphics settings: a preset (Low to Ultra) or each setting picked by hand on the main
-//! menu's Graphics page, saved between runs.
+//! Settings, saved between runs. Graphics: a preset (Low to Ultra) or each setting picked by hand
+//! on the main menu's Graphics page. Sound: how loud each part of it is, on the Sound page. Keys,
+//! rebound on the Controls page. The interface's scale and the alerts, on the Interface page.
 //!
 //! Each setting is applied by the module it tunes (render scale, anti-aliasing, ambient
 //! occlusion and bloom in `camera`, shadows in `frame`, terrain detail in `planet`, trees in `trees`, the sky's and
@@ -12,34 +13,143 @@
 //! starts with those settings without saving them; scripted captures (`OSP_CAPTURE`) use it
 //! or High and never touch the file, so they stay reproducible.
 
-use std::{path::PathBuf, time::Instant};
+use std::{collections::BTreeMap, path::PathBuf, time::Instant};
 
 use bevy::{
     prelude::*,
     render::renderer::RenderAdapterInfo,
     window::{PresentMode, PrimaryWindow},
 };
-use osp_ui::{UiAction, UiData};
+use osp_ui::{ActionState, KeyBindingDef, UiAction, UiData, UiDocuments, record};
 use serde::{Deserialize, Serialize};
 
-use crate::FrameSet;
+use crate::{FrameSet, sim::Sim, tutorial::key_label};
 
 pub struct SettingsPlugin;
 
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
         let (settings, source) = load();
-        app.insert_resource(settings)
+        app.insert_resource(settings.graphics)
+            .insert_resource(settings.audio)
+            .insert_resource(settings.interface)
             .insert_resource(source)
+            .init_resource::<KeyEdit>()
             .add_systems(
                 Update,
                 (
                     detect.run_if(resource_exists::<RenderAdapterInfo>.and_then(run_once)),
-                    actions.in_set(FrameSet::Input),
+                    (actions, audio_actions, interface_actions, key_actions)
+                        .in_set(FrameSet::Input),
                     (apply_window, publish).run_if(resource_changed::<GraphicsSettings>),
+                    publish_audio.run_if(resource_changed::<AudioSettings>),
+                    apply_interface.run_if(resource_changed::<InterfaceSettings>),
+                    apply_keys.run_if(resource_changed::<UiDocuments>),
+                    stop_warp_at_signal_changes,
                 ),
             )
             .add_systems(Last, limit_frame_rate);
+    }
+}
+
+/// What the settings file holds. Graphics come first and flat, as the file began with them alone.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+struct Settings {
+    #[serde(flatten)]
+    graphics: GraphicsSettings,
+    #[serde(default)]
+    audio: AudioSettings,
+    #[serde(default)]
+    interface: InterfaceSettings,
+    /// Keys the player has rebound, by [`binding_ids`].
+    #[serde(default)]
+    keys: BTreeMap<String, KeyCode>,
+}
+
+/// The interface, and what it warns of.
+#[derive(Resource, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InterfaceSettings {
+    /// How big it all is, percent: the menu and the HUD alike.
+    pub scale: u32,
+    /// Alerts over the flight view (see `crate::alerts`), and a tone as each appears.
+    pub alerts: bool,
+    pub alert_tone: bool,
+    /// Time warp stops when a signal comes or goes.
+    pub warp_stops_at_signal: bool,
+}
+
+impl Default for InterfaceSettings {
+    fn default() -> Self {
+        Self {
+            scale: 100,
+            alerts: true,
+            alert_tone: true,
+            warp_stops_at_signal: false,
+        }
+    }
+}
+
+impl InterfaceSettings {
+    /// Apply one `key=value` (the `interface.set:<key>:<value>` action).
+    pub fn set(&mut self, key: &str, value: &str) -> Result<(), String> {
+        let on_off = |v: &str| match v {
+            "on" => Ok(true),
+            "off" => Ok(false),
+            _ => Err(format!("`{v}` is not on or off")),
+        };
+        match key {
+            "scale" => {
+                let percent = value
+                    .parse::<u32>()
+                    .map_err(|_| format!("`{value}` is not a number"))?;
+                self.scale = percent.clamp(50, 200);
+            }
+            "alerts" => self.alerts = on_off(value)?,
+            "alert_tone" => self.alert_tone = on_off(value)?,
+            "warp_stops_at_signal" => self.warp_stops_at_signal = on_off(value)?,
+            _ => return Err(format!("unknown interface setting `{key}`")),
+        }
+        Ok(())
+    }
+}
+
+/// How loud each part of the sound is, percent (see `crate::sound`).
+#[derive(Resource, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AudioSettings {
+    pub master: u32,
+    pub engines: u32,
+    pub wind: u32,
+    pub effects: u32,
+}
+
+impl Default for AudioSettings {
+    fn default() -> Self {
+        Self {
+            master: 75,
+            engines: 100,
+            wind: 100,
+            effects: 100,
+        }
+    }
+}
+
+impl AudioSettings {
+    /// Apply one `key=value` (the `audio.set:<key>:<value>` action).
+    pub fn set(&mut self, key: &str, value: &str) -> Result<(), String> {
+        let percent = value
+            .parse::<u32>()
+            .map_err(|_| format!("`{value}` is not a number"))?
+            .min(100);
+        match key {
+            "master" => self.master = percent,
+            "engines" => self.engines = percent,
+            "wind" => self.wind = percent,
+            "effects" => self.effects = percent,
+            _ => return Err(format!("unknown sound setting `{key}`")),
+        }
+        Ok(())
     }
 }
 
@@ -245,6 +355,8 @@ struct SettingsSource {
     file: Option<PathBuf>,
     /// No settings were saved yet: pick a preset from the GPU once it is known.
     detect: bool,
+    /// What the file holds.
+    saved: Settings,
 }
 
 pub fn settings_file() -> Option<PathBuf> {
@@ -263,7 +375,7 @@ pub fn settings_file() -> Option<PathBuf> {
     Some(dir.join("OpenSpaceProgram").join("settings.json"))
 }
 
-fn load() -> (GraphicsSettings, SettingsSource) {
+fn load() -> (Settings, SettingsSource) {
     let capture = std::env::var_os("OSP_CAPTURE").is_some();
     if let Ok(spec) = std::env::var("OSP_GRAPHICS") {
         let mut settings = GraphicsSettings::default();
@@ -284,9 +396,14 @@ fn load() -> (GraphicsSettings, SettingsSource) {
             }
         }
         info!("graphics from OSP_GRAPHICS: {}", settings.describe());
+        let settings = Settings {
+            graphics: settings,
+            ..default()
+        };
         let source = SettingsSource {
             file: None,
             detect: false,
+            saved: settings.clone(),
         };
         return (settings, source);
     }
@@ -294,13 +411,14 @@ fn load() -> (GraphicsSettings, SettingsSource) {
         let source = SettingsSource {
             file: None,
             detect: false,
+            saved: Settings::default(),
         };
-        return (GraphicsSettings::default(), source);
+        return (Settings::default(), source);
     }
     let file = settings_file();
     let saved = file.as_ref().and_then(|f| {
         let text = std::fs::read_to_string(f).ok()?;
-        match serde_json::from_str::<GraphicsSettings>(&text) {
+        match serde_json::from_str::<Settings>(&text) {
             Ok(settings) => Some(settings),
             Err(e) => {
                 warn!("ignoring {}: {e}", f.display());
@@ -311,22 +429,29 @@ fn load() -> (GraphicsSettings, SettingsSource) {
     let detect = saved.is_none();
     let settings = saved.unwrap_or_default();
     if !detect {
-        info!("graphics: {}", settings.describe());
+        info!("graphics: {}", settings.graphics.describe());
     }
-    (settings, SettingsSource { file, detect })
+    let source = SettingsSource {
+        file,
+        detect,
+        saved: settings.clone(),
+    };
+    (settings, source)
 }
 
-fn save(settings: &GraphicsSettings, source: &SettingsSource) {
+/// Write out what the file should hold.
+fn save(source: &SettingsSource) {
     let Some(file) = &source.file else { return };
     let result = file
         .parent()
         .map_or(Ok(()), std::fs::create_dir_all)
         .and_then(|()| {
-            let text = serde_json::to_string_pretty(settings).map_err(std::io::Error::other)?;
+            let text =
+                serde_json::to_string_pretty(&source.saved).map_err(std::io::Error::other)?;
             std::fs::write(file, text)
         });
     if let Err(e) = result {
-        warn!("cannot save graphics settings to {}: {e}", file.display());
+        warn!("cannot save settings to {}: {e}", file.display());
     }
 }
 
@@ -375,7 +500,8 @@ fn detect(
         adapter.name,
         settings.describe()
     );
-    save(&settings, &source);
+    source.saved.graphics = settings.clone();
+    save(&source);
 }
 
 /// `graphics.preset:<low|medium|high|ultra>`, `graphics.set:<key>:<value>`, and
@@ -383,7 +509,7 @@ fn detect(
 fn actions(
     mut actions: MessageReader<UiAction>,
     mut settings: ResMut<GraphicsSettings>,
-    source: Res<SettingsSource>,
+    mut source: ResMut<SettingsSource>,
     adapter: Option<Res<RenderAdapterInfo>>,
 ) {
     for action in actions.read() {
@@ -420,10 +546,198 @@ fn actions(
         }
         if next != *settings {
             info!("graphics: {}", next.describe());
-            save(&next, &source);
+            source.saved.graphics = next.clone();
+            save(&source);
             *settings = next;
         }
     }
+}
+
+/// `audio.set:<key>:<value>`.
+fn audio_actions(
+    mut actions: MessageReader<UiAction>,
+    mut settings: ResMut<AudioSettings>,
+    mut source: ResMut<SettingsSource>,
+) {
+    for action in actions.read().filter(|a| a.name() == "audio.set") {
+        let Some((key, value)) = action.arg().and_then(|a| a.split_once(':')) else {
+            continue;
+        };
+        let mut next = settings.clone();
+        if let Err(e) = next.set(key, value) {
+            warn!("{e}");
+        } else if next != *settings {
+            source.saved.audio = next.clone();
+            save(&source);
+            *settings = next;
+        }
+    }
+}
+
+/// `interface.set:<key>:<value>`.
+fn interface_actions(
+    mut actions: MessageReader<UiAction>,
+    mut settings: ResMut<InterfaceSettings>,
+    mut source: ResMut<SettingsSource>,
+) {
+    for action in actions.read().filter(|a| a.name() == "interface.set") {
+        let Some((key, value)) = action.arg().and_then(|a| a.split_once(':')) else {
+            continue;
+        };
+        let mut next = settings.clone();
+        if let Err(e) = next.set(key, value) {
+            warn!("{e}");
+        } else if next != *settings {
+            source.saved.interface = next.clone();
+            save(&source);
+            *settings = next;
+        }
+    }
+}
+
+/// Scale the interface, and `interface.*`: each setting's value as text, for the menu's buttons
+/// to compare against.
+fn apply_interface(
+    settings: Res<InterfaceSettings>,
+    mut scale: ResMut<UiScale>,
+    mut data: ResMut<UiData>,
+) {
+    scale.0 = settings.scale as f32 / 100.0;
+    data.set("interface.scale", settings.scale.to_string());
+    data.set("interface.alerts", on_off(settings.alerts));
+    data.set("interface.alert_tone", on_off(settings.alert_tone));
+    data.set(
+        "interface.warp_stops_at_signal",
+        on_off(settings.warp_stops_at_signal),
+    );
+}
+
+/// A universe started afresh has the setting back at its default, so it is kept up here.
+fn stop_warp_at_signal_changes(settings: Res<InterfaceSettings>, mut sim: ResMut<Sim>) {
+    if sim.universe.warp_stops_at_links != settings.warp_stops_at_signal {
+        sim.universe.warp_stops_at_links = settings.warp_stops_at_signal;
+    }
+}
+
+/// The keys as they were before the player changed any, and the one being asked for.
+#[derive(Resource, Default)]
+struct KeyEdit {
+    defaults: Vec<KeyBindingDef>,
+    listening: Option<String>,
+}
+
+/// A name for each binding that stays the same when its key changes: its action, and which of
+/// that action's bindings it is.
+fn binding_ids(bindings: &[KeyBindingDef]) -> Vec<String> {
+    let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
+    (bindings.iter())
+        .map(|b| {
+            let n = seen.entry(b.action.as_str()).or_default();
+            *n += 1;
+            format!("{}#{}", b.action, *n - 1)
+        })
+        .collect()
+}
+
+/// `defaults` with the player's keys over them.
+fn rebound(defaults: &[KeyBindingDef], keys: &BTreeMap<String, KeyCode>) -> Vec<KeyBindingDef> {
+    (defaults.iter().zip(binding_ids(defaults)))
+        .map(|(binding, id)| KeyBindingDef {
+            key: keys.get(&id).copied().unwrap_or(binding.key),
+            ..binding.clone()
+        })
+        .collect()
+}
+
+/// `keys.rows`: what can be rebound, and which other action a key is also on.
+fn publish_keys(data: &mut UiData, bindings: &[KeyBindingDef], listening: Option<&str>) {
+    let rows: Vec<_> = (bindings.iter().zip(binding_ids(bindings)))
+        .filter_map(|(binding, id)| {
+            let label = binding.label.as_deref()?;
+            let clash = (bindings.iter())
+                .find(|b| b.key == binding.key && b.action != binding.action)
+                .map_or("", |b| b.label.as_deref().unwrap_or(b.action.as_str()));
+            let asked = listening == Some(id.as_str());
+            let key = if asked {
+                "Press a key".to_owned()
+            } else {
+                key_label(binding.key)
+            };
+            Some(record([
+                ("id", id.into()),
+                ("label", label.into()),
+                ("key", key.into()),
+                ("listening", asked.into()),
+                ("clash", clash.into()),
+            ]))
+        })
+        .collect();
+    data.set("keys.rows", rows);
+}
+
+/// The documents are fresh from the records: put the player's keys over them.
+fn apply_keys(
+    mut docs: ResMut<UiDocuments>,
+    mut edit: ResMut<KeyEdit>,
+    source: Res<SettingsSource>,
+    mut data: ResMut<UiData>,
+) {
+    edit.defaults = docs.bindings.clone();
+    let keys = rebound(&edit.defaults, &source.saved.keys);
+    // Not a change to the documents as far as anything else is concerned.
+    docs.bypass_change_detection().bindings = keys;
+    publish_keys(&mut data, &docs.bindings, edit.listening.as_deref());
+}
+
+/// `keys.listen:<id>`: the next key pressed goes on that binding, Esc leaves it. `keys.reset`.
+#[allow(clippy::too_many_arguments)]
+fn key_actions(
+    mut actions: MessageReader<UiAction>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut docs: ResMut<UiDocuments>,
+    mut edit: ResMut<KeyEdit>,
+    mut source: ResMut<SettingsSource>,
+    mut state: ResMut<ActionState>,
+    mut data: ResMut<UiData>,
+) {
+    let mut changed = false;
+    for action in actions.read() {
+        match action.name() {
+            "keys.listen" => {
+                edit.listening = action.arg().map(str::to_owned);
+                changed = true;
+            }
+            "keys.reset" => {
+                source.saved.keys.clear();
+                save(&source);
+                edit.listening = None;
+                docs.bypass_change_detection().bindings = edit.defaults.clone();
+                changed = true;
+            }
+            _ => {}
+        }
+    }
+    if let (Some(id), Some(&key)) = (edit.listening.clone(), keys.get_just_pressed().next()) {
+        edit.listening = None;
+        changed = true;
+        if key != KeyCode::Escape {
+            source.saved.keys.insert(id, key);
+            save(&source);
+            docs.bypass_change_detection().bindings = rebound(&edit.defaults, &source.saved.keys);
+        }
+    }
+    state.suspended = edit.listening.is_some();
+    if changed {
+        publish_keys(&mut data, &docs.bindings, edit.listening.as_deref());
+    }
+}
+
+/// `audio.*`: each setting's value as text, for the menu's buttons to compare against.
+fn publish_audio(settings: Res<AudioSettings>, mut data: ResMut<UiData>) {
+    data.set("audio.master", settings.master.to_string());
+    data.set("audio.engines", settings.engines.to_string());
+    data.set("audio.wind", settings.wind.to_string());
+    data.set("audio.effects", settings.effects.to_string());
 }
 
 /// `graphics.*`: each setting's value as text, for the menu's buttons to compare against.
@@ -531,5 +845,119 @@ mod tests {
             serde_json::from_str(r#"{ "antialiasing": "fxaa" }"#).unwrap();
         assert_eq!(partial.antialiasing, Antialiasing::Fxaa);
         assert_eq!(partial.shadows, GraphicsSettings::default().shadows);
+    }
+}
+
+#[cfg(test)]
+mod settings_file_tests {
+    use super::*;
+
+    fn binding(key: KeyCode, action: &str) -> KeyBindingDef {
+        KeyBindingDef {
+            key,
+            action: action.into(),
+            hold: false,
+            label: Some(action.into()),
+        }
+    }
+
+    #[test]
+    fn a_file_from_before_there_was_sound_still_loads_and_keeps_its_graphics() {
+        let old = r#"{ "render_scale": 67, "shadows": "low", "vsync": false }"#;
+        let settings: Settings = serde_json::from_str(old).unwrap();
+        assert_eq!(settings.graphics.render_scale, 67);
+        assert_eq!(settings.graphics.shadows, Quality::Low);
+        assert!(!settings.graphics.vsync);
+        assert_eq!(settings.audio, AudioSettings::default());
+        assert_eq!(settings.interface, InterfaceSettings::default());
+        assert!(settings.keys.is_empty());
+    }
+
+    #[test]
+    fn everything_comes_back_from_the_file_as_it_went_in() {
+        let mut settings = Settings::default();
+        settings.audio.set("wind", "25").unwrap();
+        settings.interface.set("scale", "125").unwrap();
+        settings.interface.set("alerts", "off").unwrap();
+        settings.keys.insert("vessel.stage#0".into(), KeyCode::KeyP);
+        let text = serde_json::to_string(&settings).unwrap();
+        assert_eq!(serde_json::from_str::<Settings>(&text).unwrap(), settings);
+    }
+
+    #[test]
+    fn settings_are_kept_in_range_and_bad_ones_refused() {
+        let mut interface = InterfaceSettings::default();
+        interface.set("scale", "900").unwrap();
+        assert_eq!(interface.scale, 200);
+        assert!(interface.set("scale", "big").is_err());
+        assert!(interface.set("alerts", "maybe").is_err());
+        assert!(interface.set("nothing", "on").is_err());
+        let mut audio = AudioSettings::default();
+        audio.set("master", "300").unwrap();
+        assert_eq!(audio.master, 100);
+        assert!(audio.set("nothing", "10").is_err());
+    }
+
+    #[test]
+    fn a_rebound_key_stays_with_its_binding_and_the_others_keep_theirs() {
+        let defaults = [
+            binding(KeyCode::ShiftLeft, "throttle"),
+            binding(KeyCode::ArrowUp, "throttle"),
+            binding(KeyCode::Space, "stage"),
+        ];
+        assert_eq!(
+            binding_ids(&defaults),
+            ["throttle#0", "throttle#1", "stage#0"]
+        );
+        let keys = BTreeMap::from([("throttle#1".to_owned(), KeyCode::KeyU)]);
+        let bound = rebound(&defaults, &keys);
+        assert_eq!(bound[0].key, KeyCode::ShiftLeft);
+        assert_eq!(bound[1].key, KeyCode::KeyU);
+        assert_eq!(bound[2].key, KeyCode::Space);
+        // A binding gone from the records takes nothing with it.
+        let keys = BTreeMap::from([("gone#0".to_owned(), KeyCode::KeyU)]);
+        assert_eq!(rebound(&defaults, &keys)[2].key, KeyCode::Space);
+    }
+
+    #[test]
+    fn the_rows_say_what_a_key_clashes_with_and_which_one_is_asked_for() {
+        let mut data = UiData::default();
+        let bindings = [
+            binding(KeyCode::KeyP, "stage"),
+            binding(KeyCode::KeyP, "map"),
+            KeyBindingDef {
+                label: None,
+                ..binding(KeyCode::KeyQ, "debug")
+            },
+        ];
+        publish_keys(&mut data, &bindings, Some("map#0"));
+        let text = |path: &str| match data.get(path) {
+            Some(osp_ui::UiValue::Text(text)) => text.clone(),
+            _ => String::new(),
+        };
+        assert_eq!(text("keys.rows[0].clash"), "map");
+        assert_eq!(text("keys.rows[1].clash"), "stage");
+        assert_eq!(text("keys.rows[1].key"), "Press a key");
+        assert_eq!(text("keys.rows[0].key"), "P");
+        // Without a label it is not offered.
+        assert_eq!(text("keys.rows[2].key"), "");
+    }
+
+    #[test]
+    fn every_key_the_game_ships_with_that_a_player_needs_can_be_rebound() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/core");
+        let registry = osp_mods::load(&root, None).registry;
+        let docs = UiDocuments::from_registry(&registry, &mut Vec::new());
+        for action in [
+            "vessel.stage",
+            "vessel.pitch_up",
+            "game.menu",
+            "view.toggle_map",
+        ] {
+            assert!(
+                (docs.bindings.iter()).any(|b| b.action == action && b.label.is_some()),
+                "{action}"
+            );
+        }
     }
 }

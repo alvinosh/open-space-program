@@ -42,7 +42,7 @@
         ],
       },
       structure: { thickness: 0, mass: 50 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 1200, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.38 },
         { name: "top", position: [0, 0, 6], direction: [0, 0, 1], size: 0.38 },
@@ -168,11 +168,20 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "booster_adapter_decoupler",
+      name: "Decoupler",
+      on: "aerobee.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.38, height: 0.0152, thickness: 0.0076 } },
+      structure: { mass: 0.19 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       // Six panels with vents between them: the sustainer's nozzle sits inside and fires
       // out through the gaps while the booster still burns.
       id: "booster_adapter",
       name: "Booster adapter",
-      on: "aerobee.bottom",
+      on: "booster_adapter_decoupler.bottom",
       by: "upper",
       shape: {
         compound: [
@@ -220,7 +229,7 @@
         ],
       },
       structure: { material: "Al 2014-T6", thickness: 0.002 },
-      components: [{ decoupler: { node: "upper" } }],
+      components: [],
       nodes: [
         { name: "lower", position: [0, 0, 0], direction: [0, 0, -1], size: 0.38 },
         { name: "upper", position: [0, 0, 0.5], direction: [0, 0, 1], size: 0.38 },
@@ -272,7 +281,7 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 55 },
+      structure: { thickness: 0, mass: 54.81 },
       components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.4 },

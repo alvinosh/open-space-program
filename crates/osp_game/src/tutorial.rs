@@ -145,7 +145,7 @@ fn is_action(name: &str) -> bool {
 }
 
 /// What a key is called on a keycap.
-fn key_label(key: KeyCode) -> String {
+pub(crate) fn key_label(key: KeyCode) -> String {
     let name = format!("{key:?}");
     let named = |prefix: &str| name.strip_prefix(prefix).map(str::to_owned);
     if let Some(letter) = named("Key") {
@@ -199,6 +199,7 @@ mod tests {
             key,
             action: action.into(),
             hold: false,
+            label: None,
         }
     }
 

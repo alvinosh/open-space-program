@@ -18,6 +18,20 @@
 //! of its own (its case is its engine's): its liner lost what the grain's head had
 //! thickened it by, most on the big boosters.
 //!
+//! The craft with RCS blocks were rerecorded when a block got a surface of its own for the
+//! air (a small box below its mount): their drag rose by 1 to 4%, and the Scout's blocks moved
+//! inside its skin, where the real jets were.
+//!
+//! Everything was rerecorded when each joint that lets go got a separation ring of its own
+//! (a part named Decoupler, 4% of its diameter tall): the stacks grew by those rings, so
+//! their centres of mass, inertias and outlines moved. A ring's mass came out of its stage's
+//! structure, so masses and thrusts did not, but for a few grams to 5 kg on the parts with no
+//! structure mass to take it from.
+//!
+//! The Saturn V and IB got an instrument unit 0.91 m tall under the S-IVB's ring, its mass out of
+//! the S-IVB's structure, and the Saturn V's cutoffs are its triggers, in no sequence. The Saturn
+//! IB got sequences of its own, ullage motors and Apollo 7's part load in its service module.
+//!
 //! The Aerobee and the WAC Corporal were rebuilt by hand so they fly as the real ones did:
 //! the sustainer lit with its booster over an open joint, its tank above the motor
 //! compartment, the instruments in the nose and fins that keep it stable.
@@ -32,7 +46,7 @@
 
 use std::path::Path;
 
-use osp_sim::{data::CraftDef, propulsion::Propulsion};
+use osp_sim::{component::Component, data::CraftDef, propulsion::Propulsion};
 use serde_json::Value;
 
 #[path = "golden/record.rs"]
@@ -156,5 +170,49 @@ fn numbers(value: &Value) -> Vec<f64> {
         Value::Array(items) => items.iter().flat_map(numbers).collect(),
         Value::Object(map) => map.values().flat_map(numbers).collect(),
         _ => Vec::new(),
+    }
+}
+
+/// A joint that lets go is a part of its own: a part named Decoupler, with a fairing's panels
+/// the only others that let go, by their own hinges.
+#[test]
+fn every_joint_that_lets_go_is_a_decoupler_part() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let content = osp_mods::load(&root.join("assets/core"), Some(&root.join("mods")));
+    let registry = &content.registry;
+    let catalog = record::catalog(registry);
+    let ids: Vec<String> = registry.records("craft").map(|r| r.id.clone()).collect();
+    assert!(ids.len() > 30);
+    for id in ids {
+        let def: CraftDef = registry.get("craft", &id).unwrap();
+        let propulsion = Propulsion::from_craft(&def, &catalog).unwrap();
+        let tree = propulsion.parts();
+        for part in tree.parts() {
+            let lets_go = tree.joint_capabilities(part.id).is_some_and(|c| c.release);
+            let carries = part.built.as_ref().is_some_and(|built| {
+                (built.components.iter()).any(|c| matches!(c, Component::Decoupler(_)))
+            });
+            let ring = part.name == "Decoupler";
+            if !part.is_fairing_half() {
+                assert_eq!(lets_go, ring, "{id}: `{}` lets go: {lets_go}", part.name);
+                assert_eq!(carries, ring, "{id}: `{}` has a decoupler", part.name);
+            }
+        }
+    }
+}
+
+/// In a game a vessel needs avionics or a crew to fly: every craft that ships has what it takes
+/// for its mass, wherever it goes.
+#[test]
+fn every_craft_can_be_flown() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let content = osp_mods::load(&root.join("assets/core"), Some(&root.join("mods")));
+    let registry = &content.registry;
+    let catalog = record::catalog(registry);
+    for id in registry.records("craft").map(|r| r.id.clone()) {
+        let def: CraftDef = registry.get("craft", &id).unwrap();
+        let mut p = Propulsion::from_craft(&def, &catalog).unwrap();
+        p.require_control();
+        assert!(p.controlled(true), "{id} cannot be flown near the Earth");
     }
 }

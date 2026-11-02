@@ -22,7 +22,10 @@ use thiserror::Error;
 
 use crate::{
     body::BodyId,
-    data::{CraftDef, LaunchSiteDef, PartCatalog, ScenarioDef, StartDef, SystemDef},
+    comms::{self, Link, Station, best_link, relay_link},
+    data::{
+        CraftDef, GroundStationDef, LaunchSiteDef, PartCatalog, ScenarioDef, StartDef, SystemDef,
+    },
     mission::Mission,
     orbit::{Orbit, StateVector},
     rendezvous::Target,
@@ -75,6 +78,12 @@ pub struct Universe {
     pub focus: Option<VesselId>,
     /// What the scenario sets out to do, judged after every step (see [`crate::mission`]).
     pub mission: Option<Mission>,
+    /// The dishes on the ground that vessels talk to.
+    pub stations: Vec<Station>,
+    /// Time warp stops where the focused vessel gains or loses its link.
+    pub warp_stops_at_links: bool,
+    /// Physics ticks until the links are looked at again.
+    link_ticks: u32,
     /// The guided run the player is on, if any (see [`crate::tutorial`]). A restart ends it.
     pub tutorial: Option<Tutorial>,
     time: SimTime,
@@ -87,6 +96,9 @@ impl Universe {
             system,
             vessels: Vec::new(),
             focus: None,
+            stations: Vec::new(),
+            warp_stops_at_links: false,
+            link_ticks: 0,
             mission: None,
             tutorial: None,
             time,
@@ -271,7 +283,9 @@ impl Universe {
             Mission::new(scenario, sites, &self.system).map_err(UniverseError::Mission)?;
         self.vessels.clear();
         self.time = time;
-        for vessel in vessels {
+        for mut vessel in vessels {
+            // In a game, nothing flies without avionics or a crew to fly it.
+            vessel.propulsion.require_control();
             self.add_vessel(vessel);
         }
         self.focus = Some(self.vessels[0].id());
@@ -312,8 +326,93 @@ impl Universe {
             .min_by_key(|(_, t)| *t)
     }
 
+    /// When the focused vessel next gains or loses its link, before `until`, on a coast.
+    pub fn next_link_change(&self, until: SimTime) -> Option<SimTime> {
+        let vessel = self.vessel(self.focus?)?;
+        let radio = vessel.radio()?;
+        let orbit = vessel.coasting()?;
+        comms::next_link_change(
+            &self.system,
+            &self.stations,
+            vessel.parent(),
+            orbit,
+            &radio,
+            self.time,
+            until,
+        )
+    }
+
+    /// The ground stations vessels can talk to, from their records. Ones on no body there is are
+    /// left out.
+    pub fn set_stations(&mut self, defs: &[GroundStationDef]) {
+        self.stations = (defs.iter())
+            .filter_map(|def| Station::new(def, &self.system))
+            .collect();
+        self.update_links();
+    }
+
+    /// Work out each vessel's link: straight to the ground, or else by way of another vessel with
+    /// a link of its own.
+    pub fn update_links(&mut self) {
+        let time = self.time;
+        let positions: Vec<_> = (self.vessels.iter())
+            .map(|v| {
+                let at = v.state_at(&self.system, time).position;
+                self.system
+                    .relative_state(v.parent(), self.system.root(), time)
+                    .position
+                    + at
+            })
+            .collect();
+        let root = self.system.root();
+        let radios: Vec<_> = self.vessels.iter().map(Vessel::radio).collect();
+        let mut links: Vec<Option<Link>> = (self.vessels.iter().zip(&radios))
+            .map(|(v, radio)| {
+                let radio = radio.as_ref()?;
+                let at = v.state_at(&self.system, time).position;
+                best_link(&self.system, &self.stations, v.parent(), at, radio, time)
+            })
+            .collect();
+        let direct = links.clone();
+        for i in 0..self.vessels.len() {
+            let Some(radio) = &radios[i] else { continue };
+            if links[i].is_some() {
+                continue;
+            }
+            for j in (0..self.vessels.len()).filter(|&j| j != i) {
+                let (Some(other), Some(ground)) = (&radios[j], &direct[j]) else {
+                    continue;
+                };
+                let hop = relay_link(
+                    &self.system,
+                    root,
+                    (positions[i], radio),
+                    (positions[j], other),
+                    time,
+                );
+                if let Some(delay) = hop {
+                    links[i] = Some(Link {
+                        station: ground.station.clone(),
+                        margin: ground.margin,
+                        delay: delay + ground.delay,
+                    });
+                    break;
+                }
+            }
+        }
+        for (vessel, link) in self.vessels.iter_mut().zip(links) {
+            vessel.set_link(link);
+        }
+    }
+
     /// Advance one fixed physics tick.
     pub fn step_physics(&mut self) -> Vec<SimEvent> {
+        // Once a second is often enough for a radio.
+        if self.link_ticks == 0 {
+            self.update_links();
+            self.link_ticks = 50;
+        }
+        self.link_ticks -= 1;
         let (t0, t1) = (self.time, self.time + PHYSICS_STEP);
         // Vessels steering towards a target need to know where it is.
         let targets: Vec<_> = (0..self.vessels.len())
@@ -384,6 +483,17 @@ impl Universe {
             .filter(|(_, t)| *t <= target)
             .map(|(i, t)| (self.vessels[i].id(), t));
         let target = due.map_or(target, |(_, t)| t);
+        // A system that needs attention stops the jump there, as an event does.
+        let started = self.time;
+        let target = (self.vessels.iter())
+            .filter_map(|v| v.next_system_event(&self.system, started, target))
+            .fold(target, SimTime::min);
+        // The player may have asked to stop where the focused vessel's link changes.
+        let change = self
+            .warp_stops_at_links
+            .then(|| self.next_link_change(target))
+            .flatten();
+        let target = change.map_or(target, |at| target.min(at));
         while self.time < target {
             let next = self
                 .vessels
@@ -416,6 +526,16 @@ impl Universe {
             if stop {
                 outcome.interrupted = true;
                 break;
+            }
+        }
+        let elapsed = self.time.seconds_since(started);
+        if elapsed > 0.0 {
+            for vessel in &mut self.vessels {
+                vessel.step_systems(&self.system, started, elapsed);
+            }
+            self.update_links();
+            if change == Some(self.time) {
+                outcome.interrupted = true;
             }
         }
         let targets: Vec<_> = (0..self.vessels.len())
@@ -526,7 +646,9 @@ mod tests {
         u.focus = Some(u.vessels[0].id());
         let top = |u: &Universe| u.vessels[0].base_at(&u.system, u.time());
         let base = top(&u);
-        let booster = u.vessels[0].propulsion.sections[0].length;
+        // How far up the stack the upper stage stands: the booster and the ring on it.
+        let sections = &u.vessels[0].propulsion.sections;
+        let booster = sections[1].bottom.z - sections[0].bottom.z;
         let debris: Vec<_> = (0..3).flat_map(|_| u.activate_next_stage(0)).collect();
         assert_eq!(debris.len(), 3);
         assert_eq!(u.vessels.len(), 4);

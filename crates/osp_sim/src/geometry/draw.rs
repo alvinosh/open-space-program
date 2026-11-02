@@ -138,6 +138,26 @@ impl Geometry {
         self.pieces(thickness, member, true)
     }
 
+    /// The surfaces of what fills space, the proxies standing in for models: cells, solids and
+    /// lofts. A wall and a lattice fill none, so things can stand in a shell.
+    pub fn solids(&self) -> Vec<DrawMesh> {
+        let mut out = Vec::new();
+        for sub in self.subparts.iter().filter(|s| !s.unseen) {
+            match &sub.kind {
+                Kind::Revolved(r) => out.extend(
+                    (r.regions().iter())
+                        .map(|region| solid_mesh(&region.boundary, r))
+                        .map(|mesh| mesh.placed(sub.position, sub.rotation)),
+                ),
+                Kind::Lofted(l) => {
+                    out.push(loft_mesh(l, [0.0, 1.0], None).placed(sub.position, sub.rotation));
+                }
+                Kind::Lattice(_) | Kind::Model(_) => {}
+            }
+        }
+        out
+    }
+
     fn pieces(
         &self,
         thickness: impl Fn(&str) -> f64,

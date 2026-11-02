@@ -28,7 +28,7 @@ starting camera (the focus is the height above the base of the stack to look at)
 times. With `OSP_CAPTURE`, `OSP_CAPTURE_QUICK=1` takes a single still, and
 `OSP_CAPTURE_AT=20,30` launches (SAS on, a small pitch kick at 10 s, the Vessel,
 Attitude and Structure windows open) and takes stills at those times. `OSP_CAPTURE_HIDE_UI=1` leaves the flight UI out
-of the stills, and `OSP_CAPTURE_SIZE=1280x720` sets the size of the stills (1600x900 by default).
+of the stills, `OSP_CAPTURE_PART=<vessel>-<part>` opens that part's window, and `OSP_CAPTURE_SIZE=1280x720` sets the size of the stills (1600x900 by default).
 `OSP_CAPTURE_GRAPHICS=1` captures the Graphics page with the performance overlay, then the Low
 preset.
 

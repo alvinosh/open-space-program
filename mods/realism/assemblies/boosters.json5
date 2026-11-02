@@ -8,7 +8,17 @@
     name: "Strap-on",
     parts: [
       {
+        id: "body_decoupler",
+        name: "Decoupler",
+        by: "top",
+        shape: { ring: { diameter: 0.67, height: 0.0268, thickness: 0.335 } },
+        structure: { mass: 1.02 },
+        components: [{ decoupler: { node: "top" } }],
+      },
+      {
         id: "body",
+        on: "body_decoupler.bottom",
+        by: "attach",
         name: "Strap-on",
         shape: {
           compound: [
@@ -61,8 +71,8 @@
             },
           ],
         },
-        structure: { thickness: 0, mass: 2080.1 },
-        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        structure: { thickness: 0, mass: 2079.08 },
+        components: [{ container: {} }],
         nodes: [
           { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
           { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
@@ -101,14 +111,24 @@
         paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
       },
     ],
-    free: "body.attach",
+    free: "body_decoupler.top",
   },
   {
     id: "r7_strap_on_8k72k",
     name: "Strap-on",
     parts: [
       {
+        id: "body_decoupler",
+        name: "Decoupler",
+        by: "top",
+        shape: { ring: { diameter: 0.67, height: 0.0268, thickness: 0.335 } },
+        structure: { mass: 1.02 },
+        components: [{ decoupler: { node: "top" } }],
+      },
+      {
         id: "body",
+        on: "body_decoupler.bottom",
+        by: "attach",
         name: "Strap-on",
         shape: {
           compound: [
@@ -161,8 +181,8 @@
             },
           ],
         },
-        structure: { thickness: 0, mass: 1999.2 },
-        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        structure: { thickness: 0, mass: 1998.18 },
+        components: [{ container: {} }],
         nodes: [
           { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
           { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
@@ -201,14 +221,24 @@
         paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
       },
     ],
-    free: "body.attach",
+    free: "body_decoupler.top",
   },
   {
     id: "r7_strap_on_8k71ps",
     name: "Strap-on",
     parts: [
       {
+        id: "body_decoupler",
+        name: "Decoupler",
+        by: "top",
+        shape: { ring: { diameter: 0.67, height: 0.0268, thickness: 0.335 } },
+        structure: { mass: 1.02 },
+        components: [{ decoupler: { node: "top" } }],
+      },
+      {
         id: "body",
+        on: "body_decoupler.bottom",
+        by: "attach",
         name: "Strap-on",
         shape: {
           compound: [
@@ -261,8 +291,8 @@
             },
           ],
         },
-        structure: { thickness: 0, mass: 1660.1 },
-        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        structure: { thickness: 0, mass: 1659.08 },
+        components: [{ container: {} }],
         nodes: [
           { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
           { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
@@ -301,14 +331,24 @@
         paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
       },
     ],
-    free: "body.attach",
+    free: "body_decoupler.top",
   },
   {
     id: "gem_40_ground",
     name: "GEM-40",
     parts: [
       {
+        id: "body_decoupler",
+        name: "Decoupler",
+        by: "top",
+        shape: { ring: { diameter: 0.254, height: 0.0102, thickness: 0.127 } },
+        structure: { mass: 0.06 },
+        components: [{ decoupler: { node: "top" } }],
+      },
+      {
         id: "body",
+        on: "body_decoupler.bottom",
+        by: "attach",
         name: "GEM-40",
         shape: {
           compound: [
@@ -358,7 +398,7 @@
           ],
         },
         structure: { thickness: 0, mass: 0 },
-        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        components: [{ container: {} }],
         nodes: [
           { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
           { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
@@ -390,14 +430,24 @@
         paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
       },
     ],
-    free: "body.attach",
+    free: "body_decoupler.top",
   },
   {
     id: "gem_40_air",
     name: "GEM-40 (air-lit)",
     parts: [
       {
+        id: "body_decoupler",
+        name: "Decoupler",
+        by: "top",
+        shape: { ring: { diameter: 0.254, height: 0.0102, thickness: 0.127 } },
+        structure: { mass: 0.06 },
+        components: [{ decoupler: { node: "top" } }],
+      },
+      {
         id: "body",
+        on: "body_decoupler.bottom",
+        by: "attach",
         name: "GEM-40 (air-lit)",
         shape: {
           compound: [
@@ -447,7 +497,7 @@
           ],
         },
         structure: { thickness: 0, mass: 0 },
-        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        components: [{ container: {} }],
         nodes: [
           { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
           { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
@@ -479,14 +529,24 @@
         paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
       },
     ],
-    free: "body.attach",
+    free: "body_decoupler.top",
   },
   {
     id: "ua1205",
     name: "UA1205",
     parts: [
       {
+        id: "body_decoupler",
+        name: "Decoupler",
+        by: "top",
+        shape: { ring: { diameter: 0.7625, height: 0.0305, thickness: 0.3812 } },
+        structure: { mass: 1.5 },
+        components: [{ decoupler: { node: "top" } }],
+      },
+      {
         id: "body",
+        on: "body_decoupler.bottom",
+        by: "attach",
         name: "UA1205",
         shape: {
           compound: [
@@ -536,7 +596,7 @@
           ],
         },
         structure: { thickness: 0, mass: 0 },
-        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        components: [{ container: {} }],
         nodes: [
           { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
           { name: "top", position: [0, 0, 25.9], direction: [0, 0, 1] },
@@ -568,14 +628,24 @@
         paint: { color: [0.8799999952316284, 0.8799999952316284, 0.8600000143051147] },
       },
     ],
-    free: "body.attach",
+    free: "body_decoupler.top",
   },
   {
     id: "eap_p241",
     name: "EAP",
     parts: [
       {
+        id: "body_decoupler",
+        name: "Decoupler",
+        by: "top",
+        shape: { ring: { diameter: 0.7625, height: 0.0305, thickness: 0.3812 } },
+        structure: { mass: 1.5 },
+        components: [{ decoupler: { node: "top" } }],
+      },
+      {
         id: "body",
+        on: "body_decoupler.bottom",
+        by: "attach",
         name: "EAP",
         shape: {
           compound: [
@@ -625,7 +695,7 @@
           ],
         },
         structure: { thickness: 0, mass: 0 },
-        components: [{ container: {} }, { decoupler: { node: "attach" } }],
+        components: [{ container: {} }],
         nodes: [
           { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
           { name: "top", position: [0, 0, 31.6], direction: [0, 0, 1] },
@@ -657,6 +727,6 @@
         paint: { color: [0.8999999761581421, 0.8999999761581421, 0.8799999952316284] },
       },
     ],
-    free: "body.attach",
+    free: "body_decoupler.top",
   },
 ]

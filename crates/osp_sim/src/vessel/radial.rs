@@ -7,7 +7,6 @@ use crate::{
     attitude::{actuate, mass_properties},
     data::CraftDef,
     propulsion::Propulsion,
-    staging::Activation,
     system::tests::rss,
     test_data::records,
     time::SimTime,
@@ -91,13 +90,9 @@ fn boosters_hang_beside_their_core_and_burn_with_it() {
         panic!("{:?}", p.sequences.list());
     };
     assert_eq!(lit.len(), 3);
-    assert!(lit.iter().all(|a| matches!(a, Activation::Engine(_))));
+    assert!(lit.iter().all(|a| a.is_engine()));
     assert_eq!(released.len(), 2);
-    assert!(
-        released
-            .iter()
-            .all(|a| matches!(a, Activation::Decoupler(_)))
-    );
+    assert!(released.iter().all(|a| a.is_decoupler()));
     // Balanced round the axis, and the core's delta-v counts the boosters' burn.
     assert_eq!(
         mass_properties(&p).center_of_mass.truncate(),

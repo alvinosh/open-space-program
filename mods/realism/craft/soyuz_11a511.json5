@@ -42,7 +42,7 @@
         ],
       },
       structure: { thickness: 0, mass: 300 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 380000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.72 },
         { name: "top", position: [0, 0, 0.3], direction: [0, 0, 1], size: 1.36 },
@@ -262,9 +262,18 @@
       },
     },
     {
+      id: "blok_i_decoupler",
+      name: "Decoupler",
+      on: "soyuz_7k_ok.bottom",
+      by: "top",
+      shape: { ring: { diameter: 2.72, height: 0.1088, thickness: 0.0544 } },
+      structure: { mass: 68.22 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "blok_i",
       name: "Blok I",
-      on: "soyuz_7k_ok.bottom",
+      on: "blok_i_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -310,8 +319,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 1590 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 1521.78 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.66 },
         { name: "top", position: [0, 0, 6.7], direction: [0, 0, 1], size: 2.66 },
@@ -350,15 +359,24 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "core_truss_decoupler",
+      name: "Decoupler",
+      on: "blok_i.bottom",
+      by: "top",
+      shape: { ring: { diameter: 2.66, height: 0.1064, thickness: 0.0532 } },
+      structure: { mass: 63.8 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "core_truss",
       name: "Interstage truss",
-      on: "blok_i.bottom",
+      on: "core_truss_decoupler.bottom",
       by: "top",
       shape: {
         truss: { bottom_diameter: 2.66, length: 1.1, bays: 1, around: 12, rings: true },
       },
       structure: { material: "Steel 4130", member_area: 0.0005 },
-      components: [{ decoupler: { node: "top" } }],
+      components: [],
       paint: {
         color: [0.30000001192092896, 0.3100000023841858, 0.30000001192092896],
         finish: "metal",
@@ -412,7 +430,7 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 3729.9 },
+      structure: { thickness: 0, mass: 3666.1 },
       components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.66 },
@@ -505,9 +523,18 @@
       paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
     },
     {
+      id: "blok_b_body_decoupler",
+      name: "Decoupler",
+      on: "core_blok_a.booster_1",
+      by: "top",
+      shape: { ring: { diameter: 0.67, height: 0.0268, thickness: 0.335 } },
+      structure: { mass: 1.02 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "blok_b_body",
       name: "Strap-on",
-      on: "core_blok_a.booster_1",
+      on: "blok_b_body_decoupler.bottom",
       by: "attach",
       shape: {
         compound: [
@@ -557,8 +584,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 2080.1 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      structure: { thickness: 0, mass: 2079.08 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
         { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
@@ -597,11 +624,20 @@
       paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
     },
     {
+      id: "blok_v_body_decoupler",
+      name: "Decoupler",
+      on: "core_blok_a.booster_2",
+      by: "top",
+      roll: -90,
+      shape: { ring: { diameter: 0.67, height: 0.0268, thickness: 0.335 } },
+      structure: { mass: 1.02 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "blok_v_body",
       name: "Strap-on",
-      on: "core_blok_a.booster_2",
+      on: "blok_v_body_decoupler.bottom",
       by: "attach",
-      roll: -90,
       shape: {
         compound: [
           {
@@ -650,8 +686,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 2080.1 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      structure: { thickness: 0, mass: 2079.08 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
         { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
@@ -690,11 +726,20 @@
       paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
     },
     {
+      id: "blok_g_body_decoupler",
+      name: "Decoupler",
+      on: "core_blok_a.booster_3",
+      by: "top",
+      roll: -180,
+      shape: { ring: { diameter: 0.67, height: 0.0268, thickness: 0.335 } },
+      structure: { mass: 1.02 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "blok_g_body",
       name: "Strap-on",
-      on: "core_blok_a.booster_3",
+      on: "blok_g_body_decoupler.bottom",
       by: "attach",
-      roll: -180,
       shape: {
         compound: [
           {
@@ -743,8 +788,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 2080.1 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      structure: { thickness: 0, mass: 2079.08 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
         { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },
@@ -783,11 +828,20 @@
       paint: { color: [0.550000011920929, 0.5699999928474426, 0.5199999809265137] },
     },
     {
+      id: "blok_d_body_decoupler",
+      name: "Decoupler",
+      on: "core_blok_a.booster_4",
+      by: "top",
+      roll: -270,
+      shape: { ring: { diameter: 0.67, height: 0.0268, thickness: 0.335 } },
+      structure: { mass: 1.02 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "blok_d_body",
       name: "Strap-on",
-      on: "core_blok_a.booster_4",
+      on: "blok_d_body_decoupler.bottom",
       by: "attach",
-      roll: -270,
       shape: {
         compound: [
           {
@@ -836,8 +890,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 2080.1 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      structure: { thickness: 0, mass: 2079.08 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.68 },
         { name: "top", position: [0, 0, 19.6], direction: [0, 0, 1] },

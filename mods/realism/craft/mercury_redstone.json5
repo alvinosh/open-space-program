@@ -39,7 +39,7 @@
         ],
       },
       structure: { thickness: 0, mass: 560 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 35000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.89 },
         { name: "top", position: [0, 0, 2.9], direction: [0, 0, 1], size: 1.89 },
@@ -49,9 +49,18 @@
     },
     { id: "mercury_pod", on: "mercury.pod", template: "Mercury Capsule" },
     {
+      id: "redstone_decoupler",
+      name: "Decoupler",
+      on: "mercury.bottom",
+      by: "top",
+      shape: { ring: { diameter: 1.89, height: 0.0756, thickness: 0.0378 } },
+      structure: { mass: 22.89 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "redstone",
       name: "Redstone",
-      on: "mercury.bottom",
+      on: "redstone_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -97,8 +106,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 2750 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 2727.11 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.78 },
         { name: "top", position: [0, 0, 17.9], direction: [0, 0, 1], size: 1.78 },

@@ -17,7 +17,10 @@
 //! | `nav.toggle_frame` | press |
 //! | `warp.increase`, `warp.decrease`, `warp.stop` | press |
 //! | `view.toggle_map` | press |
-//! | `staging.drop`, `staging.drop_at`, `staging.drop_new`, `staging.add`, `staging.remove` | rearrange the sequences (see [`edit_sequences`]) |
+//! | `staging.drop`, `staging.drop_at`, `staging.drop_before`, `staging.drop_new`, `staging.add`, `staging.add_at`, `staging.remove`, `staging.merge` | rearrange the sequences (see [`edit_sequences`]) |
+//! | `staging.split:<vessel>:<part>` | give that part a sequence of its own |
+//! | `staging.undo` | put the sequences back as they were before the last of those |
+//! | `staging.menu:<sequence>` | open the menu of a row in the staging window |
 //!
 //! Throttle and SAS commands disengage the burn executor (see `flight_plan` for its actions).
 
@@ -26,10 +29,10 @@ use osp_sim::{
     attitude::{NavFrame, SasMode},
     parts::PartId,
     propulsion::Propulsion,
-    staging::{Activation, Target},
-    vessel::VesselId,
+    staging::{Activation, Sequences, Target},
+    vessel::{Vessel, VesselId},
 };
-use osp_ui::{ActionState, UiAction};
+use osp_ui::{ActionState, LayoutVisibility, UiAction};
 
 use crate::{
     FrameSet,
@@ -40,12 +43,15 @@ use crate::{
 
 /// Throttle change per second while a throttle key is held.
 const THROTTLE_RATE: f64 = 0.5;
+/// The staging window's row menu (layout).
+const SEQUENCE_MENU: &str = "staging_menu";
 
 pub struct ControlsPlugin;
 
 impl Plugin for ControlsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<InputLocked>()
+            .init_resource::<SequenceEdits>()
             .add_systems(Update, apply_actions.in_set(FrameSet::Input));
     }
 }
@@ -53,6 +59,29 @@ impl Plugin for ControlsPlugin {
 /// When set, player input (keyboard and camera) is ignored, e.g. during scripted tests.
 #[derive(Resource, Default)]
 pub struct InputLocked(pub bool);
+
+/// What the staging window keeps between edits.
+#[derive(Resource, Default)]
+pub struct SequenceEdits {
+    /// The sequences of a vessel as they were before the last edit.
+    undo: Option<(VesselId, Sequences)>,
+    /// The row whose menu is open.
+    pub menu: Option<usize>,
+}
+
+impl SequenceEdits {
+    /// The sequences to go back to, if the last edit was to `vessel` and nothing has fired or
+    /// fallen away since.
+    fn undo_of(&self, vessel: &Vessel) -> Option<&Sequences> {
+        let (id, before) = self.undo.as_ref()?;
+        (*id == vessel.id() && before.same_activations(&vessel.propulsion.sequences))
+            .then_some(before)
+    }
+
+    pub fn can_undo(&self, vessel: &Vessel) -> bool {
+        self.undo_of(vessel).is_some()
+    }
+}
 
 fn apply_actions(
     mut actions: MessageReader<UiAction>,
@@ -63,6 +92,8 @@ fn apply_actions(
     mut rig: ResMut<CameraRig>,
     locked: Res<InputLocked>,
     menu: Res<Menu>,
+    mut edits: ResMut<SequenceEdits>,
+    mut layouts: ResMut<LayoutVisibility>,
 ) {
     if locked.0 || menu.open {
         actions.read().for_each(drop);
@@ -104,6 +135,26 @@ fn apply_actions(
             }
             "vessel.stage" => {
                 sim.stage_active();
+                continue;
+            }
+            "staging.menu" => {
+                edits.menu = action.arg().and_then(|a| a.parse().ok());
+                layouts.layouts.insert(SEQUENCE_MENU.into(), true);
+                continue;
+            }
+            "staging.split" => {
+                layouts.layouts.insert(SEQUENCE_MENU.into(), false);
+                let (vessel, part) = split_action(action.arg().unwrap_or_default());
+                let vessels = sim.universe.vessels.iter_mut();
+                let Some(vessel) = vessels.into_iter().find(|v| Some(v.id()) == vessel) else {
+                    continue;
+                };
+                let before = vessel.propulsion.sequences.clone();
+                if part.is_some_and(|p| vessel.propulsion.sequences.split_off(p)) {
+                    edits.undo = Some((vessel.id(), before));
+                } else {
+                    warn!("cannot do `{}` with the sequences", action.0);
+                }
                 continue;
             }
             "part.do" => {
@@ -166,11 +217,26 @@ fn apply_actions(
             "warp.decrease" => warp.decrease(),
             "warp.stop" => warp.stop("Warp cancelled", now),
             "view.toggle_map" => rig.map_view = !rig.map_view,
-            "staging.drop" | "staging.drop_at" | "staging.drop_new" | "staging.add"
-            | "staging.remove" => {
-                let done = edit_sequences(&mut vessel.propulsion, action);
-                if !done {
+            "staging.drop"
+            | "staging.drop_at"
+            | "staging.drop_before"
+            | "staging.drop_new"
+            | "staging.add"
+            | "staging.add_at"
+            | "staging.remove"
+            | "staging.merge" => {
+                layouts.layouts.insert(SEQUENCE_MENU.into(), false);
+                let before = vessel.propulsion.sequences.clone();
+                if !edit_sequences(&mut vessel.propulsion, action) {
                     warn!("cannot do `{}` with the sequences", action.0);
+                } else if vessel.propulsion.sequences != before {
+                    edits.undo = Some((vessel.id(), before));
+                }
+            }
+            "staging.undo" => {
+                if let Some(before) = edits.undo_of(vessel).cloned() {
+                    vessel.propulsion.sequences = before;
+                    edits.undo = None;
                 }
             }
             _ => {}
@@ -186,7 +252,15 @@ pub(crate) fn part_action(arg: &str) -> Option<(VesselId, Activation)> {
     let kind = args.next()?;
     let part = PartId(args.next()?.parse().ok()?);
     args.next().is_none().then_some(())?;
-    Some((vessel, Activation::of_kind(kind, part)?))
+    Some((vessel, Activation::of_kind(kind, part, None)?))
+}
+
+/// The vessel and part `<vessel>:<part>` names.
+fn split_action(arg: &str) -> (Option<VesselId>, Option<PartId>) {
+    let mut args = arg.split(':');
+    let vessel = args.next().and_then(|a| Some(VesselId(a.parse().ok()?)));
+    let part = args.next().and_then(|a| Some(PartId(a.parse().ok()?)));
+    (vessel, part)
 }
 
 /// Rearrange the activation sequences from the staging panel, where identical parts in a
@@ -198,10 +272,13 @@ pub(crate) fn part_action(arg: &str) -> Option<(VesselId, Activation)> {
 ///   moves to its place.
 /// - `staging.drop_at:<dragged>:<place>`: the parts move into a new sequence before the one
 ///   at `<place>` (the strip between two rows); a sequence moves there.
+/// - `staging.drop_before:<dragged>:<sequence>:<group>`: the parts move into that sequence just
+///   before that icon, so they fire before it; a sequence goes into it there.
 /// - `staging.drop_new:<dragged>`: the parts move into a new last sequence; a sequence
 ///   moves to the end.
-/// - `staging.add`: a new empty last sequence. `staging.remove:<sequence>`: remove an empty
-///   one.
+/// - `staging.add`: a new empty last sequence. `staging.add_at:<place>`: one before the one at
+///   `<place>`. `staging.remove:<sequence>`: remove an empty one.
+/// - `staging.merge:<sequence>`: the sequence goes into the one before it.
 ///
 /// Returns false if the action does not fit the sequences as they are.
 pub(crate) fn edit_sequences(propulsion: &mut Propulsion, action: &UiAction) -> bool {
@@ -222,7 +299,14 @@ pub(crate) fn edit_sequences(propulsion: &mut Propulsion, action: &UiAction) -> 
             propulsion.sequences.insert_empty(last);
             true
         }
+        ("staging.add_at", _) => num(0).is_some_and(|at| {
+            at <= last && {
+                propulsion.sequences.insert_empty(at);
+                true
+            }
+        }),
         ("staging.remove", _) => num(0).is_some_and(|s| propulsion.sequences.remove_empty(s)),
+        ("staging.merge", _) => num(0).is_some_and(|s| propulsion.sequences.merge_down(s)),
         ("staging.drop", Some(what @ ("item" | "one"))) => match (num(1), num(2), num(3)) {
             // Back onto its own sequence: nothing to do.
             (Some(s), Some(_), Some(to)) if s == to => true,
@@ -256,6 +340,32 @@ pub(crate) fn edit_sequences(propulsion: &mut Propulsion, action: &UiAction) -> 
             }
             _ => false,
         },
+        ("staging.drop_before", Some(what @ ("item" | "one"))) => {
+            match (num(1), num(2), num(3), num(4)) {
+                (Some(s), Some(g), Some(to), Some(before)) => {
+                    let place = (propulsion.sequences.list().get(to)).and_then(|seq| {
+                        Some(*propulsion.groups(seq).get(before)?.members.first()?)
+                    });
+                    let moved = members(propulsion, s, g, what == "one");
+                    match (moved, place) {
+                        // Before itself: nothing to do.
+                        (Some(m), Some(at)) if s == to && m.contains(&at) => true,
+                        (Some(m), Some(at)) => {
+                            propulsion
+                                .sequences
+                                .move_activations(s, &m, Target::Before(to, at))
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+        // A whole row dropped on a tile goes by what the tile's row does with it.
+        ("staging.drop_before", Some("seq")) => match (num(1), num(2)) {
+            (Some(s), Some(to)) => s == to || propulsion.sequences.move_sequence(s, to),
+            _ => false,
+        },
         ("staging.drop_new", Some(what @ ("item" | "one"))) => match (num(1), num(2)) {
             (Some(s), Some(g)) => members(propulsion, s, g, what == "one").is_some_and(|m| {
                 propulsion
@@ -287,11 +397,11 @@ mod tests {
     fn a_part_button_names_the_vessel_the_kind_and_the_part() {
         assert_eq!(
             part_action("3:decoupler:12"),
-            Some((VesselId(3), Activation::Decoupler(PartId(12))))
+            Some((VesselId(3), Activation::decoupler(PartId(12))))
         );
         assert_eq!(
             part_action("0:engines:5"),
-            Some((VesselId(0), Activation::Engine(PartId(5))))
+            Some((VesselId(0), Activation::engine(PartId(5))))
         );
         assert_eq!(part_action("3:wings:12"), None);
         assert_eq!(part_action("3:engines"), None);
@@ -354,6 +464,64 @@ mod tests {
         assert_eq!(icons(&q)[1], [("engines", n - 1)]);
         // Nowhere past the end.
         assert!(!edit_sequences(&mut p, &act("staging.drop_at:seq:0:99")));
+    }
+
+    #[test]
+    fn a_row_menu_adds_either_side_of_a_row_and_merges_it_with_the_one_below() {
+        let mut p = pathfinder();
+        let count = p.sequences.list().len();
+        // Below the first row, and above it.
+        assert!(edit_sequences(&mut p, &act("staging.add_at:0")));
+        assert!(p.sequences.list()[0].is_empty());
+        assert!(edit_sequences(&mut p, &act("staging.add_at:2")));
+        assert!(p.sequences.list()[2].is_empty());
+        assert_eq!(p.sequences.list().len(), count + 2);
+        assert!(!edit_sequences(&mut p, &act("staging.add_at:99")));
+        // Both empty ones merge away into what is below them; the first row has nothing below.
+        assert!(edit_sequences(&mut p, &act("staging.merge:2")));
+        assert!(edit_sequences(&mut p, &act("staging.merge:1")));
+        assert!(p.sequences.list()[0].len() > 1 || count == 1);
+        assert_eq!(p.sequences.list().len(), count);
+        assert!(!edit_sequences(&mut p, &act("staging.merge:0")));
+    }
+
+    #[test]
+    fn an_icon_dropped_on_another_goes_just_before_it() {
+        let mut p = pathfinder();
+        // A second row's icon in front of the first row's.
+        let (second, first) = (icons(&p)[1].clone(), icons(&p)[0].clone());
+        assert!(edit_sequences(
+            &mut p,
+            &act("staging.drop_before:item:1:0:0:0")
+        ));
+        assert_eq!(icons(&p)[0][0], second[0]);
+        assert_eq!(icons(&p)[0][1], first[0]);
+        // And behind again, inside the row, by putting the other one in front of it.
+        assert!(edit_sequences(
+            &mut p,
+            &act("staging.drop_before:item:0:1:0:0")
+        ));
+        assert_eq!(icons(&p)[0][0], first[0]);
+        assert_eq!(icons(&p)[0][1], second[0]);
+        // Onto itself changes nothing, and a row dropped on a tile goes to that row's place.
+        let before = icons(&p);
+        assert!(edit_sequences(
+            &mut p,
+            &act("staging.drop_before:item:0:1:0:1")
+        ));
+        assert_eq!(icons(&p), before);
+        assert!(edit_sequences(
+            &mut p,
+            &act("staging.drop_before:seq:1:0:0")
+        ));
+        assert_eq!(icons(&p)[0], before[1]);
+    }
+
+    #[test]
+    fn a_split_names_the_vessel_and_the_part() {
+        assert_eq!(split_action("3:12"), (Some(VesselId(3)), Some(PartId(12))));
+        assert_eq!(split_action("x:12"), (None, Some(PartId(12))));
+        assert_eq!(split_action("3"), (Some(VesselId(3)), None));
     }
 
     #[test]

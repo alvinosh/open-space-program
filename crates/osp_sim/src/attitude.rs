@@ -123,6 +123,18 @@ fn tank_contents(tank: &Tank, position: DVec3, rotation: DQuat) -> Mass {
     }
     let (radius, length) = (tank.radius, tank.length);
     let column = length * liquid / full.max(1e-9);
+    if let Some(cell) = &tank.cell {
+        let up = rotation.inverse() * DVec3::Z;
+        let holding = |volume: f64, mass: f64| {
+            (cell.geometry.settle(&cell.name, up, volume))
+                .filter(|settled| settled.moments.measure > 0.0)
+                .map_or(Mass::ZERO, |settled| {
+                    settled.moments.mass(mass / settled.moments.measure)
+                })
+        };
+        let filled = tank.volume * liquid / full.max(1e-9);
+        return (holding(filled, liquid) + holding(tank.volume, gas)).placed(position, rotation);
+    }
     match tank.shape {
         TankShape::Cylinder => {
             let up = rotation.inverse() * DVec3::Z;
@@ -147,6 +159,8 @@ const BALANCED: f64 = 1e-9;
 /// to swing for.
 const ON_LINE: f64 = 1e-3;
 
+/// A roll lever under this share of an engine's pitch and yaw lever is no way to roll.
+const ROLL_LEVER_SHARE: f64 = 0.01;
 /// Where `engine` is mounted from the centre of mass `center` (see
 /// [`MassProperties::center_of_mass`]) on a vessel whose base is `base` up the assembly
 /// frame, vessel axes, m.
@@ -185,12 +199,22 @@ pub fn torque_authority(propulsion: &Propulsion, center_of_mass: DVec3) -> DVec3
             let r = lever(e, base, center_of_mass);
             let arm = |axis| lever_arm(e, r, axis).length();
             // One on the line rolls nothing (as `actuate` swings it).
-            let roll = arm(DVec3::Z);
-            let roll = if roll > ON_LINE { roll } else { 0.0 };
+            let roll = rolls(e, r).map_or(0.0, |arm| arm.length());
             e.thrust * gimbal_range(e).sin() * DVec3::new(arm(DVec3::X), arm(DVec3::Y), roll)
         })
         .sum();
     gimbal + DVec3::splat(wheel_torque(propulsion))
+}
+
+/// How an engine `r` from the centre of mass swings to roll the vessel, if it rolls it at all:
+/// not on the centre of mass's line, nor so near it that its roll is nothing to its pitch and
+/// yaw. A command to roll with such a lever would take all of its gimbal for next to no roll, and
+/// leave it none to steer with.
+fn rolls(engine: &Engine, r: DVec3) -> Option<DVec3> {
+    let roll = lever_arm(engine, r, DVec3::Z);
+    let steers =
+        (lever_arm(engine, r, DVec3::X).length()).max(lever_arm(engine, r, DVec3::Y).length());
+    (roll.length() > ON_LINE && roll.length() > ROLL_LEVER_SHARE * steers).then_some(roll)
 }
 
 /// Swivel the engines and drive the reaction wheels for `command` (−1..1 about each
@@ -216,8 +240,7 @@ pub fn actuate(
         let steer = |axis| lever_arm(engine, r, axis);
         let mut tilt = steer(DVec3::X).normalize_or_zero() * command.x
             + steer(DVec3::Y).normalize_or_zero() * command.y;
-        let roll = steer(DVec3::Z);
-        if roll.length() > ON_LINE {
+        if let Some(roll) = rolls(engine, r) {
             tilt += roll.normalize() * command.z;
         }
         if tilt.length_squared() > 1.0 {
@@ -769,10 +792,15 @@ mod tests {
         let one = stage(&[], 0.0, 1000.0, 2.0, 10.0);
         let p = propulsion(vec![one.clone(), one]);
         let m = mass_properties(&p);
-        assert!(close(m.center_of_mass.z, 10.0, 1e-12));
-        // Two cylinders, each 5 m from the common centre.
-        let each = 1000.0 * (0.25 + 100.0 / 12.0) + 1000.0 * 25.0;
-        assert!(close(m.inertia.diagonal().x, 2.0 * each, 1e-12));
+        // Two cylinders with the ring that lets go between them, its mass out of the lower.
+        let ring = crate::parts::SeparationRing::of(2.0, 1000.0);
+        let rise = DVec3::Z * (10.0 + ring.height);
+        let want = Mass::cylinder(1000.0 - ring.mass, 1.0, 10.0)
+            + Mass::tube(ring.mass, 1.0, ring.height).placed(DVec3::Z * 10.0, DQuat::IDENTITY)
+            + Mass::cylinder(1000.0, 1.0, 10.0).placed(rise, DQuat::IDENTITY);
+        assert!(close(m.center_of_mass.z, want.center.z, 1e-3));
+        let about = want.inertia_about(want.center).col(0).x;
+        assert!(close(m.inertia.diagonal().x, about, 1e-3 * about));
     }
 
     #[test]
@@ -893,6 +921,26 @@ mod tests {
     /// A sideways engine (thrust along +X) at the tail, 7 m below the centre of mass: it pushes
     /// the vessel sideways, which turns it about Y (the offset), and its gimbal swings the
     /// thrust across X, so it can pitch about X but has nothing to pitch about Y or roll with.
+    /// An engine a few millimetres off the centre of mass's line, with a long lever to steer
+    /// with, spends nothing on roll: roll would take all its gimbal for next to no torque.
+    #[test]
+    fn an_engine_nearly_on_the_line_keeps_its_gimbal_for_pitch() {
+        let mut p = propulsion(vec![stage(&["K-1 Vacuum"], 0.0, 1000.0, 2.0, 10.0)]);
+        p.engines[0].thrust = 100_000.0;
+        let base = p.parts().base();
+        let mount = p.engines[0].mount - DVec3::Z * base;
+        // Five millimetres off, 10 m above the engine.
+        let com = mount + DVec3::new(0.005, 0.0, 10.0);
+        assert_eq!(torque_authority(&p, com).z, 0.0);
+        actuate(&mut p, com, DVec3::new(1.0, 0.0, 1.0));
+        let pitch = p.engines[0].deflection.y;
+        let range = p.engines[0].def.gimbal_range.to_radians();
+        assert!((pitch.abs() - range).abs() < 1e-9, "{pitch} of {range}");
+        // A real cluster's lever, a metre out, still rolls.
+        let far = mount + DVec3::new(1.0, 0.0, 10.0);
+        assert!(torque_authority(&p, far).z > 0.0);
+    }
+
     #[test]
     fn a_sideways_engine_pushes_and_turns_across_its_own_axis() {
         let mut p = propulsion(vec![stage(&["K-1 Vacuum"], 0.0, 5_000.0, 3.7, 14.0)]);

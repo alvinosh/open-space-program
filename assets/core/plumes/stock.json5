@@ -145,6 +145,7 @@
     temperature: 2700,
     smoke: [0.75, 0.74, 0.72],
     haze: 0.8,
+    trail: 0.3,
   },
   {
     // For an engine nothing above fits (fluorine, chlorine trifluoride, a new propellant):

@@ -155,15 +155,17 @@ pub fn legs(propulsion: &Propulsion) -> Vec<Leg> {
     let base = DVec3::Z * tree.base();
     let mut legs = Vec::new();
     for part in tree.parts() {
-        if let PartKind::Gear(def) = &part.kind {
-            legs.extend(
-                Leg::at(def, part.position - base, part.rotation)
-                    .into_iter()
-                    .map(|leg| Leg {
-                        part: Some(part.id),
-                        ..leg
-                    }),
-            );
+        for kind in &part.kinds {
+            if let PartKind::Gear(def) = kind {
+                legs.extend(
+                    Leg::at(def, part.position - base, part.rotation)
+                        .into_iter()
+                        .map(|leg| Leg {
+                            part: Some(part.id),
+                            ..leg
+                        }),
+                );
+            }
         }
     }
     legs
@@ -444,7 +446,7 @@ mod tests {
             assert!((leg.direction - DVec3::NEG_Z).length() < 1e-9);
             assert!(leg.roll.dot(leg.direction).abs() < 1e-9);
             let part = p.parts().get(leg.part.unwrap()).unwrap();
-            assert!(matches!(part.kind, PartKind::Gear(_)));
+            assert!(part.is(|k| matches!(k, PartKind::Gear(_))));
         }
         // A quarter turn about the strut turns the way it rolls a quarter.
         let (a, b) = (legs(&ahead)[0].roll, legs(&turned)[0].roll);

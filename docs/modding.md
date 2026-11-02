@@ -78,6 +78,7 @@ parts of it instead.
 | `rcs` | RCS blocks (four nozzles each) | `mass` (kg), `thrust` (N per nozzle, vacuum), `isp_vac`/`isp_sl` (s), `propellants: { Name: mass ratio }`, `model` |
 | `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), optional `top_diameter` (m, a third of `diameter` by default), `model`, `nodes` (see below) |
 | `craft` | Vessels | `parts`, each a `template` or a `shape` with `components`, held `on` another; optional `sequences`; see [Craft](#craft) and [Staging](#staging) |
+| `ground_stations` | Dishes that talk to vessels | `body`, `latitude`, `longitude`, `dish` (m), `noise` (K) |
 | `launch_sites` | Launch sites | Position, `heading`, optional `pad`, `roads` and `runway`; see [Launch sites](#launch-sites) |
 | `scenarios` | New-game setups | `name` and `description` (shown in the main menu, which lists scenarios in load order); `start: { type: "LaunchSite", site: "<id>" }`, `{ type: "Runway", site: "<id>" }` (at the start of the site's runway, on its wheels), `{ type: "Flight", body, latitude, longitude, altitude, heading, speed, climb }` (in the air, nose along the flight path, wings level; degrees, metres and m/s) or `{ type: "Orbit", body, periapsis_altitude, apoapsis_altitude, inclination, longitude_of_ascending_node, argument_of_periapsis, mean_anomaly }` (degrees, from the body's equator; `plane: "<body>"` instead takes the plane of a body that orbits it, like the Moon; `spin: [pitch, yaw, roll]` starts it turning, °/s); optional `others` and `target`; optional `goals`, `fail` and `ordered` (see [Missions](#missions)); `OSP_SCENARIO=<id>` starts one without the menu |
 | `tutorials` | Guided runs over a scenario | `scenario`, `name`, `description` and `steps`; see [Tutorials](#tutorials) |
@@ -126,11 +127,16 @@ engine, pod, RCS block or reaction wheel) or a `shape` with what it is made of a
       components: [{ container: {} }],
       nodes: [{ name: "seat", position: [0, 0, 0], direction: [0, 0, 1] }] },
     { id: "capsule", on: "cabin.seat", template: "C-1 Capsule" },
-    // The booster hangs under it by its top, which lets go.
-    { id: "booster", on: "cabin.bottom", by: "top",
+    // A ring hangs under it by its top, which lets go: a decoupler is a part of its own.
+    { id: "ring", name: "Decoupler", on: "cabin.bottom", by: "top",
+      shape: { ring: { diameter: 1.8, height: 0.072, thickness: 0.036 } },
+      structure: { mass: 20 },
+      components: [{ decoupler: { node: "top" } }] },
+    // The booster hangs under the ring, and they leave together.
+    { id: "booster", on: "ring.bottom", by: "top",
       shape: { shell: { bottom_diameter: 1.8, sections: [{ length: 12 }], cap_bottom: true } },
       structure: { mass: 600 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      components: [{ container: {} }],
       nodes: [{ name: "engine", position: [0, 0, 0], direction: [0, 0, -1] },
               { name: "tank", position: [0, 0, 0], direction: [0, 0, 1] }] },
     { id: "engine", on: "booster.engine", by: "top", template: "K-1 Booster" },
@@ -151,27 +157,38 @@ engine, pod, RCS block or reaction wheel) or a `shape` with what it is made of a
 - `paint`: how it looks; see [Paint](#paint).
 
 How parts were placed (one by one, with symmetry, as a cluster) leaves no trace: two
-craft with the same parts in the same places are the same craft. The physics still
-gathers parts into stages: each stage is the parts between joints that let go (a
-decoupler's), with one body, a container standing upright whose `bottom` node is as wide
-as the stage and whose `top` node is where a stage above stands. The root's stage stands on
-the vessel's axis. A stage hangs under the one holding it, on the same axis, or beside it
-anywhere round it (a radial booster); engines, tanks and pods go anywhere on their stage
-and may point any way (see below), so a cluster is laid out by its nodes' positions. Engines burn once armed if no stage hangs under
-theirs. Each engine and RCS block draws from the tanks propellant can reach it from: through
-joints at nodes (not on surfaces), and across a decoupler only if its `crossfeed` is on; the
-tanks it reaches give in proportion to what they hold, so they drain together. A craft the
-stages cannot hold is refused with what it lacks.
+craft with the same parts in the same places are the same craft. Any part can stand anywhere,
+turned any way, and do any number of things: a tank with thrusters on it is a tank and an RCS
+block, and weighs once. The physics gathers parts into stages: each stage is the parts between
+joints that let go (a decoupler's). Its body is what the stage's place and size are read from:
+the lowest container or tank standing upright on the axis of the part the joint holds, or else
+the container nearest the joint, or else the part the joint holds, whatever it is. Any other
+container is one more part of it. A stage hangs under the one holding it, on the same axis, or
+beside it anywhere round it (a radial booster), and may stand at an angle; several may hang
+from one, and those not next down the stack go as a stage beside it does. Engines burn once
+armed if no stage hangs under theirs. Each engine and RCS block draws from the tanks propellant
+can reach it from: through joints at nodes (not on surfaces), and across a decoupler only if
+its `crossfeed` is on; the tanks it reaches give in proportion to what they hold, so they drain
+together. A tank on the same part always feeds it. A shell whose `bottom` stands on a body's or
+a pod's `top`, straight up with one section, is stacked on the stage; a panel over part of a
+turn that lets go at its bottom, stands round its stage from its base and holds nothing is half
+of a fairing; anything else is plain structure that weighs and that the air sees. Two or more
+plain plates of solid metal evenly round a stage's base are its fin set, which can tear off;
+other plates are wings.
 
-A booster beside the core, held 12 m up the core's side by a decoupler on its own node:
+A booster beside the core, held 12 m up the core's side by a small round decoupler:
 
 ```json5
 { id: "core", shape: { shell: { bottom_diameter: 2.4, sections: [{ length: 22 }], cap_bottom: true } },
   components: [{ container: {} }],
   nodes: [{ name: "east", position: [1.2, 0, 12], direction: [1, 0, 0] }, ...] },
-{ id: "east", on: "core.east", by: "side",
+{ id: "east_decoupler", name: "Decoupler", on: "core.east", by: "top",
+  shape: { ring: { diameter: 0.4, height: 0.016, thickness: 0.2 } },
+  structure: { mass: 2 },
+  components: [{ decoupler: { node: "top" } }] },
+{ id: "east", on: "east_decoupler.bottom", by: "side",
   shape: { shell: { bottom_diameter: 1.6, sections: [{ length: 14 }], cap_bottom: true } },
-  components: [{ container: {} }, { decoupler: { node: "side" } }],
+  components: [{ container: {} }],
   nodes: [{ name: "side", position: [-0.8, 0, 12], direction: [-1, 0, 0] },
           { name: "engine", position: [0, 0, 0], direction: [0, 0, -1] }, ...] },
 { id: "east_engine", on: "east.engine", by: "top", template: "K-1 Booster" },
@@ -198,7 +215,9 @@ cargo run -p osp_sim --example convert_craft --release -- mods/my_mod/craft/*.js
 ```
 
 Each stage becomes a body with its parts on nodes of it where the stage puts them, its
-shells stacked on top, and a decoupler on its top that lets go of the stage above. The
+shells stacked on top, and a part named Decoupler on top of those that lets go of the stage
+above: a short aluminium ring at the upper stage's diameter, 4% of it tall, whose mass comes
+out of the stage's `structure_mass` (no more than a tenth of a stage with little). The
 converter keeps the comment at the top of a file. The Realism mod's generator writes its
 craft this way.
 
@@ -212,7 +231,7 @@ component works with any shape that has what it needs:
   name: "Equipment section",
   shape: { shell: { bottom_diameter: 3.05, sections: [{ length: 1.4, top_diameter: 2.3 }] } },
   structure: { material: "Al 2219-T87", thickness: 0.002 },   // or { mass: 180 }
-  components: [{ container: {} }, { decoupler: { node: "top" } }],
+  components: [{ container: {} }],
 }
 ```
 
@@ -220,7 +239,9 @@ component works with any shape that has what it needs:
   share that is material, 1 by default) and the `member_area` of trusses (m²); or a total
   `mass` spread the same way. Without either it weighs nothing.
 - `storage`: `type` (a tank type), `contents` (mass ratios), and the `cell` it fills when
-  the shape has more than one (a common bulkhead's `lower` and `upper`). Its walls are
+  the shape has more than one (a common bulkhead's `lower` and `upper`, two tanks on one
+  part). In a plain cylinder with √2:1 domes or a sphere, what it holds settles as such a
+  shape's does; in any other cell, in the cell as it really is. Its walls are
   sized as above.
 - `engine`, `rcs`, `reaction_wheel`: `{ id }` of a catalogue record. Their mass sits at the
   part's origin.
@@ -230,7 +251,47 @@ component works with any shape that has what it needs:
 - `decoupler`: the `node` it lets go of (which decides which side keeps the part), the
   `impulse` it pushes the two sides apart with (N·s; without one they part at 1 m/s), and
   `crossfeed`: propellant flows across it until it lets go (an asparagus stage, a booster
-  feeding its core).
+  feeding its core). Any part can carry one, but every craft that ships keeps it on a part of
+  its own named Decoupler (the part window, the staging tile and the Decouple button belong
+  to that part); only a fairing's panels let go by a hinge of their own. Naming any part of a
+  stage in a sequence's `decoupler:<part>` releases the joint its stage hangs from.
+- `fuel_cell`: `power` (W): burns hydrogen and oxygen from the tanks its part can reach, 0.042 kg
+  of hydrogen and eight times that of oxygen per kWh, for no more than the network asks.
+- `solar_array`: `area` (m²), `efficiency`, `degradation` (a share a year), and `tracking`, or else
+  its face is the part's +X. It makes what the sunlight gives it, nothing in a shadow.
+- `rtg`: `power` (W, new) and `half_life` (years, plutonium-238's if left out).
+- `electric_load`: `watts`, a `priority` (the lowest on a network is shed first, 5 if left out),
+  and `essential`: without it the vessel loses SAS and lights no engine.
+  Parts joined by joints that carry power are one network. What its sources and fuel cells make
+  and its batteries hold goes to the loads by priority; what is over charges the batteries.
+- `antenna`: `diameter` (m; an omni without one), `power` (W sent; it draws four times that) and
+  `data_rate` (bit/s). A link to a ground station (collection `ground_stations`: `body`, `latitude`,
+  `longitude`, `dish`, `noise`) or through another vessel needs a line of sight and a margin in
+  the budget. An uncrewed vessel with a radio and no link answers no commands, and a burn uploaded
+  to it arrives after the light delay. `{ antenna: { diameter, power, data_rate } }` under
+  `procedural` sizes one.
+- `avionics`: `controlled_mass` (kg), `power` (W) and `interplanetary`. With power it controls a
+  vessel of up to that mass, all its units added together; a level that is not `interplanetary`
+  works only in the Earth's sphere of influence. A vessel over what its units control has no
+  SAS, no gimbal, no burn executor and no triggers, and in a game so has one with no unit at all;
+  a crew flies up to 30 t by hand. A part with avionics or a crew can be flown from ("Control from
+  here" in its window): its axes are the player's. `{ avionics: { controlled_mass, technology, diameter, height, battery } }` under
+  `procedural` sizes one from an `avionics` record, with a battery of its own (kJ) if it says so.
+- `surface_layer`: a coat on the part's walls, an ablator, insulation, solar cells, a radiator's panel:
+  `material`, `thickness` (m), the `wall` it covers (by element name; every wall if left out) and
+  a `look`. It weighs area × thickness × density, adds nothing to the shape the air sees, and a
+  wall can carry any number. What has a shape of its own (a dish, a leg, a hinged panel) is a
+  part, not a layer.
+- `procedural`, on the part in place of a `template` or a `shape`: what it must do, and a sizer
+  makes the design each time the craft is built. `{ battery: { energy, technology, rechargeable } }`
+  (kJ, a `batteries` record): a solid drum as big as the energy takes at the technology's Wh/L,
+  weighing what its Wh/kg says. `{ fuel_cell: { power } }` (W, the Apollo CSM's 78 kg/kW),
+  `{ solar_array: { power, efficiency, tracking } }` (W at 1 AU, 3 kg/m²) and `{ rtg: { power } }`
+  (W, Voyager's 0.24 kg/W). `{ decoupler: { diameter, load, impulse, crossfeed } }` is a ring with
+  a wall for that load (N), which breaks past what it holds and takes the vessel with it.
+  `{ separation_motor: { impulse, burn_time } }` is a small solid motor, tank and engine on one
+  part; mounted `by: "top"` on a node facing down it pushes up, on one facing up it pushes down.
+  A requirement that cannot be met is an error with its reason.
 - `lifting_surface`: the part's loft is its planform and airfoil, with an optional
   `control` surface as on wings. The air sees each panel of the loft where the part puts
   it, whichever way it is turned: a wing, a tailplane or a fin is the same part, and a
@@ -451,7 +512,9 @@ side push off the axis. Lift, drag, stability and damping all follow from the sh
 - Wings are worked out in strips along their span, each at its own angle of attack: lift
   slope from the wing's aspect ratio and sweep, a stall at a lift coefficient set by the
   airfoil's thickness, flat-plate flow beyond, induced drag, and downwash from the wing
-  onto the tailplane behind it.
+  onto the tailplane behind it. A wing's camber and twist lift as more angle of attack:
+  1.8 rad per unit of camber over chord (a NACA section's zero-lift angle), and half the
+  twist, the mean along its span, for the whole wing.
 
 Engines sit in the wake of the base they stand on and are left out of the body, as are
 lifting surfaces and gear, which have their own models; fins, wing strips and gear inside
@@ -602,13 +665,17 @@ collar under the bell before the plume bursts into flame (the F-1's).
 Stages and staging are separate. A stage is a section of the vessel between
 joints that let go. An **activation** is one action on one part, and the player can do any
 of them by hand: right-click the part and press its button in the part window (Ignite on
-an engine, Decouple on a decoupler or the part under it, Jettison on a fairing panel, RCS
-on). What the stage key does is only a list of **sequences** of them, fired one per press,
+an engine, Cut off on one that is lit, Decouple on a decoupler or the part under it, Jettison
+on a fairing panel, RCS on). What the stage key does is only a list of **sequences** of them, fired one per press,
 each activation in the order listed (a sequence that decouples before it ignites is not the
 same as one that ignites first); one done by hand leaves its sequence. Each is by one part: `engines` (light an engine; it
-starts with the throttle once no stage hangs under its own), `decoupler` (release the
-joint a part hangs from, dropping it and everything hanging from it), `fairing` (jettison
-a fairing panel, which takes its mass with it) and `rcs` (switch RCS on). The sequence
+starts with the throttle once no stage hangs under its own), `cutoff` (shut an engine down,
+falling off its curve; it can be lit again if it has ignitions left), `throttle` (limit an
+engine's thrust, written `throttle:<part>:<percent>`, to that share of what the throttle asks),
+`decoupler` (release the joint a part hangs from, dropping it and everything hanging from it),
+`fairing` (jettison a fairing panel, which takes its mass with it) and `rcs` (switch RCS on), or
+whatever else a part's system offers, which the window, the sequences and the staging panel
+show by the name it gives. The sequence
 stack shows identical parts in a sequence (activations of one kind by parts of the same
 name, or engines of the same record) as one icon with a count, wherever on the vessel they
 are. The player rearranges them in flight: drag an icon to another sequence to move all
@@ -631,6 +698,15 @@ sequences: [
   ["decoupler:upper_stage"],
 ],
 ```
+
+#### Triggers
+
+`triggers` on a craft are what its avionics do by themselves, once each, whatever the stage key
+does: `{ time: 135, fire: ["cutoff:s_ic_engine_1"] }` (seconds after liftoff),
+`{ propellant_below: 0.01, of: "s_ic", fire: [...] }` (a share of the stage of that part) or
+`{ acceleration_above: 39, fire: [...] }` (m/s²), with `fire` written as a sequence's activations.
+What fires leaves any sequence that listed it. A trigger cannot let anything go, and only a vessel
+under control fires one.
 
 #### Ullage
 

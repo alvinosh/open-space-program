@@ -44,7 +44,7 @@
         ],
       },
       structure: { thickness: 0, mass: 35 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 15000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.3 },
         { name: "top", position: [0, 0, 4.9], direction: [0, 0, 1], size: 0.3 },
@@ -259,9 +259,18 @@
       },
     },
     {
+      id: "v_2_shell_1_decoupler",
+      name: "Decoupler",
+      on: "wac_corporal.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.3, height: 0.012, thickness: 0.006 } },
+      structure: { mass: 0.09 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "v_2_shell_1",
       name: "Nose cone",
-      on: "wac_corporal.bottom",
+      on: "v_2_shell_1_decoupler.bottom",
       by: "top",
       shape: {
         shell: {
@@ -270,8 +279,8 @@
         },
       },
       // The guidance compartment and the WAC Corporal's adapter, ahead of the tanks.
-      structure: { mass: 300 },
-      components: [{ decoupler: { node: "top" } }],
+      structure: { mass: 299.91 },
+      components: [],
       paint: {
         layers: [
           {

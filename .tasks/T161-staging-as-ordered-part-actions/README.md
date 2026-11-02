@@ -12,7 +12,7 @@ A stage is a list of actions on parts, done in the order listed when Space is pr
 
 ## Open
 
-- The buttons have not been tried in the running game (layout and picking only compile and the data is tested).
-- Order inside a stage can only be changed by moving activations between stages (a moved one goes last); no way to drag one up or down within a row yet (T158).
-- No Shut down action (an engine stays armed once lit), no parachutes.
-- "Sequence" is still the name in code and craft files; the UI could say "stage" but Section is already called stage in the sim.
+- A tile dropped on another goes just before it (`staging.drop_before`), within its row or from another, which is how to change the order inside a row. The buttons in a part's window are tried by the pointer script of T158 (`OSP_CAPTURE_STAGING_POINTER=1`): a right-click on a tile opens the window, its Decouple button does it and takes it out of its sequence.
+- Cut off by hand and in a sequence came with T026. Parachutes have no system yet, so there is nothing to offer.
+- "Sequence" stays the name in code and craft files and on the part window's row: Section is already called stage in the sim, and renaming either is not worth it now.
+- Not tried with a real mouse.

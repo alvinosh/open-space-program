@@ -9,13 +9,16 @@
 //
 // Reorder by dragging: a row anywhere on it, onto another row to put it there, or onto
 // the thin strip under a row (it lights up) to put it at exactly that place. A tile
-// dragged onto a row joins it, onto a strip it makes a sequence of its own there; drag its
-// count to move just one (to light a cluster's centre engine first, say). Right-click a tile
-// for the window of its first part: the tile takes the window's colour and every part of the
-// tile is tinted in it on the rocket (see part_info.json5). Under the pointer, a tile (or a
-// row's number) tints its parts blue on the rocket; the engines of the next row are teal. The + box at the
-// top adds an empty sequence (and takes a dropped tile as a new last one), x removes an
-// empty one.
+// dragged onto a row joins it at the end, onto a tile it goes just before that tile (a row does
+// its tiles left to right), onto a strip it makes a sequence of its own there; drag its
+// count to move just one. The arrows on a row move it up and down the stack too. To choose which
+// of a tile's parts goes first (a cluster's centre engine, say), use Split off in the part's own
+// window. Right-click a tile for the window of its first part: the tile takes the window's
+// colour and every part of the tile is tinted in it on the rocket (see part_info.json5).
+// Right-click anywhere else on a row for its menu (staging_menu.json5). Under the pointer, a
+// tile (or a row's number) tints its parts blue on the rocket; the engines of the next row are
+// teal. The + box at the top adds an empty sequence (and takes a dropped tile as a new last one),
+// x removes an empty one, and the arrow beside the + undoes the last change.
 // Under the stack, numbered after the last sequence fired, are the engines already lit,
 // their fuel draining, until their stage falls away. F8 shows and hides it.
 {
@@ -32,7 +35,10 @@
         widget: "row",
         class: "seq_row seq_add",
         drop: "staging.drop_new:$drag",
-        children: [{ widget: "button", class: "seq_glyph", text: "+", tooltip: "New sequence", action: "staging.add" }],
+        children: [
+          { widget: "button", class: "seq_glyph", text: "+", tooltip: "New sequence", action: "staging.add" },
+          { widget: "button", class: "seq_glyph", tooltip: "Undo the last change", visible: "vessel.can_undo_sequences", action: "staging.undo", children: [{ widget: "image", class: "seq_glyph_icon", image: "icons/undo.svg" }] },
+        ],
       },
       {
         id: "sequences",
@@ -53,6 +59,7 @@
                 active: "item.next",
                 drag: "seq:{item.index}",
                 drop: "staging.drop:$drag:{item.index}",
+                context: "staging.menu:{item.index}",
                 children: [
                   { widget: "label", class: "seq_number", active: "item.next", tooltip: "{item.caption}", hover: "part.group:{item.window}", text: "{item.number}" },
                   {
@@ -69,6 +76,7 @@
                             widget: "column",
                             class: "seq_item",
                             drag: "item:{item.seq}:{item.index}",
+                            drop: "staging.drop_before:$drag:{item.seq}:{item.index}",
                             tooltip: "{item.tip}",
                             context: "part.group:{item.window}",
                             hover: "part.group:{item.window}",
@@ -80,6 +88,9 @@
                               { widget: "image", class: "seq_icon", image: "icons/decoupler.svg", visible: "item.is_decoupler" },
                               { widget: "image", class: "seq_icon", image: "icons/fairing.svg", visible: "item.is_fairing" },
                               { widget: "image", class: "seq_icon", image: "icons/rcs.svg", visible: "item.is_rcs" },
+                              { widget: "image", class: "seq_icon", image: "icons/cutoff.svg", visible: "item.is_cutoff" },
+                              { widget: "image", class: "seq_icon", image: "icons/throttle.svg", visible: "item.is_throttle" },
+                              { widget: "image", class: "seq_icon", image: "icons/part.svg", visible: "item.is_other" },
                               { widget: "label", class: "seq_count", drag: "one:{item.seq}:{item.index}", text: "{item.count}", visible: "item.multiple" },
                               { widget: "bar", class: "seq_fuel", value: "item.fuel", color: "item.color", visible: "item.has_fuel" },
                             ],
@@ -89,6 +100,14 @@
                     ],
                   },
                   { widget: "button", class: "seq_glyph", text: "×", tooltip: "Remove", visible: "item.empty", action: "staging.remove:{item.index}" },
+                  {
+                    widget: "column",
+                    class: "seq_arrows",
+                    children: [
+                      { widget: "button", class: "seq_arrow", tooltip: "Fire it later", visible: "item.can_up", action: "staging.drop:seq:{item.index}:{item.above}", children: [{ widget: "image", class: "seq_arrow_icon", image: "icons/sequence_up.svg" }] },
+                      { widget: "button", class: "seq_arrow", tooltip: "Fire it sooner", visible: "item.can_down", action: "staging.drop:seq:{item.index}:{item.below}", children: [{ widget: "image", class: "seq_arrow_icon", image: "icons/sequence_down.svg" }] },
+                    ],
+                  },
                 ],
               },
             ],

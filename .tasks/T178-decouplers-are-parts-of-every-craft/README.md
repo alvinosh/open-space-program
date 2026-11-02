@@ -23,6 +23,15 @@ Today the stage converter (`staged.rs`) puts the `Decoupler` component on the to
 - A first try with a ring of zero height was refused ("a ring's height must be positive") and would not have been a decoupler: it has to have a size.
 - This is the representation; the physics of the joint (shock, break load, separation impulse) is T175, and the joint strength T051.
 
+## Done (2026-11-02)
+
+- Every shipped craft and assembly has a part named Decoupler at each joint that lets go (116 rings; radial boosters get a small solid pad). A test holds them to it (`every_joint_that_lets_go_is_a_decoupler_part`); fairing panels keep their own hinge.
+- `PartKind::Decoupler` is that part in the window (`is_decoupler`, with its size) and on its section's books. Staging releases the ring, and it leaves with the stage under it.
+- A ring that only lets go hands on the question of whether engines can fire through a joint to what stands on it (`Propulsion::vented`), so a truss under it still vents.
+- The converter writes the ring too, and `from_staged` lays it out the same way (`SeparationRing`).
+- Mass: `3.39 d³` kg (thin aluminium), out of the part's own structure mass or the heaviest in its stage, and a tenth of that where the rule asks for more than half of what there is. Where a part has no structure mass to take it from (the Delta II's PAM-D and GEMs, Ariane 5's and the Titan III's strap-ons) it adds up to 5 kg.
+- The goldens moved by the rings' height, as expected; masses and delta-v did not but for those few kilos (1.7e-3 at most, the PAM-D). The stack heights grow by 4% of each joint's diameter.
+
 ## Where it comes from
 
 - The user's feedback of 2026-11-01.

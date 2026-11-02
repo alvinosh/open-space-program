@@ -44,7 +44,7 @@
         ],
       },
       structure: { thickness: 0, mass: 890 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 280000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.9 },
         { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 1.45 },
@@ -164,9 +164,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "pam_d_decoupler",
+      name: "Decoupler",
+      on: "mars_pathfinder.bottom",
+      by: "top",
+      shape: { ring: { diameter: 2.9, height: 0.116, thickness: 0.058 } },
+      structure: { mass: 5 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "pam_d",
       name: "PAM-D",
-      on: "mars_pathfinder.bottom",
+      on: "pam_d_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -208,7 +217,7 @@
           },
         ],
       },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.25 },
         { name: "top", position: [0, 0, 2], direction: [0, 0, 1], size: 1.25 },
@@ -240,9 +249,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "delta_k_decoupler",
+      name: "Decoupler",
+      on: "pam_d.bottom",
+      by: "top",
+      shape: { ring: { diameter: 1.25, height: 0.05, thickness: 0.025 } },
+      structure: { mass: 6.62 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "delta_k",
       name: "Delta-K",
-      on: "pam_d.bottom",
+      on: "delta_k_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -281,8 +299,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 570 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 563.38 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.44 },
         { name: "top", position: [0, 0, 6], direction: [0, 0, 1], size: 1.25 },
@@ -322,9 +340,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "thor_elt_decoupler",
+      name: "Decoupler",
+      on: "delta_k.bottom",
+      by: "top",
+      shape: { ring: { diameter: 2.44, height: 0.0976, thickness: 0.0488 } },
+      structure: { mass: 49.25 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "thor_elt",
       name: "Thor ELT",
-      on: "delta_k.bottom",
+      on: "thor_elt_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -367,8 +394,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 2880.1 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 2830.85 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2.44 },
         { name: "top", position: [0, 0, 26.1], direction: [0, 0, 1], size: 2.44 },
@@ -460,11 +487,20 @@
       paint: { color: [0.019999999552965164, 0.14000000059604645, 0.20000000298023224] },
     },
     {
+      id: "gem_1_body_decoupler",
+      name: "Decoupler",
+      on: "thor_elt.gem_1",
+      by: "top",
+      roll: -20,
+      shape: { ring: { diameter: 0.254, height: 0.0102, thickness: 0.127 } },
+      structure: { mass: 0.06 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "gem_1_body",
       name: "GEM-40",
-      on: "thor_elt.gem_1",
+      on: "gem_1_body_decoupler.bottom",
       by: "attach",
-      roll: -20,
       shape: {
         compound: [
           {
@@ -510,7 +546,7 @@
         ],
       },
       structure: { thickness: 0, mass: 0 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
         { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
@@ -542,11 +578,20 @@
       paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
     },
     {
+      id: "gem_2_body_decoupler",
+      name: "Decoupler",
+      on: "thor_elt.gem_2",
+      by: "top",
+      roll: -59.99999999999999,
+      shape: { ring: { diameter: 0.254, height: 0.0102, thickness: 0.127 } },
+      structure: { mass: 0.06 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "gem_2_body",
       name: "GEM-40",
-      on: "thor_elt.gem_2",
+      on: "gem_2_body_decoupler.bottom",
       by: "attach",
-      roll: -59.99999999999999,
       shape: {
         compound: [
           {
@@ -592,7 +637,7 @@
         ],
       },
       structure: { thickness: 0, mass: 0 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
         { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
@@ -624,11 +669,20 @@
       paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
     },
     {
+      id: "gem_3_body_decoupler",
+      name: "Decoupler",
+      on: "thor_elt.gem_3",
+      by: "top",
+      roll: -100,
+      shape: { ring: { diameter: 0.254, height: 0.0102, thickness: 0.127 } },
+      structure: { mass: 0.06 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "gem_3_body",
       name: "GEM-40 (air-lit)",
-      on: "thor_elt.gem_3",
+      on: "gem_3_body_decoupler.bottom",
       by: "attach",
-      roll: -100,
       shape: {
         compound: [
           {
@@ -674,7 +728,7 @@
         ],
       },
       structure: { thickness: 0, mass: 0 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
         { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
@@ -706,11 +760,20 @@
       paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
     },
     {
+      id: "gem_4_body_decoupler",
+      name: "Decoupler",
+      on: "thor_elt.gem_4",
+      by: "top",
+      roll: -140,
+      shape: { ring: { diameter: 0.254, height: 0.0102, thickness: 0.127 } },
+      structure: { mass: 0.06 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "gem_4_body",
       name: "GEM-40",
-      on: "thor_elt.gem_4",
+      on: "gem_4_body_decoupler.bottom",
       by: "attach",
-      roll: -140,
       shape: {
         compound: [
           {
@@ -756,7 +819,7 @@
         ],
       },
       structure: { thickness: 0, mass: 0 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
         { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
@@ -788,11 +851,20 @@
       paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
     },
     {
+      id: "gem_5_body_decoupler",
+      name: "Decoupler",
+      on: "thor_elt.gem_5",
+      by: "top",
+      roll: -180,
+      shape: { ring: { diameter: 0.254, height: 0.0102, thickness: 0.127 } },
+      structure: { mass: 0.06 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "gem_5_body",
       name: "GEM-40",
-      on: "thor_elt.gem_5",
+      on: "gem_5_body_decoupler.bottom",
       by: "attach",
-      roll: -180,
       shape: {
         compound: [
           {
@@ -838,7 +910,7 @@
         ],
       },
       structure: { thickness: 0, mass: 0 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
         { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
@@ -870,11 +942,20 @@
       paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
     },
     {
+      id: "gem_6_body_decoupler",
+      name: "Decoupler",
+      on: "thor_elt.gem_6",
+      by: "top",
+      roll: -220,
+      shape: { ring: { diameter: 0.254, height: 0.0102, thickness: 0.127 } },
+      structure: { mass: 0.06 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "gem_6_body",
       name: "GEM-40 (air-lit)",
-      on: "thor_elt.gem_6",
+      on: "gem_6_body_decoupler.bottom",
       by: "attach",
-      roll: -220,
       shape: {
         compound: [
           {
@@ -920,7 +1001,7 @@
         ],
       },
       structure: { thickness: 0, mass: 0 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
         { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
@@ -952,11 +1033,20 @@
       paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
     },
     {
+      id: "gem_7_body_decoupler",
+      name: "Decoupler",
+      on: "thor_elt.gem_7",
+      by: "top",
+      roll: -260,
+      shape: { ring: { diameter: 0.254, height: 0.0102, thickness: 0.127 } },
+      structure: { mass: 0.06 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "gem_7_body",
       name: "GEM-40",
-      on: "thor_elt.gem_7",
+      on: "gem_7_body_decoupler.bottom",
       by: "attach",
-      roll: -260,
       shape: {
         compound: [
           {
@@ -1002,7 +1092,7 @@
         ],
       },
       structure: { thickness: 0, mass: 0 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
         { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
@@ -1034,11 +1124,20 @@
       paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
     },
     {
+      id: "gem_8_body_decoupler",
+      name: "Decoupler",
+      on: "thor_elt.gem_8",
+      by: "top",
+      roll: -300,
+      shape: { ring: { diameter: 0.254, height: 0.0102, thickness: 0.127 } },
+      structure: { mass: 0.06 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "gem_8_body",
       name: "GEM-40",
-      on: "thor_elt.gem_8",
+      on: "gem_8_body_decoupler.bottom",
       by: "attach",
-      roll: -300,
       shape: {
         compound: [
           {
@@ -1084,7 +1183,7 @@
         ],
       },
       structure: { thickness: 0, mass: 0 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
         { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },
@@ -1116,11 +1215,20 @@
       paint: { color: [0.9200000166893005, 0.9200000166893005, 0.8999999761581421] },
     },
     {
+      id: "gem_9_body_decoupler",
+      name: "Decoupler",
+      on: "thor_elt.gem_9",
+      by: "top",
+      roll: -340,
+      shape: { ring: { diameter: 0.254, height: 0.0102, thickness: 0.127 } },
+      structure: { mass: 0.06 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "gem_9_body",
       name: "GEM-40 (air-lit)",
-      on: "thor_elt.gem_9",
+      on: "gem_9_body_decoupler.bottom",
       by: "attach",
-      roll: -340,
       shape: {
         compound: [
           {
@@ -1166,7 +1274,7 @@
         ],
       },
       structure: { thickness: 0, mass: 0 },
-      components: [{ container: {} }, { decoupler: { node: "attach" } }],
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.016 },
         { name: "top", position: [0, 0, 13], direction: [0, 0, 1] },

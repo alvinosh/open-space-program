@@ -10,15 +10,18 @@
 //! with the root stays the vessel and the other flies on as a vessel of its own.
 //!
 //! Craft are plain parts ([`crate::craft`]); [`PartTree::from_craft`] gathers them into
-//! the stages the physics runs on ([`crate::propulsion::Section`]) until it runs on parts:
-//! each stage is the parts between joints that let go, and each part becomes the kind of
-//! part a stage knows ([`PartKind`]). [`PartTree::from_staged`] builds one from a stack of
-//! stages instead, for the stage converter ([`crate::staged`]).
+//! release groups ([`crate::propulsion::Section`]): each is the parts between joints that let
+//! go, one of them its body ([`StageBody`]), and each part does what its components say
+//! ([`PartKind`], any number of them) at the pose it has.
+//! [`PartTree::from_staged`] builds one from a stack of stages instead, for the stage
+//! converter ([`crate::staged`]).
 //!
 //! Positions are in the assembly frame: metres from the base of the craft's bottom stage,
 //! +Z up the stack to the nose, +X the pilot's right and +Y their feet, as in the vessel
 //! frame. Parts keep their positions when the tree splits.
 
+#[cfg(test)]
+mod free_form;
 mod gather;
 
 use std::{collections::BTreeMap, sync::Arc};
@@ -38,6 +41,39 @@ use crate::{
     shell::Shell,
     structure::{FinSet, Tank},
 };
+
+/// The ring a stage lets go of the one above with, until T175 sizes it from its load.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct SeparationRing {
+    pub diameter: f64,
+    pub height: f64,
+    /// Of its wall, m.
+    pub thickness: f64,
+    /// Out of the stage's structure, kg.
+    pub mass: f64,
+}
+
+impl SeparationRing {
+    /// A short aluminium ring `diameter` across, on a stage with `structure_mass` of structure
+    /// to take it from: no more than a tenth of a stage with little.
+    pub fn of(diameter: f64, structure_mass: f64) -> Self {
+        // π d · 0.04 d · 0.01 d of aluminium at 2700 kg/m³.
+        let wanted = 3.39 * diameter.powi(3);
+        let mass = if structure_mass > 2.0 * wanted {
+            wanted
+        } else {
+            0.1 * structure_mass
+        };
+        // In the round figures a craft file would hold.
+        let round = |x: f64, to: f64| (x * to).round() / to;
+        Self {
+            diameter,
+            height: round(0.04 * diameter, 1e4),
+            thickness: round(0.02 * diameter, 1e4),
+            mass: round(mass, 100.0),
+        }
+    }
+}
 
 /// Names a part for as long as it exists, through splits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -135,18 +171,24 @@ pub struct Joint {
     pub connector: usize,
 }
 
+/// What a stage's place and size are read from: the part that is its body, usually the shell
+/// that carries the rest of it. Its frame's origin is the stage's base.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StageBody {
+    pub diameter: f64,
+    pub length: f64,
+}
+
+/// One thing a part does on its stage.
 #[derive(Debug, Clone)]
 pub enum PartKind {
-    /// A stage's body: the shell and the structure, avionics or payload inside it, which
-    /// carries the rest of the stage. Its frame's origin is the stage base.
-    Hull {
-        /// kg, spread along it.
-        structure_mass: f64,
+    /// A ring that holds its stage under the one above until released; its origin is its
+    /// base.
+    Decoupler {
+        mass: f64,
         diameter: f64,
-        length: f64,
+        height: f64,
     },
-    /// Holds its stage under the one above until released; massless.
-    Decoupler,
     /// A procedural tank; its origin is its base.
     Tank(Tank),
     /// Propellant ratios normalised. Its origin is the gimbal pivot, nozzle down −Z.
@@ -175,18 +217,45 @@ pub enum PartKind {
         length: f64,
         shells: Vec<Shell>,
     },
-    /// Structure with nothing to do on its stage but weigh `mass` (kg): a folded leg, a
-    /// payload's bus.
+    /// Structure with nothing to do on its stage but weigh `mass` (kg): a hull, a folded leg,
+    /// a payload's bus.
     Structure {
         mass: f64,
     },
+}
+
+impl PartKind {
+    /// Book `mass` (kg) to it on its section. A fin carries its whole set, which weighs what
+    /// the set does.
+    fn weigh(&mut self, mass: f64) {
+        match self {
+            PartKind::Fins(_) => {}
+            PartKind::Tank(tank) => tank.dry_mass = mass,
+            PartKind::Engine(def) => def.mass = mass,
+            PartKind::Rcs(def) => def.mass = mass,
+            PartKind::ReactionWheel(def) => def.mass = mass,
+            PartKind::Pod(def) => def.mass = mass,
+            PartKind::Wing(def) => def.mass = mass,
+            PartKind::Gear(def) => def.mass = mass,
+            PartKind::Shell(shell) => shell.mass = mass,
+            PartKind::Decoupler { mass: own, .. }
+            | PartKind::FairingHalf { mass: own, .. }
+            | PartKind::Structure { mass: own } => {
+                *own = mass;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Part {
     pub id: PartId,
     pub name: String,
-    pub kind: PartKind,
+    /// What it does, one entry for each thing (a tank with thrusters is two). The first
+    /// carries the part's whole mass on its section's books.
+    pub kinds: Vec<PartKind>,
+    /// It is its stage's body.
+    pub body: Option<StageBody>,
     /// The craft file stage it belongs to ([`crate::propulsion::Section::id`]), while the
     /// physics runs on stages.
     pub stage: usize,
@@ -204,6 +273,15 @@ pub struct Part {
 }
 
 impl Part {
+    /// Whether one of the things it does is `what`.
+    pub fn is(&self, what: fn(&PartKind) -> bool) -> bool {
+        self.kinds.iter().any(what)
+    }
+
+    pub fn is_fairing_half(&self) -> bool {
+        self.is(|kind| matches!(kind, PartKind::FairingHalf { .. }))
+    }
+
     /// Where connector `index` is in the assembly frame.
     pub fn connector_position(&self, index: usize) -> DVec3 {
         self.position + self.rotation * self.connectors[index].position
@@ -250,13 +328,15 @@ impl PartTree {
                 stage: def.name.clone(),
                 problem,
             };
+            let ring = craft
+                .stages
+                .get(stage + 1)
+                .map(|above| SeparationRing::of(above.diameter, def.structure_mass));
             let hull = tree.add(
                 stage,
                 def.name.clone(),
-                PartKind::Hull {
-                    structure_mass: def.structure_mass,
-                    diameter: def.diameter,
-                    length: def.length,
+                PartKind::Structure {
+                    mass: def.structure_mass - ring.map_or(0.0, |r| r.mass),
                 },
                 DVec3::Z * base,
                 DQuat::IDENTITY,
@@ -266,6 +346,10 @@ impl PartTree {
                     Connector::surface("surface", Capabilities::PLUMBED),
                 ],
             );
+            tree.part_mut(hull).body = Some(StageBody {
+                diameter: def.diameter,
+                length: def.length,
+            });
             hulls.push(hull);
             // Each of the stage's parts is mounted on the hull, turned `rotation`.
             let mut mount = |name: String, kind, position, rotation: DQuat, carries| {
@@ -499,21 +583,25 @@ impl PartTree {
                 stack.push(tree.add(stage, name, kind, bottom, DQuat::IDENTITY, connectors));
             }
             stacks.push(stack);
-            if !on_top {
+            if let Some(ring) = ring {
                 let top = DVec3::Z * (base + height);
                 decouplers.push(tree.add(
                     stage,
                     "Decoupler".into(),
-                    PartKind::Decoupler,
+                    PartKind::Decoupler {
+                        mass: ring.mass,
+                        diameter: ring.diameter,
+                        height: ring.height,
+                    },
                     top,
                     DQuat::IDENTITY,
                     vec![
-                        Connector::fixed("top", DVec3::ZERO, Capabilities::RELEASE),
+                        Connector::fixed("top", DVec3::Z * ring.height, Capabilities::RELEASE),
                         Connector::fixed("bottom", DVec3::ZERO, Capabilities::POWER),
                     ],
                 ));
             }
-            base += height;
+            base += height + ring.map_or(0.0, |r| r.height);
         }
         for (stage, (&hull, shells)) in hulls.iter().zip(&stacks).enumerate() {
             // The stage's stack, bottom first: (part, its top connector, its bottom one).
@@ -568,7 +656,8 @@ impl PartTree {
         self.parts.push(Part {
             id,
             name,
-            kind,
+            kinds: vec![kind],
+            body: None,
             stage,
             position,
             rotation,
@@ -709,12 +798,29 @@ impl PartTree {
         groups.into_values().collect()
     }
 
+    /// Parts that electricity and data can pass between, through joints that carry them, each
+    /// group in id order. Every part is in one, if only on its own.
+    pub fn power_groups(&self) -> Vec<Vec<PartId>> {
+        let mut groups: BTreeMap<PartId, Vec<PartId>> = BTreeMap::new();
+        for part in &self.parts {
+            // In a tree, the part a group reaches highest up names it.
+            let mut top = part;
+            while self.joint_capabilities(top.id).is_some_and(|c| c.power)
+                && let Some(parent) = self.parent(top.id)
+            {
+                top = parent;
+            }
+            groups.entry(top.id).or_default().push(part.id);
+        }
+        groups.into_values().collect()
+    }
+
     /// Where the stack stands: the base of its lowest hull (or of a fairing half on its
     /// own), m up the assembly frame.
     pub fn base(&self) -> f64 {
         self.parts
             .iter()
-            .filter(|p| matches!(p.kind, PartKind::Hull { .. } | PartKind::FairingHalf { .. }))
+            .filter(|p| p.body.is_some() || p.is_fairing_half())
             .map(|p| p.position.z)
             .reduce(f64::min)
             .unwrap_or(0.0)
@@ -736,56 +842,63 @@ impl PartTree {
         // What is mounted on a hull stands out from it.
         let (hull_radius, hull_base) = match self.parent(part.id) {
             Some(Part {
-                kind: PartKind::Hull { diameter, .. },
+                body: Some(body),
                 position,
                 ..
-            }) => (diameter / 2.0, position.z),
+            }) => (body.diameter / 2.0, position.z),
             _ => (0.0, part.position.z),
         };
-        let local = match &part.kind {
-            PartKind::Hull {
-                structure_mass,
-                diameter,
-                length,
-                ..
-            } => Mass::cylinder(*structure_mass, diameter / 2.0, *length),
-            PartKind::Decoupler => Mass::ZERO,
-            PartKind::Tank(tank) => match tank.shape {
-                TankShape::Cylinder => Mass::tube(tank.dry_mass, tank.radius, tank.length),
-                TankShape::Sphere => Mass::spherical_shell(tank.dry_mass, tank.radius)
-                    .placed(DVec3::Z * tank.radius, DQuat::IDENTITY),
-            },
-            PartKind::Engine(def) => Mass::point(def.mass, DVec3::ZERO),
-            PartKind::Rcs(def) => Mass::point(def.mass, DVec3::ZERO),
-            PartKind::ReactionWheel(def) => Mass::point(def.mass, DVec3::ZERO),
-            PartKind::Pod(def) => Mass::frustum(
-                def.mass,
-                def.diameter / 2.0,
-                def.top_diameter() / 2.0,
-                def.height,
-            ),
-            PartKind::Shell(shell) => {
-                let wall = shell.profile(SHELL_STEPS);
-                let local: Vec<_> = wall.iter().map(|&(z, r)| (z - shell.base, r)).collect();
-                Mass::revolved_shell(shell.mass, &local)
-            }
-            PartKind::FairingHalf {
-                mass,
-                radius,
-                length,
-                ..
-            } => Mass::half_tube(*mass, *radius, *length),
-            PartKind::Fins(fins) => return fin_mass(fins, hull_radius, hull_base),
-            PartKind::Wing(def) => return wing_mass(def, hull_radius, hull_base),
-            PartKind::Gear(def) => {
-                return Leg::of(def, hull_radius, hull_base)
-                    .iter()
-                    .map(|leg| Mass::point(leg.mass, leg.axle(leg.length / 2.0)))
-                    .sum();
-            }
-            PartKind::Structure { .. } => Mass::ZERO,
-        };
-        local.placed(part.position, part.rotation)
+        part.kinds
+            .iter()
+            .map(|kind| {
+                let local = match kind {
+                    PartKind::Decoupler {
+                        mass,
+                        diameter,
+                        height,
+                    } => Mass::tube(*mass, diameter / 2.0, *height),
+                    PartKind::Tank(tank) => match tank.shape {
+                        TankShape::Cylinder => Mass::tube(tank.dry_mass, tank.radius, tank.length),
+                        TankShape::Sphere => Mass::spherical_shell(tank.dry_mass, tank.radius)
+                            .placed(DVec3::Z * tank.radius, DQuat::IDENTITY),
+                    },
+                    PartKind::Engine(def) => Mass::point(def.mass, DVec3::ZERO),
+                    PartKind::Rcs(def) => Mass::point(def.mass, DVec3::ZERO),
+                    PartKind::ReactionWheel(def) => Mass::point(def.mass, DVec3::ZERO),
+                    PartKind::Pod(def) => Mass::frustum(
+                        def.mass,
+                        def.diameter / 2.0,
+                        def.top_diameter() / 2.0,
+                        def.height,
+                    ),
+                    PartKind::Shell(shell) => {
+                        let wall = shell.profile(SHELL_STEPS);
+                        let local: Vec<_> =
+                            wall.iter().map(|&(z, r)| (z - shell.base, r)).collect();
+                        Mass::revolved_shell(shell.mass, &local)
+                    }
+                    PartKind::FairingHalf {
+                        mass,
+                        radius,
+                        length,
+                        ..
+                    } => Mass::half_tube(*mass, *radius, *length),
+                    PartKind::Fins(fins) => return fin_mass(fins, hull_radius, hull_base),
+                    PartKind::Wing(def) => return wing_mass(def, hull_radius, hull_base),
+                    PartKind::Gear(def) => {
+                        return Leg::of(def, hull_radius, hull_base)
+                            .iter()
+                            .map(|leg| Mass::point(leg.mass, leg.axle(leg.length / 2.0)))
+                            .sum();
+                    }
+                    // A body's is spread along it.
+                    PartKind::Structure { mass } => part.body.map_or(Mass::ZERO, |body| {
+                        Mass::cylinder(*mass, body.diameter / 2.0, body.length)
+                    }),
+                };
+                local.placed(part.position, part.rotation)
+            })
+            .sum()
     }
 }
 
@@ -979,11 +1092,16 @@ mod tests {
         // power but no propellant.
         let upper = named(&tree, "Upper Stage");
         let booster = named(&tree, "Booster");
-        assert_eq!(tree.parent(upper.id).unwrap().id, root.id);
-        assert_eq!(tree.parent(booster.id).unwrap().id, upper.id);
-        for stage in [upper, booster] {
-            let held = tree.joint_capabilities(stage.id).unwrap();
+        for (stage, holder) in [(upper, root), (booster, upper)] {
+            // A stage hangs from the one above by a ring of its own, and the ring by the joint
+            // that lets go.
+            let ring = tree.parent(stage.id).unwrap();
+            assert_eq!(ring.name, "Decoupler");
+            assert_eq!(ring.stage, stage.stage);
+            assert_eq!(tree.parent(ring.id).unwrap().id, holder.id);
+            let held = tree.joint_capabilities(ring.id).unwrap();
             assert!(held.release && held.power && !held.fluid, "{held:?}");
+            assert!(!tree.joint_capabilities(stage.id).unwrap().release);
         }
         // The stage's parts are on its body.
         let on_booster: Vec<_> = tree.children(booster.id).map(|p| p.name.as_str()).collect();
@@ -1060,17 +1178,24 @@ mod tests {
         let mut tree = tree(&craft);
         assert_well_joined(&tree, "adapted");
         let (upper, adapter) = (named(&tree, "Upper Stage").id, named(&tree, "Adapter"));
-        // Payload ← adapter ← upper stage: the adapter stands on the upper stage's body,
-        // the payload on the adapter, and the adapter lets go of the payload.
-        assert_eq!(adapter.position.z, 56.0);
-        assert_eq!(named(&tree, "Payload").position.z, 57.5);
+        // Payload ← ring ← adapter ← upper stage: the adapter stands on the upper stage's body,
+        // the ring on the adapter, the payload on the ring, and the ring lets go of the payload.
+        // Each ring is 4% of the diameter of the stage above.
+        assert!((adapter.position.z - (56.0 + 0.148)).abs() < 1e-9);
+        assert!((named(&tree, "Payload").position.z - (56.148 + 1.5 + 0.12)).abs() < 1e-9);
         let adapter = adapter.id;
         assert_eq!(tree.parent(upper).unwrap().id, adapter);
-        assert!(tree.joint_capabilities(adapter).unwrap().release);
+        let ring = tree.parent(adapter).unwrap().id;
+        assert!(tree.joint_capabilities(ring).unwrap().release);
+        assert!(!tree.joint_capabilities(adapter).unwrap().release);
         // The payload's flat-tipped nose stands on the root.
         let nose = named(&tree, "Nose");
         assert_eq!(tree.parent(nose.id).unwrap().id, tree.root().unwrap().id);
-        assert!(matches!(&nose.kind, PartKind::Shell(s) if s.top_radius == 0.3));
+        assert!(
+            nose.kinds
+                .iter()
+                .any(|k| matches!(k, PartKind::Shell(s) if s.top_radius == 0.3))
+        );
 
         let p = Propulsion::from_craft(&craft, &catalog()).unwrap();
         let (upper_stage, payload) = (&p.sections[1], &p.sections[2]);
@@ -1082,7 +1207,7 @@ mod tests {
         let stages: f64 = p.sections.iter().map(|s| s.dry_mass()).sum();
         assert!((p.parts().dry_mass().mass - stages).abs() < 1e-9 * stages);
         // The adapter falls away with its stage.
-        let below = tree.release(adapter).unwrap();
+        let below = tree.release(ring).unwrap();
         assert!(below.parts().iter().any(|p| p.name == "Adapter"));
         assert!(tree.parts().iter().all(|p| p.name != "Adapter"));
     }
@@ -1095,7 +1220,7 @@ mod tests {
             !p.parts()
                 .parts()
                 .iter()
-                .any(|p| matches!(p.kind, PartKind::Shell(_)))
+                .any(|p| p.is(|k| matches!(k, PartKind::Shell(_))))
         );
         let payload = p.sections.last().unwrap();
         assert_eq!(payload.shells.len(), 1);
@@ -1125,19 +1250,14 @@ mod tests {
             let stages = tree.parts().iter().map(|p| p.stage + 1).max().unwrap();
             // One group per stage of more than its body, holding all of it but its fairing.
             let plumbed = (0..stages)
-                .filter(|&s| {
-                    tree.stage(s)
-                        .filter(|p| !matches!(p.kind, PartKind::FairingHalf { .. }))
-                        .count()
-                        > 1
-                })
+                .filter(|&s| tree.stage(s).filter(|p| !p.is_fairing_half()).count() > 1)
                 .count();
             assert_eq!(groups.len(), plumbed, "{}", craft.id);
             for group in &groups {
                 let stage = tree.get(group[0]).unwrap().stage;
                 let plumbed: Vec<PartId> = tree
                     .stage(stage)
-                    .filter(|p| !matches!(p.kind, PartKind::FairingHalf { .. }))
+                    .filter(|p| !p.is_fairing_half())
                     .map(|p| p.id)
                     .collect();
                 assert_eq!(*group, plumbed, "{} stage {stage}", craft.id);
@@ -1189,8 +1309,10 @@ mod tests {
         assert!(tree.release(engine).is_none());
         assert!(tree.release(tree.root().unwrap().id).is_none());
 
-        let below = tree.release(upper).unwrap();
-        assert_eq!(below.root().unwrap().id, upper);
+        assert!(tree.release(upper).is_none());
+        let ring = tree.parent(upper).unwrap().id;
+        let below = tree.release(ring).unwrap();
+        assert_eq!(below.root().unwrap().id, ring);
         // The booster went along with the upper stage; the payload stayed.
         assert!(below.stage(0).next().is_some() && below.stage(1).next().is_some());
         assert!(tree.stage(0).next().is_none() && tree.stage(1).next().is_none());
@@ -1214,7 +1336,7 @@ mod tests {
         let hull_stages = |tree: &PartTree| -> Vec<usize> {
             tree.parts()
                 .iter()
-                .filter(|p| matches!(p.kind, PartKind::Hull { .. }))
+                .filter(|p| p.body.is_some())
                 .map(|p| p.stage)
                 .collect()
         };

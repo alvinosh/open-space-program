@@ -42,7 +42,7 @@
         ],
       },
       structure: { thickness: 0, mass: 2180 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 400000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 4.2 },
         { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 2.1 },
@@ -210,7 +210,7 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 1470 },
+      structure: { thickness: 0, mass: 1218.84 },
       components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
@@ -234,12 +234,21 @@
       },
     },
     {
-      id: "centaur_shell_1",
-      name: "Adapter",
+      id: "centaur_shell_1_decoupler",
+      name: "Decoupler",
       on: "mro.bottom",
       by: "top",
-      shape: { shell: { bottom_diameter: 3.05, sections: [{ length: 1 }] } },
+      shape: { ring: { diameter: 4.2, height: 0.168, thickness: 0.084 } },
+      structure: { mass: 251.16 },
       components: [{ decoupler: { node: "top" } }],
+    },
+    {
+      id: "centaur_shell_1",
+      name: "Adapter",
+      on: "centaur_shell_1_decoupler.bottom",
+      by: "top",
+      shape: { shell: { bottom_diameter: 3.05, sections: [{ length: 1 }] } },
+      components: [],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     { id: "centaur_engine_1", on: "centaur.engine_1", by: "top", template: "RL10A-4-2N" },
@@ -260,9 +269,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "common_core_booster_decoupler",
+      name: "Decoupler",
+      on: "centaur.bottom",
+      by: "top",
+      shape: { ring: { diameter: 3.05, height: 0.122, thickness: 0.061 } },
+      structure: { mass: 96.18 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "common_core_booster",
       name: "Common Core Booster",
-      on: "centaur.bottom",
+      on: "common_core_booster_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -311,8 +329,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 9680 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 9583.82 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.81 },
         { name: "top", position: [0, 0, 32.5], direction: [0, 0, 1], size: 3.05 },

@@ -35,7 +35,7 @@
         ],
       },
       structure: { thickness: 0, mass: 8800 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 680000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.7 },
         { name: "top", position: [0, 0, 4], direction: [0, 0, 1], size: 3.7 },
@@ -45,9 +45,18 @@
     },
     { id: "crew_dragon_pod", on: "crew_dragon.pod", template: "Rodan Command Pod" },
     {
+      id: "trunk_decoupler",
+      name: "Decoupler",
+      on: "crew_dragon.bottom",
+      by: "top",
+      shape: { ring: { diameter: 3.7, height: 0.148, thickness: 0.074 } },
+      structure: { mass: 171.71 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "trunk",
       name: "Trunk",
-      on: "crew_dragon.bottom",
+      on: "trunk_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -79,8 +88,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 1400 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 1228.29 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.7 },
         { name: "top", position: [0, 0, 3.7], direction: [0, 0, 1], size: 3.7 },
@@ -96,9 +105,18 @@
       },
     },
     {
+      id: "second_stage_decoupler",
+      name: "Decoupler",
+      on: "trunk.bottom",
+      by: "top",
+      shape: { ring: { diameter: 3.7, height: 0.148, thickness: 0.074 } },
+      structure: { mass: 171.71 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "second_stage",
       name: "Second Stage",
-      on: "trunk.bottom",
+      on: "second_stage_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -144,8 +162,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 2450 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 2278.29 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.66 },
         { name: "top", position: [0, 0, 13.8], direction: [0, 0, 1], size: 3.66 },
@@ -212,9 +230,18 @@
       paint: { color: [0.7990000247955322, 0.7990000247955322, 0.7802000045776367] },
     },
     {
+      id: "first_stage_decoupler",
+      name: "Decoupler",
+      on: "second_stage.bottom",
+      by: "top",
+      shape: { ring: { diameter: 3.66, height: 0.1464, thickness: 0.0732 } },
+      structure: { mass: 166.2 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "first_stage",
       name: "First Stage",
-      on: "second_stage.bottom",
+      on: "first_stage_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -260,8 +287,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 14070 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 13903.8 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.66 },
         { name: "top", position: [0, 0, 41.2], direction: [0, 0, 1], size: 3.66 },

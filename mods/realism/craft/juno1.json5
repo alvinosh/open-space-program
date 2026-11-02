@@ -39,7 +39,7 @@
           },
         ],
       },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 37000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.16 },
         { name: "top", position: [0, 0, 2], direction: [0, 0, 1], size: 0.16 },
@@ -84,9 +84,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "three_sergeants_decoupler",
+      name: "Decoupler",
+      on: "explorer_1.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.16, height: 0.0064, thickness: 0.0032 } },
+      structure: { mass: 0.01 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "three_sergeants",
       name: "Three Sergeants",
-      on: "explorer_1.bottom",
+      on: "three_sergeants_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -128,8 +137,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 20.3 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 20.29 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.4 },
         { name: "top", position: [0, 0, 1.2], direction: [0, 0, 1], size: 0.16 },
@@ -190,9 +199,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "eleven_sergeants_decoupler",
+      name: "Decoupler",
+      on: "three_sergeants.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.4, height: 0.016, thickness: 0.008 } },
+      structure: { mass: 0.22 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "eleven_sergeants",
       name: "Eleven Sergeants",
-      on: "three_sergeants.bottom",
+      on: "eleven_sergeants_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -231,8 +249,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 152.2 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 151.98 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.8 },
         { name: "top", position: [0, 0, 1.2], direction: [0, 0, 1], size: 0.4 },
@@ -379,9 +397,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "redstone_decoupler",
+      name: "Decoupler",
+      on: "eleven_sergeants.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.8, height: 0.032, thickness: 0.016 } },
+      structure: { mass: 1.74 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "redstone",
       name: "Redstone",
-      on: "eleven_sergeants.bottom",
+      on: "redstone_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -430,8 +457,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 2790 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 2788.26 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.78 },
         { name: "top", position: [0, 0, 19.8], direction: [0, 0, 1], size: 0.8 },

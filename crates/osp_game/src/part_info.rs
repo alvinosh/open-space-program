@@ -66,13 +66,9 @@ pub struct ShowsPart {
 /// them (it is gathered from the tree in this order).
 pub fn stage_parts(tree: &PartTree, stage: usize, kind: fn(&PartKind) -> bool) -> Vec<PartId> {
     tree.stage(stage)
-        .filter(|p| kind(&p.kind))
+        .filter(|p| p.is(kind))
         .map(|p| p.id)
         .collect()
-}
-
-pub fn is_fins(kind: &PartKind) -> bool {
-    matches!(kind, PartKind::Fins(_))
 }
 
 fn is_tank(kind: &PartKind) -> bool {
@@ -213,16 +209,130 @@ fn publish_parts(
     }
 }
 
-/// What a part is and what it is doing, as fields under `prefix`. `type` says which of
-/// the per-kind fields there are.
+/// The `is_<type>` field a part doing `kind` shows that section of its window by, and what the
+/// window calls it.
+fn kind_label(kind: &PartKind, body: bool) -> (&'static str, &'static str) {
+    match kind {
+        PartKind::Structure { .. } if body => ("hull", "Stage hull"),
+        PartKind::Structure { .. } => ("structure", "Structure"),
+        PartKind::Decoupler { .. } => ("decoupler", "Decoupler"),
+        PartKind::Tank(_) => ("tank", "Tank"),
+        PartKind::Engine(_) => ("engine", "Engine"),
+        PartKind::Rcs(_) => ("rcs", "RCS thrusters"),
+        PartKind::ReactionWheel(_) => ("wheel", "Reaction wheel"),
+        PartKind::Pod(_) => ("pod", "Crew pod"),
+        PartKind::Fins(_) => ("fins", "Fin"),
+        PartKind::Wing(_) => ("wing", "Wing"),
+        PartKind::Gear(_) => ("gear", "Landing gear"),
+        PartKind::Shell(_) => ("shell", "Shell"),
+        PartKind::FairingHalf { .. } => ("fairing", "Fairing half"),
+    }
+}
+
+/// What a part is and what it is doing, as fields under `prefix`. `type` is the first thing
+/// it does; `is_<type>` says which of the per-kind fields there are, one for each thing.
 fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
     let mut set = |field: &str, value: UiValue| data.set(format!("{prefix}{field}"), value);
+    let tree = vessel.propulsion.parts();
+    let stages = &vessel.propulsion.sections;
+    let stage = stages.iter().find(|s| s.id == part.stage);
+    let labels: Vec<_> = (part.kinds.iter())
+        .map(|kind| kind_label(kind, part.body.is_some()))
+        .collect();
+    let type_ = labels.first().map_or("structure", |(type_, _)| type_);
+    let label = (labels.iter().map(|(_, label)| *label))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mass = part.built.as_ref().map_or(0.0, |built| built.mass.mass);
+    let catalog = part.kinds.iter().find_map(|kind| match kind {
+        PartKind::Engine(def) => Some(&def.catalog),
+        PartKind::Pod(def) => Some(&def.catalog),
+        _ => None,
+    });
+    let title = catalog.and_then(|c| c.title.as_deref());
+    set("name", title.unwrap_or(&part.name).into());
+    set("type", type_.into());
+    for (type_, _) in &labels {
+        set(&format!("is_{type_}"), true.into());
+    }
+    set("kind", label.into());
+    set("mass", mass.into());
+    set("vessel", vessel.name.as_str().into());
+    set("stage", stage.map_or("", |s| s.name.as_str()).into());
+    let text = |pick: fn(&osp_sim::data::CatalogInfo) -> &Option<String>| {
+        catalog.and_then(|c| pick(c).as_deref()).unwrap_or_default()
+    };
+    set("manufacturer", text(|c| &c.manufacturer).into());
+    set("description", text(|c| &c.description).into());
+    // What can be done to it now: a button each, `do` being the `part.do` action's argument.
+    let actions: Vec<_> = (vessel.part_actions(part.id).into_iter())
+        .map(|a| {
+            let target = tree.get(a.part()).map_or("", |p| p.name.as_str());
+            let label = if a.is_decoupler() && a.part() != part.id {
+                format!("{} {target}", a.verb())
+            } else {
+                a.verb().to_string()
+            };
+            let id = format!("{}:{}:{}", vessel.id().0, a.kind(), a.part().0);
+            record([("label", label.into()), ("do", id.into())])
+        })
+        .collect();
+    set("has_actions", (!actions.is_empty()).into());
+    set("actions", actions.into());
+    // Which sequence fires it, and whether it could have one of its own: this is how to choose
+    // which of a group of identical parts goes first.
+    let sequences = &vessel.propulsion.sequences;
+    let holds = |seq: &Vec<Activation>| seq.iter().any(|a| a.part() == part.id);
+    let place = sequences.list().iter().position(holds);
+    set("sequence", place.map_or(0, |i| sequences.number(i)).into());
+    let shared = place.is_some_and(|i| sequences.list()[i].iter().any(|a| a.part() != part.id));
+    set("can_split", shared.into());
+    set("split", format!("{}:{}", vessel.id().0, part.id.0).into());
+
+    if let Some(body) = part.body {
+        set("diameter", body.diameter.into());
+        set("length", body.length.into());
+    }
+    for kind in &part.kinds {
+        publish_kind(&mut set, vessel, part, kind);
+    }
+    // What its systems are built as and are doing, whatever they are.
+    let systems = vessel.propulsion.systems.on(part.id);
+    let rows: Vec<_> = (systems.iter())
+        .flat_map(|system| system.parameters().into_iter().chain(system.state()))
+        .map(|reading| {
+            let value = format!("{} {}", number(reading.value), reading.unit);
+            record([
+                ("label", reading.label.into()),
+                ("value", value.trim().into()),
+            ])
+        })
+        .collect();
+    set("has_systems", (!rows.is_empty()).into());
+    set("systems", rows.into());
+}
+
+/// A figure as a window shows it: no more digits than it has.
+fn number(value: f64) -> String {
+    if value == value.round() {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.2}")
+    }
+}
+
+/// The per-kind fields of one thing `part` does.
+fn publish_kind(
+    set: &mut impl FnMut(&str, UiValue),
+    vessel: &Vessel,
+    part: &Part,
+    kind: &PartKind,
+) {
     let tree = vessel.propulsion.parts();
     let stages = &vessel.propulsion.sections;
     // Its stage's place in the stack, bottom first, and its place among the stage's parts
     // of its kind: where the stage keeps its state.
     let index = stages.iter().position(|s| s.id == part.stage);
-    let stage = index.map(|i| &stages[i]);
     let nth = |kind: fn(&PartKind) -> bool| {
         stage_parts(tree, part.stage, kind)
             .iter()
@@ -243,70 +353,14 @@ fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
         });
         (load.map(|l| l.fraction).into(), mode.into())
     };
-    let kind = &part.kind;
-
-    let (type_, label, mass) = match kind {
-        PartKind::Hull { structure_mass, .. } => ("hull", "Stage hull", *structure_mass),
-        PartKind::Decoupler => ("decoupler", "Decoupler", 0.0),
-        PartKind::Tank(tank) => ("tank", "Tank", tank.dry_mass),
-        PartKind::Engine(def) => ("engine", "Engine", def.mass),
-        PartKind::Rcs(def) => ("rcs", "RCS thrusters", def.mass),
-        PartKind::ReactionWheel(def) => ("wheel", "Reaction wheel", def.mass),
-        PartKind::Pod(def) => ("pod", "Crew pod", def.mass),
-        // Each fin is a part of its own, carrying the whole set.
-        PartKind::Fins(fins) => {
-            let parts = stage_parts(tree, part.stage, is_fins).len().max(1);
-            ("fins", "Fin", fins.mass / parts as f64)
-        }
-        PartKind::Wing(def) => {
-            let halves = if def.mirror { 2.0 } else { 1.0 };
-            ("wing", "Wing", def.mass / halves)
-        }
-        PartKind::Gear(def) => ("gear", "Landing gear", def.mass),
-        PartKind::Shell(shell) => ("shell", "Shell", shell.mass),
-        PartKind::FairingHalf { mass, .. } => ("fairing", "Fairing half", *mass),
-        PartKind::Structure { mass } => ("structure", "Structure", *mass),
-    };
-    let catalog = match kind {
-        PartKind::Engine(def) => Some(&def.catalog),
-        PartKind::Pod(def) => Some(&def.catalog),
-        _ => None,
-    };
-    let title = catalog.and_then(|c| c.title.as_deref());
-    set("name", title.unwrap_or(&part.name).into());
-    set("type", type_.into());
-    set("kind", label.into());
-    set("mass", mass.into());
-    set("vessel", vessel.name.as_str().into());
-    set("stage", stage.map_or("", |s| s.name.as_str()).into());
-    let text = |pick: fn(&osp_sim::data::CatalogInfo) -> &Option<String>| {
-        catalog.and_then(|c| pick(c).as_deref()).unwrap_or_default()
-    };
-    set("manufacturer", text(|c| &c.manufacturer).into());
-    set("description", text(|c| &c.description).into());
-    // What can be done to it now: a button each, `do` being the `part.do` action's argument.
-    let actions: Vec<_> = (vessel.part_actions(part.id).into_iter())
-        .map(|a| {
-            let target = tree.get(a.part()).map_or("", |p| p.name.as_str());
-            let label = match a {
-                Activation::Decoupler(p) if p != part.id => format!("{} {target}", a.verb()),
-                _ => a.verb().to_string(),
-            };
-            let id = format!("{}:{}:{}", vessel.id().0, a.kind(), a.part().0);
-            record([("label", label.into()), ("do", id.into())])
-        })
-        .collect();
-    set("has_actions", (!actions.is_empty()).into());
-    set("actions", actions.into());
-
     match kind {
-        PartKind::Hull {
-            diameter, length, ..
+        PartKind::Decoupler {
+            diameter, height, ..
         } => {
             set("diameter", (*diameter).into());
-            set("length", (*length).into());
+            set("length", (*height).into());
         }
-        PartKind::Decoupler | PartKind::Structure { .. } => {}
+        PartKind::Structure { .. } => {}
         PartKind::Tank(tank) => {
             let size = match tank.shape {
                 TankShape::Cylinder => {
@@ -373,6 +427,7 @@ fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
             set("isp_vac", def.isp_vac.into());
             set("isp_sl", def.isp_sl.into());
             set("min_throttle", def.min_throttle.into());
+            set("solid", def.is_solid().into());
             let gimbal = engine.map_or(0.0, |e| e.deflection.length().to_degrees());
             set("gimbal", gimbal.into());
             set("gimbal_range", def.gimbal_range.into());

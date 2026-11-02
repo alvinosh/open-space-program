@@ -12,8 +12,8 @@ The Kestrel sailplane had no wheels and could only be released in the air. It no
 
 ## Open
 
-- Without the dolly there is no way to land: a vessel with no gear that touches the ground faster than 10 m/s is a crash, so a glider that dropped its wheels cannot come home. A belly landing on the hull (skid) is the next step; keep the dolly to land on wheels.
-- A solid still stops when the throttle goes to 0 and needs the throttle up before it lights (T154: a solid cannot be throttled or shut down).
+- A vessel with wings and no wheels now lands on its belly: once it is on its way down near the ground the hull skids as it would behind a set of gear, and touching faster than 5 m/s into the ground is still a crash. The glider test goes on from the release to a touchdown and a stop.
+- A solid no longer stops at throttle 0 (T154).
 - The booster and dolly are plain shells; no models. The S-1 draws the K-0's model at a third of its size.
 - Not flown by hand in the running game (only the scripted capture).
 

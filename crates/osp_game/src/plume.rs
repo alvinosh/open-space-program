@@ -70,6 +70,10 @@ pub struct PlumeDef {
     /// and the sunlit cloud around a plume in thin air.
     #[serde(default)]
     pub haze: f32,
+    /// Share of the exhaust's mass that stays in the air as smoke (a solid's alumina), behind
+    /// the plume as a column; 0: it leaves none (see `crate::exhaust_trail`).
+    #[serde(default)]
+    pub trail: f32,
     /// What it is the exhaust of: engines without a `plume` of their own get the look whose
     /// propellants they all burn (the one that names the most). An entry is one propellant
     /// or several alternatives joined by `|` (`"Kerosene|RP-1"`: either will do); a cooled
@@ -727,6 +731,7 @@ mod tests {
             temperature: 2300.0,
             smoke: soot_colour(),
             haze: 0.3,
+            trail: 0.0,
             propellants: vec!["Kerosene".into(), "LqdOxygen".into()],
             kinds: Vec::new(),
             fallback: false,

@@ -123,7 +123,7 @@ fn fly(w: &mut World) -> Flight {
             inclination: INCLINATION,
             altitude: ORBIT_ALTITUDE,
             clear: 130.0,
-            turn_end: 160_000.0,
+            turn_end: 150_000.0,
             turn_shape: 0.5,
             max_aoa: 6.0,
             vacuum_q: 100.0,
@@ -201,15 +201,63 @@ fn altitude_and_speed(w: &World) -> (f64, f64) {
     )
 }
 
+/// When the real S-IC shut its centre F-1 down, s after ignition.
+const CENTRE_CUTOFF: f64 = 135.0;
+
 fn s_ic(w: &mut World, ascent: &mut Ascent) -> Flight {
     w.phase("s_ic");
     let mut since = 0.0;
+    // The instrument unit cuts the centre engine at 2 min 15 s, as the real one did.
+    let centre = w.fly(CENTRE_CUTOFF + 5.0, |w| {
+        ascent.steer(w);
+        w.met() >= CENTRE_CUTOFF + 0.1
+    });
+    w.must(
+        Area::Propulsion,
+        "Flies to the centre engine's cutoff",
+        centre,
+        "",
+    )?;
+    let running = (w.vessel().propulsion.engines.iter())
+        .filter(|e| e.running)
+        .count();
+    w.within(
+        Area::Avionics,
+        "F-1s running after the instrument unit's cutoff",
+        running as f64,
+        4.0..=4.0,
+        "",
+        "Apollo 11: the centre F-1 shut down at 2 min 15 s",
+    );
+    // And the outboard ones when the sensors in the tanks say so, with some left in them.
     let cutoff = w.fly(300.0, |w| {
         ascent.steer(w);
         since += 0.02;
         dry(w) && since > 1.0 && w.t() > 30.0
     });
     w.must(Area::Propulsion, "S-IC burns out", cutoff, "")?;
+    let residual = w.vessel().propulsion.sections[0].id;
+    let left = w.vessel().propulsion.propellant_mass(residual);
+    w.within(
+        Area::Avionics,
+        "Propellant the instrument unit leaves in the S-IC",
+        left / 1e3,
+        5.0..=30.0,
+        "t",
+        "cut off on the low-level sensors",
+    );
+    let unit = (w.vessel().propulsion.parts().parts().iter())
+        .find(|p| p.name == "Instrument Unit")
+        .and_then(|p| p.built.as_ref())
+        .map_or(0.0, |built| built.mass.mass);
+    w.within(
+        Area::Avionics,
+        "Mass of the instrument unit, from what it controls",
+        unit,
+        1800.0..=2300.0,
+        "kg",
+        "the real one, about 2 t",
+    );
     let met = w.met();
     let (altitude, speed) = altitude_and_speed(w);
     w.within(
@@ -272,24 +320,15 @@ fn s_ic(w: &mut World, ascent: &mut Ascent) -> Flight {
             format!("most loaded part at {:.0}% of its strength", load * 100.0),
         );
     }
-    if let Some((g, at)) = w.peak("s_ic", |s| s.g) {
-        if g <= 4.6 {
-            w.within(
-                Area::Propulsion,
-                "Peak acceleration",
-                g,
-                3.0..=4.6,
-                "g",
-                "Apollo 11: 3.9 g",
-            );
-        } else {
-            w.known(
-                Area::Staging,
-                "No centre engine cutoff: acceleration runs on past 4 g",
-                "T026",
-                format!("{g:.1} g at {at:.0} s. The real S-IC shut its centre F-1 down at 2 min 15 s to hold 3.9 g (Apollo 11); a sequence can light engines but not cut one."),
-            );
-        }
+    if let Some((g, _)) = w.peak("s_ic", |s| s.g) {
+        w.within(
+            Area::Propulsion,
+            "Peak acceleration",
+            g,
+            3.0..=4.0,
+            "g",
+            "Apollo 11: 3.9 g",
+        );
     }
     Ok(())
 }
@@ -652,26 +691,9 @@ fn coast_out(w: &mut World) -> Flight {
     Ok(())
 }
 
-/// Flies the first planned burn, a few m/s: by RCS push where small (a pilot's trim, which
-/// is exact), with the burn executor otherwise, and writes down what it delivered.
+/// Flies the first planned burn, a few m/s, with the burn executor (the RCS for a small one),
+/// and writes down what it delivered.
 fn fly_correction(w: &mut World, planned: f64) -> Flight {
-    if planned <= SMALL_BURN {
-        let given = planning::rcs_trim(w, 120.0);
-        w.must(
-            Area::Control,
-            "The RCS trim points and fires",
-            given.is_some(),
-            "",
-        )?;
-        let given = given.unwrap();
-        w.check(
-            Area::Propulsion,
-            "An RCS trim delivers the planned Δv",
-            (given - planned).abs() < 0.1,
-            format!("planned {planned:.2} m/s, gave {given:.2} m/s"),
-        );
-        return Ok(());
-    }
     let off = planning::point_at_burn(w, 600.0, 600.0);
     w.within(
         Area::Control,
@@ -694,19 +716,16 @@ fn fly_correction(w: &mut World, planned: f64) -> Flight {
     // What the burn really did to the velocity, from the orbits either side of it.
     let (now, after) = (w.now(), w.vessel().orbit(&w.universe.system, w.now()));
     let flown = (after.state_at(now).velocity - orbit.state_at(now).velocity).length();
-    if (flown - planned).abs() > 0.3 {
-        w.known(
-            Area::Control,
-            "The burn executor does not deliver the planned Δv",
-            "T027",
-            format!("Planned {planned:.2} m/s, the velocity changed by {flown:.2} m/s. The 3 s RCS ullage push before ignition gives the stack speed that the executor never counts, so every burn overshoots by about {:.1} m/s: a 55 h coast turns that into {:.0} km at the Moon.", flown - planned, (flown - planned) * 55.0 * 3.6),
-        );
-    }
+    w.within(
+        Area::Control,
+        "The burn executor delivers the planned Δv",
+        flown - planned,
+        -0.1..=0.1,
+        "m/s over",
+        "",
+    );
     Ok(())
 }
-
-/// Burns up to this many m/s are made by RCS push.
-const SMALL_BURN: f64 = 6.0;
 
 /// Aims the trajectory at the Moon's `LUNAR_PERIAPSIS` and flies the correction, if it needs
 /// one.
@@ -866,8 +885,53 @@ fn lunar_orbit(w: &mut World) -> Flight {
     Ok(())
 }
 
+/// The link along the flight so far: it comes and goes as the stations turn under the vessel,
+/// goes behind the Moon, and is 1.3 s late from there.
+fn signal(w: &mut World) {
+    let (mut losses, mut behind, mut acquired) = (0, 0, 0);
+    let mut delay: f64 = 0.0;
+    let mut last = None;
+    for sample in &w.samples {
+        let linked = sample.link_margin.is_some();
+        if let Some(was) = last {
+            if was && !linked {
+                losses += 1;
+                behind += usize::from(sample.body == "Moon");
+            }
+            if !was && linked {
+                acquired += 1;
+            }
+        }
+        last = Some(linked);
+        if sample.body == "Moon" {
+            delay = delay.max(sample.link_delay.unwrap_or(0.0));
+        }
+    }
+    w.check(
+        Area::Comms,
+        "The signal is acquired and lost along the flight",
+        acquired > 0 && losses > 0,
+        format!("{acquired} acquisitions, {losses} losses by the end of lunar orbit"),
+    );
+    w.check(
+        Area::Comms,
+        "The signal is lost behind the Moon",
+        behind > 0,
+        format!("{behind} losses in the Moon's sphere of influence"),
+    );
+    w.within(
+        Area::Comms,
+        "Signal delay at the Moon",
+        delay,
+        1.2..=1.45,
+        "s",
+        "about 1.3 s each way",
+    );
+}
+
 /// What the real mission did next, and why the game cannot: each phase says what is missing.
 fn landing(w: &mut World) -> Flight {
+    signal(w);
     w.phase("descent");
     w.known(
         Area::Landing,
@@ -1082,6 +1146,44 @@ fn coast_home(w: &mut World) -> Flight {
     Ok(())
 }
 
+/// The power budget, just before the service module goes with the fuel cells: what they burned
+/// and what is left to burn. Only the command module's batteries are left after this.
+fn power_budget(w: &mut World) {
+    use osp_sim::systems::FuelCell;
+
+    let p = &w.vessel().propulsion;
+    let burned: f64 = p.systems.all::<FuelCell>().map(|(_, c)| c.hydrogen).sum();
+    let oxygen: f64 = p.systems.all::<FuelCell>().map(|(_, c)| c.oxygen).sum();
+    let left: f64 = p.tanks.iter().map(|t| t.held("LqdHydrogen")).sum();
+    let cells = p.systems.all::<FuelCell>().count();
+    let brownout = p.systems.brownout();
+    let days = w.met() / 86_400.0;
+    w.within(
+        Area::Power,
+        "Fuel cells at work to the end of the service module",
+        cells as f64,
+        3.0..=3.0,
+        "",
+        "Apollo 11: three, 1.4 kW each",
+    );
+    w.within(
+        Area::Power,
+        "Hydrogen the fuel cells burned",
+        burned,
+        5.0..=25.0,
+        "kg",
+        "of two tanks' 25 kg, on about 2 kW",
+    );
+    w.check(
+        Area::Power,
+        "The cryogenic tanks last the mission",
+        left > 0.0 && !brownout,
+        format!(
+            "{left:.1} kg of hydrogen left after {days:.1} days; {oxygen:.0} kg of oxygen burned"
+        ),
+    );
+}
+
 fn entry(w: &mut World) -> Flight {
     w.phase("entry");
     let earth = w.universe.system.find("Earth").unwrap();
@@ -1104,6 +1206,7 @@ fn entry(w: &mut World) -> Flight {
     w.sas(SasMode::Stability);
     w.fly(30.0, |_| false);
     let cm_mass = w.vessel().flight.mass;
+    power_budget(w);
     w.stage();
     w.fly(5.0, |_| false);
     w.within(
@@ -1141,6 +1244,21 @@ fn entry(w: &mut World) -> Flight {
         .rev()
         .find(|e| e.message.starts_with("Landed") || e.message.starts_with("Crashed"))
         .map(|e| e.message.clone());
+    // The batteries carried the command module from the service module's going to the ground.
+    {
+        use osp_sim::systems::Battery;
+        let p = &w.vessel().propulsion;
+        let held: f64 = p.systems.all::<Battery>().map(|(_, b)| b.charge).sum();
+        let full: f64 = p.systems.all::<Battery>().map(|(_, b)| b.capacity).sum();
+        let margin = if full > 0.0 { held / full } else { 0.0 };
+        let brownout = p.systems.brownout();
+        w.check(
+            Area::Power,
+            "The batteries see the command module down",
+            margin > 0.05 && !brownout,
+            format!("{:.0}% of {full:.0} kJ left", margin * 100.0),
+        );
+    }
     w.known(
         Area::Recovery,
         "No parachutes, no splashdown",

@@ -139,6 +139,7 @@ fn click(
 #[allow(clippy::too_many_arguments)]
 fn place(
     mut commands: Commands,
+    ui_scale: Res<UiScale>,
     sim: Res<Sim>,
     frame: Res<RenderFrame>,
     rig: Res<CameraRig>,
@@ -224,8 +225,8 @@ fn place(
             visibility.set_if_neq(Visibility::Hidden);
             continue;
         };
-        node.left = Val::Px(centre.x - COLUMN_PX / 2.0);
-        node.top = Val::Px(centre.y - half);
+        node.left = Val::Px(centre.x / ui_scale.0 - COLUMN_PX / 2.0);
+        node.top = Val::Px(centre.y / ui_scale.0 - half);
         visibility.set_if_neq(Visibility::Inherited);
         let color = if target == Some(Target::Body(body.id)) {
             TARGET_COLOR

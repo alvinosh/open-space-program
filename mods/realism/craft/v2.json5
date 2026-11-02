@@ -51,7 +51,7 @@
         ],
       },
       structure: { thickness: 0, mass: 880 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 16000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.65 },
         { name: "top", position: [0, 0, 12], direction: [0, 0, 1], size: 1.65 },

@@ -14,6 +14,7 @@ use crate::{
     component::{ComponentDef, PaintDef, StructureDef},
     geometry::{ShapeDef, preset::NodeDef},
     mission::GoalDef,
+    sizing::ProceduralDef,
     skip::*,
 };
 
@@ -48,6 +49,10 @@ pub struct BodyDef {
     pub orbit: Option<OrbitDef>,
     /// Linear RGB used until bodies get real textures.
     pub color: [f32; 3],
+    /// The share of the sunlight on it that it reflects (its Bond albedo); the rest it takes in
+    /// and radiates back as heat.
+    #[serde(default)]
+    pub albedo: f64,
 }
 
 /// IAU/WGCCRE rotation model, referenced to the ICRF (J2000 equator and equinox).
@@ -97,6 +102,8 @@ pub struct PartCatalog {
     pub pods: Vec<PodDef>,
     #[serde(default)]
     pub batteries: Vec<BatteryDef>,
+    #[serde(default)]
+    pub avionics: Vec<AvionicsDef>,
     /// Paint schemes the stage converter can give a stage.
     #[serde(default)]
     pub liveries: Vec<LiveryDef>,
@@ -272,6 +279,10 @@ pub struct WingDef {
     /// Degrees the leading edge turns towards the lifting side (up, for a wing).
     #[serde(default)]
     pub incidence: f64,
+    /// Degrees of angle of attack its camber and twist are worth: it lifts as if turned this
+    /// much more.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub camber_incidence: f64,
     /// Airfoil thickness over chord.
     #[serde(default = "default_wing_thickness")]
     pub thickness: f64,
@@ -550,6 +561,21 @@ pub enum TurbineExhaust {
 }
 
 impl EngineDef {
+    /// Whether it is a solid: it burns at full thrust until its grain is gone, whatever it is told.
+    pub fn is_solid(&self) -> bool {
+        self.kind.as_deref() == Some("solid")
+    }
+
+    /// How far the nozzle reaches out from its mount, m. Most of a solid's is sunk into the
+    /// case (its `length` is the whole of it), so only a short, wide stub shows.
+    pub fn nozzle_length(&self) -> f64 {
+        if self.is_solid() {
+            self.length.min(self.exit_diameter)
+        } else {
+            self.length
+        }
+    }
+
     /// Nozzle exit pressure at full thrust, Pa: the given one, or a guess from how much
     /// Isp the engine loses at sea level (sea-level engines exit near 1 atm, vacuum engines
     /// at about 1 kPa).
@@ -657,6 +683,30 @@ pub struct CraftDef {
     /// it the sequences are made from the stages: see `Sequences::default_for`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequences: Option<Vec<Vec<String>>>,
+    /// What its avionics do by themselves, once each, when the time comes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub triggers: Vec<TriggerDef>,
+}
+
+/// Something a powered avionics unit does by itself when one of its conditions comes true: a
+/// time, a propellant level or an acceleration limit, written as `sequences` writes activations.
+/// It cannot let anything go.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TriggerDef {
+    /// Seconds after liftoff.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time: Option<f64>,
+    /// When the stage of part `of` has this share of its propellant left.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propellant_below: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub of: Option<String>,
+    /// When the proper acceleration passes this, m/s².
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acceleration_above: Option<f64>,
+    /// `<kind>:<part id>[:<setting>]`.
+    pub fire: Vec<String>,
 }
 
 /// One part of a craft: a catalogue record (`template`) or a shape with components, and
@@ -688,6 +738,10 @@ pub struct CraftPartDef {
     pub template: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shape: Option<ShapeDef>,
+    /// What it must do, instead of a `template` or a `shape`: a sizer makes the design
+    /// ([`crate::sizing`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub procedural: Option<ProceduralDef>,
     #[serde(default, skip_serializing_if = "is_default")]
     pub structure: StructureDef,
     /// What it does, besides what its template does.
@@ -959,6 +1013,28 @@ pub struct FlightStartDef {
 pub struct LaunchSiteStartDef {
     /// Id of a `launch_sites` record.
     pub site: String,
+}
+
+/// A dish on a body that talks to vessels (collection `ground_stations`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroundStationDef {
+    pub id: String,
+    /// Display name; defaults to the id.
+    #[serde(default)]
+    pub name: String,
+    pub body: String,
+    /// Degrees.
+    pub latitude: f64,
+    pub longitude: f64,
+    /// The dish's diameter, m.
+    pub dish: f64,
+    /// Its receiver's noise temperature, K.
+    #[serde(default = "default_station_noise")]
+    pub noise: f64,
+}
+
+fn default_station_noise() -> f64 {
+    50.0
 }
 
 /// A place to launch from (collection `launch_sites`). Its pad and roads are built into

@@ -18,6 +18,16 @@
 - A seeded random walk of valid operations never makes an invalid craft.
 - The matrix cell Pod × Inside a container (a 1.9 m capsule put in a 1 m container, which today sticks out through the wall and is not refused) is grey: refused with the fit rule.
 
+## Done so far
+
+- `crates/osp_sim/src/builder.rs` is written and compiles: place, remove, move, rotate, orient, reroot, pattern, mirror, undo and redo, the rules (join, node size, overlap, fit inside a container, fit in a fairing) and `warnings` (engines nothing feeds, exhaust into something that stays on). `Geometry::solids` gives it what fills space.
+- None of its operations has a test yet, and nothing calls it but the one test below.
+
+## Still open
+
+- `tests/builder.rs` runs the rules over every shipped craft, and is `#[ignore]`d because it fails: 283 refusals, nearly all from the overlap rule. A stage's hull against the tanks it holds (`upper_stage` and `upper_stage_tank_1`) is the most common, a pod against its capsule next, then small reaction wheels against tanks. The next step is to work out why a hull has anything that fills space, skip pairs where one holds the other, and decide by hand whether the wheels are real overlaps to fix in the craft.
+- Then everything under Done when: none of it is met yet, and the matrix cell Pod x Inside a container is still red.
+
 ## Where it comes from
 
 - docs/build-editor-plan.md (E3)

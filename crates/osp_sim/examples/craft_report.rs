@@ -38,6 +38,7 @@ fn main() {
         rcs: registry.all::<RcsDef>("rcs", &mut diagnostics),
         pods: registry.all::<PodDef>("pods", &mut diagnostics),
         batteries: registry.all::<BatteryDef>("batteries", &mut diagnostics),
+        avionics: registry.all("avionics", &mut diagnostics),
         liveries: registry.all::<LiveryDef>("liveries", &mut diagnostics),
     };
     let tech = TechTree::new(registry.all::<TechNodeDef>("tech_nodes", &mut diagnostics));
@@ -53,7 +54,11 @@ fn main() {
     }
     let mut jobs: Vec<(String, Option<i32>)> = Vec::new();
     if args.is_empty() {
-        jobs.extend(registry_ids(registry, "craft").into_iter().map(|id| (id, year)));
+        jobs.extend(
+            registry_ids(registry, "craft")
+                .into_iter()
+                .map(|id| (id, year)),
+        );
     }
     for arg in args {
         if let Ok(s) = registry.get::<ScenarioDef>("scenarios", &arg) {
@@ -102,7 +107,11 @@ fn report(
         }
     };
     let total = propulsion.mass();
-    let name = if craft.name.is_empty() { &craft.id } else { &craft.name };
+    let name = if craft.name.is_empty() {
+        &craft.id
+    } else {
+        &craft.name
+    };
     println!("{name} [{id}]: {:.1} t", total / 1000.0);
     let info = propulsion.stage_info();
     for (stage, info) in propulsion.sections.iter().zip(&info) {
@@ -131,7 +140,10 @@ fn report(
     println!("  total vacuum delta-v {dv:.0} m/s");
     if let Some(year) = year {
         for a in tech.anachronisms(catalog, &craft, year) {
-            println!("  ! {} `{}` is from {}, after {year}", a.kind, a.part, a.year);
+            println!(
+                "  ! {} `{}` is from {}, after {year}",
+                a.kind, a.part, a.year
+            );
         }
     }
     true
@@ -148,7 +160,13 @@ fn summarize<'a>(ids: impl Iterator<Item = &'a str>) -> String {
     }
     counts
         .iter()
-        .map(|(id, n)| if *n > 1 { format!("{n}x {id}") } else { id.to_string() })
+        .map(|(id, n)| {
+            if *n > 1 {
+                format!("{n}x {id}")
+            } else {
+                id.to_string()
+            }
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }

@@ -578,3 +578,73 @@ fn todays_part_kinds_weigh_the_same_as_components() {
     );
     assert_eq!(part.mass.mass, tank.dry_mass);
 }
+
+/// A shell 1 m across and 3 m long, with `components` on it.
+fn coated(components: &str) -> Result<BuiltPart, crate::propulsion::CraftError> {
+    let text = format!(
+        r#"{{ name: "x", shape: {{ shell: {{ bottom_diameter: 1.0, sections: [{{ length: 3.0 }}] }} }},
+           structure: {{ mass: 100 }}, components: [{components}] }}"#
+    );
+    let def: PartDef = crate::test_data::records(&format!("[{text}]")).remove(0);
+    def.build(&catalog())
+}
+
+#[test]
+fn a_layer_weighs_its_area_times_its_thickness_times_its_density() {
+    let bare = coated("").unwrap();
+    let layer = r#"{ surface_layer: { material: "Carbon Composite", thickness: 0.01 } }"#;
+    let one = coated(layer).unwrap();
+    // π × 1 m × 3 m of 10 mm at 1600 kg/m³.
+    let want = std::f64::consts::PI * 3.0 * 0.01 * 1600.0;
+    assert!((one.mass.mass - bare.mass.mass - want).abs() < 1e-2 * want);
+    let Some(Component::SurfaceLayer(built)) = one.components.first() else {
+        panic!("{:?}", one.components);
+    };
+    assert_eq!(built.material, "Carbon Composite");
+    assert!((built.mass - want).abs() < 1e-2 * want, "{}", built.mass);
+    // Halfway up, as a tube's mass is.
+    assert!(
+        (one.mass.center.z - 1.5).abs() < 1e-3,
+        "{}",
+        one.mass.center
+    );
+    // A wall can carry more than one.
+    let two = coated(&format!("{layer}, {layer}")).unwrap();
+    assert!((two.mass.mass - bare.mass.mass - 2.0 * want).abs() < 2e-2 * want);
+}
+
+#[test]
+fn a_layer_on_nothing_is_an_error_that_says_so() {
+    let error = |text: &str| coated(text).err().expect("no such layer").to_string();
+    let wrong =
+        r#"{ surface_layer: { wall: "floor", material: "Carbon Composite", thickness: 0.01 } }"#;
+    assert!(error(wrong).contains("floor"), "{}", error(wrong));
+    let thin = r#"{ surface_layer: { material: "Carbon Composite", thickness: 0 } }"#;
+    assert!(error(thin).contains("thickness"), "{}", error(thin));
+    let odd = r#"{ surface_layer: { material: "Moon rock", thickness: 0.01 } }"#;
+    assert!(error(odd).contains("Moon rock"), "{}", error(odd));
+}
+
+/// A layer changes no shape, so one under a fairing changes nothing the air sees.
+#[test]
+fn a_layer_adds_nothing_to_the_shape() {
+    use crate::{data::CraftDef, propulsion::Propulsion};
+    let craft = |components: &str| -> CraftDef {
+        crate::test_data::records(&format!(
+            r#"{{ id: "c", name: "", parts: [
+                {{ id: "host", shape: {{ shell: {{ bottom_diameter: 1.0, sections: [{{ length: 3.0 }}],
+                    cap_bottom: true, cap_top: true }} }},
+                  structure: {{ mass: 100 }}, components: [{{ container: {{}} }} {components}] }} ] }}"#
+        ))
+        .remove(0)
+    };
+    let outline = |components: &str| {
+        let p = Propulsion::from_craft(&craft(components), &catalog()).unwrap();
+        (p.shape().outline(), p.mass())
+    };
+    let (bare, bare_mass) = outline("");
+    let (coat, coat_mass) =
+        outline(r#", { surface_layer: { material: "Carbon Composite", thickness: 0.02 } }"#);
+    assert_eq!(bare, coat);
+    assert!(coat_mass > bare_mass);
+}

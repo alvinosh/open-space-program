@@ -7,12 +7,11 @@
 //! wheels and the pod inside it, RCS blocks on its forward rim, fins, wings and gear on
 //! its side, and the fairing's halves round it. The structure is the skin where the tanks'
 //! barrels are not (the aft skirt, intertanks, and the interstage round the engines of the
-//! stage above), the plate the engines hang from, and the ring that lets go of the stage
-//! above. Under a fairing with nothing else, a payload: an adapter and a satellite on it.
+//! stage above) and the plate the engines hang from. Under a fairing with nothing else, a payload: an adapter and a satellite on it.
 //! The stage's look (`appearance`) becomes paint, folded legs, stowed grid fins and a
 //! raceway. Its shells stack on its top, over its pod if it has one. The top stage's
 //! structure is the root; each stage below hangs from the one above by the top of its
-//! stack, which has a decoupler that lets go of the stage above. A mirrored wing or leg
+//! stack, a ring ([`SeparationRing`]) that lets go of the stage above. A mirrored wing or leg
 //! becomes two parts.
 
 use std::{collections::BTreeMap, f64::consts::PI, sync::Arc};
@@ -35,7 +34,7 @@ use crate::{
             ShellDef, ShellSection, SphereDef, StationDef, WallDef, WingDef as WingShape,
         },
     },
-    parts::{Part, PartKind, PartTree},
+    parts::{Part, PartKind, PartTree, SeparationRing},
     propulsion::CraftError,
     shell::Shell,
     structure::{DOME_RATIO, Tank},
@@ -76,14 +75,15 @@ pub fn convert(
         let on: Vec<&Part> = tree.stage(s).collect();
         let hull = on
             .iter()
-            .find(|p| matches!(p.kind, PartKind::Hull { .. }))
+            .find(|p| p.body.is_some())
             .expect("every stage has a hull");
         let base = hull.position;
         let relative = |p: &Part| Pose::new(p.position - base, p.rotation);
         let radius = stage.diameter / 2.0;
         let stage_tanks: Vec<&Tank> = on
             .iter()
-            .filter_map(|p| match &p.kind {
+            .flat_map(|p| &p.kinds)
+            .filter_map(|kind| match kind {
                 PartKind::Tank(t) => Some(t),
                 _ => None,
             })
@@ -91,7 +91,8 @@ pub fn convert(
         let above = def.stages.get(s + 1);
         let pod_height = on
             .iter()
-            .find_map(|p| match &p.kind {
+            .flat_map(|p| &p.kinds)
+            .find_map(|kind| match kind {
                 PartKind::Pod(pod) => Some(pod.height),
                 _ => None,
             })
@@ -116,8 +117,12 @@ pub fn convert(
         let mut tanks = stage.tanks.iter();
         for part in &on {
             let at = relative(part);
-            match &part.kind {
-                PartKind::Hull { .. } | PartKind::Decoupler | PartKind::Shell(_) => {}
+            // The body is built on its own, above; a part of a stage is one thing.
+            if part.body.is_some() {
+                continue;
+            }
+            match &part.kinds[0] {
+                PartKind::Decoupler { .. } | PartKind::Shell(_) => {}
                 PartKind::Structure { .. } => {
                     unreachable!("no bare structure on a staged tree")
                 }
@@ -352,6 +357,7 @@ pub fn convert(
                         node: "bottom".into(),
                         impulse: 0.0,
                         crossfeed: false,
+                        strength: 0.0,
                     })];
                     mounted.push(
                         body.mount(child, &shape, "bottom", at, &node)
@@ -382,7 +388,7 @@ pub fn convert(
         let pod = mounted.iter().any(|p| p.id == format!("{}_pod", ids[s]));
         let mut stack = vec![body.part(stage)];
         for part in &on {
-            let PartKind::Shell(shell) = &part.kind else {
+            let PartKind::Shell(shell) = &part.kinds[0] else {
                 continue;
             };
             let node = format!("shell_{}", stack.len());
@@ -403,15 +409,28 @@ pub fn convert(
                 stage.name
             )));
         } else {
+            // A ring of its own on top lets go of the stage above.
+            let ring = SeparationRing::of(def.stages[s + 1].diameter, stage.structure_mass);
+            let mut decoupler = shaped(
+                &ids[s],
+                "decoupler",
+                ShapeDef::Ring(RingDef {
+                    diameter: ring.diameter,
+                    height: ring.height,
+                    thickness: ring.thickness,
+                }),
+            );
+            decoupler.name = Some("Decoupler".into());
+            decoupler.structure = mass_only(ring.mass);
+            decoupler.components = vec![ComponentDef::Decoupler(DecouplerDef {
+                node: "top".into(),
+                impulse: 0.0,
+                crossfeed: false,
+                strength: 0.0,
+            })];
+            stack.push(decoupler);
             let last = stack.len() - 1;
             stack[last].on = Some(format!("{}.bottom", ids[s + 1]));
-            stack[last]
-                .components
-                .push(ComponentDef::Decoupler(DecouplerDef {
-                    node: "top".into(),
-                    impulse: 0.0,
-                    crossfeed: false,
-                }));
             for k in 0..last {
                 stack[k].on = Some(format!("{}.bottom", stack[k + 1].id));
             }
@@ -441,6 +460,7 @@ pub fn convert(
         name: def.name.clone(),
         parts,
         sequences: None,
+        triggers: Vec::new(),
     };
     paint_liveries(&mut craft, &liveried, catalog).map_err(&bad)?;
     let parts = craft.parts;
@@ -475,6 +495,7 @@ pub fn convert(
         name: def.name.clone(),
         parts,
         sequences,
+        triggers: Vec::new(),
     })
 }
 
@@ -673,7 +694,11 @@ fn structure(
     let mut build = Build {
         shape: ShapeDef::Sphere(SphereDef { diameter: 1.0 }),
         paint: paint_of(stage),
-        mass: stage.structure_mass,
+        // The ring that lets go of the stage above is a part of its own.
+        mass: stage.structure_mass
+            - above.map_or(0.0, |above| {
+                SeparationRing::of(above.diameter, stage.structure_mass).mass
+            }),
         nodes: Vec::new(),
         top_radius: radius,
         extras: Vec::new(),
@@ -1200,6 +1225,7 @@ fn blank(id: String) -> CraftPartDef {
         roll: 0.0,
         template: None,
         shape: None,
+        procedural: None,
         structure: StructureDef::default(),
         components: Vec::new(),
         nodes: Vec::new(),

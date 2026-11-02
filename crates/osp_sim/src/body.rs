@@ -93,6 +93,8 @@ pub struct Body {
     /// Sphere of influence radius; infinite for the root body.
     pub soi: f64,
     pub color: [f32; 3],
+    /// The share of the sunlight on it that it reflects.
+    pub albedo: f64,
 }
 
 impl Body {

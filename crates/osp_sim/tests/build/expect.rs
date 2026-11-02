@@ -31,21 +31,9 @@ pub struct Rule {
     pub why: &'static str,
 }
 
-const LOADS: &[Check] = &[Check::Loads];
-const KEPT: &[Check] = &[Check::Kept];
 const AERO: &[Check] = &[Check::Aero];
 
 pub const RULES: &[Rule] = &[
-    // A stage is the parts between joints that let go, with one body: a container with a
-    // bottom and a top node, standing upright. A second container is a second body.
-    Rule {
-        row: "container",
-        columns: &[],
-        except: false,
-        expect: Expect::Red(LOADS, "T014"),
-        why: "the stage gatherer allows one container with a bottom and a top node, so a \
-              second is refused",
-    },
     Rule {
         row: "wing",
         columns: &["fairing"],
@@ -53,28 +41,6 @@ pub const RULES: &[Rule] = &[
         expect: Expect::Grey("too narrow for what it holds"),
         why: "a wing a metre across does not fit in a fairing a metre wide: the fairing tool \
               refuses it",
-    },
-    Rule {
-        row: "rcs",
-        columns: &["inside", "fairing"],
-        except: true,
-        expect: Expect::Red(AERO, "T014"),
-        why: "the block's catalogue model has no surface of its own for the air, so it is \
-              left out of the outline",
-    },
-    Rule {
-        row: "battery",
-        columns: &[],
-        except: false,
-        expect: Expect::Red(KEPT, "T014"),
-        why: "the physics has no battery: the part weighs but its charge is dropped",
-    },
-    Rule {
-        row: "crew",
-        columns: &[],
-        except: false,
-        expect: Expect::Red(KEPT, "T014"),
-        why: "only a pod seats a crew: the seats of any other part are dropped",
     },
     Rule {
         row: "pod",
@@ -90,22 +56,6 @@ pub const RULES: &[Rule] = &[
         expect: Expect::Red(AERO, "T015"),
         why: "a capsule 1.9 m wide is put inside a container 1 m wide, sticks out through its \
               wall, and nothing refuses it: the builder's fit check will",
-    },
-    Rule {
-        row: "two",
-        columns: &[],
-        except: false,
-        expect: Expect::Red(LOADS, "T014"),
-        why: "the gatherer takes a part that is one thing (a tank, an engine, an RCS block): a \
-              tank with thrusters is \"a stage has no part like it\"",
-    },
-    Rule {
-        row: "decoupler",
-        columns: &["bottom"],
-        except: false,
-        expect: Expect::Red(LOADS, "T014"),
-        why: "a decoupler holding nothing below is a stage with no body, which the gatherer \
-              refuses",
     },
 ];
 

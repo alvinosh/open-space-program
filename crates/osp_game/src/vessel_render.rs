@@ -23,6 +23,7 @@ use osp_sim::{
 use crate::{
     FrameSet,
     content::{GameContent, mod_asset_path},
+    exhaust_trail::{Emission, Emissions, update_trails},
     frame::{RenderFrame, rotation_to_render, to_render},
     part_info::ShowsPart,
     part_mesh::{Canvas, Looks, axes, bevy_mesh, part_meshes},
@@ -45,6 +46,8 @@ const RCS_NOZZLES: [(Vec3, Vec3); 4] = [
     (Vec3::new(0.072, 0.0, 0.18), Vec3::Z),
     (Vec3::new(0.072, 0.0, -0.18), Vec3::NEG_Z),
 ];
+/// Air's pressure over its density, Pa m³/kg (R T, in the cold air the smoke stays in).
+const AIR_PRESSURE_PER_DENSITY: f64 = 72_000.0;
 /// Illuminance at the edge of a plume light's range, lux.
 const PLUME_LIGHT_FLOOR: f32 = 0.1;
 /// Length of an RCS puff at full thrust, m, and its width per metre of length.
@@ -64,6 +67,7 @@ impl Plugin for VesselRenderPlugin {
                     rebuild_on_change,
                     place_vessels,
                     update_engines,
+                    update_trails,
                     update_control_surfaces,
                     update_gear,
                     update_rcs_plumes,
@@ -220,7 +224,7 @@ fn spawn_vessel_visuals(
 fn bell_size(propulsion: &Propulsion, stage: &Section, engine: &Engine) -> (f32, f32) {
     let def = &engine.def;
     if def.exit_diameter > 0.0 && def.length > 0.0 {
-        return ((def.exit_diameter / 2.0) as f32, def.length as f32);
+        return ((def.exit_diameter / 2.0) as f32, def.nozzle_length() as f32);
     }
     let radius = stage.diameter / 2.0;
     let mounts: Vec<_> = propulsion
@@ -339,112 +343,129 @@ fn rebuild_on_change(
                         file: &file,
                     },
                 };
-                match &part.kind {
-                    PartKind::Engine(def) => {
-                        let mut pivot = parent.spawn((
-                            pose,
-                            Visibility::default(),
-                            shows,
-                            EnginePivot {
-                                vessel,
-                                engine: part.id,
-                            },
-                        ));
-                        pivot.with_children(|pivot| match model(&def.model) {
-                            Some(scene) => {
-                                let scale = def.model_scale as f32;
-                                pivot.spawn((
-                                    scene,
-                                    PartModel,
-                                    Transform::from_scale(Vec3::splat(scale)),
+                // A template's own model stands for the part if that is all the part is; a
+                // part that does several things is drawn once, as it is built, by the first.
+                let alone = part.kinds.len() == 1;
+                let mut drawn = false;
+                for kind in &part.kinds {
+                    match kind {
+                        PartKind::Engine(def) => {
+                            if !std::mem::replace(&mut drawn, true) {
+                                let mut pivot = parent.spawn((
+                                    pose,
+                                    Visibility::default(),
+                                    shows,
+                                    EnginePivot {
+                                        vessel,
+                                        engine: part.id,
+                                    },
+                                ));
+                                let scene = if alone { model(&def.model) } else { None };
+                                pivot.with_children(|pivot| match scene {
+                                    Some(scene) => {
+                                        let scale = def.model_scale as f32;
+                                        pivot.spawn((
+                                            scene,
+                                            PartModel,
+                                            Transform::from_scale(Vec3::splat(scale)),
+                                        ));
+                                    }
+                                    None => pen.draw(pivot, built, Some(&materials.engine)),
+                                });
+                            }
+                            let Some(engine) =
+                                propulsion.engines.iter().find(|e| e.part == part.id)
+                            else {
+                                continue;
+                            };
+                            if let Some(look) = look(&engine.def) {
+                                let (exit, bell) = bell_size(propulsion, stage, engine);
+                                let exhaust = engine.def.turbine_exhaust.as_ref();
+                                let pipe = match exhaust {
+                                    Some(TurbineExhaust::Pipe { exit, diameter }) => Some((
+                                        Vec3::new(exit[0] as f32, exit[1] as f32, exit[2] as f32),
+                                        (diameter / 2.0) as f32,
+                                    )),
+                                    _ => None,
+                                };
+                                let jet = PlumeEngine {
+                                    engine: part.id,
+                                    mount: pose.translation,
+                                    exit: bell,
+                                    radius: exit,
+                                    exit_pressure: engine.def.exit_pressure(),
+                                    pipe,
+                                    film: exhaust == Some(&TurbineExhaust::Nozzle),
+                                };
+                                let same = |(s, l, _): &&mut (usize, PlumeDef, _)| {
+                                    *s == part.stage && l.id == look.id
+                                };
+                                match clusters.iter_mut().find(same) {
+                                    Some((_, _, engines)) => engines.push(jet),
+                                    None => clusters.push((part.stage, look, vec![jet])),
+                                }
+                            }
+                        }
+                        PartKind::Pod(def) if def.model.is_some() && alone => {
+                            drawn = true;
+                            let scene = model(&def.model);
+                            let mut visual = parent.spawn((pose, Visibility::default(), shows));
+                            visual.with_children(|visual| match scene {
+                                Some(scene) => {
+                                    visual.spawn((scene, PartModel));
+                                }
+                                None => pen.draw(visual, built, None),
+                            });
+                        }
+                        PartKind::Rcs(def) => {
+                            for (n, (exit, out)) in RCS_NOZZLES.into_iter().enumerate() {
+                                parent.spawn((
+                                    RcsPlume {
+                                        vessel,
+                                        block: part.id,
+                                        nozzle: n,
+                                        base: pose
+                                            * Transform::from_translation(exit).with_rotation(
+                                                Quat::from_rotation_arc(Vec3::NEG_Y, out),
+                                            ),
+                                    },
+                                    Mesh3d(puff.clone()),
+                                    MeshMaterial3d(materials.rcs_plume.clone()),
+                                    Transform::default(),
+                                    Visibility::Hidden,
                                 ));
                             }
-                            None => pen.draw(pivot, built, Some(&materials.engine)),
-                        });
-                        let Some(engine) = propulsion.engines.iter().find(|e| e.part == part.id)
-                        else {
-                            continue;
-                        };
-                        if let Some(look) = look(&engine.def) {
-                            let (exit, bell) = bell_size(propulsion, stage, engine);
-                            let exhaust = engine.def.turbine_exhaust.as_ref();
-                            let pipe = match exhaust {
-                                Some(TurbineExhaust::Pipe { exit, diameter }) => Some((
-                                    Vec3::new(exit[0] as f32, exit[1] as f32, exit[2] as f32),
-                                    (diameter / 2.0) as f32,
-                                )),
-                                _ => None,
-                            };
-                            let jet = PlumeEngine {
-                                engine: part.id,
-                                mount: pose.translation,
-                                exit: bell,
-                                radius: exit,
-                                exit_pressure: engine.def.exit_pressure(),
-                                pipe,
-                                film: exhaust == Some(&TurbineExhaust::Nozzle),
-                            };
-                            let same = |(s, l, _): &&mut (usize, PlumeDef, _)| {
-                                *s == part.stage && l.id == look.id
-                            };
-                            match clusters.iter_mut().find(same) {
-                                Some((_, _, engines)) => engines.push(jet),
-                                None => clusters.push((part.stage, look, vec![jet])),
+                            if !std::mem::replace(&mut drawn, true) {
+                                let scene = if alone { model(&def.model) } else { None };
+                                let mut visual = parent.spawn((pose, Visibility::default(), shows));
+                                visual.with_children(|visual| match scene {
+                                    Some(scene) => {
+                                        visual.spawn((scene, PartModel));
+                                    }
+                                    None => pen.draw(visual, built, None),
+                                });
                             }
                         }
-                    }
-                    PartKind::Pod(def) if def.model.is_some() => {
-                        let scene = model(&def.model);
-                        let mut visual = parent.spawn((pose, Visibility::default(), shows));
-                        visual.with_children(|visual| match scene {
-                            Some(scene) => {
-                                visual.spawn((scene, PartModel));
+                        // Drawn with the leg's give (`update_gear`).
+                        PartKind::Gear(_) => drawn = true,
+                        PartKind::Wing(def) => {
+                            if !std::mem::replace(&mut drawn, true) {
+                                let mut visual = parent.spawn((pose, Visibility::default(), shows));
+                                visual.with_children(|visual| match &def.control {
+                                    Some(control) => {
+                                        let at = (part.id, 0);
+                                        hinged(visual, built, control, at, vessel, &mut pen);
+                                    }
+                                    None => pen.draw(visual, built, None),
+                                });
                             }
-                            None => pen.draw(visual, built, None),
-                        });
-                    }
-                    PartKind::Rcs(def) => {
-                        for (n, (exit, out)) in RCS_NOZZLES.into_iter().enumerate() {
-                            parent.spawn((
-                                RcsPlume {
-                                    vessel,
-                                    block: part.id,
-                                    nozzle: n,
-                                    base: pose
-                                        * Transform::from_translation(exit).with_rotation(
-                                            Quat::from_rotation_arc(Vec3::NEG_Y, out),
-                                        ),
-                                },
-                                Mesh3d(puff.clone()),
-                                MeshMaterial3d(materials.rcs_plume.clone()),
-                                Transform::default(),
-                                Visibility::Hidden,
-                            ));
                         }
-                        let scene = model(&def.model);
-                        let mut visual = parent.spawn((pose, Visibility::default(), shows));
-                        visual.with_children(|visual| match scene {
-                            Some(scene) => {
-                                visual.spawn((scene, PartModel));
+                        _ => {
+                            if !std::mem::replace(&mut drawn, true) {
+                                let mut visual = parent.spawn((pose, Visibility::default(), shows));
+                                visual.with_children(|visual| pen.draw(visual, built, None));
                             }
-                            None => pen.draw(visual, built, None),
-                        });
-                    }
-                    // Drawn with the leg's give (`update_gear`).
-                    PartKind::Gear(_) => {}
-                    PartKind::Wing(def) => {
-                        let mut visual = parent.spawn((pose, Visibility::default(), shows));
-                        visual.with_children(|visual| match &def.control {
-                            Some(control) => {
-                                let at = (part.id, 0);
-                                hinged(visual, built, control, at, vessel, &mut pen);
-                            }
-                            None => pen.draw(visual, built, None),
-                        });
-                    }
-                    _ => {
-                        let mut visual = parent.spawn((pose, Visibility::default(), shows));
-                        visual.with_children(|visual| pen.draw(visual, built, None));
+                        }
                     }
                 }
             }
@@ -664,6 +685,7 @@ fn update_engines(
     mut pivots: Query<(&EnginePivot, &mut Transform), Without<Plume>>,
     mut plumes: Query<
         (
+            Entity,
             &mut Plume,
             &MeshMaterial3d<PlumeMaterial>,
             &mut Transform,
@@ -673,6 +695,7 @@ fn update_engines(
     >,
     mut lights: Query<(&PlumeLight, &mut PointLight, &mut Transform), Without<EnginePivot>>,
     mut materials: ResMut<Assets<PlumeMaterial>>,
+    mut emissions: ResMut<Emissions>,
     settings: Res<GraphicsSettings>,
 ) {
     let system = &sim.universe.system;
@@ -716,7 +739,7 @@ fn update_engines(
         .collect();
     // Per vessel: lumens, and lumen-weighted colour and position.
     let mut glow: HashMap<VesselId, (f32, Vec3, Vec3)> = HashMap::new();
-    for (mut plume, material, mut transform, mut visibility) in &mut plumes {
+    for (entity, mut plume, material, mut transform, mut visibility) in &mut plumes {
         let (Some(vessel), Some(&(height, up, world_up, airflow))) =
             (sim.universe.vessel(plume.vessel), around.get(&plume.vessel))
         else {
@@ -724,7 +747,7 @@ fn update_engines(
         };
         // The jets of the engines that burn, and their thrust and exit area.
         let mut jets = Vec::new();
-        let (mut thrust, mut area) = (0.0, 0.0);
+        let (mut thrust, mut area, mut flow) = (0.0, 0.0, 0.0);
         for e in &plume.engines {
             let Some(engine) = engine(plume.vessel, e.engine).filter(|e| e.level > 0.0) else {
                 continue;
@@ -752,6 +775,7 @@ fn update_engines(
             }
             thrust += engine.thrust as f32;
             area += std::f32::consts::PI * e.radius * e.radius;
+            flow += engine.max_mass_flow() * engine.level;
         }
         if jets.is_empty() {
             *visibility = Visibility::Hidden;
@@ -789,6 +813,19 @@ fn update_engines(
         if let Some(mut material) = materials.get_mut(&material.0) {
             material.params =
                 PlumeParams::new(&cluster, &plume.look, plume.seed, quality, world_up);
+        }
+        if plume.look.trail > 0.0 {
+            emissions.0.push(Emission {
+                plume: entity,
+                body: vessel.parent(),
+                at: vessel.base_at(system, frame.time),
+                flow,
+                smoke: f64::from(plume.look.trail),
+                airspeed: f64::from(airflow.length()),
+                air: vessel.flight.static_pressure / AIR_PRESSURE_PER_DENSITY,
+                colour: plume.look.smoke,
+                clear: 0.6 * cluster.length,
+            });
         }
         let (lumens, color, middle) = plume_light(&cluster, &plume.look);
         let (sum, colors, at) = glow.entry(plume.vessel).or_default();

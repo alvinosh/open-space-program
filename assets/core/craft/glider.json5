@@ -40,7 +40,7 @@
       },
       // Pilot, seat, canopy, instruments and the fuselage around them.
       structure: { thickness: 0, mass: 330 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 810, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.9 },
         { name: "top", position: [0, 0, 3], direction: [0, 0, 1], size: 0.9 },
@@ -128,9 +128,18 @@
       paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
     },
     {
+      id: "tail_boom_decoupler",
+      name: "Decoupler",
+      on: "cabin.bottom",
+      by: "top",
+      shape: { ring: { diameter: 0.9, height: 0.036, thickness: 0.018 } },
+      structure: { mass: 2.47 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "tail_boom",
       name: "Tail boom",
-      on: "cabin.bottom",
+      on: "tail_boom_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -166,8 +175,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 45 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 42.53 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.3 },
         { name: "top", position: [0, 0, 4.5], direction: [0, 0, 1], size: 0.9 },
@@ -271,9 +280,18 @@
     // A RATO bottle on the tail boom's right, its nozzle just behind the wing's trailing
     // edge and level with the centre of mass, so its thrust does not pitch the nose.
     {
+      id: "booster_right_decoupler",
+      name: "Decoupler",
+      on: "tail_boom.booster_right",
+      by: "top",
+      shape: { ring: { diameter: 0.24, height: 0.0096, thickness: 0.0048 } },
+      structure: { mass: 0.05 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "booster_right",
       name: "RATO booster",
-      on: "tail_boom.booster_right",
+      on: "booster_right_decoupler.bottom",
       by: "side",
       shape: {
         shell: {
@@ -285,8 +303,8 @@
           cap_bottom: true,
         },
       },
-      structure: { mass: 4 },
-      components: [{ container: {} }, { decoupler: { node: "side" } }],
+      structure: { mass: 3.95 },
+      components: [{ container: {} }],
       nodes: [
         { name: "side", position: [-0.12, 0, 0.5], direction: [-1, 0, 0], size: 0.24 },
         { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.1 },
@@ -305,9 +323,18 @@
     // A RATO bottle on the tail boom's left, its nozzle just behind the wing's trailing
     // edge and level with the centre of mass, so its thrust does not pitch the nose.
     {
+      id: "booster_left_decoupler",
+      name: "Decoupler",
+      on: "tail_boom.booster_left",
+      by: "top",
+      shape: { ring: { diameter: 0.24, height: 0.0096, thickness: 0.0048 } },
+      structure: { mass: 0.05 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "booster_left",
       name: "RATO booster",
-      on: "tail_boom.booster_left",
+      on: "booster_left_decoupler.bottom",
       by: "side",
       shape: {
         shell: {
@@ -319,8 +346,8 @@
           cap_bottom: true,
         },
       },
-      structure: { mass: 4 },
-      components: [{ container: {} }, { decoupler: { node: "side" } }],
+      structure: { mass: 3.95 },
+      components: [{ container: {} }],
       nodes: [
         { name: "side", position: [0.12, 0, 0.5], direction: [1, 0, 0], size: 0.24 },
         { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.1 },
@@ -340,15 +367,24 @@
     // a nose wheel at its front and the main wheels, splayed to a 1.7 m track, just behind
     // the centre of mass. Dropped once airborne, which leaves the cabin's belly to land on.
     {
+      id: "dolly_decoupler",
+      name: "Decoupler",
+      on: "cabin.belly",
+      by: "top",
+      shape: { ring: { diameter: 0.16, height: 0.0064, thickness: 0.0032 } },
+      structure: { mass: 0.01 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "dolly",
       name: "Dolly",
-      on: "cabin.belly",
+      on: "dolly_decoupler.bottom",
       by: "side",
       shape: {
         shell: { bottom_diameter: 0.16, sections: [{ length: 3 }], cap_bottom: true },
       },
-      structure: { mass: 12 },
-      components: [{ container: {} }, { decoupler: { node: "side" } }],
+      structure: { mass: 11.99 },
+      components: [{ container: {} }],
       nodes: [
         { name: "side", position: [0, -0.08, 1.6], direction: [0, -1, 0], size: 0.16 },
         { name: "nose_gear", position: [0, 0.08, 2.7], direction: [0, 1, 0], size: 0.06 },

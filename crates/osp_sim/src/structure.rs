@@ -12,15 +12,18 @@
 //! (which turns the vessel, see [`crate::aero`]), and each fin's root bends under that
 //! force.
 
-use std::f64::consts::PI;
+use std::{f64::consts::PI, sync::Arc};
 
 use glam::DVec3;
 
 pub use crate::component::TankContent;
 use crate::{
-    component::{BuiltPart, ComponentDef, PartDef, StorageDef, storage::head},
+    component::{BuiltPart, Component, ComponentDef, PartDef, Storage, StorageDef, storage::head},
     data::{FinDef, MaterialDef, PartCatalog, TankDef, TankShape},
-    geometry::preset::{CylinderTankDef, ShapeDef, SphereDef},
+    geometry::{
+        Geometry,
+        preset::{CylinderTankDef, ShapeDef, SphereDef},
+    },
     mass::Mass,
     parts::PartId,
     propulsion::{CraftError, Propulsion, Section},
@@ -38,16 +41,27 @@ const CROSSFLOW_DRAG: f64 = 1.2;
 const FIN_SKIN_FRICTION: f64 = 0.003;
 const FIN_EDGE_DRAG: f64 = 1.0;
 
+/// The cell of a part that a tank of no plain shape (a common bulkhead, skirts, a torus) is:
+/// what it holds settles in it as it really is.
+#[derive(Debug, Clone)]
+pub struct TankCell {
+    pub geometry: Arc<Geometry>,
+    /// Its element name.
+    pub name: String,
+}
+
 /// A procedural tank, sized for its type and contents.
 #[derive(Debug, Clone)]
 pub struct Tank {
     pub tank_type: String,
     pub material: String,
     pub shape: TankShape,
-    /// Outer radius, m.
+    /// Outer radius, m; of a cylinder of its length and volume, for a tank with a `cell`.
     pub radius: f64,
     /// Outer length (the diameter for a sphere), m.
     pub length: f64,
+    /// Its cell, if it is no plain cylinder or sphere.
+    pub cell: Option<TankCell>,
     /// Height of its lowest point above the stage base, m.
     pub base: f64,
     /// Internal volume, m³, and the share of it that holds propellant.
@@ -126,19 +140,28 @@ impl Tank {
             CraftError::BadPart { problem, .. } => bad(problem),
             e => e,
         })?;
-        Ok(Self::of(&part, def.shape, diameter / 2.0, length, base))
+        let storage = part.storages().next().expect("a storage part");
+        Ok(Self::of(
+            &part,
+            storage,
+            def.shape,
+            diameter / 2.0,
+            length,
+            base,
+        ))
     }
 
     /// The tank a storage part of `shape` is, `radius` wide and `length` long, its base
     /// `base` above its stage's.
     pub(crate) fn of(
         part: &BuiltPart,
+        storage: &Storage,
         shape: TankShape,
         radius: f64,
         length: f64,
         base: f64,
     ) -> Self {
-        let storage = part.storages().next().expect("a storage part").clone();
+        let storage = storage.clone();
         let wall = part.pieces.iter().map(|p| p.thickness).fold(0.0, f64::max);
         Self {
             tank_type: storage.tank_type,
@@ -146,6 +169,7 @@ impl Tank {
             shape,
             radius,
             length,
+            cell: None,
             base,
             volume: storage.volume,
             utilization: storage.utilization,
@@ -345,6 +369,8 @@ pub enum Part {
     /// Index into the stage's tanks.
     Tank(usize),
     Fins,
+    /// The joint the stage hangs from, where a sized decoupler holds it.
+    Joint,
 }
 
 /// What a part's load threatens to do.
@@ -444,6 +470,22 @@ pub fn loads(propulsion: &Propulsion, conditions: &Conditions) -> Vec<PartLoad> 
     let mut out = Vec::new();
     let joints = joint_loads(propulsion, conditions);
     for (s, stage) in stages.iter().enumerate().rev() {
+        // The ring it hangs from, if it was sized for a load.
+        let strength = (propulsion.parts().stage(stage.id))
+            .filter_map(|part| part.built.as_ref())
+            .flat_map(|built| &built.components)
+            .find_map(|c| match c {
+                Component::Decoupler(d) if d.strength > 0.0 => Some(d.strength),
+                _ => None,
+            });
+        if let (Some(strength), Some(&load)) = (strength, joints.get(s)) {
+            out.push(PartLoad {
+                stage: s,
+                part: Part::Joint,
+                fraction: load.abs() / strength,
+                mode: Mode::Buckling,
+            });
+        }
         let tanks: Vec<&Tank> = propulsion.tanks_of(stage.id).collect();
         // The cylinders from the top down, in rows of those side by side: each row's walls
         // carry everything stacked above its base except their own propellant, which rests

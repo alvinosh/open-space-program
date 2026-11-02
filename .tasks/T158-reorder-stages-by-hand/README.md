@@ -17,4 +17,7 @@ You cannot swap stages around in practice. The sim can move activations and reor
 ## Done so far (with the T160 redesign)
 
 - The whole row is the drag handle, a tile can be dragged onto a row or onto the strip between two rows (`staging.drop_at`, it lights up under the pointer) to put it at exactly that place, and the + takes a dropped tile as a new last sequence. Tested at the action level (`controls::tests`), not with the pointer.
-- Still open: trying it with the pointer by hand, up/down buttons, the right-click menu (add above or below, split one off), undo.
+- `OSP_SCENARIO=apollo11 OSP_CAPTURE_STAGING_POINTER=1` drives the staging window through the same picking the mouse goes through, on the live window, with its engines burning so the data under it changes every frame. It swaps two rows, undoes that, splits one J-2 out of a group onto a strip, moves a row with its arrow and adds a sequence from a row's menu, checking the sequences after each and failing if they differ.
+- That found two bugs: the strips between rows had no width, so nothing could ever be dropped on them, and the arrow glyphs were not in the font. Both fixed; tooltips also stay away during a drag.
+- Up and down arrows on a row, a right-click menu on a row (`staging_menu.json5`: add above or below, move, merge with the one below, split one off), an undo beside the + for the last change, gone once anything has fired or fallen away.
+- Still open: trying it once with a real mouse. The script stands in for the pointer, so nothing has checked the feel of a drag or that the row menu opens beside a real cursor (a capture has none, so it opens at the top left).

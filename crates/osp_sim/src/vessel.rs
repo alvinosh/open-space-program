@@ -30,19 +30,22 @@ use crate::{
     attitude::{self, Attitude, Inertia, MassProperties, NavBasis, NavFrame, Sas, SasMode},
     autopilot::{self, BurnExecutor, BurnTiming, Capability, Finish},
     body::{Body, BodyId},
+    comms::{Link, Radio},
     data::{CraftDef, FlightStartDef, LaunchSiteDef, OrbitStartDef, PartCatalog},
+    environment::{self, Environment},
     events::{EventKind, TrajectoryEvent, apply_event, next_event},
     gear::{self, Contact, Leg},
     integrator::Encke,
     orbit::{Elements, Orbit, StateVector},
-    plan::{Burn, FlightPlan},
     parts::PartId,
+    plan::{Burn, FlightPlan},
     propulsion::{CraftError, Propulsion, Released, Staged},
     rcs,
     rendezvous::Target,
     staging::Activation,
     structure::{self, Conditions, Part, PartLoad},
     system::SolarSystem,
+    systems::{Antenna, Crew},
     terrain,
     time::{SimTime, Ticks},
 };
@@ -226,6 +229,14 @@ pub struct Vessel {
     nav_frame: NavFrame,
     /// Inside the atmosphere or low over the ground, where the surface frame applies.
     near_surface: bool,
+    /// A load it cannot do without had no power on the last step.
+    browned_out: bool,
+    /// When it left the ground.
+    lifted_off: Option<SimTime>,
+    /// Its link to the ground, as last worked out.
+    link: Option<Link>,
+    /// Burns sent up and not there yet, with when they arrive.
+    uplink: Vec<(SimTime, Burn)>,
     pub propulsion: Propulsion,
     mass: MassProperties,
     propellant_settled: bool,
@@ -306,6 +317,10 @@ impl Vessel {
             rcs: false,
             nav_frame: NavFrame::Surface,
             near_surface: true,
+            browned_out: false,
+            lifted_off: None,
+            link: None,
+            uplink: Vec::new(),
             flight: FlightData {
                 mass: mass.mass,
                 ..Default::default()
@@ -865,6 +880,8 @@ impl Vessel {
             nose: self.attitude_state(system, time).nose(),
             settled: self.propellant_settled,
             has_rcs,
+            rcs_acceleration: rcs::forward_thrust(&self.propulsion, pressure)
+                / self.mass.mass.max(1e-9),
             running: self.propulsion.any_engine_running(),
         };
         let command = self.executor.command(&situation);
@@ -968,7 +985,7 @@ impl Vessel {
     }
 
     pub fn set_throttle(&mut self, throttle: f64) {
-        if !self.destroyed {
+        if !self.destroyed && self.commandable() {
             self.propulsion.set_throttle(throttle);
         }
     }
@@ -978,7 +995,7 @@ impl Vessel {
     /// vessel's position) moves along the stack. What fell away comes back as debris for
     /// the universe to add (see [`Self::shed`]).
     pub fn activate_next_stage(&mut self, system: &SolarSystem, time: SimTime) -> Vec<Vessel> {
-        if self.destroyed {
+        if self.destroyed || !self.commandable() {
             return Vec::new();
         }
         let Some(staged) = self.propulsion.activate_next_sequence() else {
@@ -1154,6 +1171,141 @@ impl Vessel {
         }
     }
 
+    /// What the surroundings give the vessel at `time`.
+    pub fn environment(&self, system: &SolarSystem, time: SimTime) -> Environment {
+        let position = self.state_at(system, time).position;
+        environment::at(system, self.parent, position, time)
+    }
+
+    /// What the surroundings give the vessel for its systems: no need to work it out for a
+    /// vessel with none that wants to know.
+    fn system_environment(&self, system: &SolarSystem, time: SimTime) -> Environment {
+        if !self.propulsion.systems.uses_light() {
+            return Environment::DARK;
+        }
+        let mut environment = self.environment(system, time);
+        environment.sun_in_vessel =
+            self.attitude_at(system, time).inverse() * environment.sun_direction;
+        environment
+    }
+
+    /// How it stands as seen from the part it is flown from: what the navball shows.
+    pub fn control_attitude(&self, system: &SolarSystem, time: SimTime) -> Attitude {
+        let attitude = self.attitude_state(system, time);
+        let frame = self.propulsion.control_rotation();
+        Attitude {
+            orientation: attitude.orientation * frame,
+            angular_velocity: frame.inverse() * attitude.angular_velocity,
+            ..attitude
+        }
+    }
+
+    /// The best radio it has working, if any.
+    pub fn radio(&self) -> Option<Radio> {
+        (self.propulsion.systems.all::<Antenna>())
+            .filter(|(_, antenna)| antenna.on)
+            .map(|(_, antenna)| antenna.radio)
+            .max_by(|a, b| a.gain.total_cmp(&b.gain))
+    }
+
+    /// Its link to the ground, as [`crate::universe::Universe`] last worked it out.
+    pub fn link(&self) -> Option<&Link> {
+        self.link.as_ref()
+    }
+
+    pub(crate) fn set_link(&mut self, link: Option<Link>) {
+        self.link = link;
+    }
+
+    /// The orbit it is on, if it is coasting.
+    pub fn coasting(&self) -> Option<&Orbit> {
+        match &self.motion {
+            Motion::Coasting(orbit) => Some(orbit),
+            _ => None,
+        }
+    }
+
+    /// Whether anyone can tell the vessel what to do: its crew, or the ground with a link. A
+    /// vessel with neither a radio nor a crew is flown as it always has been (T087).
+    pub fn commandable(&self) -> bool {
+        let systems = &self.propulsion.systems;
+        let crew = systems.all::<Crew>().any(|(_, crew)| crew.aboard > 0);
+        let antennas = systems.all::<Antenna>().next().is_some();
+        crew || !antennas || self.link.is_some()
+    }
+
+    /// Send a burn up: it joins the plan once the signal has got there, or at once for a crew;
+    /// with no link and no crew it does not go. Whether it was sent.
+    pub fn upload_burn(&mut self, burn: Burn, time: SimTime) -> bool {
+        let crew = (self.propulsion.systems.all::<Crew>()).any(|(_, crew)| crew.aboard > 0);
+        if crew {
+            self.plan.add(burn);
+            return true;
+        }
+        let Some(link) = &self.link else {
+            return false;
+        };
+        self.uplink.push((time.add_seconds(link.delay), burn));
+        true
+    }
+
+    /// Whether the vessel can be steered: within the Earth's sphere of influence any level of
+    /// avionics works, and beyond it only one made for it ([`Propulsion::controlled`]).
+    pub fn controlled(&self, system: &SolarSystem) -> bool {
+        let mut body = self.parent;
+        let near_earth = loop {
+            let here = system.body(body);
+            if here.name == "Earth" {
+                break true;
+            }
+            match here.parent {
+                Some(parent) => body = parent,
+                None => break false,
+            }
+        };
+        self.propulsion.controlled(near_earth)
+    }
+
+    /// Move the vessel's systems on `dt` seconds from `time`. A brownout takes SAS with it.
+    pub(crate) fn step_systems(&mut self, system: &SolarSystem, time: SimTime, dt: f64) {
+        let environment = self.system_environment(system, time);
+        self.propulsion.step_systems(&environment, dt);
+        let brownout = self.propulsion.systems.brownout();
+        if brownout && !self.browned_out {
+            self.record(time, "Brownout: no power for the vessel's control".into());
+        }
+        if brownout {
+            self.sas.set_enabled(false);
+        }
+        self.browned_out = brownout;
+    }
+
+    /// When the vessel's systems next need attention after `after`: one of them says so, or a
+    /// coast goes into or out of a shadow while one of them runs on sunlight.
+    pub fn next_system_event(
+        &self,
+        system: &SolarSystem,
+        after: SimTime,
+        until: SimTime,
+    ) -> Option<SimTime> {
+        let systems = &self.propulsion.systems;
+        let environment = self.system_environment(system, after);
+        let own = self
+            .propulsion
+            .next_system_event(&environment)
+            // A second or less away is now: whatever is left of a store or a tank is not
+            // worth holding up time warp for.
+            .filter(|&seconds| seconds > 1.0)
+            .map(|seconds| after.add_seconds(seconds));
+        let light = match &self.motion {
+            Motion::Coasting(orbit) if systems.uses_light() => {
+                environment::next_light_change(system, self.parent, orbit, after, until)
+            }
+            _ => None,
+        };
+        own.into_iter().chain(light).min()
+    }
+
     /// Apply a trajectory event found by [`Self::next_trajectory_event`].
     pub fn apply_trajectory_event(
         &mut self,
@@ -1213,6 +1365,29 @@ impl Vessel {
         let mut messages = Vec::new();
         self.propulsion
             .burn(air.pressure, dt, self.propellant_settled, &mut messages);
+        self.step_systems(system, t0, dt);
+        // What was sent up and has got here.
+        let (arrived, waiting): (Vec<_>, Vec<_>) = std::mem::take(&mut self.uplink)
+            .into_iter()
+            .partition(|(at, _)| *at <= t1);
+        self.uplink = waiting;
+        for (_, burn) in arrived {
+            self.plan.add(burn);
+        }
+        let controlled = self.controlled(system);
+        if !controlled {
+            if self.sas.enabled() {
+                self.sas.set_enabled(false);
+                self.record(t0, "No avionics for this much mass: no SAS".into());
+            }
+            self.executor.disengage();
+        }
+        let since = self.lifted_off.map(|at| t0.seconds_since(at));
+        let acceleration = self.flight.proper_acceleration;
+        messages.extend(
+            self.propulsion
+                .fire_triggers(since, acceleration, controlled),
+        );
         for message in messages {
             self.record(t0, message);
         }
@@ -1251,11 +1426,18 @@ impl Vessel {
         if let Some(shape) = &shape {
             authority += shape.control_authority(&flow_at(start, DVec3::ZERO), com);
         }
-        let command = if self.is_landed() || self.destroyed {
+        let controlled = self.controlled(system);
+        let command = if self.is_landed() || self.destroyed || !controlled {
             DVec3::ZERO
         } else {
             let target = aim.or_else(|| self.sas_direction(system, body, &state, t0));
-            self.rotation_command(start, authority, target)
+            // A burn points the engines, not the part the pilot sits in.
+            let frame = if aim.is_some() {
+                DQuat::IDENTITY
+            } else {
+                self.propulsion.control_rotation()
+            };
+            self.rotation_command(start, authority, target, frame)
         };
         let (mut force, mut torque) = attitude::actuate(&mut self.propulsion, com, command);
         if rcs {
@@ -1290,9 +1472,16 @@ impl Vessel {
         // together in short substeps (`roll`). Parked on its wheels, a vessel rolls away as
         // soon as anything pushes it; come to rest on anything else, it stays put.
         let legs = gear::legs(&self.propulsion);
-        let rolling = !legs.is_empty()
+        // With wings and no wheels it comes down on its belly: the hull skids on the ground
+        // as it would behind a set of gear, once it is on its way down or has touched.
+        let belly = legs.is_empty() && !wing_panels(&self.propulsion).is_empty();
+        let rolling = (!legs.is_empty() || belly)
             && match &self.motion {
-                Motion::Integrated(encke) => near_ground(body, &encke.state(), t0, &legs, com),
+                Motion::Integrated(encke) => {
+                    let state = encke.state();
+                    near_ground(body, &state, t0, &legs, com)
+                        && (!belly || self.wheels_down || state.radial_speed() < 0.0)
+                }
                 Motion::Landed { .. } => force != DVec3::ZERO && self.wheels_down,
                 Motion::Coasting(_) => false,
             };
@@ -1424,6 +1613,7 @@ impl Vessel {
                     inertia: self.mass.inertia,
                     hold: Hold::Free,
                 };
+                self.lifted_off = Some(t0);
                 self.record(t0, "Liftoff!".into());
                 out.push(VesselEvent {
                     time: t0,
@@ -1533,7 +1723,9 @@ impl Vessel {
 
         let up = state.position.normalize();
         let ground_velocity = state.velocity - body.surface_velocity(state.position);
-        let touching = contact.touching();
+        // A hull strike is not a touchdown behind a set of gear, but it is on a belly.
+        let touching =
+            contact.touching() || (rolled.legs.is_empty() && contact.force != DVec3::ZERO);
         if touching && !self.wheels_down {
             let sink = (-ground_velocity.dot(up)).max(0.0);
             self.record(t1, format!("Touched down at {sink:.1} m/s"));
@@ -1632,7 +1824,24 @@ impl Vessel {
                         kind: VesselEventKind::Destroyed,
                     });
                 }
-                Part::Tank(_) => {}
+                Part::Joint if !self.destroyed => {
+                    self.destroyed = true;
+                    self.propulsion.shut_down();
+                    self.rcs = false;
+                    self.sas.set_enabled(false);
+                    self.record(
+                        time,
+                        format!(
+                            "{name}: the joint it hangs from broke at {percent:.0}% of its \
+                             strength. Vessel destroyed"
+                        ),
+                    );
+                    out.push(VesselEvent {
+                        time,
+                        kind: VesselEventKind::Destroyed,
+                    });
+                }
+                Part::Tank(_) | Part::Joint => {}
             }
         }
     }
@@ -1656,21 +1865,32 @@ impl Vessel {
     }
 
     /// The pilot's input if any, otherwise what SAS wants (`target`: where to point).
+    /// The rotation to command, in the vessel's axes. The player and SAS work in the axes of
+    /// the part it is flown from (`frame`, how that part is turned on the vessel).
     fn rotation_command(
         &mut self,
         attitude: Attitude,
         authority: DVec3,
         target: Option<DVec3>,
+        frame: DQuat,
     ) -> DVec3 {
-        if self.rotation_input != DVec3::ZERO {
+        if self.rotation_input != DVec3::ZERO && self.commandable() {
             self.sas.release();
-            return self.rotation_input.clamp(DVec3::NEG_ONE, DVec3::ONE);
+            let input = self.rotation_input.clamp(DVec3::NEG_ONE, DVec3::ONE);
+            return (frame * input).clamp(DVec3::NEG_ONE, DVec3::ONE);
         }
         if !self.sas.enabled() && target.is_none() {
             return DVec3::ZERO;
         }
         let alpha = authority / self.mass.inertia.diagonal().max(DVec3::splat(1e-9));
-        self.sas.steer(attitude, alpha, target)
+        let seen = Attitude {
+            orientation: attitude.orientation * frame,
+            angular_velocity: frame.inverse() * attitude.angular_velocity,
+            ..attitude
+        };
+        // What it can do about each of the frame's axes, as near as an axis-aligned turn goes.
+        let alpha = (frame.inverse() * alpha).abs();
+        (frame * self.sas.steer(seen, alpha, target)).clamp(DVec3::NEG_ONE, DVec3::ONE)
     }
 
     /// Integrate to `end`, then resolve ground contact, SOI changes and a return to coasting.
@@ -1896,6 +2116,9 @@ pub(crate) mod tests {
             pods: records(include_str!("../../../assets/core/pods/stock.json5")),
             batteries: records(include_str!(
                 "../../../mods/realism/batteries/batteries.json5"
+            )),
+            avionics: records(include_str!(
+                "../../../mods/realism/avionics/procedural_avionics.json5"
             )),
             liveries: Vec::new(),
         }
@@ -2445,7 +2668,9 @@ pub(crate) mod tests {
         v.rotation_input = DVec3::new(0.0, 0.3, 0.2);
         run(&mut v, &system, &mut t, 2.0);
         v.rotation_input = DVec3::ZERO;
-        let booster = v.propulsion.sections[0].length;
+        // How far up the stack the upper stage stands: the booster and the ring on it.
+        let sections = &v.propulsion.sections;
+        let booster = sections[1].bottom.z - sections[0].bottom.z;
         let upper_base =
             |v: &Vessel, extra: f64| v.base_at(&system, t) + nose(v, &system, t) * extra;
         let before = upper_base(&v, booster);
@@ -2770,7 +2995,11 @@ pub(crate) mod tests {
         fly_at(&mut v, 600.0, 30f64.to_radians());
         assert!(v.propulsion.sections[0].fins.is_none());
         let parts = v.propulsion.parts().parts();
-        assert!(!parts.iter().any(|p| matches!(p.kind, PartKind::Fins(_))));
+        assert!(
+            !parts
+                .iter()
+                .any(|p| p.is(|k| matches!(k, PartKind::Fins(_))))
+        );
         assert!(v.log.iter().any(|e| e.message.contains("fins torn off")));
         assert!(!v.is_destroyed());
     }

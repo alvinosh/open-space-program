@@ -44,7 +44,7 @@
         ],
       },
       structure: { thickness: 0, mass: 57950 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 6100000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 9 },
         { name: "top", position: [0, 0, 50], direction: [0, 0, 1], size: 9 },
@@ -122,9 +122,18 @@
       paint: { finish: "stainless" },
     },
     {
+      id: "super_heavy_decoupler",
+      name: "Decoupler",
+      on: "ship.bottom",
+      by: "top",
+      shape: { ring: { diameter: 9, height: 0.36, thickness: 0.18 } },
+      structure: { mass: 2471.31 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "super_heavy",
       name: "Super Heavy",
-      on: "ship.bottom",
+      on: "super_heavy_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -167,8 +176,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 34200 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 31728.69 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 9 },
         { name: "top", position: [0, 0, 71], direction: [0, 0, 1], size: 9 },

@@ -36,7 +36,7 @@
       },
       // Structure, avionics, batteries and payload.
       structure: { thickness: 0, mass: 550 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 1100, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2 },
         { name: "top", position: [0, 0, 4], direction: [0, 0, 1], size: 2 },

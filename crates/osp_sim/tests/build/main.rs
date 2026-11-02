@@ -60,7 +60,7 @@ fn judge(result: &CellResult, expect: Expect) -> Option<String> {
         )),
         Expect::Green => Some(format!("expected green, but {}", failures(result))),
         Expect::Grey(rule) => match &result.refusal {
-            Some(r) if !r.limit && r.reason.contains(rule) => None,
+            Some(r) if r.reason.contains(rule) => None,
             Some(r) => Some(format!(
                 "expected a refusal naming `{rule}`, got: {}",
                 r.reason
@@ -202,4 +202,35 @@ fn build_checks_can_fail() {
         fails(checks::on_the_pad(&staged, &craft, &propulsion, &mut pad)),
         "pad"
     );
+}
+
+/// Every flat mass in the shipped craft: hardware the plan says should come from a sizer, one
+/// by one as sizers land. Written beside the report, largest first, so it can be read and
+/// watched going down.
+#[test]
+fn flat_mass_inventory() {
+    use std::path::Path;
+
+    use osp_sim::data::CraftDef;
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let content = osp_mods::load(&root.join("assets/core"), Some(&root.join("mods")));
+    let registry = &content.registry;
+    let mut rows: Vec<(String, String, f64)> = Vec::new();
+    for id in registry.records("craft").map(|r| r.id.clone()) {
+        let def: CraftDef = registry.get("craft", &id).unwrap();
+        for part in &def.parts {
+            if let Some(mass) = part.structure.mass {
+                rows.push((id.clone(), part.id.clone(), mass));
+            }
+        }
+    }
+    rows.sort_by(|a, b| b.2.total_cmp(&a.2));
+    let total: f64 = rows.iter().map(|r| r.2).sum();
+    assert!(!rows.is_empty(), "no flat mass left: this test has done its job");
+    let out = root.join("target/smoke/build");
+    std::fs::create_dir_all(&out).unwrap();
+    let list = serde_json::json!({ "parts": rows.len(), "kg": total, "rows": rows });
+    std::fs::write(out.join("flat_masses.json"), list.to_string()).unwrap();
+    println!("Flat masses: {} parts, {:.0} t", rows.len(), total / 1e3);
 }

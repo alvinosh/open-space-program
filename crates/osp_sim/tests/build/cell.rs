@@ -281,6 +281,7 @@ pub fn build(row: &Row, column: Column) -> Result<Built, Refusal> {
         name: String::new(),
         parts: vec![subject.clone()],
         sequences: None,
+        triggers: Vec::new(),
     };
     let alone = Craft::build(&alone, catalog).expect("a part builds alone");
     let mount = alone.assembly.parts()[0]
@@ -372,6 +373,7 @@ pub fn build(row: &Row, column: Column) -> Result<Built, Refusal> {
         name: String::new(),
         parts,
         sequences: None,
+        triggers: Vec::new(),
     };
     if column == Column::Fairing {
         def.fit_fairings(catalog).map_err(|e| e.to_string())?;

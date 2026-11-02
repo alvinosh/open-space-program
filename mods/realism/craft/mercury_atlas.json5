@@ -41,7 +41,7 @@
         ],
       },
       structure: { thickness: 0, mass: 560 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 150000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.89 },
         { name: "top", position: [0, 0, 2.9], direction: [0, 0, 1], size: 1.89 },
@@ -99,7 +99,7 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 551 },
+      structure: { thickness: 0, mass: 528.11 },
       components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.05 },
@@ -123,14 +123,23 @@
       },
     },
     {
+      id: "sustainer_shell_1_decoupler",
+      name: "Decoupler",
+      on: "mercury.bottom",
+      by: "top",
+      shape: { ring: { diameter: 1.89, height: 0.0756, thickness: 0.0378 } },
+      structure: { mass: 22.89 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "sustainer_shell_1",
       name: "Adapter",
-      on: "mercury.bottom",
+      on: "sustainer_shell_1_decoupler.bottom",
       by: "top",
       shape: {
         shell: { bottom_diameter: 3.05, sections: [{ length: 1.5, top_diameter: 1.89 }] },
       },
-      components: [{ decoupler: { node: "top" } }],
+      components: [],
       paint: { finish: "stainless" },
     },
     {
@@ -155,9 +164,18 @@
       paint: { finish: "stainless" },
     },
     {
+      id: "booster_package_decoupler",
+      name: "Decoupler",
+      on: "sustainer.bottom",
+      by: "top",
+      shape: { ring: { diameter: 3.05, height: 0.122, thickness: 0.061 } },
+      structure: { mass: 96.18 },
+      components: [{ decoupler: { node: "top", crossfeed: true } }],
+    },
+    {
       id: "booster_package",
       name: "Booster Package",
-      on: "sustainer.bottom",
+      on: "booster_package_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -188,8 +206,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 1390.8 },
-      components: [{ container: {} }, { decoupler: { node: "top", crossfeed: true } }],
+      structure: { thickness: 0, mass: 1294.62 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 4.9 },
         { name: "top", position: [0, 0, 3.4], direction: [0, 0, 1], size: 3.05 },

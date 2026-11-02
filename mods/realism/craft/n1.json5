@@ -44,7 +44,7 @@
         ],
       },
       structure: { thickness: 0, mass: 95000 },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 3300000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 4.4 },
         { name: "top", position: [0, 0, 0.9], direction: [0, 0, 1], size: 2.2 },
@@ -164,9 +164,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "blok_v_decoupler",
+      name: "Decoupler",
+      on: "l3.bottom",
+      by: "top",
+      shape: { ring: { diameter: 4.4, height: 0.176, thickness: 0.088 } },
+      structure: { mass: 288.77 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "blok_v",
       name: "Blok V",
-      on: "l3.bottom",
+      on: "blok_v_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -206,8 +215,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 7980 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 7691.23 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 6.4 },
         { name: "top", position: [0, 0, 11.5], direction: [0, 0, 1], size: 4.4 },
@@ -253,9 +262,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "blok_b_decoupler",
+      name: "Decoupler",
+      on: "blok_v.bottom",
+      by: "top",
+      shape: { ring: { diameter: 6.4, height: 0.256, thickness: 0.128 } },
+      structure: { mass: 888.67 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "blok_b",
       name: "Blok B",
-      on: "blok_v.bottom",
+      on: "blok_b_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -304,8 +322,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 15570 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 14681.33 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 8.5 },
         { name: "top", position: [0, 0, 20.5], direction: [0, 0, 1], size: 6.4 },
@@ -393,9 +411,18 @@
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
+      id: "blok_a_decoupler",
+      name: "Decoupler",
+      on: "blok_b.bottom",
+      by: "top",
+      shape: { ring: { diameter: 8.5, height: 0.34, thickness: 0.17 } },
+      structure: { mass: 2081.88 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "blok_a",
       name: "Blok A",
-      on: "blok_b.bottom",
+      on: "blok_a_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -441,8 +468,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 58150 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 56068.12 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 13 },
         { name: "top", position: [0, 0, 30.1], direction: [0, 0, 1], size: 8.5 },

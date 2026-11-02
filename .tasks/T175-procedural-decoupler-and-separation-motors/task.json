@@ -2,7 +2,7 @@
   "id": "T175",
   "title": "Procedural decoupler and separation motors",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "structure",
   "size": "M",
   "parent": null,
@@ -15,8 +15,8 @@
     "docs/systems-plan.md (the palette of procedural parts)"
   ],
   "created": "2026-11-01",
-  "updated": "2026-11-01",
-  "done": null,
+  "updated": "2026-11-02",
+  "done": "2026-11-02",
   "milestone": "M2",
   "priority": 29
 }

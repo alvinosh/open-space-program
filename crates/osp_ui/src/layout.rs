@@ -256,7 +256,10 @@ mod tests {
         let bound = node.bind_self("w.3-1.");
         assert_eq!(bound.title.as_deref(), Some("{w.3-1.name}"));
         let label = &bound.children[0];
-        assert_eq!(label.text.as_deref(), Some("Holds itself. {w.3-1.amount|mass}"));
+        assert_eq!(
+            label.text.as_deref(),
+            Some("Holds itself. {w.3-1.amount|mass}")
+        );
         assert_eq!(label.visible.as_deref(), Some("!w.3-1.empty"));
         let list = &bound.children[1];
         assert_eq!(list.repeat.as_deref(), Some("w.3-1.resources"));
@@ -276,6 +279,9 @@ pub struct KeyBindingDef {
     /// others fire once per press.
     #[serde(default)]
     pub hold: bool,
+    /// What the settings call it; without one it is not offered for rebinding.
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

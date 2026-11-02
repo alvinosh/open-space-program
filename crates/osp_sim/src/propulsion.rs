@@ -25,10 +25,12 @@ use crate::{
         CraftDef, EngineDef, GearDef, PartCatalog, PodDef, RcsDef, StagedCraftDef, TankShape,
         WingDef,
     },
+    environment::Environment,
     parts::{Part, PartId, PartKind, PartTree},
     shell::Shell,
-    staging::{Activation, SectionActivation, Sequences},
+    staging::{Action, Activation, SectionActivation, Sequences},
     structure::{FinSet, Tank},
+    systems::{Avionics, Crew, Systems},
 };
 
 #[derive(Debug, Error)]
@@ -73,6 +75,12 @@ pub enum CraftError {
     NoStages,
 }
 
+/// What a crew can fly by hand with no avionics to help, kg: a capsule and what it docks to.
+pub const CREW_CONTROLS: f64 = 30_000.0;
+
+/// The `family` of a solid motor sized by [`crate::sizing`].
+pub const SEPARATION_MOTOR: &str = "Separation motor";
+
 #[derive(Debug, Clone)]
 pub struct Engine {
     pub def: EngineDef,
@@ -93,6 +101,8 @@ pub struct Engine {
     /// Thrust as a share of full thrust at the end of the last physics step: what the
     /// throttle asked for, as far as the engine has got there.
     pub level: f64,
+    /// The most of the throttle it takes, as a share: a sequence's thrust limit.
+    pub limit: f64,
     /// Seconds since ignition while the engine is still spooling up.
     spooling: Option<f64>,
     /// Current gimbal angle as a vector in vessel X/Y (the side the thrust is tilted
@@ -134,6 +144,16 @@ impl Engine {
         self.direction * angle.cos() + first * side.x + second * side.y
     }
 
+    /// Whether it is a solid: it burns at full thrust until its grain is gone, whatever it is told.
+    pub fn is_solid(&self) -> bool {
+        self.def.is_solid()
+    }
+
+    /// Whether it is one of the small motors that pull a stage away or settle its propellant.
+    pub fn is_separation_motor(&self) -> bool {
+        self.def.family.as_deref() == Some(SEPARATION_MOTOR)
+    }
+
     /// Full-throttle propellant mass flow, kg/s.
     pub fn max_mass_flow(&self) -> f64 {
         self.def.thrust_vac / (self.def.isp_vac * G0)
@@ -162,7 +182,7 @@ impl Engine {
     /// Thrust share a throttle setting asks of a running engine: the setting, held within
     /// the engine's range (it cannot run below its minimum).
     pub fn commanded_level(&self, throttle: f64) -> f64 {
-        throttle.clamp(self.def.min_throttle.clamp(0.0, 1.0), 1.0)
+        (throttle * self.limit).clamp(self.def.min_throttle.clamp(0.0, 1.0), 1.0)
     }
 
     /// Whether the engine is still coming up to speed after ignition.
@@ -390,68 +410,65 @@ impl Section {
         let mut hull = false;
         let mut half = None;
         for part in tree.stage(id) {
-            match &part.kind {
-                PartKind::Hull {
-                    structure_mass,
-                    diameter,
-                    length,
-                } => {
-                    hull = true;
-                    section.name = part.name.clone();
-                    section.bottom = part.position;
-                    section.structure_mass += structure_mass;
-                    section.diameter = *diameter;
-                    section.length = *length;
-                }
-                PartKind::Structure { mass } => section.structure_mass += mass,
-                PartKind::Decoupler => {}
-                PartKind::Tank(tank) => {
-                    section.tanks += 1;
-                    section.tank_mass += tank.dry_mass;
-                    if tank.shape == TankShape::Cylinder {
-                        section.tanks_top = section.tanks_top.max(tank.base + tank.length);
+            if let Some(body) = part.body {
+                hull = true;
+                section.name = part.name.clone();
+                section.bottom = part.position;
+                section.diameter = body.diameter;
+                section.length = body.length;
+            }
+            for kind in &part.kinds {
+                match kind {
+                    PartKind::Structure { mass } => section.structure_mass += mass,
+                    PartKind::Decoupler { mass, .. } => section.structure_mass += mass,
+                    PartKind::Tank(tank) => {
+                        section.tanks += 1;
+                        section.tank_mass += tank.dry_mass;
+                        if tank.shape == TankShape::Cylinder {
+                            section.tanks_top = section.tanks_top.max(tank.base + tank.length);
+                        }
                     }
-                }
-                PartKind::Engine(def) => {
-                    section.engines += 1;
-                    section.engine_mass += def.mass;
-                }
-                PartKind::Rcs(def) => {
-                    section.rcs += 1;
-                    section.structure_mass += def.mass;
-                }
-                PartKind::ReactionWheel(def) => {
-                    section.structure_mass += def.mass;
-                    section.wheel_torque += def.torque;
-                }
-                PartKind::Pod(def) => {
-                    section.structure_mass += def.mass;
-                    section.pods.push(def.clone());
-                }
-                PartKind::Fins(fins) => section.fins = Some(fins.clone()),
-                PartKind::Wing(def) => section.wings.push(def.clone()),
-                PartKind::Gear(def) => section.gear.push(def.clone()),
-                PartKind::Shell(shell) => {
-                    section.structure_mass += shell.mass;
-                    section.shells.push(shell.clone());
-                }
-                PartKind::FairingHalf {
-                    mass,
-                    shells,
-                    angle,
-                    radius,
-                    length,
-                } => {
-                    let fairing = section.fairing.get_or_insert(Fairing {
-                        mass: 0.0,
-                        attached: true,
-                        half: None,
-                    });
-                    fairing.mass += mass;
-                    if section.shells.is_empty() {
-                        section.shells = shells.clone();
+                    PartKind::Engine(def) => {
+                        section.engines += 1;
+                        section.engine_mass += def.mass;
                     }
-                    half = Some((part.position, *angle, *radius, *length));
+                    PartKind::Rcs(def) => {
+                        section.rcs += 1;
+                        section.structure_mass += def.mass;
+                    }
+                    PartKind::ReactionWheel(def) => {
+                        section.structure_mass += def.mass;
+                        section.wheel_torque += def.torque;
+                    }
+                    PartKind::Pod(def) => {
+                        section.structure_mass += def.mass;
+                        section.pods.push(def.clone());
+                    }
+                    PartKind::Fins(fins) => section.fins = Some(fins.clone()),
+                    PartKind::Wing(def) => section.wings.push(def.clone()),
+                    PartKind::Gear(def) => section.gear.push(def.clone()),
+                    PartKind::Shell(shell) => {
+                        section.structure_mass += shell.mass;
+                        section.shells.push(shell.clone());
+                    }
+                    PartKind::FairingHalf {
+                        mass,
+                        shells,
+                        angle,
+                        radius,
+                        length,
+                    } => {
+                        let fairing = section.fairing.get_or_insert(Fairing {
+                            mass: 0.0,
+                            attached: true,
+                            half: None,
+                        });
+                        fairing.mass += mass;
+                        if section.shells.is_empty() {
+                            section.shells = shells.clone();
+                        }
+                        half = Some((part.position, *angle, *radius, *length));
+                    }
                 }
             }
         }
@@ -481,7 +498,7 @@ impl Section {
             section.parent = Some(holder.stage);
             let under = tree
                 .stage(holder.stage)
-                .find(|p| matches!(p.kind, PartKind::Hull { .. }))
+                .find(|p| p.body.is_some())
                 .map_or(DVec3::ZERO, |p| p.position);
             section.beside = (section.bottom - under).truncate().length() > 1e-6;
         }
@@ -568,6 +585,10 @@ pub struct Released {
     pub tanks: Vec<Tank>,
     /// Its engines that were armed.
     armed: BTreeSet<PartId>,
+    /// What its parts do besides propulsion, as they were.
+    pub systems: Systems,
+    /// What it left needed something to control it.
+    needs_control: bool,
     /// Height of its base above the vessel's base before the sequence fired, m.
     pub base: f64,
     /// What its decouplers push it and the vessel apart with, N·s (0 for the usual push).
@@ -586,6 +607,8 @@ impl Released {
 pub struct Group {
     /// As [`Activation::kind`].
     pub kind: &'static str,
+    /// As [`Activation::verb`].
+    pub verb: &'static str,
     /// What makes them alike: their parts' name, or their engines' record.
     pub look: String,
     /// Where they are in the sequence, and their parts.
@@ -647,6 +670,31 @@ pub struct Propulsion {
     /// it, so that section's exhaust goes straight through (an interstage ring, the
     /// Atlas's booster skirt).
     hollow: BTreeSet<usize>,
+    /// What the parts do besides propulsion, and its state.
+    pub systems: Systems,
+    /// What its avionics are still to do by themselves.
+    triggers: Vec<Trigger>,
+    /// It was started from a scenario, where a vessel with no unit and no crew has no control.
+    needs_control: bool,
+    /// The part it is flown from, if not its own axes.
+    control_part: Option<PartId>,
+}
+
+/// Something a vessel's avionics do by themselves, once.
+#[derive(Debug, Clone)]
+struct Trigger {
+    when: TriggerWhen,
+    fire: Vec<Activation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TriggerWhen {
+    /// Seconds after liftoff.
+    Time(f64),
+    /// The section has this share of its propellant left.
+    Propellant(usize, f64),
+    /// Proper acceleration past this, m/s².
+    Acceleration(f64),
 }
 
 impl Propulsion {
@@ -658,59 +706,210 @@ impl Propulsion {
             Some(list) => {
                 let tree = &propulsion.parts;
                 let part = |id: &str| craft.find(id).map(|i| tree.parts()[i].id);
-                let parse = |kind: &str, id: &str| {
+                let parse = |kind: &str, id: &str, setting: Option<u16>| {
                     let part = part(id).ok_or_else(|| format!("no part `{id}`"))?;
-                    propulsion.activations(kind, part)
+                    propulsion.activations(kind, part, setting)
                 };
                 Sequences::parse(list, parse).map_err(CraftError::BadSequence)?
             }
             None => Sequences::default_for(&propulsion.sections, |a| propulsion.section_parts(a)),
         };
+        let mut triggers = Vec::new();
+        for def in &def.triggers {
+            let bad = |problem: String| CraftError::BadSequence(format!("a trigger: {problem}"));
+            let tree = &propulsion.parts;
+            let part = |id: &str| {
+                craft
+                    .find(id)
+                    .map(|i| tree.parts()[i].id)
+                    .ok_or_else(|| bad(format!("no part `{id}`")))
+            };
+            let when = match (def.time, def.propellant_below, def.acceleration_above) {
+                (Some(time), None, None) => TriggerWhen::Time(time),
+                (None, Some(share), None) => {
+                    let of = def
+                        .of
+                        .as_deref()
+                        .ok_or_else(|| bad("a propellant level says `of` which stage".into()))?;
+                    let section = tree.get(part(of)?).map_or(0, |p| p.stage);
+                    TriggerWhen::Propellant(section, share)
+                }
+                (None, None, Some(limit)) => TriggerWhen::Acceleration(limit),
+                _ => {
+                    return Err(bad(
+                        "say one of `time`, `propellant_below`, `acceleration_above`".into(),
+                    ));
+                }
+            };
+            let mut fire = Vec::new();
+            for text in &def.fire {
+                let mut pieces = text.split(':').map(str::trim);
+                let (Some(kind), Some(id)) = (pieces.next(), pieces.next()) else {
+                    return Err(bad(format!("`{text}`: write it as `<kind>:<part id>`")));
+                };
+                let setting = match pieces.next() {
+                    Some(s) => Some(
+                        s.parse()
+                            .map_err(|_| bad(format!("`{text}`: a whole number")))?,
+                    ),
+                    None => None,
+                };
+                let found = propulsion
+                    .activations(kind, part(id)?, setting)
+                    .map_err(|e| bad(format!("`{text}`: {e}")))?;
+                if found
+                    .iter()
+                    .any(|a| matches!(a.kind(), "decoupler" | "fairing"))
+                {
+                    return Err(bad(format!("`{text}`: it cannot let anything go")));
+                }
+                fire.extend(found);
+            }
+            triggers.push(Trigger { when, fire });
+        }
+        propulsion.triggers = triggers;
         Ok(propulsion)
     }
 
+    /// Whether the vessel can be steered: powered avionics for the mass it is (`near_earth`:
+    /// within the Earth's sphere of influence, where any level works), with a crew good for
+    /// [`CREW_CONTROLS`] by hand. A vessel with neither flies as it always has unless it was
+    /// started from a scenario ([`Self::require_control`]).
+    pub fn controlled(&self, near_earth: bool) -> bool {
+        let units = || self.systems.all::<Avionics>();
+        let crew = self.systems.all::<Crew>().any(|(_, crew)| crew.aboard > 0);
+        if units().next().is_none() && !crew {
+            return !self.needs_control;
+        }
+        let can: f64 = units()
+            .filter(|(_, unit)| unit.on && (near_earth || unit.interplanetary))
+            .map(|(_, unit)| unit.controlled_mass)
+            .sum();
+        self.mass() <= can + if crew { CREW_CONTROLS } else { 0.0 }
+    }
+
+    /// From now on it has no control without avionics or a crew.
+    pub fn require_control(&mut self) {
+        self.needs_control = true;
+    }
+
+    /// How the part it is flown from is turned on the vessel.
+    pub fn control_rotation(&self) -> DQuat {
+        (self.control_part)
+            .and_then(|part| self.parts.get(part))
+            .map_or(DQuat::IDENTITY, |part| part.rotation)
+    }
+
+    /// Whether `part` can be flown from.
+    fn controls(&self, part: PartId) -> bool {
+        self.systems
+            .on(part)
+            .iter()
+            .any(|s| s.kind() == "avionics" || s.kind() == "crew")
+    }
+
+    /// Fire what is due of the avionics' triggers: `since_liftoff` (s, if it has lifted off),
+    /// `acceleration` (m/s²). Only a vessel under control does.
+    pub(crate) fn fire_triggers(
+        &mut self,
+        since_liftoff: Option<f64>,
+        acceleration: f64,
+        controlled: bool,
+    ) -> Vec<String> {
+        if self.triggers.is_empty() || !controlled {
+            return Vec::new();
+        }
+        let due = |this: &Self, when: TriggerWhen| match when {
+            TriggerWhen::Time(time) => since_liftoff.is_some_and(|t| t >= time),
+            TriggerWhen::Propellant(section, share) => {
+                let capacity = this.propellant_capacity(section);
+                capacity > 0.0 && this.propellant_mass(section) < share * capacity
+            }
+            TriggerWhen::Acceleration(limit) => acceleration > limit,
+        };
+        let mut messages = Vec::new();
+        let mut k = 0;
+        while k < self.triggers.len() {
+            if due(self, self.triggers[k].when) {
+                let trigger = self.triggers.remove(k);
+                for activation in &trigger.fire {
+                    self.sequences.take(*activation);
+                }
+                messages.extend(self.run(trigger.fire).messages);
+            } else {
+                k += 1;
+            }
+        }
+        messages
+    }
+
     /// What `<kind>:<part>` in a craft's sequences activates. Naming the part that does it
-    /// activates that part: an engine (`engines`), a part hanging from a joint that lets go
-    /// (`decoupler`), a fairing panel (`fairing`), an RCS block (`rcs`). Naming another part
-    /// of a section activates the section's: all its engines, the joint it hangs from, all
-    /// its fairing's panels, its RCS.
-    fn activations(&self, kind: &str, part: PartId) -> Result<Vec<Activation>, String> {
+    /// activates that part: an engine (`engines`, `cutoff`, `throttle`), a part hanging from a
+    /// joint that lets go (`decoupler`), a fairing panel (`fairing`), an RCS block (`rcs`), or a
+    /// part with a system that offers the action. Naming another part of a section activates
+    /// the section's: all its engines, the joint it hangs from, all its fairing's panels, its
+    /// RCS. `setting` is what `throttle` limits to, in percent.
+    fn activations(
+        &self,
+        kind: &str,
+        part: PartId,
+        setting: Option<u16>,
+    ) -> Result<Vec<Activation>, String> {
         let tree = &self.parts;
         let found = tree.get(part).ok_or("no such part")?;
         let section = found.stage;
-        let (own, whole) = match kind {
-            "engines" => (
-                self.engines
-                    .iter()
-                    .any(|e| e.part == part)
-                    .then_some(Activation::Engine(part)),
-                SectionActivation::Engines(section),
+        let engine = self.engines.iter().any(|e| e.part == part);
+        let (own, whole) = match (kind, setting) {
+            ("engines", None) => (
+                engine.then_some(Activation::engine(part)),
+                Some(SectionActivation::Engines(section)),
             ),
-            "decoupler" => (
-                (!matches!(found.kind, PartKind::FairingHalf { .. })
+            ("cutoff", None) => (
+                engine.then_some(Activation::new(part, Action::CUTOFF)),
+                Some(SectionActivation::Cutoff(section)),
+            ),
+            ("throttle", Some(percent)) => (
+                engine.then_some(Activation::new(part, Action::throttle(percent))),
+                Some(SectionActivation::Throttle(section, percent)),
+            ),
+            ("throttle", None) => {
+                return Err("write `throttle:<part>:<percent>`".into());
+            }
+            ("decoupler", None) => (
+                (!found.is_fairing_half()
                     && tree.joint_capabilities(part).is_some_and(|c| c.release))
-                .then_some(Activation::Decoupler(part)),
-                SectionActivation::Decoupler(section),
+                .then_some(Activation::decoupler(part)),
+                Some(SectionActivation::Decoupler(section)),
             ),
-            "fairing" => (
-                matches!(found.kind, PartKind::FairingHalf { .. })
-                    .then_some(Activation::Fairing(part)),
-                SectionActivation::Fairing(section),
+            ("fairing", None) => (
+                found.is_fairing_half().then_some(Activation::fairing(part)),
+                Some(SectionActivation::Fairing(section)),
             ),
-            "rcs" => (
+            ("rcs", None) => (
                 self.rcs
                     .iter()
                     .any(|b| b.part == part)
-                    .then_some(Activation::Rcs(part)),
-                SectionActivation::Rcs(section),
+                    .then_some(Activation::rcs(part)),
+                Some(SectionActivation::Rcs(section)),
             ),
-            other => {
-                return Err(format!(
-                    "unknown `{other}` (engines, decoupler, fairing or rcs)"
-                ));
+            (other, _) => {
+                let offered = (self.systems.on(part).iter())
+                    .flat_map(|system| system.actions())
+                    .find(|action| action.kind == other);
+                let Some(action) = offered else {
+                    return Err(format!(
+                        "this part has no `{other}` (engines, cutoff, throttle, decoupler, fairing, \
+                         rcs, or what a system of the part offers)"
+                    ));
+                };
+                (Some(Activation::new(part, action)), None)
             }
         };
-        let found = own.map_or_else(|| self.section_parts(whole), |a| vec![a]);
+        let found = match (own, whole) {
+            (Some(activation), _) => vec![activation],
+            (None, Some(whole)) => self.section_parts(whole),
+            (None, None) => Vec::new(),
+        };
         if found.is_empty() {
             return Err("that part's section has nothing to activate there".into());
         }
@@ -721,46 +920,52 @@ impl Propulsion {
     /// from the joint that lets go, its fairing's panels, its first RCS block.
     pub fn section_parts(&self, what: SectionActivation) -> Vec<Activation> {
         let tree = &self.parts;
-        let half = |p: &Part| matches!(p.kind, PartKind::FairingHalf { .. });
+        let half = Part::is_fairing_half;
+        // A section's engines are the ones that fly it; a retro motor is named by itself.
+        let engines = |id: usize, action: Action| -> Vec<Activation> {
+            self.main_engines_of(id)
+                .map(|e| Activation::new(e.part, action))
+                .collect()
+        };
         match what {
-            SectionActivation::Engines(id) => self
-                .engines_of(id)
-                .map(|e| Activation::Engine(e.part))
-                .collect(),
+            SectionActivation::Engines(id) => engines(id, Action::IGNITE),
+            SectionActivation::Cutoff(id) => engines(id, Action::CUTOFF),
+            SectionActivation::Throttle(id, percent) => engines(id, Action::throttle(percent)),
             SectionActivation::Decoupler(id) => (tree.stage(id))
                 .find(|p| !half(p) && tree.joint_capabilities(p.id).is_some_and(|c| c.release))
-                .map(|p| Activation::Decoupler(p.id))
+                .map(|p| Activation::decoupler(p.id))
                 .into_iter()
                 .collect(),
             SectionActivation::Fairing(id) => (tree.stage(id))
                 .filter(|p| half(p))
-                .map(|p| Activation::Fairing(p.id))
+                .map(|p| Activation::fairing(p.id))
                 .collect(),
             SectionActivation::Rcs(id) => self
                 .rcs_of(id)
                 .take(1)
-                .map(|b| Activation::Rcs(b.part))
+                .map(|b| Activation::rcs(b.part))
                 .collect(),
         }
     }
 
     /// `sequence`'s activations gathered as the staging panel shows them: identical parts
-    /// (the same kind of activation by parts of the same name, engines of the same record)
-    /// under one icon, in the order each first appears.
+    /// (the same kind of activation by parts of the same stage and name, engines of the same
+    /// record) under one icon, in the order each first appears.
     pub fn groups(&self, sequence: &[Activation]) -> Vec<Group> {
         let mut groups: Vec<Group> = Vec::new();
         for (index, &a) in sequence.iter().enumerate() {
             let Some(part) = self.parts.get(a.part()) else {
                 continue;
             };
-            let look = match a {
-                Activation::Engine(p) => (self.engines.iter())
-                    .find(|e| e.part == p)
+            let look = match a.kind() {
+                "engines" | "cutoff" | "throttle" => (self.engines.iter())
+                    .find(|e| e.part == a.part())
                     .map_or(part.name.clone(), |e| e.def.id.clone()),
-                Activation::Rcs(_) => String::new(),
+                "rcs" => String::new(),
                 _ => part.name.clone(),
             };
-            let same = |g: &&mut Group| g.kind == a.kind() && g.look == look;
+            let same =
+                |g: &&mut Group| g.kind == a.kind() && g.look == look && g.section == part.stage;
             match groups.iter_mut().find(same) {
                 Some(group) => {
                     group.members.push(index);
@@ -768,6 +973,7 @@ impl Propulsion {
                 }
                 None => groups.push(Group {
                     kind: a.kind(),
+                    verb: a.verb(),
                     look,
                     members: vec![index],
                     parts: vec![a.part()],
@@ -827,34 +1033,37 @@ impl Propulsion {
     fn new(parts: PartTree) -> Self {
         let (mut engines, mut rcs, mut tanks) = (Vec::new(), Vec::new(), Vec::new());
         for part in parts.parts() {
-            match &part.kind {
-                PartKind::Engine(def) => engines.push(Engine {
-                    def: (**def).clone(),
-                    part: part.id,
-                    section: part.stage,
-                    running: false,
-                    ignitions_left: def.ignitions,
-                    mount: part.position,
-                    direction: thrust_axis(part.rotation),
-                    thrust: 0.0,
-                    level: 0.0,
-                    spooling: None,
-                    deflection: DVec2::ZERO,
-                }),
-                PartKind::Rcs(def) => rcs.push(RcsBlock {
-                    def: def.clone(),
-                    part: part.id,
-                    section: part.stage,
-                    mount: part.position,
-                    rotation: part.rotation,
-                    firing: [0.0; 4],
-                }),
-                PartKind::Tank(tank) => tanks.push(Tank {
-                    part: part.id,
-                    section: part.stage,
-                    ..tank.clone()
-                }),
-                _ => {}
+            for kind in &part.kinds {
+                match kind {
+                    PartKind::Engine(def) => engines.push(Engine {
+                        def: (**def).clone(),
+                        part: part.id,
+                        section: part.stage,
+                        running: false,
+                        ignitions_left: def.ignitions,
+                        mount: part.position,
+                        direction: thrust_axis(part.rotation),
+                        thrust: 0.0,
+                        level: 0.0,
+                        limit: 1.0,
+                        spooling: None,
+                        deflection: DVec2::ZERO,
+                    }),
+                    PartKind::Rcs(def) => rcs.push(RcsBlock {
+                        def: def.clone(),
+                        part: part.id,
+                        section: part.stage,
+                        mount: part.position,
+                        rotation: part.rotation,
+                        firing: [0.0; 4],
+                    }),
+                    PartKind::Tank(tank) => tanks.push(Tank {
+                        part: part.id,
+                        section: part.stage,
+                        ..tank.clone()
+                    }),
+                    _ => {}
+                }
             }
         }
         let mut propulsion = Self {
@@ -871,7 +1080,12 @@ impl Propulsion {
             feeds: BTreeMap::new(),
             shape: OnceLock::new(),
             hollow: BTreeSet::new(),
+            systems: Systems::default(),
+            triggers: Vec::new(),
+            needs_control: false,
+            control_part: None,
         };
+        propulsion.systems = Systems::of(&propulsion.parts);
         propulsion.rebuild();
         propulsion
     }
@@ -879,6 +1093,10 @@ impl Propulsion {
     /// What came loose from a vessel, as one of its own: nothing left to stage, throttle
     /// closed (engines that were running tail off).
     pub fn from_released(released: Released) -> Self {
+        // A motor lit in the sequence that let it go has yet to start.
+        let lit_late = (released.engines.iter()).any(|e| {
+            e.is_solid() && !e.running && e.level <= 0.0 && released.armed.contains(&e.part)
+        });
         let mut propulsion = Self {
             parts: released.parts,
             sections: released.sections,
@@ -889,13 +1107,18 @@ impl Propulsion {
             jettisoned: BTreeSet::new(),
             sequences: Sequences::default(),
             throttle: 0.0,
-            ignition_pending: false,
+            ignition_pending: lit_late,
             feeds: BTreeMap::new(),
             shape: OnceLock::new(),
             hollow: BTreeSet::new(),
+            systems: released.systems,
+            triggers: Vec::new(),
+            needs_control: released.needs_control,
+            control_part: None,
         };
         propulsion.plumb();
         propulsion.hollow = propulsion.hollow_rings();
+        propulsion.systems.wire(&propulsion.parts);
         propulsion
     }
 
@@ -937,6 +1160,7 @@ impl Propulsion {
             .collect();
         let engines: BTreeSet<PartId> = self.engines.iter().map(|e| e.part).collect();
         self.armed.retain(|p| engines.contains(p));
+        self.systems.retain_on(&self.parts);
         self.plumb();
         self.shape = OnceLock::new();
         self.hollow = self.hollow_rings();
@@ -961,11 +1185,7 @@ impl Propulsion {
         // Whole sections as they were on the vessel, what they hung from and all; a fairing
         // half as a section of its own.
         let ids: BTreeSet<usize> = parts.parts().iter().map(|p| p.stage).collect();
-        let whole = |id: usize| {
-            parts
-                .stage(id)
-                .any(|p| matches!(p.kind, PartKind::Hull { .. }))
-        };
+        let whole = |id: usize| parts.stage(id).any(|p| p.body.is_some());
         let sections = ids
             .iter()
             .map(|&id| match self.sections.iter().find(|s| s.id == id) {
@@ -976,6 +1196,8 @@ impl Propulsion {
         Released {
             sections,
             armed: (self.armed.iter()).copied().filter(|&p| gone(p)).collect(),
+            systems: self.systems.split_off(gone),
+            needs_control: self.needs_control,
             parts,
             engines,
             rcs,
@@ -985,9 +1207,42 @@ impl Propulsion {
         }
     }
 
-    /// Work out where each engine and RCS block draws from: the tanks propellant reaches
-    /// it from through joints that carry it (`PartTree::fluid_groups`). A decoupler passes
-    /// propellant only with its crossfeed on.
+    /// Move the systems on `dt` seconds under `environment`, and take what they burned out of
+    /// the tanks their parts can reach.
+    pub fn step_systems(&mut self, environment: &Environment, dt: f64) {
+        self.systems.step(environment, dt);
+        for part in self.systems.consumers() {
+            for k in 0..self.systems.on(part).len() {
+                if !self.systems.on(part)[k].consumes() {
+                    continue;
+                }
+                let burned = self.systems.on_mut(part)[k].take_consumption();
+                let fed = self.draw(part, &burned);
+                self.systems.on_mut(part)[k].fed(fed);
+            }
+        }
+    }
+
+    /// Seconds until a system needs attention: it says so, or its tanks will run dry at the
+    /// rate it burns them.
+    pub fn next_system_event(&self, environment: &Environment) -> Option<f64> {
+        let dry = self.systems.consumers().into_iter().flat_map(|part| {
+            let systems = self.systems.on(part);
+            let rates: Vec<(&str, f64)> = systems.iter().flat_map(|s| s.consuming()).collect();
+            rates.into_iter().filter_map(move |(resource, rate)| {
+                (rate > 0.0).then(|| self.reachable(part, resource) / rate)
+            })
+        });
+        self.systems
+            .next_event(environment)
+            .into_iter()
+            .chain(dry)
+            .reduce(f64::min)
+    }
+
+    /// Work out where each engine, RCS block and system that burns something draws from: the
+    /// tanks propellant reaches it from through joints that carry it
+    /// (`PartTree::fluid_groups`). A decoupler passes propellant only with its crossfeed on.
     fn plumb(&mut self) {
         self.feeds.clear();
         for group in self.parts.fluid_groups() {
@@ -998,9 +1253,23 @@ impl Propulsion {
                 .engines
                 .iter()
                 .map(|e| e.part)
-                .chain(self.rcs.iter().map(|b| b.part));
+                .chain(self.rcs.iter().map(|b| b.part))
+                .chain(self.systems.consumers());
             for user in users.filter(|u| group.contains(u)) {
                 self.feeds.insert(user, tanks.clone());
+            }
+        }
+        // A part's own tanks feed what is on it, with or without plumbing to the rest.
+        let users: Vec<PartId> = (self.engines.iter().map(|e| e.part))
+            .chain(self.rcs.iter().map(|b| b.part))
+            .chain(self.systems.consumers())
+            .collect();
+        for user in users {
+            for k in (0..self.tanks.len()).filter(|&k| self.tanks[k].part == user) {
+                let feeds = self.feeds.entry(user).or_default();
+                if !feeds.contains(&k) {
+                    feeds.push(k);
+                }
             }
         }
     }
@@ -1154,9 +1423,17 @@ impl Propulsion {
 
     /// The propellant section `id`'s engines can burn, given their mixture, kg.
     pub fn usable_propellant_mass(&self, id: usize) -> f64 {
-        self.engines_of(id)
+        self.main_engines_of(id)
             .next()
             .map_or(0.0, |e| self.burnable(id, &e.def.propellants))
+    }
+
+    /// Section `id`'s engines that fly it, leaving out the small motors that pull it away or
+    /// settle its propellant, unless that is all it has.
+    pub fn main_engines_of(&self, id: usize) -> impl Iterator<Item = &Engine> {
+        let any_main = self.engines_of(id).any(|e| !e.is_separation_motor());
+        self.engines_of(id)
+            .filter(move |e| !any_main || !e.is_separation_motor())
     }
 
     /// The propellant section `id`'s RCS blocks can still burn, kg.
@@ -1261,8 +1538,11 @@ impl Propulsion {
     fn vented(&self, below: usize, above: usize) -> bool {
         let tree = &self.parts;
         tree.stage(below).any(|p| {
+            // A ring that only lets go hands the question on to what stands on it.
+            let beyond = p.is(|k| matches!(k, PartKind::Decoupler { .. }))
+                && tree.children(p.id).any(|c| c.stage == below && c.open);
             tree.parent(p.id)
-                .is_some_and(|q| q.stage == above && (p.open || q.open))
+                .is_some_and(|q| q.stage == above && (p.open || q.open || beyond))
         })
     }
 
@@ -1331,28 +1611,33 @@ impl Propulsion {
     }
 
     /// The actions the player can take on `part` now, as the part's window offers them: light
-    /// the engine if it is not lit, release the joint it hangs from or the ones a
-    /// decoupler on it lets go, jettison a fairing panel, switch its RCS on (`rcs_on`: it is
-    /// on already).
+    /// the engine if it is not lit and cut it off if it is, release the joint it hangs from or
+    /// the ones a decoupler on it lets go, jettison a fairing panel, switch its RCS on (`rcs_on`:
+    /// it is on already), and what its systems offer.
     pub fn part_actions(&self, part: PartId, rcs_on: bool) -> Vec<Activation> {
         let tree = &self.parts;
         let Some(found) = tree.get(part) else {
             return Vec::new();
         };
         let mut out = Vec::new();
-        if self.engines.iter().any(|e| e.part == part) && !self.armed.contains(&part) {
-            out.push(Activation::Engine(part));
+        if let Some(engine) = self.engines.iter().find(|e| e.part == part) {
+            if !self.armed.contains(&part) {
+                out.push(Activation::engine(part));
+            } else if !engine.is_solid() {
+                // Nothing stops a solid once it is lit.
+                out.push(Activation::new(part, Action::CUTOFF));
+            }
         }
-        if matches!(found.kind, PartKind::FairingHalf { .. }) {
+        if found.is_fairing_half() {
             if tree.joint_capabilities(part).is_some_and(|c| c.release) {
-                out.push(Activation::Fairing(part));
+                out.push(Activation::fairing(part));
             }
         } else {
             let releases = |p: PartId| tree.joint_capabilities(p).is_some_and(|c| c.release);
             // The joint it hangs from, and the joints under it that a decoupler of its
             // own holds.
             if releases(part) {
-                out.push(Activation::Decoupler(part));
+                out.push(Activation::decoupler(part));
             }
             let nodes: Vec<&str> = (found.built.iter())
                 .flat_map(|b| &b.components)
@@ -1368,15 +1653,23 @@ impl Propulsion {
                 let node = found.connectors.get(joint.parent_connector);
                 if node.is_some_and(|c| nodes.contains(&c.name.as_str()))
                     && releases(child.id)
-                    && !matches!(child.kind, PartKind::FairingHalf { .. })
+                    && !child.is_fairing_half()
                 {
-                    out.push(Activation::Decoupler(child.id));
+                    out.push(Activation::decoupler(child.id));
                 }
             }
         }
         if !rcs_on && self.rcs.iter().any(|b| b.part == part) {
-            out.push(Activation::Rcs(part));
+            out.push(Activation::rcs(part));
         }
+        if self.controls(part) && self.control_part != Some(part) {
+            out.push(Activation::new(part, Action::CONTROL));
+        }
+        out.extend(
+            (self.systems.on(part).iter())
+                .flat_map(|system| system.actions())
+                .map(|action| Activation::new(part, action)),
+        );
         out
     }
 
@@ -1404,8 +1697,10 @@ impl Propulsion {
                 continue;
             };
             let id = part.stage;
-            match activation {
-                Activation::Decoupler(decoupler) => {
+            let target = activation.part();
+            match activation.kind() {
+                "decoupler" => {
+                    let decoupler = target;
                     let impulse = self.parts.release_impulse(decoupler);
                     let Some(parts) = self.parts.release(decoupler) else {
                         continue;
@@ -1427,11 +1722,11 @@ impl Propulsion {
                         self.ignition_pending = true;
                     }
                 }
-                Activation::Engine(engine) => {
-                    if !self.engines.iter().any(|e| e.part == engine) {
+                "engines" => {
+                    if !self.engines.iter().any(|e| e.part == target) {
                         continue;
                     }
-                    self.armed.insert(engine);
+                    self.armed.insert(target);
                     let Some(index) = self.sections.iter().position(|s| s.id == id) else {
                         continue;
                     };
@@ -1451,8 +1746,8 @@ impl Propulsion {
                         self.ignition_pending = true;
                     }
                 }
-                Activation::Fairing(half) => {
-                    let Some(parts) = self.parts.release(half) else {
+                "fairing" => {
+                    let Some(parts) = self.parts.release(target) else {
                         continue;
                     };
                     let base = parts.base() - before;
@@ -1466,11 +1761,50 @@ impl Propulsion {
                         staged.messages.push("Fairing jettisoned".into());
                     }
                 }
-                Activation::Rcs(_) => {
+                "rcs" => {
                     staged.rcs_on = true;
                     if said.insert(("rcs", 0)) {
                         staged.messages.push("RCS on".into());
                     }
+                }
+                "cutoff" => {
+                    // A solid burns on; anything else falls off its curve as any shutdown does:
+                    // `burn` sees to that.
+                    if self
+                        .engines
+                        .iter()
+                        .any(|e| e.part == target && e.is_solid())
+                    {
+                        continue;
+                    }
+                    if !self.armed.remove(&target) {
+                        continue;
+                    }
+                    if let Some(engine) = self.engines.iter_mut().find(|e| e.part == target) {
+                        engine.running = false;
+                        staged.messages.push(format!("{}: cut off", engine.def.id));
+                    }
+                }
+                "control" => {
+                    self.control_part = Some(target);
+                    let name = self.parts.get(target).map_or("", |p| p.name.as_str());
+                    staged.messages.push(format!("Controlling from {name}"));
+                }
+                "throttle" => {
+                    let limit = f64::from(activation.action.setting.unwrap_or(100)) / 100.0;
+                    if let Some(engine) = self.engines.iter_mut().find(|e| e.part == target) {
+                        engine.limit = limit.clamp(0.0, 1.0);
+                        staged.messages.push(format!(
+                            "{}: limited to {:.0}%",
+                            engine.def.id,
+                            limit * 100.0
+                        ));
+                    }
+                }
+                _ => {
+                    // Not one of ours: the part's systems know what it means.
+                    let message = self.systems.act(target, activation.action);
+                    staged.messages.extend(message);
                 }
             }
         }
@@ -1487,6 +1821,7 @@ impl Propulsion {
             .collect();
         let idle: Vec<(PartId, usize)> = (self.engines.iter())
             .filter(|e| clear.contains(&e.section) && !self.armed.contains(&e.part))
+            .filter(|e| !e.is_separation_motor())
             .map(|e| (e.part, e.section))
             .collect();
         if idle.is_empty() {
@@ -1500,7 +1835,7 @@ impl Propulsion {
             {
                 names.push(s.name.clone());
             }
-            self.sequences.take(Activation::Engine(engine));
+            self.sequences.take(Activation::engine(engine));
         }
         if self.throttle > 0.0 {
             self.ignition_pending = true;
@@ -1515,22 +1850,34 @@ impl Propulsion {
         let throttle = self.throttle;
         let attempt_ignition = std::mem::take(&mut self.ignition_pending);
         let firing = self.firing();
+        let powerless = self.systems.brownout();
         let mut thrust = 0.0;
         for j in 0..self.engines.len() {
-            if !firing.contains(&self.engines[j].part) {
+            // One that was cut off still has its tail-off to finish.
+            let lit = firing.contains(&self.engines[j].part);
+            if !lit && self.engines[j].level <= 0.0 {
+                self.engines[j].thrust = 0.0;
                 continue;
             }
             let engine = &mut self.engines[j];
             engine.thrust = 0.0;
-            if throttle <= 0.0 {
+            // Once lit, a solid burns until its grain is gone, whatever the throttle says.
+            let solid = engine.is_solid();
+            if (throttle <= 0.0 && !solid) || !lit {
                 engine.running = false;
             } else if !engine.running && attempt_ignition {
-                engine.running = ignite(engine, settled, log);
+                if powerless {
+                    log.push(format!("{}: no power to light it", engine.def.id));
+                } else {
+                    engine.running = ignite(engine, settled, log);
+                }
             }
-            let target = if engine.running {
-                engine.commanded_level(throttle)
-            } else {
+            let target = if !engine.running {
                 0.0
+            } else if solid {
+                1.0
+            } else {
+                engine.commanded_level(throttle)
             };
             let before = engine.level;
             engine.respond(target, dt);
@@ -1611,7 +1958,7 @@ impl Propulsion {
         let fins: Vec<_> = self
             .parts
             .stage(id)
-            .filter(|p| matches!(p.kind, PartKind::Fins(_)))
+            .filter(|p| p.is(|k| matches!(k, PartKind::Fins(_))))
             .map(|p| p.id)
             .collect();
         for fin in fins {
@@ -1637,9 +1984,13 @@ impl Propulsion {
     /// on its own: its row counts both, and theirs count no delta-v of their own.
     pub fn stage_info(&self) -> Vec<StageInfo> {
         // Averaged over the burn, for engines whose thrust follows a curve.
-        let flow = |id: usize| self.engines_of(id).map(Engine::mean_mass_flow).sum::<f64>();
+        let flow = |id: usize| {
+            (self.main_engines_of(id))
+                .map(Engine::mean_mass_flow)
+                .sum::<f64>()
+        };
         let thrust = |id: usize| {
-            (self.engines_of(id))
+            (self.main_engines_of(id))
                 .map(|e| e.mean_mass_flow() * e.def.isp_vac * G0)
                 .sum::<f64>()
         };
@@ -1802,6 +2153,7 @@ mod tests {
             direction: DVec3::Z,
             thrust: 0.0,
             level: 0.0,
+            limit: 1.0,
             spooling: Some(0.0),
             deflection: DVec2::ZERO,
         }
@@ -1889,10 +2241,10 @@ mod tests {
         let listed =
             |p: &Propulsion, a: Activation| p.sequences.list().iter().flatten().any(|&x| x == a);
         let engine = (p.sequences.list().iter().flatten())
-            .find_map(|&a| matches!(a, Activation::Engine(_)).then_some(a))
+            .find_map(|&a| a.is_engine().then_some(a))
             .unwrap();
         let decoupler = (p.sequences.list().iter().flatten())
-            .find_map(|&a| matches!(a, Activation::Decoupler(_)).then_some(a))
+            .find_map(|&a| a.is_decoupler().then_some(a))
             .unwrap();
         // The engine is offered to light, once.
         assert!(p.part_actions(engine.part(), false).contains(&engine));
@@ -1906,7 +2258,7 @@ mod tests {
         // A sequence it was in keeps its place and number.
         assert_eq!(p.sequences.list().len(), count);
         // Nothing but what a part offers can be done to it.
-        assert!(p.perform(Activation::Rcs(engine.part()), false).is_none());
+        assert!(p.perform(Activation::rcs(engine.part()), false).is_none());
         // The decoupler lets go of what hangs from it, ahead of its sequence.
         assert!(p.part_actions(decoupler.part(), false).contains(&decoupler));
         let staged = p.perform(decoupler, false).unwrap();
@@ -1926,8 +2278,8 @@ mod tests {
                 .unwrap()
         };
         let p = fresh();
-        let engine = pick(&p, |a| matches!(a, Activation::Engine(_)));
-        let decoupler = pick(&p, |a| matches!(a, Activation::Decoupler(_)));
+        let engine = pick(&p, |a| a.is_engine());
+        let decoupler = pick(&p, |a| a.is_decoupler());
         let first_message = |order: Vec<Activation>| {
             let mut p = fresh();
             p.sequences = Sequences::new(vec![order]);
@@ -2016,5 +2368,83 @@ mod tests {
         let mut e = engine("K-1 Vacuum").def;
         e.exit_pressure = None;
         assert!(e.exit_pressure() < 2_000.0, "{}", e.exit_pressure());
+    }
+
+    /// Cut off, an engine falls off its curve and stops drawing; its thrust does not jump to
+    /// nothing, and it can be lit again.
+    #[test]
+    fn an_engine_cut_off_tails_off_and_can_light_again() {
+        use crate::vessel::tests::{catalog, pathfinder};
+        let mut p = Propulsion::from_craft(&pathfinder(), &catalog()).unwrap();
+        p.set_throttle(1.0);
+        p.activate_next_sequence().unwrap();
+        for _ in 0..500 {
+            p.burn(ATM, 0.02, true, &mut Vec::new());
+        }
+        let engine = p.engines.iter().find(|e| e.running).unwrap().clone();
+        assert!(engine.level > 0.9);
+        let total = |p: &Propulsion| p.engines.iter().map(|e| e.thrust).sum::<f64>();
+        let before = total(&p);
+        let cut = Activation::new(engine.part, Action::CUTOFF);
+        assert!(p.part_actions(engine.part, false).contains(&cut));
+        assert!(p.perform(cut, false).is_some());
+        assert!(!p.firing().contains(&engine.part));
+        p.burn(ATM, 0.02, true, &mut Vec::new());
+        let one = p.engines.iter().find(|e| e.part == engine.part).unwrap();
+        assert!(!one.running);
+        // The others are still at it, and it is on its way down.
+        assert!(total(&p) < before && total(&p) > 0.5 * before);
+        assert!(one.level < engine.level && one.level > 0.0);
+        for _ in 0..1000 {
+            p.burn(ATM, 0.02, true, &mut Vec::new());
+        }
+        let one = p.engines.iter().find(|e| e.part == engine.part).unwrap();
+        assert_eq!((one.level, one.thrust), (0.0, 0.0));
+        // Lit again, with what the part's window offers now.
+        let light = Activation::engine(engine.part);
+        assert!(p.part_actions(engine.part, false).contains(&light));
+        assert!(p.perform(light, false).is_some());
+        p.burn(ATM, 0.02, true, &mut Vec::new());
+        assert!(
+            p.engines
+                .iter()
+                .find(|e| e.part == engine.part)
+                .unwrap()
+                .running
+        );
+    }
+
+    /// A thrust limit takes that share of what the throttle asks, down to the engine's minimum.
+    #[test]
+    fn a_sequence_limits_an_engines_thrust() {
+        use crate::vessel::tests::{catalog, pathfinder};
+        let mut def = pathfinder();
+        def.sequences = Some(vec![
+            vec!["engines:booster".into()],
+            vec!["throttle:booster:70".into()],
+        ]);
+        let mut p = Propulsion::from_craft(&def, &catalog()).unwrap();
+        p.set_throttle(1.0);
+        p.activate_next_sequence().unwrap();
+        for _ in 0..500 {
+            p.burn(ATM, 0.02, true, &mut Vec::new());
+        }
+        let full = p.engines.iter().find(|e| e.running).unwrap().level;
+        assert!((full - 1.0).abs() < 1e-9);
+        p.activate_next_sequence().unwrap();
+        for _ in 0..500 {
+            p.burn(ATM, 0.02, true, &mut Vec::new());
+        }
+        let limited: Vec<f64> = (p.engines.iter().filter(|e| e.running))
+            .map(|e| e.level)
+            .collect();
+        assert!(!limited.is_empty());
+        for level in limited {
+            assert!((level - 0.7).abs() < 1e-6, "{level}");
+        }
+        // Written wrong, it says so.
+        def.sequences = Some(vec![vec!["throttle:booster".into()]]);
+        let error = Propulsion::from_craft(&def, &catalog()).unwrap_err();
+        assert!(error.to_string().contains("percent"), "{error}");
     }
 }

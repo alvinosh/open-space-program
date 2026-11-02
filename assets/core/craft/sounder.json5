@@ -30,7 +30,7 @@
           },
         ],
       },
-      components: [{ container: {} }],
+      components: [{ avionics: { controlled_mass: 33000, interplanetary: true } }, { container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.9 },
         { name: "top", position: [0, 0, 2.9], direction: [0, 0, 1], size: 1.9 },
@@ -40,9 +40,18 @@
     },
     { id: "capsule_pod", on: "capsule.pod", template: "C-1 Capsule" },
     {
+      id: "sounder_decoupler",
+      name: "Decoupler",
+      on: "capsule.bottom",
+      by: "top",
+      shape: { ring: { diameter: 1.9, height: 0.076, thickness: 0.038 } },
+      structure: { mass: 23.25 },
+      components: [{ decoupler: { node: "top" } }],
+    },
+    {
       id: "sounder",
       name: "Sounder",
-      on: "capsule.bottom",
+      on: "sounder_decoupler.bottom",
       by: "top",
       shape: {
         compound: [
@@ -85,8 +94,8 @@
           },
         ],
       },
-      structure: { thickness: 0, mass: 600 },
-      components: [{ container: {} }, { decoupler: { node: "top" } }],
+      structure: { thickness: 0, mass: 576.75 },
+      components: [{ container: {} }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 1.8 },
         { name: "top", position: [0, 0, 12], direction: [0, 0, 1], size: 1.8 },
