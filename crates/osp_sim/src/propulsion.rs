@@ -350,7 +350,8 @@ pub struct Section {
     pub structure_mass: f64,
     /// Reaction wheel torque about each axis, N·m.
     pub wheel_torque: f64,
-    pub pod: Option<PodDef>,
+    /// Crew pods, wherever they sit on the stage.
+    pub pods: Vec<PodDef>,
     pub fairing: Option<Fairing>,
     /// Stacked on the hull, bottom first; under a fairing, its nose.
     pub shells: Vec<Shell>,
@@ -380,7 +381,7 @@ impl Section {
             gear: Vec::new(),
             structure_mass: 0.0,
             wheel_torque: 0.0,
-            pod: None,
+            pods: Vec::new(),
             fairing: None,
             shells: Vec::new(),
             diameter: 0.0,
@@ -425,7 +426,7 @@ impl Section {
                 }
                 PartKind::Pod(def) => {
                     section.structure_mass += def.mass;
-                    section.pod = Some(def.clone());
+                    section.pods.push(def.clone());
                 }
                 PartKind::Fins(fins) => section.fins = Some(fins.clone()),
                 PartKind::Wing(def) => section.wings.push(def.clone()),

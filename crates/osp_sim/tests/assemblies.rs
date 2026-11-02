@@ -72,7 +72,7 @@ fn the_gemini_titan_is_its_two_assemblies_placed_together() {
             names(&p)
         );
     }
-    assert!(p.sections[0].pod.is_some());
+    assert!(!p.sections[0].pods.is_empty());
 }
 
 /// The radial craft, each with the assemblies of the boosters round its core (by the prefix

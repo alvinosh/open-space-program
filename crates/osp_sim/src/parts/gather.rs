@@ -7,9 +7,9 @@
 //! hang under each other along an axis, or beside the stage that holds them (radial
 //! boosters); the root's stage stands on the vessel's axis. A fairing panel that lets go of
 //! its stage is half of the stage's fairing. Each part becomes the kind of part a stage
-//! knows: a template's engine (upright, anywhere on its stage), pod, RCS block or reaction
-//! wheel; a cylinder or sphere tank; a shell stacked on the body; an even set of plate fins
-//! around its base; a wing on its side, with its mirror image if it has one; a gear leg
+//! knows: a template's engine, pod, RCS block or reaction wheel, each at its own pose; a
+//! cylinder or sphere tank, at any pose; a shell stacked on the body; an even set of plate
+//! fins around its base; a wing on its side, with its mirror image if it has one; a gear leg
 //! standing out from it. Each part weighs what it is built as. A craft the stages cannot
 //! hold is refused with what is missing.
 
@@ -211,7 +211,12 @@ impl PartTree {
             let mut length = top.position.z - bottom.position.z;
             for p in stage_parts(s) {
                 let at = relative(p).position.z - bottom.position.z;
-                if let Some(Template::Pod(pod)) = &craft.parts[p].template {
+                // A pod standing on the stage's axis is its nose; one anywhere else is
+                // not the stage's length.
+                if let Some(Template::Pod(pod)) = &craft.parts[p].template
+                    && on_axis(relative(p))
+                    && upright(relative(p).rotation, yaw(relative(p).rotation))
+                {
                     length = length.max(at + pod.height);
                 }
                 if let Some(shell) = fairing_panel(&craft.parts[p]) {
@@ -340,9 +345,6 @@ fn kind(
     fins: &Option<FinSet>,
 ) -> Result<PartKind, String> {
     if let Some(Template::Pod(pod)) = &part.template {
-        if !(on_axis(local) && upright(local.rotation, 0.0)) {
-            return Err("a pod sits upright on the axis of its stage".into());
-        }
         return Ok(PartKind::Pod(pod.clone()));
     }
     let what: Vec<&Component> = part
@@ -513,9 +515,16 @@ fn fairing_half(part: &CraftPart, local: Pose) -> Result<PartKind, String> {
     })
 }
 
-/// A cylinder tank with √2:1 domes, or a sphere, upright.
+/// A cylinder tank with √2:1 domes, or a sphere, at any pose. A cylinder that does not lie
+/// along the stage's axis is hung on the side of the stack, not carried by it: it holds its
+/// pressure but takes no share of the stack's weight.
 fn tank(part: &CraftPart, local: Pose) -> Result<PartKind, String> {
-    let (shape, radius, length) = match &part.def.shape {
+    // A tank is its own mirror image, so a mirrored one is the same tank.
+    let shape = match &part.def.shape {
+        ShapeDef::Mirrored(inner) => &**inner,
+        shape => shape,
+    };
+    let (shape, radius, length) = match shape {
         ShapeDef::CylinderTank(t)
             if (t.dome - DOME_RATIO).abs() < 1e-12
                 && t.common_bulkhead.is_none()
@@ -527,16 +536,22 @@ fn tank(part: &CraftPart, local: Pose) -> Result<PartKind, String> {
         ShapeDef::Sphere(s) => (TankShape::Sphere, s.diameter / 2.0, s.diameter),
         _ => return Err("a stage's tank is a cylinder with √2:1 domes, or a sphere".into()),
     };
-    if !upright(local.rotation, yaw(local.rotation)) {
-        return Err("a tank stands upright".into());
+    // Its lowest point: the tank's axis runs up from its base along `axis`.
+    let axis = local.rotation * DVec3::Z;
+    let upright = axis.z > 1.0 - 1e-12;
+    let along = axis.truncate().length() < NEAR;
+    let base = if upright {
+        local.position.z
+    } else if shape == TankShape::Sphere {
+        local.position.z + axis.z * radius - radius
+    } else {
+        local.position.z + (axis.z * length).min(0.0) - radius * axis.truncate().length()
+    };
+    let mut tank = Tank::of(&part.built, shape, radius, length, base);
+    if !along {
+        tank.max_axial_load = None;
     }
-    Ok(PartKind::Tank(Tank::of(
-        &part.built,
-        shape,
-        radius,
-        length,
-        local.position.z,
-    )))
+    Ok(PartKind::Tank(tank))
 }
 
 /// Whether `part` is a fin: a lifting surface whose airfoil is a plate.

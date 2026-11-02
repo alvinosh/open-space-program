@@ -526,7 +526,7 @@ mod tests {
         let p = Propulsion::from_craft(&craft, &catalog()).unwrap();
         let names: Vec<&str> = p.sections.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, ["booster", "cabin"]);
-        assert!(p.sections[1].pod.is_some() && p.sections[0].engines == 1);
+        assert!(!p.sections[1].pods.is_empty() && p.sections[0].engines == 1);
     }
 
     #[test]

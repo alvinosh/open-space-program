@@ -88,7 +88,7 @@ pub fn mass_properties(propulsion: &Propulsion) -> MassProperties {
         .iter()
         .filter_map(|tank| {
             let part = parts.get(tank.part)?;
-            Some(tank_contents(tank).placed(part.position, part.rotation))
+            Some(tank_contents(tank, part.position, part.rotation))
         })
         .sum();
     let total = parts.dry_mass() + propellant;
@@ -109,8 +109,9 @@ pub fn mass_properties(propulsion: &Propulsion) -> MassProperties {
     }
 }
 
-/// What `tank` holds now, in its own frame.
-fn tank_contents(tank: &Tank) -> Mass {
+/// What `tank` holds now, where its part `position` and `rotation` put it. A liquid settles
+/// against the vessel's aft end whichever way the tank points ([`Mass::settled`]).
+fn tank_contents(tank: &Tank, position: DVec3, rotation: DQuat) -> Mass {
     let (mut liquid, mut full, mut gas) = (0.0, 0.0, 0.0);
     for (content, &amount) in tank.contents.iter().zip(&tank.amounts) {
         if content.gas {
@@ -121,12 +122,22 @@ fn tank_contents(tank: &Tank) -> Mass {
         }
     }
     let (radius, length) = (tank.radius, tank.length);
-    let gas = match tank.shape {
-        TankShape::Cylinder => Mass::cylinder(gas, radius, length),
-        TankShape::Sphere => Mass::sphere(gas, radius).placed(DVec3::Z * radius, DQuat::IDENTITY),
-    };
     let column = length * liquid / full.max(1e-9);
-    gas + Mass::cylinder(liquid, radius, column)
+    match tank.shape {
+        TankShape::Cylinder => {
+            let up = rotation.inverse() * DVec3::Z;
+            let (liquid, _) = Mass::settled(liquid, radius, length, column, up);
+            (Mass::cylinder(gas, radius, length) + liquid).placed(position, rotation)
+        }
+        TankShape::Sphere => {
+            // A sphere is the same from every side: its liquid is a column on the bottom
+            // of its bounding cylinder, upright in the vessel's frame.
+            let center = position + rotation * (DVec3::Z * radius);
+            Mass::sphere(gas, radius).placed(center, DQuat::IDENTITY)
+                + Mass::cylinder(liquid, radius, column)
+                    .placed(center - DVec3::Z * radius, DQuat::IDENTITY)
+        }
+    }
 }
 
 /// A centre of mass closer to the axis than this is on it, m.
@@ -684,7 +695,8 @@ fn attitude_error(orientation: DQuat, target: DQuat) -> DVec3 {
 mod tests {
     use super::*;
     use crate::{
-        data::{StageDef, StagedCraftDef, TankDef, TankShape},
+        data::{CraftDef, StageDef, StagedCraftDef, TankDef, TankShape},
+        test_data::records,
         vessel::tests::catalog,
     };
 
@@ -1202,5 +1214,100 @@ mod tests {
         };
         let back = fly(&mut sas, knocked, None, 0.05, 20.0);
         assert!(back.orientation.angle_between(held) < 1e-3);
+    }
+
+    /// A shell with a kerolox tank 0.4 m wide and 0.8 m long on it, placed as `placement`
+    /// says, half full.
+    fn hosting_a_half_full_tank(placement: &str) -> Propulsion {
+        let text = format!(
+            r#"{{ id: "tank_test", name: "", parts: [
+                {{ id: "host", shape: {{ shell: {{ bottom_diameter: 1.0,
+                    sections: [{{ length: 3.0 }}], cap_bottom: true, cap_top: true }} }},
+                  structure: {{ mass: 120 }}, components: [{{ container: {{}} }}] }},
+                {{ id: "x", shape: {{ cylinder_tank: {{ diameter: 0.4, length: 0.8 }} }},
+                  components: [{{ storage: {{ type: "Stiffened Al 2219",
+                    contents: {{ Kerosene: 1, LqdOxygen: 2.36 }} }} }}], {placement} }}
+            ] }}"#
+        );
+        let def: CraftDef = records(&text).remove(0);
+        let mut p = Propulsion::from_craft(&def, &catalog()).unwrap();
+        for amount in &mut p.tanks[0].amounts {
+            *amount /= 2.0;
+        }
+        p
+    }
+
+    /// What the one tank of `p` holds, and where its part stands.
+    fn held(p: &Propulsion) -> (Mass, crate::parts::Part) {
+        let tank = &p.tanks[0];
+        let part = p.parts().get(tank.part).unwrap().clone();
+        (tank_contents(tank, part.position, part.rotation), part)
+    }
+
+    #[test]
+    fn a_tank_on_its_side_pools_its_liquid_low() {
+        let p = hosting_a_half_full_tank(
+            r#"on: "host.wall", by: "bottom", at: { u: 0.125, v: 0.5, standoff: 0.05 }"#,
+        );
+        let (contents, part) = held(&p);
+        let tank = &p.tanks[0];
+        assert!((part.rotation * DVec3::Z).z.abs() < 1e-9, "level");
+        assert!(close(contents.mass, tank.amounts.iter().sum(), 1e-12));
+        // Half full against its aft side, the surface level through the barrel's axis: the
+        // middle of the liquid is 4r/3π below the middle of the barrel.
+        let middle = part.position + part.rotation * (DVec3::Z * tank.length / 2.0);
+        let drop = 4.0 * tank.radius / (3.0 * PI);
+        let want = middle - DVec3::Z * drop;
+        assert!(
+            (contents.center - want).length() < 1e-9,
+            "{}",
+            contents.center
+        );
+        // It hangs off the side of the stack: it holds pressure, not the stack's weight.
+        assert!(tank.max_axial_load.is_none());
+    }
+
+    #[test]
+    fn an_upside_down_tank_pools_its_liquid_at_the_end_that_is_down() {
+        let p = hosting_a_half_full_tank(r#"on: "host.top", by: "top""#);
+        let (contents, part) = held(&p);
+        let tank = &p.tanks[0];
+        // Its frame is turned over: the barrel runs down from its base, and the liquid is
+        // the lower half of it, 0.2 m above the barrel's lower end.
+        assert!(close((part.rotation * DVec3::Z).z, -1.0, 1e-12));
+        let low = part.position.z - tank.length;
+        assert!(
+            close(contents.center.z, low + 0.2, 1e-12),
+            "{}",
+            contents.center
+        );
+        assert!(contents.center.truncate().length() < 1e-9);
+        // It still stands in the stack, and carries its weight.
+        assert!(tank.max_axial_load.is_some());
+    }
+
+    #[test]
+    fn a_tank_stood_on_end_either_way_pools_as_a_column() {
+        let level = hosting_a_half_full_tank(
+            r#"on: "host.wall", by: "bottom", at: { u: 0.125, v: 0.5, standoff: 0.05 }"#,
+        );
+        let (flat, flat_part) = held(&level);
+        let tank = &level.tanks[0];
+        // The same liquid in the same barrel, turned about its middle to stand on either end.
+        let middle = flat_part.position + flat_part.rotation * (DVec3::Z * tank.length / 2.0);
+        let across = flat_part.rotation * DVec3::X;
+        for angle in [PI / 2.0, -PI / 2.0] {
+            let rotation = DQuat::from_axis_angle(across, angle) * flat_part.rotation;
+            let position = middle - rotation * (DVec3::Z * tank.length / 2.0);
+            let stood = tank_contents(tank, position, rotation);
+            assert!(close(stood.mass, flat.mass, 1e-12));
+            // Half of 0.8 m is a column 0.4 m high on the lower end: its middle is 0.2 m up.
+            let want = middle - DVec3::Z * (tank.length / 2.0 - 0.2);
+            assert!(
+                (stood.center - want).length() < 1e-9,
+                "{angle}: {}",
+                stood.center
+            );
+        }
     }
 }

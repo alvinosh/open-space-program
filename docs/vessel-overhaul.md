@@ -401,6 +401,8 @@ Milestone 3, physics on parts:
        the ones it hangs under and what hangs beside those. Joint loads replace this.
      - Engines pointed any way are in (T014, 2026-11-01); an armed engine waits while a
        stage hangs under its own (no hot staging).
+     - Tanks and pods at any pose are in (T014, 2026-11-02): a tank's liquid settles against
+       the vessel's aft side whichever way the tank points, and a stage holds any number of pods.
      - Converted craft that mix engines in one ring (the R-7 family, Delta II, Ariane 5,
        Atlas, Starship) and the planes (tail fin) now have their centre of mass slightly
        off the axis; the golden figures were rerecorded and nothing else moved.

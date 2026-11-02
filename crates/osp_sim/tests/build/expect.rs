@@ -78,13 +78,6 @@ pub const RULES: &[Rule] = &[
               left out of the outline",
     },
     Rule {
-        row: "storage",
-        columns: &["top", "bottom", "inside", "fairing"],
-        except: true,
-        expect: Expect::Red(LOADS, "T014"),
-        why: "the gatherer only takes a tank standing upright",
-    },
-    Rule {
         row: "battery",
         columns: &[],
         except: false,
@@ -112,13 +105,6 @@ pub const RULES: &[Rule] = &[
         expect: Expect::Red(AERO, "T015"),
         why: "a capsule 1.9 m wide is put inside a container 1 m wide, sticks out through its \
               wall, and nothing refuses it: the builder's fit check will",
-    },
-    Rule {
-        row: "pod",
-        columns: &["top", "bottom"],
-        except: true,
-        expect: Expect::Red(LOADS, "T014"),
-        why: "the gatherer only takes a pod standing upright on the axis of its stage",
     },
     Rule {
         row: "two",

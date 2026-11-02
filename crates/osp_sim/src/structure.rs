@@ -14,11 +14,14 @@
 
 use std::f64::consts::PI;
 
+use glam::DVec3;
+
 pub use crate::component::TankContent;
 use crate::{
     component::{BuiltPart, ComponentDef, PartDef, StorageDef, storage::head},
     data::{FinDef, MaterialDef, PartCatalog, TankDef, TankShape},
     geometry::preset::{CylinderTankDef, ShapeDef, SphereDef},
+    mass::Mass,
     parts::PartId,
     propulsion::{CraftError, Propulsion, Section},
 };
@@ -45,7 +48,7 @@ pub struct Tank {
     pub radius: f64,
     /// Outer length (the diameter for a sphere), m.
     pub length: f64,
-    /// Height of its base above the stage base, m.
+    /// Height of its lowest point above the stage base, m.
     pub base: f64,
     /// Internal volume, m³, and the share of it that holds propellant.
     pub volume: f64,
@@ -181,6 +184,28 @@ impl Tank {
     /// the nose) with `fill` the fraction of each resource left.
     pub fn pressure_at(&self, acceleration: f64, fill: impl Fn(&str) -> f64) -> f64 {
         self.pressure + head(&self.contents, acceleration, fill)
+    }
+
+    /// [`Self::pressure_at`] for a tank that leans: `up` is the vessel's +Z in the tank's
+    /// frame, and the liquid, settled against the vessel's aft end, is only as deep as the
+    /// tank is along it.
+    pub fn pressure_leaning(
+        &self,
+        up: DVec3,
+        acceleration: f64,
+        fill: impl Fn(&str) -> f64,
+    ) -> f64 {
+        // A sphere's liquid is a column upright in the vessel's frame.
+        let up = if self.shape == TankShape::Sphere {
+            DVec3::Z
+        } else {
+            up
+        };
+        let deep = |share: f64| {
+            let column = share * self.length;
+            Mass::settled_depth(self.radius, self.length, column, up) / self.length.max(1e-9)
+        };
+        self.pressure + head(&self.contents, acceleration, |name| deep(fill(name)))
     }
 }
 
@@ -462,7 +487,12 @@ pub fn loads(propulsion: &Propulsion, conditions: &Conditions) -> Vec<PartLoad> 
         }
         for (k, tank) in tanks.iter().enumerate().rev() {
             let fill = |name: &str| tank.fill(name);
-            let burst = tank.pressure_at(conditions.acceleration, fill) / tank.max_pressure;
+            let up = propulsion
+                .parts()
+                .get(tank.part)
+                .map_or(DVec3::Z, |part| part.rotation.inverse() * DVec3::Z);
+            let burst =
+                tank.pressure_leaning(up, conditions.acceleration, fill) / tank.max_pressure;
             let mut load = PartLoad {
                 stage: s,
                 part: Part::Tank(k),
@@ -596,6 +626,43 @@ mod tests {
             short.max_pressure
                 > kind.safety_factor * short.pressure_at(kind.design_load * G0, |_| 1.0)
         );
+    }
+
+    #[test]
+    fn a_tank_on_its_side_has_a_shallower_head() {
+        let c = catalog();
+        let tank = Tank::new(
+            &tank("Isogrid Al-Li", TankShape::Cylinder, 10.0, KEROLOX),
+            3.7,
+            0.0,
+            &c,
+        )
+        .unwrap();
+        let a = 5.0 * G0;
+        let head = |p: f64| p - tank.pressure;
+        // Standing, nothing changes.
+        assert_eq!(
+            tank.pressure_leaning(DVec3::Z, a, |_| 1.0),
+            tank.pressure_at(a, |_| 1.0)
+        );
+        // Full on its side, the liquid is as deep as the tank is wide; half full, half as
+        // deep again.
+        let upright = head(tank.pressure_at(a, |_| 1.0));
+        let full = head(tank.pressure_leaning(DVec3::X, a, |_| 1.0));
+        assert!(
+            (full / upright - 3.7 / 10.0).abs() < 1e-9,
+            "{}",
+            full / upright
+        );
+        let half = head(tank.pressure_leaning(DVec3::X, a, |_| 0.5));
+        assert!(
+            (half / upright - 1.85 / 10.0).abs() < 1e-9,
+            "{}",
+            half / upright
+        );
+        // Upside down, a full tank is as deep as it is long.
+        let flipped = head(tank.pressure_leaning(-DVec3::Z, a, |_| 1.0));
+        assert!((flipped / upright - 1.0).abs() < 1e-9);
     }
 
     #[test]

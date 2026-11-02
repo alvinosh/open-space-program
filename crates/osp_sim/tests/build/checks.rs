@@ -261,7 +261,7 @@ pub fn kept(craft: &Craft, p: &Propulsion) -> Outcome {
     let crew: u32 = p
         .sections
         .iter()
-        .filter_map(|s| s.pod.as_ref())
+        .flat_map(|s| &s.pods)
         .map(|pod| pod.crew)
         .sum();
     if seats > crew {
@@ -281,7 +281,7 @@ pub fn kept(craft: &Craft, p: &Propulsion) -> Outcome {
     let stored: f64 = p
         .sections
         .iter()
-        .filter_map(|s| s.pod.as_ref())
+        .flat_map(|s| &s.pods)
         .map(|pod| pod.electric_charge)
         .sum();
     if charge > stored + 1e-9 {

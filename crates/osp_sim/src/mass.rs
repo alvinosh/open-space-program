@@ -6,6 +6,8 @@
 //! parallel-axis theorem. The sum's tensor is generally not diagonal in the vessel's axes;
 //! its principal axes ([`principal_axes`]) are the body frame, in which it is.
 
+mod settled;
+
 use std::{f64::consts::PI, iter::Sum, ops::Add};
 
 use glam::{DMat3, DQuat, DVec3};

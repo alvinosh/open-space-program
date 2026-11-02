@@ -911,6 +911,48 @@ mod tests {
         ids
     }
 
+    /// A closed shell 3 m long with a capsule placed on it as `placement` says.
+    fn host_with_a_capsule(placement: &str) -> Propulsion {
+        let text = format!(
+            r#"{{ id: "pod_test", name: "", parts: [
+                {{ id: "host", shape: {{ shell: {{ bottom_diameter: 1.0,
+                    sections: [{{ length: 3.0 }}], cap_bottom: true, cap_top: true }} }},
+                  structure: {{ mass: 120 }}, components: [{{ container: {{}} }}] }},
+                {{ id: "x", template: "C-1 Capsule", {placement} }}
+            ] }}"#
+        );
+        let craft: CraftDef = records(&text).remove(0);
+        Propulsion::from_craft(&craft, &catalog()).unwrap()
+    }
+
+    #[test]
+    fn a_pod_is_the_stages_nose_only_on_its_axis() {
+        let nose = host_with_a_capsule(r#"on: "host.top", by: "bottom""#);
+        let height = nose.sections[0].pods[0].height;
+        assert!((nose.sections[0].length - (3.0 + height)).abs() < 1e-9);
+        // On the side, or tilted, the same capsule is a part of the stage, not its length.
+        let side = host_with_a_capsule(
+            r#"on: "host.wall", by: "bottom", at: { u: 0.125, v: 0.5, standoff: 0.05 }"#,
+        );
+        assert!((side.sections[0].length - 3.0).abs() < 1e-9);
+        assert_eq!(side.sections[0].pods.len(), 1);
+        // Two of them are both kept, with their crew.
+        let text = r#"{ id: "pair", name: "", parts: [
+            { id: "host", shape: { shell: { bottom_diameter: 1.0,
+                sections: [{ length: 3.0 }], cap_bottom: true, cap_top: true } },
+              structure: { mass: 120 }, components: [{ container: {} }] },
+            { id: "a", template: "C-1 Capsule", on: "host.wall", by: "bottom",
+              at: { u: 0.0, v: 0.5, standoff: 0.05 } },
+            { id: "b", template: "C-1 Capsule", on: "host.wall", by: "bottom",
+              at: { u: 0.5, v: 0.5, standoff: 0.05 } }
+        ] }"#;
+        let craft: CraftDef = records(text).remove(0);
+        let pair = Propulsion::from_craft(&craft, &catalog()).unwrap();
+        let crew: u32 = pair.sections[0].pods.iter().map(|p| p.crew).sum();
+        assert_eq!(pair.sections[0].pods.len(), 2);
+        assert_eq!(crew, 2 * side.sections[0].pods[0].crew);
+    }
+
     #[test]
     fn stages_hang_from_the_stage_above_by_joints_that_let_go() {
         let tree = tree(&pathfinder());

@@ -156,8 +156,8 @@ gathers parts into stages: each stage is the parts between joints that let go (a
 decoupler's), with one body, a container standing upright whose `bottom` node is as wide
 as the stage and whose `top` node is where a stage above stands. The root's stage stands on
 the vessel's axis. A stage hangs under the one holding it, on the same axis, or beside it
-anywhere round it (a radial booster); engines go anywhere on their stage and may point any
-way (see below), so a cluster is laid out by its nodes' positions. Engines burn once armed if no stage hangs under
+anywhere round it (a radial booster); engines, tanks and pods go anywhere on their stage
+and may point any way (see below), so a cluster is laid out by its nodes' positions. Engines burn once armed if no stage hangs under
 theirs. Each engine and RCS block draws from the tanks propellant can reach it from: through
 joints at nodes (not on surfaces), and across a decoupler only if its `crossfeed` is on; the
 tanks it reaches give in proportion to what they hold, so they drain together. A craft the
@@ -293,9 +293,12 @@ engines points on the stage base, RCS blocks points on its forward rim, reaction
 point halfway up, the crew pod a solid frustum from `diameter` to `top_diameter` at the
 top, shells their walls, fins and wings flat plates, gear legs points halfway down their
 struts, and a fairing two half shells. Propellant is in the tanks: each holds its share of what is left in its
-stage, a liquid as a column settled at the tank's aft end and a compressed gas filling the
-tank. Together they give the centre of mass and the moments of inertia, which change as
-tanks drain and stages drop. A tank low in a long stage keeps its propellant low, so place
+stage, a liquid settled against the vessel's aft side with its surface level and a compressed gas
+filling the tank. Whichever way a tank points, the liquid lies on the low
+side of that surface: a column on the aft dome in a tank that stands up, a column at the
+other end in one upside down, a pool along the lower side of one on its side. Together they
+give the centre of mass and the moments of inertia, which change as tanks drain and stages
+drop. A tank low in a long stage keeps its propellant low, so place
 tanks (`position`) where that mass belongs: a plane wants its propellant near the centre of
 mass, so that its trim hardly changes as the tanks drain.
 
@@ -358,14 +361,17 @@ liners) plus `insulation`. That gives two strengths:
 - **Burst:** the internal pressure at which the weakest wall yields. In flight the tank sees its
   operating pressure plus the hydrostatic head of what is left in it at the current
   acceleration, so an upper stage that rides a 6 g booster with full tanks needs a higher
-  `design_load` than a first stage, which is only full at liftoff.
+  `design_load` than a first stage, which is only full at liftoff. The head is the depth of
+  the settled liquid along the acceleration, so a tank on its side has a shallow one (its
+  width, not its length); its walls are still sized for the tallest column.
 - **Buckling:** the axial load at which the cylinder collapses: thin-shell buckling with
   the NASA SP-8007 knockdown factor, times `buckling_factor` for grid stiffening, plus the
   load the tank's own pressure carries (which is all that holds up a balloon tank). In
   flight a tank carries everything stacked above it at the current acceleration, plus the
   drag on the nose; on the pad, the stack's weight. Tanks whose barrels stand side by side
   in a stage (Proton's outer tanks round its core) carry it together, each its share by
-  strength.
+  strength. A tank that does not lie along the stage's axis hangs off the stack and carries
+  none of its weight, and so has no buckling figure.
 
 A type marked `cast: true` holds a solid motor's grain. The motor's case is its engine
 record's mass and, built for the chamber pressure, carries the stack, so the grain presses
