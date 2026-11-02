@@ -274,6 +274,21 @@ impl Systems {
         }
     }
 
+    /// Put `other`'s systems here too, each on the part `id` calls its part now. [`Self::wire`]
+    /// is for the caller, once the parts are joined.
+    pub(crate) fn absorb(&mut self, other: Systems, id: impl Fn(PartId) -> PartId) {
+        self.parts
+            .extend(other.parts.into_iter().map(|(part, on)| (id(part), on)));
+    }
+
+    /// Call every part what `id` says.
+    pub(crate) fn renumber(&mut self, id: impl Fn(PartId) -> PartId) {
+        self.parts = std::mem::take(&mut self.parts)
+            .into_iter()
+            .map(|(part, on)| (id(part), on))
+            .collect();
+    }
+
     /// Drop the systems on parts no longer on `tree` (torn off, not let go), and wire up what
     /// is left.
     pub fn retain_on(&mut self, tree: &PartTree) {

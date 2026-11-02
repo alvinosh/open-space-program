@@ -441,6 +441,54 @@ impl Sequences {
         }
     }
 
+    /// Put `other`'s sequences after these, as a join does.
+    pub(crate) fn append(&mut self, other: Self) {
+        self.list.extend(other.list);
+    }
+
+    /// How many have fired.
+    pub(crate) fn fired(&self) -> usize {
+        self.fired
+    }
+
+    /// Call every part what `id` says.
+    pub(crate) fn renumber(&mut self, id: impl Fn(PartId) -> PartId) {
+        for activation in self.list.iter_mut().flatten() {
+            activation.part = id(activation.part);
+        }
+    }
+
+    /// A joint that lets go is named by the part hanging from it, so when re-rooting turns joints
+    /// round (`renamed`: the part that named one, and the part that names it now) what releases
+    /// them follows.
+    pub(crate) fn rename_joints(&mut self, renamed: &[(PartId, PartId)]) {
+        for activation in self.list.iter_mut().flatten() {
+            if matches!(activation.kind(), "decoupler" | "fairing")
+                && let Some(&(_, new)) = renamed.iter().find(|(old, _)| *old == activation.part)
+            {
+                activation.part = new;
+            }
+        }
+    }
+
+    /// Take the activations of parts `gone` says are leaving, as sequences of their own that
+    /// `fired` have gone before. A sequence they leave empty goes; one that was empty stays here.
+    pub(crate) fn take_parts(&mut self, gone: impl Fn(PartId) -> bool, fired: usize) -> Self {
+        let mut taken = Vec::new();
+        self.list.retain_mut(|seq| {
+            let had = !seq.is_empty();
+            let (leaving, staying) = std::mem::take(seq)
+                .into_iter()
+                .partition::<Vec<_>, _>(|a| gone(a.part()));
+            *seq = staying;
+            if !leaving.is_empty() {
+                taken.push(leaving);
+            }
+            !(had && seq.is_empty())
+        });
+        Self { list: taken, fired }
+    }
+
     /// Drop the activations of parts that fell away, and the sequences that empties.
     pub fn forget(&mut self, gone: impl Fn(PartId) -> bool) {
         self.list.retain_mut(|seq| {

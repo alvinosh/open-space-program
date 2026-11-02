@@ -6,7 +6,9 @@
 //! out from the tree as [`Section`]s, which sequences name and the aero sees as a stack;
 //! sizing tanks and fins is in [`crate::structure`], firing RCS in [`crate::rcs`]. What the
 //! stage key does is a list of activation sequences ([`crate::staging`]), carried out here
-//! by releasing joints on the tree.
+//! by releasing joints on the tree. Two vessels' worth of all this can become one in flight.
+
+pub(crate) mod join;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -16,6 +18,8 @@ use std::{
 use glam::{DQuat, DVec2, DVec3};
 use thiserror::Error;
 
+use self::join::Joined;
+pub use self::join::Port;
 use crate::{
     aero::Shape,
     component::Component,
@@ -26,7 +30,7 @@ use crate::{
         WingDef,
     },
     environment::Environment,
-    parts::{Part, PartId, PartKind, PartTree},
+    parts::{JointWay, Part, PartId, PartKind, PartTree},
     shell::Shell,
     staging::{Action, Activation, SectionActivation, Sequences},
     structure::{FinSet, Tank},
@@ -489,10 +493,11 @@ impl Section {
             });
         }
         section.length = section.shells.last().map_or(section.length, Shell::top);
-        // What it hangs from: the section of the part above its own top part.
+        // What it hangs from as built: the section of the part above its own top part, whichever
+        // way re-rooting has turned the joint.
         let holder = tree
             .stage(id)
-            .filter_map(|p| tree.parent(p.id))
+            .flat_map(|p| tree.holders(p.id))
             .find(|p| p.stage != id);
         if let Some(holder) = holder {
             section.parent = Some(holder.stage);
@@ -500,7 +505,8 @@ impl Section {
                 .stage(holder.stage)
                 .find(|p| p.body.is_some())
                 .map_or(DVec3::ZERO, |p| p.position);
-            section.beside = (section.bottom - under).truncate().length() > 1e-6;
+            let built = holder.frame.rotation.inverse();
+            section.beside = (built * (section.bottom - under)).truncate().length() > 1e-6;
         }
         section
     }
@@ -593,6 +599,12 @@ pub struct Released {
     pub base: f64,
     /// What its decouplers push it and the vessel apart with, N·s (0 for the usual push).
     pub impulse: f64,
+    /// It is a vessel that joined this one, letting go at that join: what it takes back.
+    pub(crate) undocked: Option<Joined>,
+    /// The vessels that joined what came off.
+    joined: Vec<Joined>,
+    /// Its own sequences, if it is a vessel that joined this one.
+    sequences: Sequences,
 }
 
 impl Released {
@@ -678,6 +690,8 @@ pub struct Propulsion {
     needs_control: bool,
     /// The part it is flown from, if not its own axes.
     control_part: Option<PartId>,
+    /// The vessels that have joined it in flight.
+    joined: Vec<Joined>,
 }
 
 /// Something a vessel's avionics do by themselves, once.
@@ -1084,6 +1098,7 @@ impl Propulsion {
             triggers: Vec::new(),
             needs_control: false,
             control_part: None,
+            joined: Vec::new(),
         };
         propulsion.systems = Systems::of(&propulsion.parts);
         propulsion.rebuild();
@@ -1105,7 +1120,7 @@ impl Propulsion {
             tanks: released.tanks,
             armed: released.armed,
             jettisoned: BTreeSet::new(),
-            sequences: Sequences::default(),
+            sequences: released.sequences,
             throttle: 0.0,
             ignition_pending: lit_late,
             feeds: BTreeMap::new(),
@@ -1115,6 +1130,7 @@ impl Propulsion {
             triggers: Vec::new(),
             needs_control: released.needs_control,
             control_part: None,
+            joined: released.joined,
         };
         propulsion.plumb();
         propulsion.hollow = propulsion.hollow_rings();
@@ -1130,11 +1146,16 @@ impl Propulsion {
             let Some(above) = self.sections.iter().find(|a| Some(a.id) == s.parent) else {
                 continue;
             };
-            let axis = above.bottom.truncate();
+            // Along the axis it was built on, as a join leaves it.
+            let holder = tree.stage(above.id).find(|p| p.body.is_some());
+            let axis = holder
+                .map_or(above.bottom, |p| p.as_built().position)
+                .truncate();
             let mut triangles = Vec::new();
             for part in tree.stage(s.id) {
                 if let Some(built) = &part.built {
-                    let place = |p: DVec3| part.position + part.rotation * p;
+                    let pose = part.as_built();
+                    let place = |p: DVec3| pose.point(p);
                     crate::aero::outer_triangles(built, place, &mut triangles);
                 }
             }
@@ -1182,6 +1203,10 @@ impl Propulsion {
             .into_iter()
             .partition(|t| gone(t.part));
         self.tanks = kept;
+        if self.control_part.is_some_and(gone) {
+            self.control_part = None;
+        }
+        let (undocked, joined, sequences) = self.released_joined(&parts);
         // Whole sections as they were on the vessel, what they hung from and all; a fairing
         // half as a section of its own.
         let ids: BTreeSet<usize> = parts.parts().iter().map(|p| p.stage).collect();
@@ -1204,6 +1229,9 @@ impl Propulsion {
             tanks,
             base,
             impulse,
+            undocked,
+            joined,
+            sequences,
         }
     }
 
@@ -1540,17 +1568,17 @@ impl Propulsion {
         tree.stage(below).any(|p| {
             // A ring that only lets go hands the question on to what stands on it.
             let beyond = p.is(|k| matches!(k, PartKind::Decoupler { .. }))
-                && tree.children(p.id).any(|c| c.stage == below && c.open);
-            tree.parent(p.id)
-                .is_some_and(|q| q.stage == above && (p.open || q.open || beyond))
+                && tree.held(p.id).any(|c| c.stage == below && c.open);
+            tree.holders(p.id)
+                .any(|q| q.stage == above && (p.open || q.open || beyond))
         })
     }
 
     /// The sections nothing hangs under: the bottom of the stack and what hangs beside it,
-    /// whose engines burn once armed.
+    /// whose engines burn once armed. On the vessel it is flown from, if others have joined it.
     pub fn bottom(&self) -> impl Iterator<Item = &Section> {
         (0..self.sections.len())
-            .filter(|&i| self.clear(i))
+            .filter(|&i| self.clear(i) && self.flown(self.sections[i].id))
             .map(|i| &self.sections[i])
     }
 
@@ -1628,7 +1656,9 @@ impl Propulsion {
                 out.push(Activation::new(part, Action::CUTOFF));
             }
         }
-        if found.is_fairing_half() {
+        // What holds a panel that a vessel joined is that join, not its own hinge.
+        let joined = found.joint.is_some_and(|j| j.way == JointWay::Join);
+        if found.is_fairing_half() && !joined {
             if tree.joint_capabilities(part).is_some_and(|c| c.release) {
                 out.push(Activation::fairing(part));
             }
@@ -1815,10 +1845,7 @@ impl Propulsion {
     /// burn executor does), taking their activations out of whichever sequences held them.
     /// Returns a log message if some were not armed yet.
     pub fn arm_bottom(&mut self) -> Option<String> {
-        let clear: BTreeSet<usize> = (0..self.sections.len())
-            .filter(|&i| self.clear(i))
-            .map(|i| self.sections[i].id)
-            .collect();
+        let clear: BTreeSet<usize> = self.bottom().map(|s| s.id).collect();
         let idle: Vec<(PartId, usize)> = (self.engines.iter())
             .filter(|e| clear.contains(&e.section) && !self.armed.contains(&e.part))
             .filter(|e| !e.is_separation_motor())
@@ -1946,9 +1973,10 @@ impl Propulsion {
     /// From the base of the lowest section to the top of the highest, m.
     pub fn length(&self) -> f64 {
         let floor = floor(&self.sections);
+        let up = |s: &Section| (self.parts.stage_frame(s.id).rotation * DVec3::Z).z;
         self.sections
             .iter()
-            .map(|s| s.bottom.z - floor + s.length)
+            .map(|s| s.bottom.z - floor + (up(s) * s.length).max(0.0))
             .fold(0.0, f64::max)
     }
 

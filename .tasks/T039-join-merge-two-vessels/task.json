@@ -2,7 +2,7 @@
   "id": "T039",
   "title": "Join: merge two vessels",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "docking",
   "size": "L",
   "parent": "T007",
@@ -14,7 +14,7 @@
   ],
   "created": "2026-10-30",
   "updated": "2026-11-02",
-  "done": null,
+  "done": "2026-11-02",
   "milestone": "M2",
   "priority": 36
 }

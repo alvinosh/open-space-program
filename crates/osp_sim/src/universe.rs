@@ -28,6 +28,7 @@ use crate::{
     },
     mission::Mission,
     orbit::{Orbit, StateVector},
+    propulsion::Port,
     rendezvous::Target,
     staging::Activation,
     system::{SolarSystem, SystemError},
@@ -173,6 +174,40 @@ impl Universe {
             self.add_vessel(d);
         }
         true
+    }
+
+    /// Make vessel `b` part of vessel `a`, `b`'s node `to` joined to `a`'s `at`, the far node
+    /// turned `roll` about the line they meet along. `b` is no longer in the game: whoever flew
+    /// it flies `a`, and whoever targeted it loses the target. It comes back when the joint is let
+    /// go ([`Self::perform`]). Nothing changes on an error.
+    pub fn join(
+        &mut self,
+        a: VesselId,
+        at: Port,
+        b: VesselId,
+        to: Port,
+        roll: f64,
+    ) -> Result<(), String> {
+        if a == b {
+            return Err("a vessel cannot join itself".into());
+        }
+        let (Some(first), Some(second)) = (self.find_vessel(a), self.find_vessel(b)) else {
+            return Err("no such vessel".into());
+        };
+        self.vessels[first].can_join(&self.vessels[second], at, to, roll)?;
+        let other = self.vessels.remove(second);
+        let first = first - usize::from(second < first);
+        let time = self.time;
+        self.vessels[first].join(other, at, to, roll, &self.system, time)?;
+        for vessel in &mut self.vessels {
+            if vessel.target == Some(Target::Vessel(b)) {
+                vessel.target = None;
+            }
+        }
+        if self.focus == Some(b) {
+            self.focus = Some(a);
+        }
+        Ok(())
     }
 
     /// Debris other than the focus: removed when it crashes, never holds up warp.

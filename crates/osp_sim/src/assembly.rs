@@ -257,10 +257,7 @@ impl AssemblyPart {
     /// along X) on a node, and the surface's u direction on a surface.
     pub fn frame(&self, mount: &Mount) -> Option<Pose> {
         match mount {
-            Mount::Node(name) => {
-                let node = self.node(name)?;
-                Some(Pose::new(node.position, facing(node.direction, &[])))
-            }
+            Mount::Node(name) => self.node(name).map(node_frame),
             Mount::Surface {
                 surface,
                 side,
@@ -281,6 +278,19 @@ impl AssemblyPart {
             }
         }
     }
+}
+
+/// The frame of `node` in its part's (see [`AssemblyPart::frame`]).
+pub(crate) fn node_frame(node: &Node) -> Pose {
+    Pose::new(node.position, facing(node.direction, &[]))
+}
+
+/// How a part held at `far` (in its own frame) sits in the frame of the part holding it at
+/// `near`: the two meet facing each other, the far one turned `roll` about the line they meet
+/// along.
+pub(crate) fn meet(near: Pose, far: Pose, roll: f64) -> Pose {
+    let face = Pose::new(DVec3::ZERO, DQuat::from_rotation_x(std::f64::consts::PI));
+    near * Pose::new(DVec3::ZERO, DQuat::from_rotation_z(roll)) * face * far.inverse()
 }
 
 /// A rotation whose +Z is `z` (unit) and whose +X is the first of `along`, then +X, then

@@ -21,6 +21,8 @@ A procedural docking port (ring diameter, type: probe and drogue, androgynous, b
 
 - 2026-11-02: moved up for the Moon mission. It no longer waits for colliders (T092), the contact solver decision (T074), actuated joints (T030) or secondary viewports (T123): the first version captures when two ports are close, aligned and closing slowly. Real ring contact and the port camera come with those tasks.
 
+- 2026-11-02: T039 gives this `Universe::join(a, at, b, to, roll)`, `Propulsion::join_frame` (where the other would sit), `PartTree::free_nodes`, and undocking by `Activation::decoupler` on `Propulsion::joined_parts()`. A decoupler component's `impulse` on the node is the spring, and its `crossfeed` says whether propellant passes (a plain node passes it). The capture picks `roll` from the two attitudes.
+
 ## Where it comes from
 
 - docs/systems-plan.md (step 15, Docking)

@@ -15,6 +15,8 @@ The lunar module sits inside the adapter, which holds it on releasable joints, a
 
 - 2026-11-02: moved up for the Moon mission. The adapter panels may simply let go until actuated joints (T030) exist.
 
+- 2026-11-02: from T039, what a plain decoupler sheds loses its sequences (`Propulsion::from_released`; only a vessel letting go of a join keeps them, by `Sequences::take_parts`). The CSM separating from the adapter sheds the S-IVB with the lander on it, so the lander's own sequences must survive that. A release in a stack that a join turned round already goes the right way and leaves in its own frame.
+
 ## Where it comes from
 
 - docs/systems-plan.md (step 16)

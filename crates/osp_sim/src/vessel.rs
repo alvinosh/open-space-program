@@ -26,6 +26,7 @@ use thiserror::Error;
 
 use crate::{
     aero::{Flow, Loads, PartPanel, Shape, wing_panels},
+    assembly::Pose,
     atmosphere::AtmosphereSample,
     attitude::{self, Attitude, Inertia, MassProperties, NavBasis, NavFrame, Sas, SasMode},
     autopilot::{self, BurnExecutor, BurnTiming, Capability, Finish},
@@ -1115,12 +1116,14 @@ impl Vessel {
     /// What `released` from this vessel as a vessel of its own, `state` and `attitude` being
     /// this vessel's just before. It starts where it was on the vessel, moving and turning
     /// with it, pushed `push` (m/s, vessel axes); a fairing half also swings open about its
-    /// base. On the ground, fallen stages stay standing where they were.
+    /// base. On the ground, fallen stages stay standing where they were. Something that came
+    /// here by a join goes on in the frame it was built in; a vessel that joined this one and
+    /// has let go is that vessel again.
     fn shed(
         &self,
         system: &SolarSystem,
         time: SimTime,
-        released: Released,
+        mut released: Released,
         state: StateVector,
         attitude: Attitude,
         push: DVec3,
@@ -1128,6 +1131,12 @@ impl Vessel {
         let name = format!("{} ({})", released.sections[0].name, self.name);
         let half = released.sections[0].fairing.as_ref().and_then(|f| f.half);
         let height = released.base;
+        let at_home = released
+            .parts
+            .root()
+            .is_none_or(|part| part.frame == Pose::IDENTITY);
+        let mut undocked = released.undocked.take();
+        let flew_as = undocked.as_mut().and_then(|joined| joined.vessel.take());
         let propulsion = Propulsion::from_released(released);
         let mut debris = Vessel::assemble(
             name,
@@ -1149,7 +1158,7 @@ impl Vessel {
             velocity += attitude.orientation * out * (FAIRING_SWING * com.z + FAIRING_PUSH);
         }
         debris.motion = match self.motion {
-            Motion::Landed { base, attitude } if half.is_none() => Motion::Landed {
+            Motion::Landed { base, attitude } if half.is_none() && at_home => Motion::Landed {
                 base: base + attitude * DVec3::Z * height,
                 attitude,
             },
@@ -1164,7 +1173,23 @@ impl Vessel {
         debris.nav_frame = self.nav_frame;
         debris.propellant_settled = self.propellant_settled;
         debris.record(time, format!("Separated from {}", self.name));
-        debris
+        let frame = debris.propulsion.go_home(undocked);
+        if !at_home || flew_as.is_some() {
+            debris.mass = attitude::mass_properties(&debris.propulsion);
+            debris.attitude = AttitudeTrack {
+                epoch: time,
+                state: Attitude {
+                    orientation: (attitude.orientation * frame.rotation).normalize(),
+                    angular_velocity: frame.rotation.inverse() * spin,
+                },
+                inertia: debris.mass.inertia,
+                hold: Hold::Free,
+            };
+        }
+        match flew_as {
+            Some(vessel) => vessel.fly_again(debris, time),
+            None => debris,
+        }
     }
 
     /// Next trajectory event in `(after, until]`, if coasting.
@@ -1992,11 +2017,31 @@ impl Vessel {
 }
 
 /// Which way a decoupler pushes what it `released` from `rest`, vessel axes: straight out
-/// from the stage it hung beside, or back down the axis from the one it hung under.
+/// from the stage it hung beside, or back down the axis from the one it hung under. A vessel
+/// that joined goes straight out of the node it joined, and what came off one, in the frame it
+/// was built in, goes along its axis away from what is left.
 fn release_direction(released: &Released, rest: &Propulsion) -> DVec3 {
+    if let Some(joined) = &released.undocked {
+        return joined.away;
+    }
     let gone = |id: Option<usize>| released.sections.iter().any(|s| Some(s.id) == id);
     let top = released.sections.iter().find(|s| !gone(s.parent));
     let holder = top.and_then(|top| rest.sections.iter().find(|h| Some(h.id) == top.parent));
+    let frame = released.parts.root().map_or(Pose::IDENTITY, |p| p.frame);
+    if frame != Pose::IDENTITY {
+        let built = frame.rotation.inverse();
+        if let (Some(top), Some(holder)) = (top, holder)
+            && top.beside
+            && let Some(out) = (built * (top.bottom - holder.bottom))
+                .truncate()
+                .try_normalize()
+        {
+            return frame.rotation * out.extend(0.0);
+        }
+        let axis = frame.rotation * DVec3::Z;
+        let apart = released.parts.dry_mass().center - rest.parts().dry_mass().center;
+        return if apart.dot(axis) < 0.0 { -axis } else { axis };
+    }
     match (top, holder) {
         (Some(top), Some(holder)) if top.beside => (top.bottom - holder.bottom)
             .truncate()
@@ -2110,6 +2155,7 @@ fn air_at(body: &Body, state: &StateVector) -> AtmosphereSample {
 
 #[cfg(test)]
 mod glider;
+mod join;
 #[cfg(test)]
 mod radial;
 

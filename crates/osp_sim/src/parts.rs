@@ -18,11 +18,14 @@
 //!
 //! Positions are in the assembly frame: metres from the base of the craft's bottom stage,
 //! +Z up the stack to the nose, +X the pilot's right and +Y their feet, as in the vessel
-//! frame. Parts keep their positions when the tree splits.
+//! frame. Parts keep their positions when the tree splits. Two trees can also join in flight:
+//! the parts of the one that joins move into the other's frame and remember the
+//! frame they were built in.
 
 #[cfg(test)]
 mod free_form;
 mod gather;
+pub(crate) mod join;
 
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -30,6 +33,7 @@ use glam::{DMat3, DQuat, DVec2, DVec3};
 
 use crate::{
     aero::Panel,
+    assembly::Pose,
     component::BuiltPart,
     data::{
         EngineDef, GearDef, PartCatalog, PodDef, RcsDef, ReactionWheelDef, StagedCraftDef,
@@ -162,6 +166,18 @@ impl Connector {
     }
 }
 
+/// Which way a joint runs, against the way its craft was built.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum JointWay {
+    /// The part hangs from its parent as the craft was built.
+    #[default]
+    AsBuilt,
+    /// Re-rooting turned it round: as built, the parent hangs from this part.
+    Turned,
+    /// Made in flight, between two vessels: neither was built to hang from the other.
+    Join,
+}
+
 /// How a part hangs from its parent: which of the parent's connectors holds which of its
 /// own (indices into their `connectors`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,6 +185,7 @@ pub struct Joint {
     pub parent: PartId,
     pub parent_connector: usize,
     pub connector: usize,
+    pub way: JointWay,
 }
 
 /// What a stage's place and size are read from: the part that is its body, usually the shell
@@ -270,6 +287,10 @@ pub struct Part {
     /// Air and exhaust pass through it along its axis (a truss, a vented interstage), so
     /// engines can fire through it ([`crate::aero::is_open`]).
     pub open: bool,
+    /// How the frame it was built in sits in the assembly frame: moved only by a join.
+    pub frame: Pose,
+    /// Where it stands in that frame, while it is anywhere else: it goes back there exactly.
+    home: Pose,
 }
 
 impl Part {
@@ -306,6 +327,8 @@ const SHELL_STEPS: usize = 24;
 pub struct PartTree {
     /// By id.
     parts: Vec<Part>,
+    /// Some joint on it may be [`JointWay::Turned`]: only then is it worth looking for them.
+    turned: bool,
 }
 
 impl PartTree {
@@ -359,6 +382,7 @@ impl PartTree {
                     parent: hull,
                     parent_connector: HULL_SURFACE,
                     connector: 0,
+                    way: JointWay::AsBuilt,
                 });
             };
             let mut engines = Vec::new();
@@ -616,6 +640,7 @@ impl PartTree {
                             parent: below,
                             parent_connector: top,
                             connector: bottom,
+                            way: JointWay::AsBuilt,
                         });
                     }
                 }
@@ -626,6 +651,7 @@ impl PartTree {
                         parent: hulls[stage + 1],
                         parent_connector: HULL_BOTTOM,
                         connector: DECOUPLER_TOP,
+                        way: JointWay::AsBuilt,
                     });
                     let mut parent = (decoupler, DECOUPLER_BOTTOM);
                     for &(part, top, bottom) in stack.iter().rev() {
@@ -633,6 +659,7 @@ impl PartTree {
                             parent: parent.0,
                             parent_connector: parent.1,
                             connector: top,
+                            way: JointWay::AsBuilt,
                         });
                         parent = (part, bottom);
                     }
@@ -665,6 +692,8 @@ impl PartTree {
             joint: None,
             built: None,
             open: false,
+            frame: Pose::IDENTITY,
+            home: Pose::IDENTITY,
         });
         id
     }
@@ -769,14 +798,22 @@ impl PartTree {
     /// Take `id` and everything hanging from it off the tree, whatever held it (it tore
     /// off), as a tree of its own. Not the root.
     pub fn break_off(&mut self, id: PartId) -> Option<PartTree> {
-        self.get(id)?.joint?;
+        let joint = self.get(id)?.joint?;
         let gone = self.subtree(id);
         let (parts, kept) = std::mem::take(&mut self.parts)
             .into_iter()
             .partition(|p| gone.contains(&p.id));
         self.parts = kept;
-        let mut tree = PartTree { parts };
+        let mut tree = PartTree {
+            parts,
+            turned: self.turned,
+        };
         tree.part_mut(id).joint = None;
+        // A node joined in flight was free before it, and is again.
+        if joint.way == JointWay::Join {
+            self.forget_connector(joint.parent, joint.parent_connector);
+            tree.forget_connector(id, joint.connector);
+        }
         Some(tree)
     }
 

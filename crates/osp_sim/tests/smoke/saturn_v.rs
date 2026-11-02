@@ -624,7 +624,7 @@ fn transposition(w: &mut World) -> Flight {
     w.gap(
         Area::Docking,
         "Transposition, docking and extraction",
-        "The real CSM separated from the adapter, turned round, docked nose to nose with the lunar module and pulled it out of the S-IVB. The game has no docking: parts cannot join in flight, so a vessel can never carry another that it picked up. The lunar module in this craft is a 15 t drum above the S-IVB, not a spacecraft.",
+        "The real CSM separated from the adapter, turned round, docked nose to nose with the lunar module and pulled it out of the S-IVB. Two vessels can be joined in flight now (T039), but the game has no docking port and nothing that brings them together (T040). The lunar module in this craft is a 15 t drum above the S-IVB, not a spacecraft.",
     );
     // The adapter and the drum go together so that the SPS has a clear nozzle.
     w.stage();

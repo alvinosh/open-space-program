@@ -15,7 +15,8 @@ use std::f64::consts::{PI, TAU};
 use glam::{DQuat, DVec2, DVec3};
 
 use super::{
-    Capabilities, Connector, ConnectorKind, Joint, Part, PartId, PartKind, PartTree, StageBody,
+    Capabilities, Connector, ConnectorKind, Joint, JointWay, Part, PartId, PartKind, PartTree,
+    StageBody,
 };
 use crate::{
     assembly::{Mount, Pose},
@@ -255,6 +256,8 @@ impl PartTree {
                 joint: None,
                 open: between(p) && crate::aero::is_open(&part.built),
                 built: Some(part.built.clone()),
+                frame: Pose::IDENTITY,
+                home: Pose::IDENTITY,
             });
         }
         for (child, parent) in parents.iter().enumerate() {
@@ -288,9 +291,13 @@ impl PartTree {
                 parent: PartId(holder as u32),
                 parent_connector: parts[holder].connectors.len() - 1,
                 connector: parts[child].connectors.len() - 1,
+                way: JointWay::AsBuilt,
             });
         }
-        Ok(PartTree { parts })
+        Ok(PartTree {
+            parts,
+            turned: false,
+        })
     }
 }
 
