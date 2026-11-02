@@ -1,0 +1,214 @@
+// The Apollo lunar module (Apollo 11, 1969), built by hand. An ascent stage with two seats sits on
+// a descent stage on four legs, each stage with its own engine and propellant. On the Moon the
+// descent stage is the ascent stage's launch pad: the stage key lets it go and lights the ascent
+// engine together. There is no model of the descent stage, so it is drawn as an octagon in foil.
+{
+  id: "lunar_module",
+  name: "Lunar Module",
+  parts: [
+    {
+      id: "ascent_stage",
+      name: "Ascent Stage",
+      shape: {
+        model: {
+          path: "models/pods/ROC-LEMAscentBDB.glb",
+          proxy: { compound: [{ shape: { prism: { sides: 8, diameter: 4.0, length: 3.7 } }, position: [0, 0, -0.89] }] },
+          nodes: [
+            { name: "interstage", position: [0, 0, -0.89], direction: [0, 0, -1], size: 2.0 },
+            { name: "dock", position: [0, 0, 2.85], direction: [0, 0, 1], size: 0.8 },
+            { name: "aps", position: [0, 0, 0], direction: [0, 0, -1], size: 0.9 },
+            { name: "fuel", position: [-1.6, 0, 0.1], direction: [0, 0, 1], size: 1.2 },
+            { name: "oxidizer", position: [1.0, 0, 0.1], direction: [0, 0, 1], size: 1.2 },
+            { name: "rcs_tank_1", position: [0, 1.05, 0.2], direction: [0, 0, 1], size: 0.6 },
+            { name: "rcs_tank_2", position: [0, -1.05, 0.2], direction: [0, 0, 1], size: 0.6 },
+            { name: "rcs_1", position: [1.55, 1.55, 1.0], direction: [0.707, 0.707, 0], size: 0.3 },
+            { name: "rcs_2", position: [-1.55, 1.55, 1.0], direction: [-0.707, 0.707, 0], size: 0.3 },
+            { name: "rcs_3", position: [-1.55, -1.55, 1.0], direction: [-0.707, -0.707, 0], size: 0.3 },
+            { name: "rcs_4", position: [1.55, -1.55, 1.0], direction: [0.707, -0.707, 0], size: 0.3 },
+          ],
+        },
+      },
+      // The cabin, crew, equipment and structure of the 2,150 kg stage, less its engine and tanks.
+      structure: { thickness: 0, mass: 1830 },
+      components: [
+        { crew: { seats: 2 } },
+        { avionics: { controlled_mass: 20000, interplanetary: true } },
+        { antenna: { power: 20, data_rate: 51.2 } },
+        { battery: { charge: 59675 } },
+      ],
+    },
+    { id: "aps_engine", name: "Ascent engine", on: "ascent_stage.aps", by: "top", template: "LMAE" },
+    {
+      id: "aps_fuel",
+      name: "Ascent fuel",
+      on: "ascent_stage.fuel",
+      shape: { compound: [{ shape: { sphere: { diameter: 1.29 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "aps_oxidizer",
+      name: "Ascent oxidizer",
+      on: "ascent_stage.oxidizer",
+      shape: { compound: [{ shape: { sphere: { diameter: 1.29 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { MON1: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "rcs_tank_1",
+      name: "RCS propellant",
+      on: "ascent_stage.rcs_tank_1",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.6 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 0.385, NTO: 0.615 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "rcs_tank_2",
+      name: "RCS propellant",
+      on: "ascent_stage.rcs_tank_2",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.6 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 0.385, NTO: 0.615 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    { id: "rcs_1", on: "ascent_stage.rcs_1", by: "mount", template: "R-4D Quad" },
+    { id: "rcs_2", on: "ascent_stage.rcs_2", by: "mount", template: "R-4D Quad" },
+    { id: "rcs_3", on: "ascent_stage.rcs_3", by: "mount", template: "R-4D Quad" },
+    { id: "rcs_4", on: "ascent_stage.rcs_4", by: "mount", template: "R-4D Quad" },
+    {
+      id: "stage_separation",
+      name: "Decoupler",
+      on: "ascent_stage.interstage",
+      by: "top",
+      procedural: { decoupler: { diameter: 2.0, load: 200000 } },
+    },
+    {
+      id: "descent_stage",
+      name: "Descent Stage",
+      on: "stage_separation.bottom",
+      by: "top",
+      shape: { prism: { sides: 8, diameter: 4.6, length: 1.7 } },
+      // Its structure, wiring and batteries' cases, less its engine, tanks and legs.
+      structure: { thickness: 0, mass: 1100 },
+      components: [{ battery: { charge: 167000 } }],
+      nodes: [
+        { name: "dps", position: [0, 0, 1.35], direction: [0, 0, -1], size: 1.5 },
+        { name: "tank_1", position: [1.0, 1.0, 0.03], direction: [0, 0, 1], size: 1.3 },
+        { name: "tank_2", position: [-1.0, -1.0, 0.03], direction: [0, 0, 1], size: 1.3 },
+        { name: "tank_3", position: [-1.0, 1.0, 0.03], direction: [0, 0, 1], size: 1.3 },
+        { name: "tank_4", position: [1.0, -1.0, 0.03], direction: [0, 0, 1], size: 1.3 },
+        { name: "leg_1", position: [2.0, 0, 0.5], direction: [0.78, 0, -0.626], size: 0.2 },
+        { name: "leg_2", position: [-2.0, 0, 0.5], direction: [-0.78, 0, -0.626], size: 0.2 },
+        { name: "leg_3", position: [0, 2.0, 0.5], direction: [0, 0.78, -0.626], size: 0.2 },
+        { name: "leg_4", position: [0, -2.0, 0.5], direction: [0, -0.78, -0.626], size: 0.2 },
+      ],
+      paint: { color: [0.8, 0.62, 0.24], finish: "metal" },
+    },
+    { id: "dps_engine", name: "Descent engine", on: "descent_stage.dps", by: "top", template: "LMDE-H" },
+    {
+      id: "dps_fuel_1",
+      name: "Descent fuel",
+      on: "descent_stage.tank_1",
+      shape: { cylinder_tank: { diameter: 1.37, length: 1.64 } },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "dps_fuel_2",
+      name: "Descent fuel",
+      on: "descent_stage.tank_2",
+      shape: { cylinder_tank: { diameter: 1.37, length: 1.64 } },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "dps_oxidizer_1",
+      name: "Descent oxidizer",
+      on: "descent_stage.tank_3",
+      shape: { cylinder_tank: { diameter: 1.37, length: 1.64 } },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { MON1: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "dps_oxidizer_2",
+      name: "Descent oxidizer",
+      on: "descent_stage.tank_4",
+      shape: { cylinder_tank: { diameter: 1.37, length: 1.64 } },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { MON1: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "leg_1",
+      name: "Landing leg",
+      on: "descent_stage.leg_1",
+      shape: {
+        compound: [
+          {
+            shape: { beam: { length: 3.2, section: { circle: { diameter: 0.14 } } } },
+            rotation: [180, 0, 0],
+          },
+        ],
+      },
+      components: [
+        { gear: { length: 3.2, wheel_radius: 0.4, stroke: 0.8, load: 800, mass: 65, foot: true } },
+      ],
+      paint: { color: [0.72, 0.6, 0.3], finish: "metal" },
+    },
+    {
+      id: "leg_2",
+      name: "Landing leg",
+      on: "descent_stage.leg_2",
+      shape: {
+        compound: [
+          {
+            shape: { beam: { length: 3.2, section: { circle: { diameter: 0.14 } } } },
+            rotation: [180, 0, 0],
+          },
+        ],
+      },
+      components: [
+        { gear: { length: 3.2, wheel_radius: 0.4, stroke: 0.8, load: 800, mass: 65, foot: true } },
+      ],
+      paint: { color: [0.72, 0.6, 0.3], finish: "metal" },
+    },
+    {
+      id: "leg_3",
+      name: "Landing leg",
+      on: "descent_stage.leg_3",
+      shape: {
+        compound: [
+          {
+            shape: { beam: { length: 3.2, section: { circle: { diameter: 0.14 } } } },
+            rotation: [180, 0, 0],
+          },
+        ],
+      },
+      components: [
+        { gear: { length: 3.2, wheel_radius: 0.4, stroke: 0.8, load: 800, mass: 65, foot: true } },
+      ],
+      paint: { color: [0.72, 0.6, 0.3], finish: "metal" },
+    },
+    {
+      id: "leg_4",
+      name: "Landing leg",
+      on: "descent_stage.leg_4",
+      shape: {
+        compound: [
+          {
+            shape: { beam: { length: 3.2, section: { circle: { diameter: 0.14 } } } },
+            rotation: [180, 0, 0],
+          },
+        ],
+      },
+      components: [
+        { gear: { length: 3.2, wheel_radius: 0.4, stroke: 0.8, load: 800, mass: 65, foot: true } },
+      ],
+      paint: { color: [0.72, 0.6, 0.3], finish: "metal" },
+    },
+  ],
+  sequences: [
+    // Light the descent engine.
+    ["rcs:ascent_stage", "engines:descent_stage"],
+    // On the Moon, let the descent stage go and light the ascent engine together.
+    ["decoupler:descent_stage", "engines:ascent_stage"],
+  ],
+}

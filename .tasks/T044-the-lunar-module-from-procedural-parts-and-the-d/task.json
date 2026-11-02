@@ -10,15 +10,16 @@
     "T035",
     "T040",
     "T041",
-    "T043"
+    "T043",
+    "T179"
   ],
   "refs": [
     "docs/systems-plan.md (step 19, Landing legs and the lunar module)",
     "old issue list, issue 8 (docs/issues.md, removed; see git history)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
+  "updated": "2026-11-02",
   "done": null,
-  "milestone": "M6",
-  "priority": 79
+  "milestone": "M2",
+  "priority": 40
 }

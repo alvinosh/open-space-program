@@ -11,6 +11,11 @@ A procedural leg (strut length and stroke from mass, touchdown speed and slope; 
 
 - The foot contact uses the colliders of the colliders task; animated colliders for legs are also wanted.
 
+## Notes
+
+- T179 added the foot and four legs on the lunar module; the crush core, stowing and the sizer are still to do.
+- 2026-11-02: moved up for the Moon mission. It no longer waits for colliders (T092), actuated joints (T030) or lunar terrain (T042): the foot is the gear contact without rolling, on the smooth Moon first.
+
 ## Where it comes from
 
 - docs/systems-plan.md (step 18)

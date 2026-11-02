@@ -14,7 +14,8 @@ Engine sounds driven by throttle and distance, clusters; wind; layered sounds.
 
 ## Still open
 
-- It sounds very bad (the user's verdict on hearing it, 2026-11-02), so this task is open again. The tests only measure the signal, and pass.
+- It sounded very bad to the user on 2026-11-02, so this task is open again. Rendering it and measuring found why: a small rocket and a solid had their power centred near 2 kHz, like a detuned radio; the roar ran at -13 dBFS RMS without letting up; a Saturn V and the hull were centred under 100 Hz, which laptop speakers barely play; the level hardly moved; and crackle was bursts of white noise. The voices were rebuilt against those measurements, and `sound::tests` now holds them there.
+- Nobody has judged the rebuilt voices by ear, which is what closes this. `cargo test -p osp_game render_sound_samples -- --ignored` writes scenes and a whole flight to `target/sound` to listen to.
 - No delay for the distance, no panning, and one roar per listener rather than one per engine.
 
 ## Where it comes from

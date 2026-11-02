@@ -265,6 +265,9 @@ impl Universe {
             })
         };
         let mut vessels = vec![spawn(&scenario.craft, &scenario.start)?];
+        for _ in 0..scenario.sequences_done {
+            vessels[0].activate_next_stage(system, time);
+        }
         for other in &scenario.others {
             let mut vessel = spawn(&other.craft, &other.start)?;
             if let Some(name) = &other.name {

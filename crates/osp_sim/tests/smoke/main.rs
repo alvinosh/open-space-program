@@ -15,6 +15,7 @@
 
 mod audit;
 mod first_orbit;
+mod lunar_module;
 mod pilot;
 mod planning;
 mod report;
@@ -86,6 +87,11 @@ fn run(mission: &Mission) {
 #[test]
 fn saturn_v() {
     run(&saturn_v::MISSION);
+}
+
+#[test]
+fn lunar_module() {
+    run(&lunar_module::MISSION);
 }
 
 #[test]

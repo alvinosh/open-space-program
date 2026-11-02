@@ -937,12 +937,12 @@ fn landing(w: &mut World) -> Flight {
         Area::Landing,
         "There is no lander to land",
         "T044",
-        "The craft has no lunar module: the 15 t drum between the S-IVB and the adapter has no engine, no legs and no crew. The Realism mod has the pieces (an ascent stage with two seats, LMDE and LMAE engines, the legs would be plain parts) but a stage cannot let go from inside another, and nothing can dock.",
+        "This craft has no lunar module: the 15 t drum between the S-IVB and the adapter has no engine, no legs and no crew. The lander exists as a craft of its own and flies its own mission (`lunar_module`), but it cannot ride here yet: a stage cannot let go from inside another, and nothing can dock.",
     );
     w.gap(
         Area::Landing,
         "Landing on legs",
-        "Gear (`GearLegDef`) is wheeled landing gear; there is no leg that crushes, no foot that rests on regolith, and the Moon has no terrain, so it is a smooth ball.",
+        "This flight has no legs to land on. The lunar module's do land it (`lunar_module`), but the leg has no crush core yet and the Moon has no terrain, so it is a smooth ball.",
     );
     w.gap(
         Area::Crew,

@@ -177,6 +177,14 @@ pub struct Geometry {
 }
 
 impl Geometry {
+    /// The models it is drawn with, and where each sits in the part's frame.
+    pub fn models(&self) -> impl Iterator<Item = (&ModelRef, DVec3, DQuat)> {
+        self.subparts.iter().filter_map(|sub| match &sub.kind {
+            Kind::Model(model) => Some((model, sub.position, sub.rotation)),
+            _ => None,
+        })
+    }
+
     /// Every measured piece of every subpart.
     pub fn elements(&self) -> Vec<Element> {
         let mut out = Vec::new();

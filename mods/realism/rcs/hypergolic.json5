@@ -1,0 +1,15 @@
+// Four Marquardt R-4D thrusters, 445 N each: the Apollo CSM and lunar module quad.
+[
+  {
+    "id": "R-4D Quad",
+    "mass": 30,
+    "thrust": 445,
+    "isp_vac": 290,
+    "isp_sl": 120,
+    "propellants": {
+      "Aerozine50": 1.0,
+      "NTO": 1.6
+    },
+    "model": "models/rcs/cold_gas_quad.glb"
+  }
+]

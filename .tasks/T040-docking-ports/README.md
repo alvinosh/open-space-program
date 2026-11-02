@@ -17,6 +17,10 @@ A procedural docking port (ring diameter, type: probe and drogue, androgynous, b
 
 - Also wanted: latching by contact and kinetic energy, off-centre ports.
 
+## Notes
+
+- 2026-11-02: moved up for the Moon mission. It no longer waits for colliders (T092), the contact solver decision (T074), actuated joints (T030) or secondary viewports (T123): the first version captures when two ports are close, aligned and closing slowly. Real ring contact and the port camera come with those tasks.
+
 ## Where it comes from
 
 - docs/systems-plan.md (step 15, Docking)

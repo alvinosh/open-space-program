@@ -1,0 +1,22 @@
+{
+  "id": "T180",
+  "title": "Gate: Apollo 11 from the pad to the Moon and back to splashdown",
+  "kind": "milestone",
+  "status": "todo",
+  "area": "landing",
+  "size": "S",
+  "parent": null,
+  "depends_on": [
+    "T044",
+    "T048"
+  ],
+  "refs": [
+    "crates/osp_sim/tests/smoke/saturn_v.rs (the gaps this closes)",
+    "mods/realism/craft/saturn_v.json5"
+  ],
+  "created": "2026-11-02",
+  "updated": "2026-11-02",
+  "done": null,
+  "milestone": "M2",
+  "priority": 42
+}

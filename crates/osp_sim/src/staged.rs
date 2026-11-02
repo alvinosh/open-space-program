@@ -309,6 +309,7 @@ pub fn convert(
                             mass: leg.mass / legs as f64,
                             brakes: leg.brakes,
                             steering: leg.steering,
+                            foot: false,
                         })];
                         mounted.push(
                             body.mount(child, &strut, "bottom", pose, &node)

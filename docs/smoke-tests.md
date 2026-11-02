@@ -5,7 +5,8 @@ the Saturn V on Apollo 11: pad, parking orbit, translunar injection, lunar orbit
 the entry. `saturn_ib` flies Apollo 7 from LC-34 to orbit on the craft's own sequences. `first_orbit` flies the Pathfinder from the `pad` scenario to orbit with a player's
 controls and checks that the scenario's goals (see Missions in `docs/modding.md`) are met on the
 way. `the_controls_tutorial_plays_through` plays the base game's `controls` tutorial the same
-way, step by step, with the control each step names. Dragon on a Falcon 9, the Shuttle, Soyuz and the rest will be more missions in the same
+way, step by step, with the control each step names. `lunar_module` flies Eagle by itself from lunar
+orbit down to the Moon and back to orbit. Dragon on a Falcon 9, the Shuttle, Soyuz and the rest will be more missions in the same
 harness.
 
 ```sh
@@ -55,7 +56,10 @@ accurate enough (T027).
 Where the sim cannot do what the mission did, the script says so with `known`, `gap` or `bridged`,
 and goes on if it can. A `bridged` finding is the only place the script may do something no
 player could, and it must say what and why. The Saturn V throws its lunar module drum away with the
-adapter (T044), waits out the surface stay in lunar orbit, and goes home as a CSM alone.
+adapter (T044), waits out the surface stay in lunar orbit, and goes home as a CSM alone, so it does
+not land and its capsule does not survive the end. A mission can pass every check and still stop
+short like this: read its `gap`, `known` and `bridged` findings, not only the pass count. T180 is the
+gate for flying the whole of Apollo 11.
 
 ## Adding a mission
 

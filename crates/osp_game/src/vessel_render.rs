@@ -463,7 +463,22 @@ fn rebuild_on_change(
                         _ => {
                             if !std::mem::replace(&mut drawn, true) {
                                 let mut visual = parent.spawn((pose, Visibility::default(), shows));
-                                visual.with_children(|visual| pen.draw(visual, built, None));
+                                visual.with_children(|visual| {
+                                    pen.draw(visual, built, None);
+                                    // A part shaped by a model of its own, not a template's.
+                                    for (shape, at, turn) in built.geometry.models() {
+                                        let Some(scene) = model(&Some(shape.path.clone())) else {
+                                            continue;
+                                        };
+                                        visual.spawn((
+                                            scene,
+                                            PartModel,
+                                            Transform::from_translation(to_render(at))
+                                                .with_rotation(rotation_to_render(turn))
+                                                .with_scale(Vec3::splat(shape.scale as f32)),
+                                        ));
+                                    }
+                                });
                             }
                         }
                     }
@@ -522,7 +537,8 @@ fn rebuild_on_change(
                         leg: k,
                         wheel: true,
                     },
-                    Mesh3d(meshes.add(Cylinder::new(r, 0.7 * r).mesh().resolution(24))),
+                    // A foot is a shallow pad, a wheel a tyre.
+                    Mesh3d(meshes.add(Cylinder::new(r, if leg.foot { 0.2 } else { 0.7 } * r).mesh().resolution(24))),
                     MeshMaterial3d(materials.wheel.clone()),
                     Transform::default(),
                 ));
@@ -894,7 +910,10 @@ fn update_gear(sim: Res<Sim>, mut parts: Query<(&GearVisual, &mut Transform)>) {
             .min(leg.stroke);
         let (mount, axle) = (to_render(leg.mount), to_render(leg.axle(give)));
         let along = to_render(leg.direction);
-        *transform = if visual.wheel {
+        *transform = if visual.wheel && leg.foot {
+            // Flat under the vessel, at the bottom of the reach the contact gives it.
+            Transform::from_translation(axle + Vec3::NEG_Y * 0.9 * leg.wheel_radius as f32)
+        } else if visual.wheel {
             let steer = (leg.steering * vessel.flight.control.y.clamp(-1.0, 1.0)) as f32;
             // The axle lies across the way the wheel rolls and level (across the pilot's
             // down); a wheel that rolls along the pilot's down has it across its strut.

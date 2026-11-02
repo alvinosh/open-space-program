@@ -189,6 +189,32 @@
     }
   },
   {
+    "id": "apollo11_landing",
+    "name": "Apollo 11: the landing (1969-07-20)",
+    "description": "Armstrong and Aldrin in Eagle, in lunar orbit: down to the Sea of Tranquility and back up.",
+    "start_time": -961021200.0,
+    "craft": "lunar_module",
+    "start": {
+      "type": "Orbit",
+      "body": "Moon",
+      "periapsis_altitude": 15000,
+      "apoapsis_altitude": 110000,
+      "mean_anomaly": 340
+    }
+  },
+  {
+    "id": "apollo11_liftoff",
+    "name": "Apollo 11: leaving the Moon (1969-07-21)",
+    "description": "Eagle on its legs at Tranquility Base: the ascent stage lifts off the descent stage, back to orbit.",
+    "start_time": -960940000.0,
+    "craft": "lunar_module",
+    "sequences_done": 1,
+    "start": {
+      "type": "LaunchSite",
+      "site": "tranquility_base"
+    }
+  },
+  {
     "id": "apollo11",
     "name": "Apollo 11: Armstrong, Collins and Aldrin (1969-07-16)",
     "description": "The first Moon landing, from LC-39A.",

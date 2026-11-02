@@ -43,6 +43,8 @@
 //!
 //! The glider was given two solid boosters and a wheeled dolly to take off from a runway,
 //! and so a sequence for each; the wheels of a stage beside the axis stand out from it.
+//!
+//! The lunar module was added on its own (T179): no other craft's figures moved.
 
 use std::path::Path;
 

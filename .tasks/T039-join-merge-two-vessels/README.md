@@ -6,6 +6,10 @@
 
 - A property test joins and releases any two craft without changing either.
 
+## Notes
+
+- 2026-11-02: moved up for the Moon mission. It no longer waits for the builder (T015): a join works on two vessels in flight.
+
 ## Where it comes from
 
 - docs/systems-plan.md (step 14, Join)

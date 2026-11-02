@@ -11,6 +11,10 @@ The lunar module sits inside the adapter, which holds it on releasable joints, a
 
 - The smoke test does transposition and extraction with the real lunar module, from the S-IVB.
 
+## Notes
+
+- 2026-11-02: moved up for the Moon mission. The adapter panels may simply let go until actuated joints (T030) exist.
+
 ## Where it comes from
 
 - docs/systems-plan.md (step 16)

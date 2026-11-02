@@ -72,6 +72,8 @@ pub struct Leg {
     pub steering: f64,
     /// kg.
     pub mass: f64,
+    /// It ends in a foot, which does not roll.
+    pub foot: bool,
     /// The part it belongs to, on a vessel.
     pub part: Option<PartId>,
 }
@@ -109,6 +111,7 @@ impl Leg {
             damping: 2.0 * DAMPING_RATIO * (stiffness * def.load).sqrt(),
             brakes: def.brakes,
             steering: def.steering.to_radians(),
+            foot: def.foot,
             mass: def.mass / count as f64,
             part: None,
         };
@@ -248,7 +251,9 @@ pub fn contact(
         let forward = leg.heading(orientation, steer, up);
         let side = up.cross(forward);
         let braking = if brakes && leg.brakes { BRAKING } else { 0.0 };
-        let roll = -(ROLLING + braking) * normal * (velocity.dot(forward) / ROLL_SLIP).tanh();
+        // A foot does not roll: it grips the same whichever way it is pushed.
+        let along = if leg.foot { GRIP } else { ROLLING + braking };
+        let roll = -along * normal * (velocity.dot(forward) / ROLL_SLIP).tanh();
         let grip = -GRIP * normal * (velocity.dot(side) / SIDE_SLIP).tanh();
         let force = up * normal + forward * roll + side * grip;
         contact.force += force;
@@ -317,7 +322,49 @@ mod tests {
             mirror,
             brakes: true,
             steering: 0.0,
+            foot: false,
         }
+    }
+
+    #[test]
+    fn a_foot_grips_the_way_a_wheel_would_roll() {
+        let system = crate::system::tests::rss();
+        let moon = system.body(system.find("Moon").unwrap());
+        let time = SimTime::J2000;
+        let up = moon.orientation(time) * DVec3::X;
+        // A leg straight down, on the ground, sliding the way its wheel would roll.
+        let leg = |foot: bool| {
+            let mut def = leg(0.0, false);
+            def.foot = foot;
+            let turn = DQuat::from_rotation_arc(DVec3::NEG_Z, DVec3::NEG_Z);
+            Leg::at(&def, DVec3::ZERO, turn)[0]
+        };
+        let orientation = DQuat::from_rotation_arc(DVec3::Z, up);
+        let attitude = Attitude {
+            orientation,
+            angular_velocity: DVec3::ZERO,
+        };
+        let sliding = orientation * DVec3::Y;
+        let state = StateVector {
+            position: up * (moon.radius + 1.2),
+            velocity: moon.surface_velocity(up * moon.radius) + sliding,
+        };
+        let drag = |foot: bool| {
+            let contact = contact(
+                &[leg(foot)],
+                moon,
+                time,
+                &state,
+                &attitude,
+                DVec3::ZERO,
+                false,
+                0.0,
+            );
+            assert!(contact.touching());
+            -contact.force.dot(sliding) / contact.force.dot(up)
+        };
+        assert!(drag(false) < 0.05, "a wheel rolls: {}", drag(false));
+        assert!(drag(true) > 0.5, "a foot grips: {}", drag(true));
     }
 
     #[test]

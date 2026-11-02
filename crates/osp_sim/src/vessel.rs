@@ -387,6 +387,15 @@ impl Vessel {
             time,
         )?;
         vessel.propellant_settled = true;
+        // Without a pad to stand on, it stands on its legs.
+        let legs = gear::legs(&vessel.propulsion);
+        if let (None, Some(height)) = (&site.pad, gear::rest_height(&legs)) {
+            vessel.motion = Motion::Landed {
+                base: up * (body.radius + body.terrain_height(up) + height),
+                attitude,
+            };
+            vessel.wheels_down = true;
+        }
         vessel.record(
             time,
             format!("{} on the pad at {}", vessel.name, site.display_name()),
@@ -1208,6 +1217,16 @@ impl Vessel {
             .max_by(|a, b| a.gain.total_cmp(&b.gain))
     }
 
+    /// Whether the ground holds it up: gravity settles its propellant whatever it last did.
+    fn on_the_ground(&self) -> bool {
+        self.is_landed() || self.wheels_down
+    }
+
+    /// Whether its wheels or feet, or with neither its belly, are on the ground.
+    pub fn wheels_down(&self) -> bool {
+        self.wheels_down
+    }
+
     /// Its link to the ground, as [`crate::universe::Universe`] last worked it out.
     pub fn link(&self) -> Option<&Link> {
         self.link.as_ref()
@@ -1363,8 +1382,9 @@ impl Vessel {
         let air = air_at(body, &state);
         let aim = self.fly_burn(system, t0, air.pressure, out);
         let mut messages = Vec::new();
+        let settled = self.propellant_settled || self.on_the_ground();
         self.propulsion
-            .burn(air.pressure, dt, self.propellant_settled, &mut messages);
+            .burn(air.pressure, dt, settled, &mut messages);
         self.step_systems(system, t0, dt);
         // What was sent up and has got here.
         let (arrived, waiting): (Vec<_>, Vec<_>) = std::mem::take(&mut self.uplink)
@@ -1554,7 +1574,7 @@ impl Vessel {
             structure_load,
         };
         let nose = start.nose();
-        self.propellant_settled = self.is_landed() || proper.dot(nose) > ULLAGE_ACCELERATION;
+        self.propellant_settled = self.on_the_ground() || proper.dot(nose) > ULLAGE_ACCELERATION;
 
         let conditions = Conditions {
             // On the ground, the ground holds the stack up, until the engines lift more

@@ -304,6 +304,7 @@ component works with any shape that has what it needs:
   `steering`, its strut out along the part's −Z and its wheel rolling along the part's +Y
   (turn the part about the strut, with `roll`, to roll the wheel another way). The leg can
   stand anywhere on the craft at any angle; it is the part that weighs, not only the leg.
+  With `foot: true` it ends in a pad that grips instead of a wheel (`wheel_radius` is the pad's).
 
 `{ mirrored: <shape> }` reflects a shape left to right, for the left wing of a right one; it
 is a part like any other, with its own mass and its own panel.
@@ -819,6 +820,7 @@ nothing else.
   ],
   fail: [{ id: "lost", text: "The rocket was lost", when: { type: "Destroyed" } }],
   ordered: false, // true: a goal only counts once the ones before it are met
+  sequences_done: 1, // sequences already fired at the start, with the throttle shut (default 0)
 }
 ```
 

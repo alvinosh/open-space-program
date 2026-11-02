@@ -7,15 +7,14 @@
   "size": "L",
   "parent": "T007",
   "depends_on": [
-    "T028",
-    "T015"
+    "T028"
   ],
   "refs": [
     "docs/systems-plan.md (step 14, Join)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
+  "updated": "2026-11-02",
   "done": null,
-  "milestone": "M5",
-  "priority": 67
+  "milestone": "M2",
+  "priority": 36
 }

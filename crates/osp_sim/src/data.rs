@@ -383,6 +383,9 @@ pub struct GearDef {
     /// The wheel steers with the yaw command, this many degrees each way.
     #[serde(default)]
     pub steering: f64,
+    /// It ends in a foot, which does not roll: `wheel_radius` is the pad's.
+    #[serde(default)]
+    pub foot: bool,
 }
 
 fn default_gear_angle() -> f64 {
@@ -950,6 +953,10 @@ pub struct ScenarioDef {
     pub start_time: f64,
     pub craft: String,
     pub start: StartDef,
+    /// How many of the craft's sequences have already fired when it starts, with the throttle
+    /// shut: a lander on the ground has already used the one that lights its descent engine.
+    #[serde(default)]
+    pub sequences_done: u32,
     /// Other vessels in the game from the start (stations, targets).
     #[serde(default)]
     pub others: Vec<VesselStartDef>,

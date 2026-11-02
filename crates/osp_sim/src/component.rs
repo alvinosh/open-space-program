@@ -549,6 +549,9 @@ pub struct GearLegDef {
     /// Steers with the yaw command, this many degrees each way.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub steering: f64,
+    /// It ends in a foot, which does not roll: `wheel_radius` is the pad's.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub foot: bool,
 }
 
 /// A part, built: measured, sized and weighed.

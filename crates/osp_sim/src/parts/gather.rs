@@ -345,6 +345,7 @@ fn components(
                     mirror: false,
                     brakes: leg.brakes,
                     steering: leg.steering,
+                    foot: leg.foot,
                 }));
             }
         }

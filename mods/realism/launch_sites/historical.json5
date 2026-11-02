@@ -2,6 +2,14 @@
 // mount and service tower are the game's generic ones.
 [
   {
+    "id": "tranquility_base",
+    "name": "Tranquility Base",
+    "body": "Moon",
+    "latitude": 0.6741,
+    "longitude": 23.4730,
+    "heading": 0
+  },
+  {
     "id": "peenemunde_p7",
     "name": "Peenemünde Test Stand VII",
     "body": "Earth",
