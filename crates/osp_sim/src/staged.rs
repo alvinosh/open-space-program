@@ -118,8 +118,8 @@ pub fn convert(
             let at = relative(part);
             match &part.kind {
                 PartKind::Hull { .. } | PartKind::Decoupler | PartKind::Shell(_) => {}
-                PartKind::Mirror | PartKind::Structure { .. } => {
-                    unreachable!("no mirrors or bare structure on a staged tree")
+                PartKind::Structure { .. } => {
+                    unreachable!("no bare structure on a staged tree")
                 }
                 PartKind::Engine(engine) => {
                     let node = name("engine");

@@ -14,7 +14,6 @@
 use std::collections::BTreeMap;
 
 use bevy::{
-    math::DVec3,
     picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings},
     prelude::*,
 };
@@ -70,23 +69,6 @@ pub fn stage_parts(tree: &PartTree, stage: usize, kind: fn(&PartKind) -> bool) -
         .filter(|p| kind(&p.kind))
         .map(|p| p.id)
         .collect()
-}
-
-/// The left half of a mirrored wing: the stage's `Mirror` part across the vessel's plane
-/// of symmetry from `wing`.
-pub fn mirror_half(tree: &PartTree, wing: &Part) -> Option<PartId> {
-    let across = wing.position * DVec3::new(-1.0, 1.0, 1.0);
-    tree.stage(wing.stage)
-        .filter(|p| matches!(p.kind, PartKind::Mirror))
-        .min_by(|a, b| {
-            let (a, b) = (a.position.distance(across), b.position.distance(across));
-            a.total_cmp(&b)
-        })
-        .map(|p| p.id)
-}
-
-pub fn is_wing(kind: &PartKind) -> bool {
-    matches!(kind, PartKind::Wing(_))
 }
 
 pub fn is_fins(kind: &PartKind) -> bool {
@@ -261,14 +243,7 @@ fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
         });
         (load.map(|l| l.fraction).into(), mode.into())
     };
-    // The left half of a mirrored wing shows its wing, which flies and weighs both.
-    let kind = match part.kind {
-        PartKind::Mirror => tree
-            .stage(part.stage)
-            .find(|w| is_wing(&w.kind) && mirror_half(tree, w) == Some(part.id))
-            .map_or(&part.kind, |w| &w.kind),
-        _ => &part.kind,
-    };
+    let kind = &part.kind;
 
     let (type_, label, mass) = match kind {
         PartKind::Hull { structure_mass, .. } => ("hull", "Stage hull", *structure_mass),
@@ -290,7 +265,6 @@ fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
         PartKind::Gear(def) => ("gear", "Landing gear", def.mass),
         PartKind::Shell(shell) => ("shell", "Shell", shell.mass),
         PartKind::FairingHalf { mass, .. } => ("fairing", "Fairing half", *mass),
-        PartKind::Mirror => ("wing", "Wing", 0.0),
         PartKind::Structure { mass } => ("structure", "Structure", *mass),
     };
     let catalog = match kind {
@@ -442,7 +416,13 @@ fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
                 ((def.root_chord + def.tip_chord) / 2.0 * def.span).into(),
             );
             set("sweep", def.sweep.into());
-            set("mirrored", def.mirror.into());
+            // One of a pair: a left-hand wing, or a stage's record of both.
+            let left = part.built.as_ref().is_some_and(|built| {
+                (built.components.iter()).any(
+                    |c| matches!(c, osp_sim::component::Component::LiftingSurface(s) if s.reversed),
+                )
+            });
+            set("mirrored", (def.mirror || left).into());
             set("control", def.control.is_some().into());
             let deflection = def.control.as_ref().map(|c| c.deflection);
             set("deflection", deflection.into());
@@ -473,8 +453,6 @@ fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
             set("diameter", (2.0 * radius).into());
             set("length", (*length).into());
         }
-        // Without its wing: only the name.
-        PartKind::Mirror => {}
     }
 }
 

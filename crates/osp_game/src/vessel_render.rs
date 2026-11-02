@@ -11,11 +11,10 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::{light::NotShadowCaster, prelude::*};
 use osp_sim::{
-    DVec3,
-    aero::{self, Panel},
+    DVec3, aero,
     component::{BuiltPart, Component, LayerDef, Look},
     data::{ControlSurfaceDef, EngineDef, TurbineExhaust},
-    parts::{Part, PartId, PartKind, PartTree},
+    parts::{PartId, PartKind},
     propulsion::{Engine, Propulsion, Section},
     time::SimTime,
     vessel::VesselId,
@@ -95,8 +94,7 @@ struct EnginePivot {
 #[derive(Component)]
 struct ControlSurfaceVisual {
     vessel: VesselId,
-    stage: usize,
-    wing: usize,
+    part: PartId,
     panel: usize,
     axis: Vec3,
 }
@@ -318,14 +316,6 @@ fn rebuild_on_change(
             let base = DVec3::Z * tree.base();
             // Each stage's engines by look, for one plume each.
             let mut clusters: Vec<(usize, PlumeDef, Vec<PlumeEngine>)> = Vec::new();
-            // How many parts of each kind each stage has had so far: its stage lists them
-            // in the same order.
-            let mut counts: HashMap<(usize, &'static str), usize> = HashMap::new();
-            let mut next = |stage: usize, kind: &'static str| {
-                let k = counts.entry((stage, kind)).or_default();
-                *k += 1;
-                *k - 1
-            };
             for part in tree.parts() {
                 let Some(built) = &part.built else {
                     continue;
@@ -442,22 +432,14 @@ fn rebuild_on_change(
                     }
                     // Drawn with the leg's give (`update_gear`).
                     PartKind::Gear(_) => {}
-                    PartKind::Wing(_) | PartKind::Mirror => {
-                        // The right half of a wing is its stage's wing; the left half is
-                        // the other panel of the right half's.
-                        let (wing, panel) = match &part.kind {
-                            PartKind::Wing(_) => (Some(next(part.stage, "wing")), 0),
-                            _ => (wing_of_mirror(tree, part), 1),
-                        };
-                        let def = wing.and_then(|w| stage.wings.get(w));
-                        let control = def.and_then(|d| d.control.as_ref());
+                    PartKind::Wing(def) => {
                         let mut visual = parent.spawn((pose, Visibility::default(), shows));
-                        visual.with_children(|visual| match (control, wing) {
-                            (Some(control), Some(w)) => {
-                                let at = (index, w, panel);
+                        visual.with_children(|visual| match &def.control {
+                            Some(control) => {
+                                let at = (part.id, 0);
                                 hinged(visual, built, control, at, vessel, &mut pen);
                             }
-                            _ => pen.draw(visual, built, None),
+                            None => pen.draw(visual, built, None),
                         });
                     }
                     _ => {
@@ -580,28 +562,14 @@ impl Pen<'_> {
     }
 }
 
-/// Which of its stage's wings the mirror image `part` is the left half of: the one whose
-/// right half sits across the vessel's plane of symmetry from it.
-fn wing_of_mirror(tree: &PartTree, part: &Part) -> Option<usize> {
-    let across = part.position * DVec3::new(-1.0, 1.0, 1.0);
-    tree.stage(part.stage)
-        .filter(|p| matches!(p.kind, PartKind::Wing(_)))
-        .enumerate()
-        .min_by(|(_, a), (_, b)| {
-            let (a, b) = (a.position.distance(across), b.position.distance(across));
-            a.total_cmp(&b)
-        })
-        .map(|(w, _)| w)
-}
-
 /// A lifting surface with a control surface, in its part's axes: the wing cut along its
 /// hinge, and the control surface on a pivot at the hinge that turns it with the controls.
-/// `at` is (stage index, wing, panel) for [`ControlSurfaceVisual`].
+/// `at` is (part, panel) for [`ControlSurfaceVisual`].
 fn hinged(
     parent: &mut ChildSpawnerCommands,
     built: &BuiltPart,
     control: &ControlSurfaceDef,
-    (stage, wing, panel): (usize, usize, usize),
+    (part, panel): (PartId, usize),
     vessel: VesselId,
     pen: &mut Pen,
 ) {
@@ -658,8 +626,7 @@ fn hinged(
         .spawn((
             ControlSurfaceVisual {
                 vessel,
-                stage,
-                wing,
+                part,
                 panel,
                 axis: axes((line * sign).as_vec3().to_array()),
             },
@@ -922,25 +889,14 @@ fn update_control_surfaces(
         let Some(vessel) = sim.universe.vessel(visual.vessel) else {
             continue;
         };
-        let stages = &vessel.propulsion.sections;
-        let Some(stage) = stages.get(visual.stage) else {
+        let Some(found) = aero::wing_panel(&vessel.propulsion, visual.part, visual.panel) else {
             continue;
         };
-        let Some(wing) = stage.wings.get(visual.wing) else {
+        let Some(control) = &found.wing.control else {
             continue;
         };
-        let Some(control) = &wing.control else {
-            continue;
-        };
-        let base = stage.bottom.z - osp_sim::propulsion::floor(stages);
-        let Some(panel) = Panel::of(wing, stage.diameter / 2.0, base)
-            .get(visual.panel)
-            .copied()
-        else {
-            continue;
-        };
-        let com = vessel.mass_properties().center_of_mass.z;
-        let angle = aero::deflection(control, &panel, vessel.flight.control, com);
+        let com = vessel.mass_properties().center_of_mass;
+        let angle = aero::deflection(control, &found.panel, vessel.flight.control, com);
         transform.rotation = Quat::from_axis_angle(visual.axis, angle as f32);
     }
 }

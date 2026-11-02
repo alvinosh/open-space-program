@@ -98,12 +98,31 @@ fn what_the_stages_held_comes_back_from_the_parts() {
             had.thickness
         )
     );
-    // Each wing, the mirrored one gathered back from its two halves.
+    // Each wing is a part, a mirrored one two: the right half and the left, each with half
+    // of the mass, the left half's root across the plane of symmetry.
     let glider = &p.sections[1];
-    assert_eq!(glider.wings.len(), 2);
-    for (got, had) in glider.wings.iter().zip(&staged.stages[1].wings) {
-        assert_wing(got, had);
+    let mut got = glider.wings.iter();
+    for had in &staged.stages[1].wings {
+        let halves = if had.mirror { 2.0 } else { 1.0 };
+        let right = got.next().expect("a wing");
+        let whole = WingDef {
+            mirror: had.mirror,
+            mass: right.mass * halves,
+            ..right.clone()
+        };
+        assert_wing(&whole, had);
+        if had.mirror {
+            let left = got.next().expect("its left half");
+            assert!(!left.mirror && (left.mass - right.mass).abs() < 1e-9);
+            assert_close(
+                left.angle.rem_euclid(360.0),
+                (180.0 - had.angle).rem_euclid(360.0),
+            );
+            assert_close(left.span, right.span);
+            assert_close(left.position, right.position);
+        }
     }
+    assert!(got.next().is_none());
     // A mirrored leg is two legs, the second across the plane of symmetry.
     let legs: Vec<&GearDef> = glider.gear.iter().collect();
     assert_eq!(legs.len(), 3);
@@ -158,7 +177,6 @@ fn the_parts_weigh_and_sit_as_the_stages_did() {
                 PartKind::Tank(_)
                     | PartKind::Fins(_)
                     | PartKind::Wing(_)
-                    | PartKind::Mirror
                     | PartKind::Shell(_)
                     | PartKind::FairingHalf { .. }
             )

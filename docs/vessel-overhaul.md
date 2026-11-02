@@ -401,6 +401,7 @@ Milestone 3, physics on parts:
        the ones it hangs under and what hangs beside those. Joint loads replace this.
      - Engines pointed any way are in (T014, 2026-11-01); an armed engine waits while a
        stage hangs under its own (no hot staging).
+     - Wings at any pose are in (T014, 2026-11-02): each panel of a wing part's loft is flown where the part puts it; a left wing is a mirrored part of its own.
      - Gear legs at any pose are in (T014, 2026-11-02): the wheel rolls along the part's +Y.
      - Tanks and pods at any pose are in (T014, 2026-11-02): a tank's liquid settles against
        the vessel's aft side whichever way the tank points, and a stage holds any number of pods.

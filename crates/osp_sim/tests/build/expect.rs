@@ -55,14 +55,6 @@ pub const RULES: &[Rule] = &[
               refuses it",
     },
     Rule {
-        row: "wing",
-        columns: &[],
-        except: false,
-        expect: Expect::Red(LOADS, "T014"),
-        why: "the gatherer only takes a wing untwisted, uncambered and with its root on its \
-              stage's side, and a mirrored one only beside its partner",
-    },
-    Rule {
         row: "rcs",
         columns: &["inside", "fairing"],
         except: true,

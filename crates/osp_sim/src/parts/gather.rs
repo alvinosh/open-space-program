@@ -15,7 +15,7 @@
 
 use std::f64::consts::TAU;
 
-use glam::{DMat3, DQuat, DVec2, DVec3};
+use glam::{DQuat, DVec2, DVec3};
 
 use super::{Capabilities, Connector, ConnectorKind, Joint, Part, PartId, PartKind, PartTree};
 use crate::{
@@ -232,30 +232,6 @@ impl PartTree {
             let set = fin_set(craft, &fins, &relative, radius, catalog).map_err(&bad)?;
             fin_sets.push(set);
         }
-        let mut partner = vec![None; count];
-        for p in 0..count {
-            let ShapeDef::Mirrored(inner) = &craft.parts[p].def.shape else {
-                continue;
-            };
-            let flipped = mirror(relative(p));
-            let found = stage_parts(part_stage[p]).find(|&q| {
-                let (other, b) = (&craft.parts[q], relative(q));
-                other.def.shape == **inner
-                    && other.def.structure == craft.parts[p].def.structure
-                    && other.def.components == craft.parts[p].def.components
-                    && (b.position - flipped.position).length() < NEAR
-                    && b.rotation.dot(flipped.rotation).abs() > 1.0 - 1e-12
-            });
-            let Some(q) = found else {
-                return Err(bad(format!(
-                    "the mirrored `{}` has no partner mirroring it across the stage",
-                    craft.parts[p].id
-                )));
-            };
-            partner[p] = Some(q);
-            partner[q] = Some(p);
-        }
-
         // Parts where one stage hangs from another, which engines may fire through.
         let between = |p: usize| {
             let across = |q: usize| parents[q].is_some_and(|(_, h)| part_stage[h] != part_stage[q]);
@@ -265,9 +241,7 @@ impl PartTree {
         for (p, part) in craft.parts.iter().enumerate() {
             let stage = stage_of[group[p]];
             let (diameter, length) = sizes[stage];
-            let radius = diameter / 2.0;
             let local = relative(p);
-            let mirrored = matches!(part.def.shape, ShapeDef::Mirrored(_));
             let kind = if p == bodies[stage] {
                 Ok(PartKind::Hull {
                     structure_mass: part.built.mass.mass,
@@ -278,11 +252,8 @@ impl PartTree {
                 shell(part, local)
             } else if fairing[group[p]] {
                 fairing_half(part, local)
-            } else if mirrored && fin_or_wing(part) {
-                Ok(PartKind::Mirror)
             } else {
-                let pair = partner[p].map(|q| craft.parts[q].built.mass.mass);
-                kind(part, local, radius, pair, &fin_sets[stage])
+                kind(part, local, &fin_sets[stage])
             }
             .map_err(|problem| bad(format!("`{}`: {problem}", part.id)))?;
             parts.push(Part {
@@ -337,13 +308,7 @@ impl PartTree {
 
 /// The kind of part `part` is on its stage, at `local` from the stage's base, on a stage
 /// `radius` wide.
-fn kind(
-    part: &CraftPart,
-    local: Pose,
-    radius: f64,
-    partner: Option<f64>,
-    fins: &Option<FinSet>,
-) -> Result<PartKind, String> {
+fn kind(part: &CraftPart, local: Pose, fins: &Option<FinSet>) -> Result<PartKind, String> {
     if let Some(Template::Pod(pod)) = &part.template {
         return Ok(PartKind::Pod(pod.clone()));
     }
@@ -372,13 +337,16 @@ fn kind(
             .map(PartKind::Fins)
             .ok_or_else(|| format!("{surface:?} is no fin")),
         [Component::LiftingSurface(surface)] => {
-            let ShapeDef::Wing(shape) = &part.def.shape else {
+            let Some(shape) = wing_shape(part) else {
                 return Err("a lifting surface is a `wing`".into());
             };
-            let mut def = wing(shape, local, radius)?;
+            let mut def = wing(shape, local)?;
+            if let Some(plan) = surface.panels.first() {
+                let panel = crate::aero::Panel::at(plan, local.position, local.rotation);
+                def.incidence = panel.incidence.to_degrees();
+            }
             def.name = part.name.clone();
-            def.mass = part.built.mass.mass + partner.unwrap_or(0.0);
-            def.mirror = partner.is_some();
+            def.mass = part.built.mass.mass;
             def.control = surface.control.clone();
             Ok(PartKind::Wing(def))
         }
@@ -648,53 +616,36 @@ fn fin_set(
         .map_err(|e| e.to_string())
 }
 
-/// A wing record for a `wing` shape whose root is at `local` on a stage `radius` wide: its
-/// angle round the stage from where its root is, and its incidence from how it is turned
-/// about its span.
-fn wing(shape: &WingShape, local: Pose, radius: f64) -> Result<WingDef, String> {
+/// A wing record for a `wing` shape whose root is at `local` on its stage. The pose is all
+/// the physics needs of where it is and how it is turned (the panel comes from the part's
+/// loft); `position` and `angle` say where its root stands on the stage in the terms of a
+/// stage's wing list.
+fn wing(shape: &WingShape, local: Pose) -> Result<WingDef, String> {
     let AirfoilDef::Naca {
         thickness, camber, ..
     } = shape.airfoil
     else {
         return Err("a wing has a NACA airfoil".into());
     };
-    let root = local.position;
-    let angle = root.y.atan2(root.x);
-    if camber != 0.0 || shape.twist != 0.0 || (root.truncate().length() - radius).abs() > NEAR {
-        return Err("a wing is untwisted and uncambered, its root on its stage's side".into());
+    if camber != 0.0 || shape.twist != 0.0 {
+        return Err("a wing is untwisted and uncambered".into());
     }
-    let dihedral = shape.dihedral.to_radians();
-    let along = DVec3::new(dihedral.cos(), -dihedral.sin(), 0.0);
-    let (axis, turned) = (DQuat::from_rotation_z(angle).inverse() * local.rotation).to_axis_angle();
-    let incidence = if turned.abs() < 1e-12 {
-        0.0
-    } else if axis.cross(along).length() < NEAR {
-        turned * axis.dot(along).signum()
-    } else {
-        return Err("a wing is turned only about its span".into());
-    };
+    let root = local.position;
     Ok(WingDef {
         name: String::new(),
         position: root.z,
-        angle: angle.to_degrees(),
+        angle: root.y.atan2(root.x).to_degrees(),
         root_chord: shape.root_chord,
         tip_chord: shape.tip_chord,
-        span: shape.span / dihedral.cos(),
+        span: shape.span / shape.dihedral.to_radians().cos(),
         sweep: shape.sweep,
         dihedral: shape.dihedral,
-        incidence: incidence.to_degrees(),
+        incidence: 0.0,
         thickness,
         mass: 0.0,
         mirror: false,
         control: None,
     })
-}
-
-/// `pose` reflected across the YZ plane.
-fn mirror(pose: Pose) -> Pose {
-    let flip = DMat3::from_diagonal(DVec3::new(-1.0, 1.0, 1.0));
-    let turn = flip * DMat3::from_quat(pose.rotation) * flip;
-    Pose::new(flip * pose.position, DQuat::from_mat3(&turn).normalize())
 }
 
 fn on_axis(pose: Pose) -> bool {

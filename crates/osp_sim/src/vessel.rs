@@ -25,7 +25,7 @@ use glam::{DMat3, DQuat, DVec3};
 use thiserror::Error;
 
 use crate::{
-    aero::{Flow, Loads, Panel, Shape},
+    aero::{Flow, Loads, PartPanel, Shape, wing_panels},
     atmosphere::AtmosphereSample,
     attitude::{self, Attitude, Inertia, MassProperties, NavBasis, NavFrame, Sas, SasMode},
     autopilot::{self, BurnExecutor, BurnTiming, Capability, Finish},
@@ -37,7 +37,7 @@ use crate::{
     orbit::{Elements, Orbit, StateVector},
     plan::{Burn, FlightPlan},
     parts::PartId,
-    propulsion::{CraftError, Propulsion, Released, Staged, placed},
+    propulsion::{CraftError, Propulsion, Released, Staged},
     rcs,
     rendezvous::Target,
     staging::Activation,
@@ -1776,14 +1776,8 @@ struct HardPoints {
 
 fn hard_points(propulsion: &Propulsion) -> HardPoints {
     let mut tips = Vec::new();
-    for (base, stage) in placed(&propulsion.sections) {
-        let axis = stage.bottom.truncate().extend(0.0);
-        for wing in &stage.wings {
-            for panel in Panel::of(wing, stage.diameter / 2.0, base) {
-                let tip = panel.tip + axis;
-                tips.extend([tip, tip - DVec3::Z * panel.tip_chord]);
-            }
-        }
+    for PartPanel { panel, .. } in wing_panels(propulsion) {
+        tips.extend([panel.tip, panel.tip + panel.back * panel.tip_chord]);
     }
     HardPoints {
         rings: propulsion.shape().rings().collect(),

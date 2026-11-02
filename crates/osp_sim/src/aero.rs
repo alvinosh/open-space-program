@@ -53,14 +53,15 @@ pub mod voxel;
 
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
-use glam::{DVec2, DVec3};
+use glam::{DQuat, DVec2, DVec3};
 
 use self::voxel::Body;
 use crate::{
     atmosphere::AtmosphereSample,
-    component::{BuiltPart, Component},
+    component::{BuiltPart, Component, Planform},
     data::{ControlSurfaceDef, WingDef},
     gear,
+    parts::{Part, PartId, PartKind},
     propulsion::{Propulsion, placed},
     structure::{FinSet, lift_slope},
 };
@@ -81,6 +82,9 @@ const TRANSONIC: (f64, f64) = (0.8, 1.2);
 const TRANSITION_REYNOLDS: f64 = 5e5;
 /// Strips along each wing panel.
 const STRIPS: usize = 8;
+/// A wing turned about its span by more than this (rad, 20°) from lying along the stack is
+/// not at an incidence to it: the panel keeps the frame its part gives it.
+const MAX_INCIDENCE: f64 = 0.35;
 /// Oswald's span efficiency for induced drag.
 const OSWALD: f64 = 0.85;
 /// Half-width of the blend from attached to separated flow around the stall, rad (2°).
@@ -233,8 +237,8 @@ struct Fins {
     shielded: Vec<bool>,
 }
 
-/// One panel of a wing (a mirrored wing has two), in stack coordinates: X to the pilot's
-/// right, Y to their feet, Z up the stack from its base.
+/// One panel of a wing, in stack coordinates: X to the pilot's right, Y to their feet, Z up
+/// the stack from its base.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Panel {
     /// Leading edge at the root and at the tip, m.
@@ -245,24 +249,78 @@ pub struct Panel {
     /// The lifting side: angle of attack, incidence and a trailing edge deflected the other
     /// way all push the panel this way.
     pub normal: DVec3,
+    /// Unit, from the leading edge back along the chord: −Z for a wing lying in a rocket's
+    /// frame, the way the air runs along it.
+    pub back: DVec3,
+    /// How far the panel's own chord is turned about its span from `back`, which is as near
+    /// to the stack's −Z as a chord square to the span can be, with the leading edge towards
+    /// the lifting side: the air sees the angle of attack to `back` plus this, rad.
+    pub incidence: f64,
 }
 
 impl Panel {
-    /// The panels of `wing` on a stage `hull_radius` wide whose base is `base` up the stack.
-    pub fn of(wing: &WingDef, hull_radius: f64, base: f64) -> Vec<Panel> {
-        let direction = |degrees: f64| {
-            let (s, c) = degrees.to_radians().sin_cos();
-            DVec3::new(c, s, 0.0)
+    /// The panel a loft's `plan` makes on a part at `position` turned by `rotation`
+    /// (stack coordinates). The panel's frame is the one a wing of a rocket or a plane
+    /// lies in, its chord along the stack, and the turn of the real chord from that about
+    /// the span is its incidence. A panel whose span runs nearly along the stack has no
+    /// such frame, and one turned further than [`MAX_INCIDENCE`] about its span is not set
+    /// at an incidence: both keep their own.
+    pub fn at(plan: &Planform, position: DVec3, rotation: DQuat) -> Panel {
+        let place = |p: DVec3| position + rotation * p;
+        let (root, tip) = (place(plan.root), place(plan.tip));
+        let (chord, normal) = (rotation * plan.chord, rotation * plan.normal);
+        let reach = tip - root;
+        let (span, sweep) = (reach.reject_from(chord), reach.dot(chord));
+        let along = span.normalize_or_zero();
+        let level = if along == DVec3::ZERO {
+            DVec3::ZERO
+        } else {
+            DVec3::NEG_Z.reject_from(along)
         };
-        let root = direction(wing.angle) * hull_radius + DVec3::Z * (base + wing.position);
-        let along = direction(wing.angle - wing.dihedral);
-        let panel = Panel {
+        let reference = (level.length() > 0.5).then(|| {
+            let level = level.normalize();
+            // The lifting side of the untwisted panel, on the side the real one lifts to,
+            // and how far the chord has turned towards it by the leading edge.
+            let side = along.cross(level);
+            let lifting = if side.dot(normal) < 0.0 { -side } else { side };
+            let incidence = (-chord.dot(lifting)).atan2(chord.dot(level));
+            (level, lifting, incidence)
+        });
+        let (back, normal, incidence) = match reference {
+            Some((level, lifting, incidence)) if incidence.abs() <= MAX_INCIDENCE => {
+                (level, lifting, incidence)
+            }
+            _ => (chord, normal, 0.0),
+        };
+        Panel {
             root,
-            tip: root + along * wing.span - DVec3::Z * wing.sweep,
+            tip: root + along * span.length() + back * sweep,
+            root_chord: plan.root_chord,
+            tip_chord: plan.tip_chord,
+            normal,
+            back,
+            incidence,
+        }
+    }
+
+    /// The panels of `wing` as a stage's record lays it out: standing at `position` in the
+    /// frame of a wing part turned `rotation` about the stack (its span out along +X, tilted
+    /// down by the dihedral, its chord along −Z), the chord turned about the span by the
+    /// wing's `incidence`, and its mirror image across the vessel's plane of symmetry too
+    /// if it has one.
+    pub fn of_wing(wing: &WingDef, position: DVec3, rotation: DQuat) -> Vec<Panel> {
+        let (s, c) = wing.dihedral.to_radians().sin_cos();
+        let plan = Planform {
+            root: DVec3::ZERO,
+            tip: DVec3::new(c * wing.span, -s * wing.span, -wing.sweep),
             root_chord: wing.root_chord,
             tip_chord: wing.tip_chord,
-            normal: along.cross(DVec3::Z),
+            chord: DVec3::NEG_Z,
+            normal: DVec3::new(-s, -c, 0.0),
+            thickness: [wing.thickness; 2],
         };
+        let incidence = DQuat::from_axis_angle(DVec3::new(c, -s, 0.0), wing.incidence.to_radians());
+        let panel = Panel::at(&plan, position, rotation * incidence);
         let mut panels = vec![panel];
         if wing.mirror {
             let flip = |v: DVec3| DVec3::new(-v.x, v.y, v.z);
@@ -270,15 +328,28 @@ impl Panel {
                 root: flip(panel.root),
                 tip: flip(panel.tip),
                 normal: flip(panel.normal),
+                back: flip(panel.back),
                 ..panel
             });
         }
         panels
     }
 
+    /// The panels of `wing` on a stage `hull_radius` wide whose base is `base` up the stack.
+    pub fn of(wing: &WingDef, hull_radius: f64, base: f64) -> Vec<Panel> {
+        let (s, c) = wing.angle.to_radians().sin_cos();
+        let root = DVec3::new(c, s, 0.0) * hull_radius + DVec3::Z * (base + wing.position);
+        Self::of_wing(wing, root, DQuat::from_rotation_z(wing.angle.to_radians()))
+    }
+
     /// From the root to the tip, across the flow, m.
     pub fn span(&self) -> f64 {
-        (self.tip - self.root).truncate().length()
+        (self.tip - self.root).reject_from(self.back).length()
+    }
+
+    /// How far the tip's leading edge sits behind the root's, m.
+    pub fn sweep(&self) -> f64 {
+        (self.tip - self.root).dot(self.back)
     }
 
     pub fn area(&self) -> f64 {
@@ -297,21 +368,82 @@ impl Panel {
     pub fn aerodynamic_center(&self) -> DVec3 {
         let (root, tip) = (self.root_chord, self.tip_chord);
         let (leading_edge, chord) = self.station((root + 2.0 * tip) / (3.0 * (root + tip)));
-        leading_edge - DVec3::Z * chord / 4.0
+        leading_edge + self.back * (chord / 4.0)
     }
+}
+
+/// A wing part's panel, in stack coordinates.
+#[derive(Debug, Clone, Copy)]
+pub struct PartPanel<'a> {
+    pub part: PartId,
+    /// Which of the part's panels it is.
+    pub index: usize,
+    pub wing: &'a WingDef,
+    pub panel: Panel,
+}
+
+/// The panels of every wing part of `propulsion`, each where its part puts it.
+pub fn wing_panels(propulsion: &Propulsion) -> Vec<PartPanel<'_>> {
+    let tree = propulsion.parts();
+    let base = DVec3::Z * tree.base();
+    let mut out = Vec::new();
+    for part in tree.parts() {
+        out.extend(part_panels(part, base));
+    }
+    out
+}
+
+/// Panel `index` of wing part `part` of `propulsion`.
+pub fn wing_panel(propulsion: &Propulsion, part: PartId, index: usize) -> Option<PartPanel<'_>> {
+    let tree = propulsion.parts();
+    let base = DVec3::Z * tree.base();
+    part_panels(tree.get(part)?, base).nth(index)
+}
+
+/// The panels of `part` if it is a wing, with the stack standing at `base`.
+fn part_panels(part: &Part, base: DVec3) -> impl Iterator<Item = PartPanel<'_>> {
+    let PartKind::Wing(wing) = &part.kind else {
+        return Vec::new().into_iter();
+    };
+    let position = part.position - base;
+    let lifting = part.built.as_ref().and_then(|built| {
+        built.components.iter().find_map(|c| match c {
+            Component::LiftingSurface(surface) => Some(surface),
+            _ => None,
+        })
+    });
+    let panels: Vec<Panel> = match lifting {
+        Some(surface) => (surface.panels.iter())
+            .map(|plan| Panel::at(plan, position, part.rotation))
+            .collect(),
+        // A stage's record, not a part's loft.
+        None => Panel::of_wing(wing, position, part.rotation),
+    };
+    let id = part.id;
+    panels
+        .into_iter()
+        .enumerate()
+        .map(|(index, panel)| PartPanel {
+            part: id,
+            index,
+            wing,
+            panel,
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
 }
 
 /// How far a control surface on `panel` deflects for the rotation `command` (−1..1 about
 /// each vessel axis), rad, positive with the trailing edge away from the lifting side: the
 /// way that turns the vessel about the commanded axes it answers to, with the centre of mass
-/// `center_of_mass` up the stack.
+/// at `center_of_mass` (stack coordinates).
 pub fn deflection(
     control: &ControlSurfaceDef,
     panel: &Panel,
     command: DVec3,
-    center_of_mass: f64,
+    center_of_mass: DVec3,
 ) -> f64 {
-    let turn = (panel.aerodynamic_center() - DVec3::Z * center_of_mass).cross(panel.normal);
+    let turn = (panel.aerodynamic_center() - center_of_mass).cross(panel.normal);
     let sum: f64 = control
         .axes
         .iter()
@@ -358,8 +490,9 @@ impl Surface {
     fn new(wing: &WingDef, panel: Panel) -> Self {
         let span = panel.span();
         let area = panel.area();
-        let chord_change = wing.tip_chord - wing.root_chord;
-        let tan_quarter = (wing.sweep + chord_change / 4.0) / span;
+        let sweep = panel.sweep();
+        let chord_change = panel.tip_chord - panel.root_chord;
+        let tan_quarter = (sweep + chord_change / 4.0) / span;
         let section_max = (0.8 + 5.0 * wing.thickness).min(1.6);
         let effectiveness = wing.control.as_ref().map_or(0.0, |c| {
             let hinge = (2.0 * c.chord.clamp(0.0, 1.0) - 1.0).acos();
@@ -384,8 +517,8 @@ impl Surface {
             panel,
             strips,
             aspect: 2.0 * span * span / area,
-            tan_sweep: (wing.sweep + chord_change / 2.0) / span,
-            incidence: wing.incidence.to_radians(),
+            tan_sweep: (sweep + chord_change / 2.0) / span,
+            incidence: panel.incidence,
             thickness: wing.thickness,
             max_lift: 0.9 * section_max * tan_quarter.atan().cos(),
             control: wing.control.clone(),
@@ -416,19 +549,21 @@ impl Surface {
         let flap = match &self.control {
             Some(control) => {
                 let command = flow.controls;
-                self.effectiveness * deflection(control, &self.panel, command, center_of_mass.z)
+                self.effectiveness * deflection(control, &self.panel, command, center_of_mass)
             }
             None => 0.0,
         };
         // Lift acts a quarter of the chord back subsonic, moving to half supersonic.
         let share = 0.25 + 0.25 * (mach - 1.0).clamp(0.0, 1.0);
         let n = self.panel.normal;
+        // Towards the leading edge: where the air comes from, for a panel in a rocket's frame.
+        let ahead = -self.panel.back;
         let (mut lift_sum, mut area_sum) = (0.0, 0.0);
         for strip in &self.strips {
-            let point = strip.leading_edge - DVec3::Z * share * strip.chord - center_of_mass;
+            let point = strip.leading_edge - ahead * share * strip.chord - center_of_mass;
             let u = flow.velocity + flow.angular_velocity.cross(point);
             // The flow in the plane of the chord and the normal.
-            let (across, along) = (u.dot(n), u.z);
+            let (across, along) = (u.dot(n), u.dot(ahead));
             let speed = across.hypot(along);
             if speed < 1e-9 {
                 continue;
@@ -440,8 +575,8 @@ impl Surface {
             let alpha = alpha.sin().atan2(alpha.cos());
             let (cl, cd) = wing_coefficients(alpha, slope, self.max_lift, self.aspect, profile);
             let q = 0.5 * rho * speed * speed;
-            let lift = (n * along - DVec3::Z * across) / speed;
-            let drag = -(DVec3::Z * along + n * across) / speed;
+            let lift = (n * along - ahead * across) / speed;
+            let drag = -(ahead * along + n * across) / speed;
             add(point, q * strip.area * (cl * lift + cd * drag));
             lift_sum += cl * strip.area;
             area_sum += strip.area;
@@ -541,18 +676,14 @@ impl Shape {
                     shielded,
                 });
             }
-            for wing in &stage.wings {
-                for mut panel in Panel::of(wing, radius, height) {
-                    panel.root += axis.extend(0.0);
-                    panel.tip += axis.extend(0.0);
-                    let mut surface = Surface::new(wing, panel);
-                    surface
-                        .strips
-                        .retain(|s| !body.encloses(s.leading_edge - DVec3::Z * s.chord / 4.0));
-                    if !surface.strips.is_empty() {
-                        surfaces.push(surface);
-                    }
-                }
+        }
+        for PartPanel { wing, panel, .. } in wing_panels(propulsion) {
+            let mut surface = Surface::new(wing, panel);
+            surface
+                .strips
+                .retain(|s| !body.encloses(s.leading_edge + panel.back * (s.chord / 4.0)));
+            if !surface.strips.is_empty() {
+                surfaces.push(surface);
             }
         }
         let mut stations: Vec<Station> = (body.cuts.iter())
@@ -1488,16 +1619,25 @@ mod tests {
     fn the_wing_washes_the_tailplane_down() {
         let (p, _) = glider();
         let shape = Shape::new(&p);
-        // Panels: tailplane right and left, fin, wing right and left.
-        let names: Vec<usize> = shape
-            .surfaces
-            .iter()
-            .map(|s| s.downwash_from.len())
+        // Five panels: wing right and left, tailplane right and left, fin. The tailplane's
+        // two halves are washed, each by the half of the wing on its own side, and nothing
+        // else is.
+        let washed: Vec<usize> = (0..shape.surfaces.len())
+            .filter(|&k| !shape.surfaces[k].downwash_from.is_empty())
             .collect();
-        assert_eq!(names, vec![1, 1, 0, 0, 0]);
-        // Each half of the tailplane sits behind its own half of the wing.
-        assert_eq!(shape.surfaces[0].downwash_from[0].0, 3);
-        assert_eq!(shape.surfaces[1].downwash_from[0].0, 4);
+        assert_eq!(shape.surfaces.len(), 5);
+        assert_eq!(washed.len(), 2);
+        for k in washed {
+            let tail = &shape.surfaces[k];
+            let [(j, _)] = tail.downwash_from.as_slice() else {
+                panic!("{:?}", tail.downwash_from);
+            };
+            let wing = &shape.surfaces[*j];
+            assert!(wing.panel.area() > tail.panel.area());
+            assert!(wing.panel.root.x * tail.panel.root.x >= 0.0);
+            assert!(wing.panel.tip.x * tail.panel.tip.x > 0.0);
+            assert!(wing.panel.aerodynamic_center().z > tail.panel.aerodynamic_center().z);
+        }
     }
 
     #[test]
@@ -1527,5 +1667,162 @@ mod tests {
         assert_eq!(lookup(&table, 0.5), 2.0);
         assert_eq!(lookup(&table, 1.5), 2.5);
         assert_eq!(lookup(&table, 9.0), 2.0);
+    }
+
+    /// A plain panel `span` out along +X, `chord` back along −Z, lifting towards −Y.
+    fn plain_planform(span: f64, chord: f64, left: bool) -> Planform {
+        let out = if left { -span } else { span };
+        Planform {
+            root: DVec3::ZERO,
+            tip: DVec3::X * out,
+            root_chord: chord,
+            tip_chord: chord,
+            chord: DVec3::NEG_Z,
+            normal: DVec3::NEG_Y,
+            thickness: [0.12; 2],
+        }
+    }
+
+    fn one_panel(panel: Panel) -> Shape {
+        let wing = plain_wing(1.0, 1.0).0;
+        Shape {
+            surfaces: with_downwash(vec![Surface::new(&wing, panel)]),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_panel_turned_about_its_span_is_set_at_an_incidence() {
+        // The same turn about X puts either half's leading edge up: the left half's span runs
+        // the other way, and its incidence is still the same.
+        for left in [false, true] {
+            let plan = plain_planform(4.0, 1.0, left);
+            for degrees in [5.0_f64, -3.0] {
+                let turn = DQuat::from_rotation_x(degrees.to_radians());
+                let panel = Panel::at(&plan, DVec3::new(0.0, 0.0, 2.0), turn);
+                assert!(
+                    (panel.incidence - degrees.to_radians()).abs() < 1e-12,
+                    "{left} {degrees}: {}",
+                    panel.incidence
+                );
+                // Its frame is the untwisted one: the chord along −Z, lifting up, the tip
+                // straight out.
+                assert!((panel.back - DVec3::NEG_Z).length() < 1e-12);
+                assert!((panel.normal - DVec3::NEG_Y).length() < 1e-12);
+                let out = if left { -4.0 } else { 4.0 };
+                assert!((panel.tip - DVec3::new(out, 0.0, 2.0)).length() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn incidence_is_more_angle_of_attack() {
+        // A panel turned 0.05 rad and flown at 0.04 lifts and drags as a plain one flown at
+        // 0.09: the same lift and drag, though the air runs along a different line.
+        let plan = plain_planform(4.0, 1.0, false);
+        let plain = one_panel(Panel::at(&plan, DVec3::ZERO, DQuat::IDENTITY));
+        let turned = one_panel(Panel::at(&plan, DVec3::ZERO, DQuat::from_rotation_x(0.05)));
+        let (fa, fb) = (flow(air(0.0), 0.15, 0.09), flow(air(0.0), 0.15, 0.04));
+        let split = |loads: Loads, flow: &Flow| {
+            let along = flow.velocity.normalize();
+            let drag = -loads.force.dot(along);
+            (drag, (loads.force + along * drag).length())
+        };
+        let (a, b) = (
+            split(plain.loads(&fa, -0.25), &fa),
+            split(turned.loads(&fb, -0.25), &fb),
+        );
+        assert!(
+            (a.0 - b.0).abs() < 1e-9 * a.1 && (a.1 - b.1).abs() < 1e-9 * a.1,
+            "{a:?} {b:?}"
+        );
+    }
+
+    #[test]
+    fn a_wing_turned_about_the_stack_flies_the_turned_flow_alike() {
+        // A wing standing out as a fin, a quarter turn about the stack, in a sideslip.
+        let plan = plain_planform(4.0, 1.0, false);
+        let upright = one_panel(Panel::at(&plan, DVec3::ZERO, DQuat::IDENTITY));
+        let turn = DQuat::from_rotation_z(1.1);
+        let fin = one_panel(Panel::at(&plan, DVec3::ZERO, turn));
+        let level = flow(air(2_000.0), 0.3, 0.07);
+        let turned = Flow {
+            velocity: turn * level.velocity,
+            ..level
+        };
+        let (a, b) = (upright.loads(&level, -0.25), fin.loads(&turned, -0.25));
+        assert!((turn * a.force - b.force).length() < 1e-9 * a.force.length());
+        assert!((turn * a.torque - b.torque).length() < 1e-9 * a.torque.length());
+    }
+
+    #[test]
+    fn a_panel_turned_far_about_its_span_keeps_its_own_frame() {
+        let plan = plain_planform(4.0, 1.0, false);
+        let panel = Panel::at(&plan, DVec3::ZERO, DQuat::from_rotation_x(FRAC_PI_2));
+        assert_eq!(panel.incidence, 0.0);
+        assert!((panel.back - DVec3::Y).length() < 1e-12, "{}", panel.back);
+        assert!((panel.normal - DVec3::NEG_Z).length() < 1e-12);
+        // Flat to the tail, nose-first flow hits it broadside: drag and little lift.
+        let shape = one_panel(panel);
+        let nose_first = flow(air(0.0), 0.15, 0.0);
+        let loads = shape.loads(&nose_first, -0.25);
+        let along = nose_first.velocity.normalize();
+        assert!(
+            loads.force.dot(along) < -100.0 * loads.force.cross(along).length(),
+            "{loads:?}"
+        );
+        // The panel the span lies along the stack makes keeps its frame too.
+        let alongside = Panel::at(&plan, DVec3::ZERO, DQuat::from_rotation_y(-FRAC_PI_2));
+        assert!((alongside.back - DVec3::NEG_Z.reject_from(DVec3::Z)).length() < 2.0);
+        assert_eq!(alongside.incidence, 0.0);
+    }
+
+    #[test]
+    fn the_gliders_wings_are_parts_in_pairs_with_the_same_incidence() {
+        let (p, _) = glider();
+        let panels = wing_panels(&p);
+        assert_eq!(panels.len(), 5);
+        // Each part is a wing of its own, weighing what it was built as.
+        let wings: f64 = p
+            .sections
+            .iter()
+            .flat_map(|s| &s.wings)
+            .map(|w| w.mass)
+            .sum();
+        let built: f64 = panels
+            .iter()
+            .map(|w| {
+                p.parts()
+                    .get(w.part)
+                    .unwrap()
+                    .built
+                    .as_ref()
+                    .unwrap()
+                    .mass
+                    .mass
+            })
+            .sum();
+        assert!((wings - built).abs() < 1e-9, "{wings} {built}");
+        // Right and left halves are mirror images with the same incidence, and the fin
+        // stands alone on the plane of symmetry.
+        let sided: Vec<&PartPanel> = panels
+            .iter()
+            .filter(|w| w.panel.tip.x.abs() > 1e-6)
+            .collect();
+        assert_eq!(sided.len(), 4);
+        for w in &sided {
+            let image = sided.iter().find(|o| {
+                (o.panel.tip.x + w.panel.tip.x).abs() < 1e-9
+                    && (o.panel.tip.z - w.panel.tip.z).abs() < 1e-9
+            });
+            let image = image.expect("its mirror image");
+            assert!((image.panel.incidence - w.panel.incidence).abs() < 1e-9);
+            assert!((image.panel.root.x + w.panel.root.x).abs() < 1e-9);
+            assert!((image.panel.span() - w.panel.span()).abs() < 1e-9);
+        }
+        assert!(
+            panels.iter().any(|w| w.panel.incidence.abs() > 0.01),
+            "the glider has incidence"
+        );
     }
 }

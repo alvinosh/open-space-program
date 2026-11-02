@@ -232,14 +232,20 @@ component works with any shape that has what it needs:
   `crossfeed`: propellant flows across it until it lets go (an asparagus stage, a booster
   feeding its core).
 - `lifting_surface`: the part's loft is its planform and airfoil, with an optional
-  `control` surface as on wings.
+  `control` surface as on wings. The air sees each panel of the loft where the part puts
+  it, whichever way it is turned: a wing, a tailplane or a fin is the same part, and a
+  left wing is a `mirrored` shape placed on its own (it needs no right wing to pair with). A
+  panel lying along the nose of the craft, turned up to 20° about its span, flies at that
+  incidence; one turned further about its span, or with its span mostly along the nose, is
+  flown in its own frame. Wings are not twisted or cambered yet.
 - `container`: things can mount on the inside of its walls and on its inside `nodes`.
 - `gear`: a leg's `length`, `wheel_radius`, `stroke`, `load`, `mass`, `brakes` and
   `steering`, its strut out along the part's −Z and its wheel rolling along the part's +Y
   (turn the part about the strut, with `roll`, to roll the wheel another way). The leg can
   stand anywhere on the craft at any angle; it is the part that weighs, not only the leg.
 
-`{ mirrored: <shape> }` reflects a shape left to right, for the left wing of a right one.
+`{ mirrored: <shape> }` reflects a shape left to right, for the left wing of a right one; it
+is a part like any other, with its own mass and its own panel.
 Engine, pod, RCS and reaction wheel records become parts of this kind when placed.
 
 In a `compound` shape, a placed shape with `unseen: true` is inside the part and not
@@ -1139,7 +1145,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `screen.message` | The latest log message, for a few seconds |
 | `ui.shown.<layout>` | Whether a layout is showing |
 | `ui.pinned.<layout>` | Whether a popup is pinned (copies of instanced layouts by their `<layout>:<key>` id) |
-| `part_info.<vessel>-<part>.*` | An open part window's part: `name`, `type` (`engine`, `tank`, `rcs`, `wheel`, `pod`, `fins`, `wing`, `gear`, `shell`, `fairing`, `hull`, `decoupler`), `kind` (its label), `stage`, `vessel`, `mass` (kg, dry), `manufacturer`, `description`. `has_actions`, `actions[]` (what can be done to the part by hand now: `label`, `do`, the `part.do` argument). Engines: `status`, `lit`, `thrust` (N), `level` (0..1), `thrust_vac`, `thrust_sl`, `isp` (s, here), `isp_vac`, `isp_sl`, `min_throttle`, `gimbal`, `gimbal_range` (deg), `ignitions`, `limited`, `propellants`. Tanks: `resources[]` (`name`, `amount`, `capacity` in kg, `fraction`), `contents_mass`, `size`, `material`, `volume` (m³), `wall` (mm), `max_pressure` (bar), `max_axial_load` (N). RCS: `on`, `firing` (0..1), `nozzle_thrust`, `isp_vac`, `isp_sl`, `propellants`. Wheels `torque`; pods `crew`, `diameter`, `height`; fins (one per part) `count`, `area`, `span`, `thickness`, `material`, `max_fin_force`; wings (per side) `span`, `area`, `sweep`, `mirrored`, `control`, `deflection`; gear `compression` (0..1), `length`, `stroke`, `rated_mass`, `brakes`, `steering`, `mirrored`; shells `profile`, `length`, `bottom_diameter`, `top_diameter`; hulls and fairing halves `diameter`, `length`. Tanks and fins also `load` (0..1+) and `mode` |
+| `part_info.<vessel>-<part>.*` | An open part window's part: `name`, `type` (`engine`, `tank`, `rcs`, `wheel`, `pod`, `fins`, `wing`, `gear`, `shell`, `fairing`, `hull`, `decoupler`), `kind` (its label), `stage`, `vessel`, `mass` (kg, dry), `manufacturer`, `description`. `has_actions`, `actions[]` (what can be done to the part by hand now: `label`, `do`, the `part.do` argument). Engines: `status`, `lit`, `thrust` (N), `level` (0..1), `thrust_vac`, `thrust_sl`, `isp` (s, here), `isp_vac`, `isp_sl`, `min_throttle`, `gimbal`, `gimbal_range` (deg), `ignitions`, `limited`, `propellants`. Tanks: `resources[]` (`name`, `amount`, `capacity` in kg, `fraction`), `contents_mass`, `size`, `material`, `volume` (m³), `wall` (mm), `max_pressure` (bar), `max_axial_load` (N). RCS: `on`, `firing` (0..1), `nozzle_thrust`, `isp_vac`, `isp_sl`, `propellants`. Wheels `torque`; pods `crew`, `diameter`, `height`; fins (one per part) `count`, `area`, `span`, `thickness`, `material`, `max_fin_force`; wings (per part, a mirrored wing's left half too) `span`, `area`, `sweep`, `mirrored`, `control`, `deflection`; gear `compression` (0..1), `length`, `stroke`, `rated_mass`, `brakes`, `steering`, `mirrored`; shells `profile`, `length`, `bottom_diameter`, `top_diameter`; hulls and fairing halves `diameter`, `length`. Tanks and fins also `load` (0..1+) and `mode` |
 | `vessel.stages[]` | `name`, `active`, `delta_v`, `burn_time`, `fuel` (0..1), `has_fuel`, `ignitions`, `engines` |
 | `vessel.sequences[]` | The activation sequences, next first: `index`, `number`, `next`, `empty`, `caption` (what firing it does), `lines[]` (`tiles[]`: `items[]` in lines of four), `items[]` (`seq`, `index`, `kind`, `is_engines` (a liquid engine), `is_vacuum`, `is_solid`, `is_decoupler`, `is_fairing`, `is_rcs`, `stage`, `count`, `multiple`, `fuel`, `has_fuel`, `color`: the stage's colour, `caption`, `tip`: the caption with thrust, Isp, burn time and fuel) |
 | `vessel.next_caption`, `vessel.armed_lines[]` | What the stage key does next; the lit engines in lines of four (`tiles[]`) |

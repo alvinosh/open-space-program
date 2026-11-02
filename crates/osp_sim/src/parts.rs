@@ -175,9 +175,6 @@ pub enum PartKind {
         length: f64,
         shells: Vec<Shell>,
     },
-    /// The left half of a mirrored wing: its stage's `Wing` (the right half's) flies and
-    /// weighs both.
-    Mirror,
     /// Structure with nothing to do on its stage but weigh `mass` (kg): a folded leg, a
     /// payload's bus.
     Structure {
@@ -786,7 +783,7 @@ impl PartTree {
                     .map(|leg| Mass::point(leg.mass, leg.axle(leg.length / 2.0)))
                     .sum();
             }
-            PartKind::Mirror | PartKind::Structure { .. } => Mass::ZERO,
+            PartKind::Structure { .. } => Mass::ZERO,
         };
         local.placed(part.position, part.rotation)
     }

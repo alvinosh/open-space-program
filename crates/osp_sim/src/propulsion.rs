@@ -404,7 +404,7 @@ impl Section {
                     section.length = *length;
                 }
                 PartKind::Structure { mass } => section.structure_mass += mass,
-                PartKind::Decoupler | PartKind::Mirror => {}
+                PartKind::Decoupler => {}
                 PartKind::Tank(tank) => {
                     section.tanks += 1;
                     section.tank_mass += tank.dry_mass;
