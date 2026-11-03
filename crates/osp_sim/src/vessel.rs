@@ -660,6 +660,12 @@ impl Vessel {
         matches!(self.motion, Motion::Landed { .. })
     }
 
+    /// Standing on the ground, whether it would go if pushed: on its wheels or its belly, as it
+    /// does when it comes down. Anything else is held by what it stands on.
+    pub(crate) fn rolls_when_pushed(&self) -> bool {
+        !gear::legs(&self.propulsion).is_empty() || !wing_panels(&self.propulsion).is_empty()
+    }
+
     /// When it left the ground, if it has.
     pub fn lifted_off(&self) -> Option<SimTime> {
         self.lifted_off

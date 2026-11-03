@@ -27,9 +27,8 @@ const AXIS_LEAST: f64 = 30.0;
 const OWN_AXIS: f64 = 6.0;
 /// Segments round a ring.
 const RING: usize = 48;
-/// Most triangles drawn in the overlay of one frame: a Saturn V's are about a million, a CSM's
-/// 150,000, most of them tanks inside it.
-const MOST_TRIANGLES: usize = 400_000;
+/// The most lines of colliders it draws in a frame.
+const MOST_EDGES: usize = 400_000;
 /// How far round the vessel it draws colliders, m.
 const OVERLAY_RANGE: f64 = 200.0;
 /// The eye is this far in front of the port, m: clear of what the port is on.
@@ -164,7 +163,7 @@ fn draw_guides(sim: Res<Sim>, rig: Res<CameraRig>, frame: Res<RenderFrame>, mut 
     gizmos.line(to_render(near), to_render(near + out * OWN_AXIS), own);
 }
 
-/// Each triangle of what vessels collide with, for vessels near the active one.
+/// The edges of the convex pieces vessels collide with, for vessels near the active one.
 fn draw_colliders(
     mut sim: ResMut<Sim>,
     show: Res<ShowColliders>,
@@ -191,21 +190,22 @@ fn draw_colliders(
                     < OVERLAY_RANGE
         })
         .collect();
-    let share = MOST_TRIANGLES / near.len().max(1);
+    let share = MOST_EDGES / near.len().max(1);
     for vessel in near {
         let collider = sim.universe.colliders.of(vessel.propulsion.parts());
+        // What has not been cut yet appears when it has.
+        sim.universe.colliders.prepare(&collider);
         let at = vessel.assembly_frame(&sim.universe.system, now);
         let body = vessel.parent();
         let mut left = share;
         for part in &collider.parts {
             let place = at * part.pose;
-            for triangle in part.mesh.triangles().take(left) {
-                let [a, b, c] = triangle.map(|p| to_render(frame.relative(body, place.point(p))));
+            let edges = part.mesh.piece_edges();
+            for edge in edges.iter().take(left) {
+                let [a, b] = edge.map(|p| to_render(frame.relative(body, place.point(p))));
                 gizmos.line(a, b, COLLIDER_COLOR);
-                gizmos.line(b, c, COLLIDER_COLOR);
-                gizmos.line(c, a, COLLIDER_COLOR);
             }
-            left = left.saturating_sub(part.mesh.triangle_count());
+            left = left.saturating_sub(edges.len());
         }
     }
 }

@@ -12,6 +12,8 @@ thiserror = { workspace = true }
 glam = { version = "0.33", features = ["serde"] }
 # To read the meshes of models: they are what vessels collide with.
 gltf = { version = "1.4", default-features = false, features = ["utils"] }
+# Contact between vessels: the solver and the convex pieces parts are cut into.
+rapier3d-f64 = "0.36"
 
 [dev-dependencies]
 json5 = { workspace = true }

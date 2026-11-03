@@ -109,34 +109,33 @@ impl Vessel {
         };
     }
 
-    /// This vessel as a contact sees it, `back` seconds ago if it had gone straight on.
-    pub(crate) fn as_body(&self, system: &SolarSystem, time: SimTime, back: f64) -> Body {
+    /// This vessel as a contact sees it.
+    pub(crate) fn as_body(&self, system: &SolarSystem, time: SimTime) -> Body {
         let state = self.state_at(system, time);
         let attitude = self.attitude_state(system, time);
-        let mut turned = attitude.orientation;
-        if back > 0.0 {
-            turned =
-                (turned * DQuat::from_scaled_axis(attitude.angular_velocity * -back)).normalize();
-        }
         Body {
-            center: state.position - state.velocity * back,
+            center: state.position,
             velocity: state.velocity,
-            turned,
+            turned: attitude.orientation,
             spin: attitude.angular_velocity,
             mass: self.mass,
-            fixed: self.is_landed(),
+            fixed: self.is_landed() && !self.rolls_when_pushed(),
         }
+    }
+
+    /// Where its centre of mass is in its assembly frame.
+    pub(crate) fn held(&self) -> DVec3 {
+        DVec3::Z * self.propulsion.parts().base() + self.mass.center_of_mass
     }
 
     /// Where the assembly frame of this vessel is in its parent's frame, as `body` has it.
     pub(crate) fn frame_of(&self, body: &Body) -> Pose {
-        let held = DVec3::Z * self.propulsion.parts().base() + self.mass.center_of_mass;
-        Pose::new(body.center - body.turned * held, body.turned)
+        Pose::new(body.center - body.turned * self.held(), body.turned)
     }
 
     /// Where its assembly frame is now, in its parent's frame.
     pub fn assembly_frame(&self, system: &SolarSystem, time: SimTime) -> Pose {
-        self.frame_of(&self.as_body(system, time, 0.0))
+        self.frame_of(&self.as_body(system, time))
     }
 
     /// Go on from `body`, as something has made it.
@@ -794,7 +793,7 @@ mod tests {
         let t = u.time();
         let seen = u.port_approach(0, t).unwrap().alignment;
         let side = seen.out.any_orthonormal_vector();
-        let body = u.vessels[0].as_body(&u.system, t, 0.0);
+        let body = u.vessels[0].as_body(&u.system, t);
         let turned = DQuat::from_axis_angle(side, 8f64.to_radians()) * body.turned;
         let moved = crate::contact::Body {
             center: body.center + seen.out.cross(side) * 0.1,
@@ -854,7 +853,7 @@ mod tests {
             let mut u = Universe::new(system, vec![p, q], t);
             u.focus = Some(u.vessels[0].id());
             // Nose to nose, 12 m apart on the line they meet along, closing.
-            let there = u.vessels[1].as_body(&u.system, t, 0.0);
+            let there = u.vessels[1].as_body(&u.system, t);
             let out = there.turned * DVec3::Z;
             let port = u.vessels[0].propulsion.docking_ports()[0].clone();
             let far = u.vessels[1].propulsion.docking_ports()[0].clone();
@@ -881,7 +880,9 @@ mod tests {
                     u.vessels[0].assembly_frame(&u.system, now),
                     u.vessels[1].assembly_frame(&u.system, now),
                 );
-                assert!(!mx.touches(fx, &my, fy), "through it at {closing} m/s");
+                // Solved over a tick, a hard hit may go in by a little.
+                let eased = Pose::new(fx.position + out * 0.02, fx.rotation);
+                assert!(!mx.touches(eased, &my, fy), "through it at {closing} m/s");
             }
             assert!(bumped, "{closing} m/s");
             // They have parted, and neither broke.
@@ -918,7 +919,7 @@ mod tests {
         };
         u.focus = Some(u.vessels[0].id());
         let t = u.time();
-        let there = u.vessels[1].as_body(&u.system, t, 0.0);
+        let there = u.vessels[1].as_body(&u.system, t);
         let out = there.turned * DVec3::Z;
         let port = u.vessels[0].propulsion.docking_ports()[0].clone();
         let far = u.vessels[1].propulsion.docking_ports()[0].clone();

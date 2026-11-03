@@ -264,11 +264,14 @@ component works with any shape that has what it needs:
   200 m short of a vessel being closed on.
 
   What vessels collide with is what is drawn: each part's surfaces and the triangles of its models,
-  with a strut and foot for a landing leg (F9 shows them). A model's `proxy` is for the air and for
-  mass only, unless its file cannot be read. Vessels stop at the moment of first touch and take an
-  equal and opposite impulse, with friction; closing at over 15 m/s, both break up. They can only
-  bump once they have been 5 m apart, so that stages coming off do not count, and a stage's debris
-  does not collide with other debris. The ground does not use these yet.
+  with a strut and foot for a landing leg, cut into convex pieces that stay within a few centimetres
+  of them (F9 shows the pieces). A closed part comes out solid and an open one hollow, from its shape
+  alone, so a new part or a procedural one needs nothing added to collide. A model's `proxy` is for
+  the air and for mass only, unless its file cannot be read. Vessels are rigid bodies when they touch:
+  they push each other, turn each other and rub, and a vessel standing on wheels or a belly is shoved
+  along, while one standing on anything else does not move. Closing at over 15 m/s, both break up.
+  They can only bump once they have been 5 m apart, so that stages coming off do not count, and a
+  stage's debris does not collide with other debris. The ground does not use these yet.
 - `decoupler`: the `node` it lets go of (which decides which side keeps the part), the
   `impulse` it pushes the two sides apart with (N·s; without one they part at 1 m/s), and
   `crossfeed`: propellant flows across it until it lets go (an asparagus stage, a booster

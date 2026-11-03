@@ -237,8 +237,18 @@ fn fly(w: &mut World) -> Flight {
         "m past",
         "they stop at the port",
     );
-    // A pair of seconds to see what it did: they part, and Eagle goes on as it was hit.
+    // A few seconds to see what it did: they part, and Eagle, spun by the hit, takes the spin out on
+    // the attitude hold it is flying.
     w.fly(5.0, |_| false);
+    let eagle_after_hit = other(w, "Eagle").map_or(0.0, |e| e.propulsion.mass());
+    w.within(
+        Area::Docking,
+        "Eagle's thrusters take out the spin of the hit",
+        eagle_mass - eagle_after_hit,
+        0.0..=2.0,
+        "kg of RCS propellant",
+        "it holds its attitude, so a hit off its centre of mass costs a little",
+    );
     let after = approach(w).ok_or(Abort)?;
     w.check(
         Area::Docking,
@@ -424,7 +434,7 @@ fn fly(w: &mut World) -> Flight {
         Area::Docking,
         "Eagle weighs what it did",
         eagle.propulsion.mass(),
-        eagle_mass * 0.9999..=eagle_mass * 1.0001,
+        eagle_after_hit * 0.9999..=eagle_after_hit * 1.0001,
         "kg",
         "its thrusters stayed off while the CSM flew the two",
     );

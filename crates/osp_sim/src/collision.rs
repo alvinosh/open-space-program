@@ -1,21 +1,30 @@
-//! What vessels collide with: the triangles they are drawn with.
+//! What vessels collide with: convex pieces cut from the triangles they are drawn with.
 //!
-//! A part's collider ([`Mesh`]) is its geometry as [`crate::geometry::draw`] tessellates it for the
-//! screen, the triangles of the models it is drawn from ([`model`]), and a strut and foot for a
-//! landing leg. The air's outline and a model's proxy are not used: they are rounder and fatter
-//! than what the player sees, and leave out engines, legs and antennas. A bounding volume hierarchy
-//! over each mesh keeps a query near the few triangles in reach.
+//! A part's collider ([`Mesh`]) starts from its geometry as [`crate::geometry::draw`] tessellates it
+//! for the screen, the triangles of the models it is drawn from ([`model`]), and a strut and foot for
+//! a landing leg. So anything that can be drawn collides, however it was made: nothing here knows
+//! about a kind of part. The air's outline and a model's proxy are not used: they are rounder and
+//! fatter than what the player sees, and leave out engines, legs and antennas.
 //!
-//! The meshes are surfaces, not solids. That suits a stack of shells: something can sit inside an
-//! adapter or fly into an open interstage. Two surfaces touch where an edge of a triangle of one
-//! pierces a triangle of the other, and that says where and which way ([`Contact`]). The contact
-//! solver is [`crate::contact`].
+//! The solver ([`crate::contact`]) works on convex shapes, so the first time a part may be hit its
+//! triangles are cut into convex hulls ([`cut`]). The cut follows the surface, so a closed tank is
+//! one solid hull and an open nozzle or interstage is a ring of panels with nothing in the middle:
+//! something can sit inside an adapter or fly into an open interstage.
 
+mod cut;
 pub mod model;
 
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    sync::{Arc, OnceLock},
+};
 
 use glam::{DQuat, DVec3};
+use rapier3d_f64::{
+    parry::{query, shape::SharedShape},
+    prelude::Pose as ShapePose,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -26,10 +35,6 @@ use crate::{
     parts::{PartKind, PartTree},
 };
 
-/// Triangles in a leaf of the hierarchy.
-const LEAF: usize = 4;
-/// The most contact points kept between two vessels: enough to say how they lie on each other.
-const MOST_CONTACTS: usize = 64;
 /// How many sides a leg's strut and foot are given.
 const LEG_SIDES: usize = 8;
 
@@ -112,20 +117,13 @@ impl Seen {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-struct Node {
-    bounds: Bounds,
-    /// A leaf's first triangle and how many; or else its first child, the other right after.
-    first: u32,
-    count: u32,
-}
-
-/// A surface of triangles in a part's frame, with a hierarchy over them.
-#[derive(Debug, Clone)]
+/// A surface of triangles in a part's frame, and the convex pieces it is cut into when one is needed.
+#[derive(Debug)]
 pub struct Mesh {
     vertices: Vec<DVec3>,
     triangles: Vec<[u32; 3]>,
-    nodes: Vec<Node>,
+    bounds: Option<Bounds>,
+    shape: OnceLock<Option<SharedShape>>,
 }
 
 impl Mesh {
@@ -135,63 +133,20 @@ impl Mesh {
             let [a, b, c] = t.map(|i| vertices[i as usize]);
             (b - a).cross(c - a).length_squared() > 1e-20
         });
-        let mut mesh = Self {
+        let mut bounds = None;
+        for &p in triangles.iter().flatten().map(|&i| &vertices[i as usize]) {
+            bounds.get_or_insert(Bounds::EMPTY).grow(p);
+        }
+        Self {
             vertices,
             triangles,
-            nodes: Vec::new(),
-        };
-        if !mesh.triangles.is_empty() {
-            let end = mesh.triangles.len();
-            mesh.nodes.push(Node {
-                bounds: Bounds::EMPTY,
-                first: 0,
-                count: 0,
-            });
-            mesh.build(0, 0, end);
+            bounds,
+            shape: OnceLock::new(),
         }
-        mesh
     }
 
     fn corners(&self, triangle: usize) -> [DVec3; 3] {
         self.triangles[triangle].map(|i| self.vertices[i as usize])
-    }
-
-    fn build(&mut self, node: usize, start: usize, end: usize) {
-        let mut bounds = Bounds::EMPTY;
-        let mut middles = Bounds::EMPTY;
-        for k in start..end {
-            let corners = self.corners(k);
-            for &p in &corners {
-                bounds.grow(p);
-            }
-            middles.grow((corners[0] + corners[1] + corners[2]) / 3.0);
-        }
-        self.nodes[node].bounds = bounds;
-        let count = end - start;
-        let spread = middles.max - middles.min;
-        if count <= LEAF || spread.max_element() <= 0.0 {
-            self.nodes[node].first = start as u32;
-            self.nodes[node].count = count as u32;
-            return;
-        }
-        // Halfway through them along the way they are most spread out.
-        let axis = spread.max_position();
-        let vertices = &self.vertices;
-        let middle = |t: &[u32; 3]| t.iter().map(|&i| vertices[i as usize][axis]).sum::<f64>();
-        let half = count / 2;
-        self.triangles[start..end]
-            .select_nth_unstable_by(half, |a, b| middle(a).total_cmp(&middle(b)));
-        let left = self.nodes.len();
-        for _ in 0..2 {
-            self.nodes.push(Node {
-                bounds: Bounds::EMPTY,
-                first: 0,
-                count: 0,
-            });
-        }
-        self.nodes[node].first = left as u32;
-        self.build(left, start, start + half);
-        self.build(left + 1, start + half, end);
     }
 
     pub fn is_empty(&self) -> bool {
@@ -209,155 +164,55 @@ impl Mesh {
     }
 
     pub fn bounds(&self) -> Option<Bounds> {
-        self.nodes.first().map(|n| n.bounds)
+        self.bounds
     }
 
-    /// Visit each pair of triangles of this mesh and `other` whose boxes overlap, `to_other` taking
-    /// this mesh's frame to `other`'s. `visit` says whether to go on.
-    fn pairs(&self, other: &Mesh, to_other: Pose, mut visit: impl FnMut(usize, usize) -> bool) {
-        if self.is_empty() || other.is_empty() {
-            return;
-        }
-        let seen = Seen::new(to_other);
-        let mut stack = vec![(0usize, 0usize)];
-        while let Some((a, b)) = stack.pop() {
-            let (na, nb) = (&self.nodes[a], &other.nodes[b]);
-            if !na.bounds.seen_from(&seen).overlaps(&nb.bounds) {
+    /// What the solver sees of it, in its frame; cut the first time it is asked for.
+    pub(crate) fn shape(&self) -> Option<&SharedShape> {
+        self.shape
+            .get_or_init(|| {
+                let pieces: Vec<(ShapePose, SharedShape)> =
+                    cut::convex_pieces(&self.vertices, &self.triangles)
+                        .iter()
+                        .filter_map(|corners| SharedShape::convex_hull(corners))
+                        .map(|hull| (ShapePose::IDENTITY, hull))
+                        .collect();
+                (!pieces.is_empty()).then(|| SharedShape::compound(pieces))
+            })
+            .as_ref()
+    }
+
+    /// How many convex pieces it is cut into.
+    pub fn piece_count(&self) -> usize {
+        self.shape()
+            .and_then(|shape| shape.as_compound())
+            .map_or(0, |compound| compound.shapes().len())
+    }
+
+    /// The edges of its convex pieces, in its frame, if it has been cut yet: nothing here waits for
+    /// that (see [`Colliders::prepare`]).
+    pub fn piece_edges(&self) -> Vec<[DVec3; 2]> {
+        let shape = self.shape.get().and_then(Option::as_ref);
+        let Some(compound) = shape.and_then(|shape| shape.as_compound()) else {
+            return Vec::new();
+        };
+        let mut lines = Vec::new();
+        for (_, piece) in compound.shapes() {
+            let Some(hull) = piece.as_convex_polyhedron() else {
                 continue;
-            }
-            match (na.count > 0, nb.count > 0) {
-                (true, true) => {
-                    for ta in na.first..na.first + na.count {
-                        for tb in nb.first..nb.first + nb.count {
-                            if !visit(ta as usize, tb as usize) {
-                                return;
-                            }
-                        }
-                    }
-                }
-                (true, false) => {
-                    stack.push((a, nb.first as usize));
-                    stack.push((a, nb.first as usize + 1));
-                }
-                (false, true) => {
-                    stack.push((na.first as usize, b));
-                    stack.push((na.first as usize + 1, b));
-                }
-                (false, false) => {
-                    // The bigger one first: it narrows the search fastest.
-                    if na.bounds.half().length_squared() >= nb.bounds.half().length_squared() {
-                        stack.push((na.first as usize, b));
-                        stack.push((na.first as usize + 1, b));
-                    } else {
-                        stack.push((a, nb.first as usize));
-                        stack.push((a, nb.first as usize + 1));
-                    }
-                }
-            }
+            };
+            let points = hull.points();
+            lines.extend(
+                (hull.edges().iter()).map(|edge| edge.vertices.map(|v: u32| points[v as usize])),
+            );
         }
+        lines
     }
 }
 
-/// Where two surfaces touch.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Contact {
-    pub point: DVec3,
-    /// Unit: the way the first is pushed from the second.
-    pub normal: DVec3,
-    /// How far the edge that found it pokes through, m.
-    pub depth: f64,
-}
-
-/// Where the segment `p` to `q` goes through triangle `t`, as a share of the way along it.
-fn pierces(p: DVec3, q: DVec3, t: &[DVec3; 3]) -> Option<f64> {
-    let (e1, e2) = (t[1] - t[0], t[2] - t[0]);
-    let along = q - p;
-    let h = along.cross(e2);
-    let det = e1.dot(h);
-    if det.abs() < 1e-14 {
-        return None;
-    }
-    let f = 1.0 / det;
-    let s = p - t[0];
-    let u = f * s.dot(h);
-    if !(0.0..=1.0).contains(&u) {
-        return None;
-    }
-    let w = s.cross(e1);
-    let v = f * along.dot(w);
-    if v < 0.0 || u + v > 1.0 {
-        return None;
-    }
-    let share = f * e2.dot(w);
-    (0.0..=1.0).contains(&share).then_some(share)
-}
-
-/// How `other` lies on the plane of `face`: how far it reaches through on its lesser side, and the
-/// unit way from the plane to its greater side, where most of it is. `None` if it does not reach
-/// through, or `face` has no way to face.
-fn lies_across(face: &[DVec3; 3], other: &[DVec3; 3]) -> Option<(f64, DVec3)> {
-    let normal = (face[1] - face[0])
-        .cross(face[2] - face[0])
-        .normalize_or_zero();
-    if normal == DVec3::ZERO {
-        return None;
-    }
-    let (mut above, mut below) = (0.0_f64, 0.0_f64);
-    for &p in other {
-        let height = (p - face[0]).dot(normal);
-        above = above.max(height);
-        below = below.max(-height);
-    }
-    if above <= below {
-        Some((above, -normal))
-    } else {
-        Some((below, normal))
-    }
-}
-
-/// Where triangles `a` of the first vessel and `b` of the second go through each other. The two
-/// planes offer two ways to part them, and the one that takes the shorter move is the true one: an
-/// edge going through a wall a long way in is only where a big flat face lies across it. Most of
-/// the triangle that goes through lies on the side it came from, so this needs no telling which way
-/// the triangles are wound, and works for walls hit from inside as well as out.
-fn triangle_contacts(a: &[DVec3; 3], b: &[DVec3; 3], out: &mut Vec<Contact>) {
-    let mut points = [DVec3::ZERO; 6];
-    let mut count = 0;
-    for (edges, face) in [(a, b), (b, a)] {
-        for k in 0..3 {
-            let (p, q) = (edges[k], edges[(k + 1) % 3]);
-            if let Some(share) = pierces(p, q, face) {
-                points[count] = p + (q - p) * share;
-                count += 1;
-            }
-        }
-    }
-    if count == 0 {
-        return;
-    }
-    // Through `b`'s plane, `a` is pushed to where most of `a` is; through `a`'s, `b` is pushed to
-    // where most of `b` is, and `a` the other way.
-    let through_b = lies_across(b, a);
-    let through_a = lies_across(a, b).map(|(depth, way)| (depth, -way));
-    let Some((depth, normal)) = [through_b, through_a]
-        .into_iter()
-        .flatten()
-        .min_by(|x, y| x.0.total_cmp(&y.0))
-    else {
-        return;
-    };
-    out.extend(points[..count].iter().map(|&point| Contact {
-        point,
-        normal,
-        depth,
-    }));
-}
-
-/// Whether two triangles go through each other.
-fn triangles_touch(a: &[DVec3; 3], b: &[DVec3; 3]) -> bool {
-    (0..3).any(|k| {
-        pierces(a[k], a[(k + 1) % 3], b).is_some() || pierces(b[k], b[(k + 1) % 3], a).is_some()
-    })
+/// The placing of a shape, from one of ours.
+pub(crate) fn shape_pose(pose: Pose) -> ShapePose {
+    ShapePose::from_parts(pose.position, pose.rotation)
 }
 
 /// A part's mesh, where it is on the vessel.
@@ -402,7 +257,7 @@ impl Collider {
         })
     }
 
-    /// Whether the two go through each other anywhere.
+    /// Whether the two overlap anywhere, as the solver sees them.
     pub fn touches(&self, at: Pose, other: &Collider, at_other: Pose) -> bool {
         let theirs: Vec<Bounds> = (other.parts.iter())
             .map(|p| Self::in_space(p, at_other))
@@ -413,51 +268,21 @@ impl Collider {
                 if !mine.overlaps(box_far) {
                     continue;
                 }
-                let (world_a, world_b) = (at * part.pose, at_other * far.pose);
-                let to_far = world_b.inverse() * world_a;
-                let mut found = false;
-                part.mesh.pairs(&far.mesh, to_far, |ta, tb| {
-                    let a = part.mesh.corners(ta).map(|p| to_far.point(p));
-                    found = triangles_touch(&a, &far.mesh.corners(tb));
-                    !found
-                });
-                if found {
+                let (Some(near), Some(away)) = (part.mesh.shape(), far.mesh.shape()) else {
+                    continue;
+                };
+                let hit = query::intersection_test(
+                    &shape_pose(at * part.pose),
+                    near.as_ref(),
+                    &shape_pose(at_other * far.pose),
+                    away.as_ref(),
+                );
+                if hit.is_ok_and(|hit| hit.intersecting) {
                     return true;
                 }
             }
         }
         false
-    }
-
-    /// Where the two touch, in space: at most [`MOST_CONTACTS`] points, spread over the touch.
-    pub fn contacts(&self, at: Pose, other: &Collider, at_other: Pose) -> Vec<Contact> {
-        let theirs: Vec<Bounds> = (other.parts.iter())
-            .map(|p| Self::in_space(p, at_other))
-            .collect();
-        let mut out = Vec::new();
-        for part in &self.parts {
-            let mine = Self::in_space(part, at);
-            for (far, box_far) in other.parts.iter().zip(&theirs) {
-                if !mine.overlaps(box_far) {
-                    continue;
-                }
-                let (world_a, world_b) = (at * part.pose, at_other * far.pose);
-                let to_far = world_b.inverse() * world_a;
-                part.mesh.pairs(&far.mesh, to_far, |ta, tb| {
-                    let a = part.mesh.corners(ta).map(|p| world_a.point(p));
-                    let b = far.mesh.corners(tb).map(|p| world_b.point(p));
-                    triangle_contacts(&a, &b, &mut out);
-                    true
-                });
-            }
-        }
-        if out.len() > MOST_CONTACTS {
-            let step = out.len() as f64 / MOST_CONTACTS as f64;
-            out = (0..MOST_CONTACTS)
-                .map(|k| out[(k as f64 * step) as usize])
-                .collect();
-        }
-        out
     }
 }
 
@@ -472,6 +297,8 @@ pub struct Colliders {
     models: HashMap<String, Option<Arc<model::Triangles>>>,
     /// By the part as built: it is kept here so that its address stays its own.
     parts: HashMap<usize, (Arc<BuiltPart>, Arc<Mesh>)>,
+    /// The meshes that have been sent off to be cut.
+    cutting: HashSet<usize>,
 }
 
 impl fmt::Debug for Colliders {
@@ -489,6 +316,29 @@ impl Colliders {
         self.files = Some(files);
         self.models.clear();
         self.parts.clear();
+        self.cutting.clear();
+    }
+
+    /// Start cutting `collider`'s parts into convex pieces, in the background: a big vessel takes a
+    /// second or so, and that should not all fall on the tick it is hit. If they are needed before
+    /// that is done, whoever needs them waits for it.
+    pub fn prepare(&mut self, collider: &Collider) {
+        let meshes: Vec<Arc<Mesh>> = (collider.parts.iter())
+            .filter(|part| self.cutting.insert(Arc::as_ptr(&part.mesh) as usize))
+            .map(|part| part.mesh.clone())
+            .collect();
+        if meshes.is_empty() {
+            return;
+        }
+        let cut = move || {
+            for mesh in meshes {
+                mesh.shape();
+            }
+        };
+        // Without a thread to do it on, it is done when it is needed.
+        let _ = std::thread::Builder::new()
+            .name("collider cutting".into())
+            .spawn(cut);
     }
 
     fn model(&mut self, path: &str) -> Option<Arc<model::Triangles>> {
@@ -658,20 +508,6 @@ impl Soup {
 mod tests {
     use super::*;
 
-    /// Two triangles making a square of side `side` across X and Y, at height `z`.
-    fn square(side: f64, z: f64) -> Mesh {
-        let h = side / 2.0;
-        Mesh::new(
-            vec![
-                DVec3::new(-h, -h, z),
-                DVec3::new(h, -h, z),
-                DVec3::new(h, h, z),
-                DVec3::new(-h, h, z),
-            ],
-            vec![[0, 1, 2], [0, 2, 3]],
-        )
-    }
-
     /// A closed box, centred on the origin.
     fn cuboid(half: DVec3) -> Mesh {
         let corners = (0..8)
@@ -717,69 +553,18 @@ mod tests {
         Pose::new(position, DQuat::IDENTITY)
     }
 
-    /// A small generator, so that a failure comes back the same.
-    struct Dice(u64);
-
-    impl Dice {
-        fn next(&mut self) -> f64 {
-            self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005);
-            self.0 = self.0.wrapping_add(1_442_695_040_888_963_407);
-            ((self.0 >> 33) as f64) / ((1u64 << 31) as f64)
-        }
-
-        fn point(&mut self, size: f64) -> DVec3 {
-            DVec3::new(self.next() - 0.5, self.next() - 0.5, self.next() - 0.5) * size
-        }
-    }
-
-    fn scattered(dice: &mut Dice, count: u32) -> Mesh {
-        let mut vertices = Vec::new();
-        let mut triangles = Vec::new();
-        for k in 0..count {
-            let middle = dice.point(10.0);
-            for _ in 0..3 {
-                vertices.push(middle + dice.point(1.0));
-            }
-            triangles.push([3 * k, 3 * k + 1, 3 * k + 2]);
-        }
-        Mesh::new(vertices, triangles)
-    }
-
-    /// The hierarchy finds exactly what looking at every pair finds.
-    #[test]
-    fn the_hierarchy_misses_nothing() {
-        let mut dice = Dice(5);
-        for _ in 0..20 {
-            let (a, b) = (scattered(&mut dice, 300), scattered(&mut dice, 300));
-            let pose = Pose::new(
-                dice.point(4.0),
-                DQuat::from_scaled_axis(dice.point(3.0)).normalize(),
-            );
-            let mut brute = Vec::new();
-            for ta in 0..a.triangle_count() {
-                for tb in 0..b.triangle_count() {
-                    let moved = a.corners(ta).map(|p| pose.point(p));
-                    if triangles_touch(&moved, &b.corners(tb)) {
-                        brute.push((ta, tb));
-                    }
-                }
-            }
-            let mut found = Vec::new();
-            a.pairs(&b, pose, |ta, tb| {
-                let moved = a.corners(ta).map(|p| pose.point(p));
-                if triangles_touch(&moved, &b.corners(tb)) {
-                    found.push((ta, tb));
-                }
-                true
-            });
-            brute.sort_unstable();
-            found.sort_unstable();
-            assert_eq!(brute, found);
-        }
+    fn tube(radius: f64, height: f64) -> Mesh {
+        let mut soup = Soup::default();
+        let circle = |z: f64, k: usize| {
+            let angle = std::f64::consts::TAU * k as f64 / 32.0;
+            DVec3::new(angle.cos() * radius, angle.sin() * radius, z)
+        };
+        soup.add_tube(32, |k| circle(0.0, k), |k| circle(height, k));
+        Mesh::new(soup.vertices, soup.triangles)
     }
 
     #[test]
-    fn surfaces_touch_only_where_they_cross() {
+    fn solids_touch_only_where_they_meet() {
         let (a, b) = (
             collider(cuboid(DVec3::splat(1.0))),
             collider(cuboid(DVec3::splat(1.0))),
@@ -797,48 +582,57 @@ mod tests {
         assert!(!thin.touches(turned, &wide, at(DVec3::ZERO)));
     }
 
-    /// A contact pushes the first away from the second, whichever way the triangles are wound.
+    /// What is closed is solid, all the way through.
     #[test]
-    fn a_contact_pushes_them_apart_however_they_are_wound() {
-        let wound = |flip: bool| {
-            let mut mesh = square(10.0, 0.0);
-            if flip {
-                mesh = Mesh::new(mesh.vertices.clone(), vec![[0, 2, 1], [0, 3, 2]]);
-            }
-            collider(mesh)
-        };
-        let block = collider(cuboid(DVec3::splat(1.0)));
-        for flip in [false, true] {
-            let contacts = block.contacts(at(DVec3::Z * 0.99), &wound(flip), at(DVec3::ZERO));
-            assert!(!contacts.is_empty());
-            for c in &contacts {
-                assert!((c.normal - DVec3::Z).length() < 1e-9, "{c:?}");
-                assert!(c.depth <= 0.011, "{c:?}");
-            }
-            // And the same with the two the other way round.
-            let contacts = wound(flip).contacts(at(DVec3::ZERO), &block, at(DVec3::Z * 0.99));
-            for c in &contacts {
-                assert!((c.normal + DVec3::Z).length() < 1e-9, "{c:?}");
-            }
-        }
+    fn a_closed_box_is_solid() {
+        let closed = collider(cuboid(DVec3::splat(3.0)));
+        let block = collider(cuboid(DVec3::splat(0.2)));
+        assert!(block.touches(at(DVec3::ZERO), &closed, at(DVec3::ZERO)));
+        assert!(block.touches(at(DVec3::new(1.5, -1.5, 1.5)), &closed, at(DVec3::ZERO)));
     }
 
     /// Something can fly into a hollow thing, and only its walls stop it.
     #[test]
     fn a_hollow_tube_is_hollow() {
-        let mut soup = Soup::default();
-        let circle = |z: f64, k: usize| {
-            let angle = std::f64::consts::TAU * k as f64 / 32.0;
-            DVec3::new(angle.cos() * 2.0, angle.sin() * 2.0, z)
-        };
-        soup.add_tube(32, |k| circle(0.0, k), |k| circle(6.0, k));
-        let tube = collider(Mesh::new(soup.vertices, soup.triangles));
+        let tube = collider(tube(2.0, 6.0));
         let block = collider(cuboid(DVec3::splat(0.5)));
         // Inside it, clear of its walls, and through its open end.
         assert!(!block.touches(at(DVec3::Z * 3.0), &tube, at(DVec3::ZERO)));
         assert!(!block.touches(at(DVec3::Z * 6.0), &tube, at(DVec3::ZERO)));
         // Against its wall.
         assert!(block.touches(at(DVec3::new(1.8, 0.0, 3.0)), &tube, at(DVec3::ZERO)));
+    }
+
+    /// As wide as it is tall or wider, with room all the way up it.
+    #[test]
+    fn a_wide_tube_has_nothing_across_it() {
+        let tube = collider(tube(5.0, 5.6));
+        let block = collider(cuboid(DVec3::splat(0.5)));
+        for k in 0..=12 {
+            let z = 0.5 * k as f64;
+            assert!(
+                !block.touches(at(DVec3::Z * z), &tube, at(DVec3::ZERO)),
+                "{z}"
+            );
+        }
+    }
+
+    /// A flat plate, which no hull can be made of as it is, still gets in the way.
+    #[test]
+    fn a_flat_plate_is_there() {
+        let plate = Mesh::new(
+            vec![
+                DVec3::new(-5.0, -5.0, 0.0),
+                DVec3::new(5.0, -5.0, 0.0),
+                DVec3::new(5.0, 5.0, 0.0),
+                DVec3::new(-5.0, 5.0, 0.0),
+            ],
+            vec![[0, 1, 2], [0, 2, 3]],
+        );
+        let plate = collider(plate);
+        let block = collider(cuboid(DVec3::splat(1.0)));
+        assert!(block.touches(at(DVec3::Z * 0.5), &plate, at(DVec3::ZERO)));
+        assert!(!block.touches(at(DVec3::Z * 1.5), &plate, at(DVec3::ZERO)));
     }
 
     #[test]

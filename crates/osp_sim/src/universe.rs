@@ -27,6 +27,7 @@ use crate::{
     collision::Colliders,
     comms::{self, Link, Station, best_link, relay_link},
     contact,
+    contact::{Contacts, Member},
     data::{
         CraftDef, GroundStationDef, LaunchSiteDef, PartCatalog, ScenarioDef, StartDef, SystemDef,
     },
@@ -63,12 +64,9 @@ const QUIET_BUMP: f64 = 0.03;
 const DAYLIGHT: f64 = 5.0;
 /// Vessels further apart than this are not worth a closer look, m.
 const FAR_APART: f64 = 2_000.0;
-/// How far surfaces may move through each other between looks in a tick, m.
-const LOOK_EVERY: f64 = 0.1;
-/// The most looks in a tick: past that, they are passing at a speed nothing would survive anyway.
-const MOST_LOOKS: f64 = 32.0;
-/// How often the moment of first touch is halved.
-const BISECTIONS: usize = 6;
+/// How near two vessels' parts come, beyond how far they can go in a tick, before they are handed to
+/// the contact solver, m.
+const CONTACT_REACH: f64 = 1.0;
 /// Closing faster than this, what hits and what is hit both break up, m/s.
 const BREAK_SPEED: f64 = 15.0;
 
@@ -134,6 +132,8 @@ pub struct Universe {
     clear_of: BTreeSet<(VesselId, VesselId)>,
     /// What vessels collide with.
     pub colliders: Colliders,
+    /// The contact solver's worlds. Not saved: what they hold comes back within a tick.
+    contacts: Contacts,
     /// Ports that have caught and are closing.
     captures: Vec<SoftCapture>,
     time: SimTime,
@@ -197,6 +197,7 @@ impl Universe {
             tutorial: None,
             clear_of: BTreeSet::new(),
             colliders: Colliders::default(),
+            contacts: Contacts::default(),
             captures: Vec::new(),
             time,
             next_id: 0,
@@ -517,8 +518,8 @@ impl Universe {
                 }
                 continue;
             }
-            let mut stay = self.vessels[i].as_body(&self.system, time, 0.0);
-            let mut leave = self.vessels[j].as_body(&self.system, time, 0.0);
+            let mut stay = self.vessels[i].as_body(&self.system, time);
+            let mut leave = self.vessels[j].as_body(&self.system, time);
             let pair_mass = stay.mass.mass * leave.mass.mass / (stay.mass.mass + leave.mass.mass);
             let pull = apart * (RETRACT * RETRACT) + moving * (2.0 * RETRACT);
             let impulse = pull * (pair_mass * dt);
@@ -540,11 +541,13 @@ impl Universe {
         docked
     }
 
-    /// Stop what has hit something at the moment of first touch and resolve the impact, between
-    /// every two vessels that have been clear of each other, at least one of them more than debris.
+    /// Solve contact between every two vessels near enough to touch that have been clear of each
+    /// other, at least one of them more than debris.
     fn collide_vessels(&mut self) -> Vec<SimEvent> {
         let time = self.time;
         let dt = PHYSICS_STEP.as_seconds();
+        let now = time.seconds_since(SimTime::J2000);
+        let mut near = BTreeSet::new();
         let mut events = Vec::new();
         for i in 0..self.vessels.len() {
             for j in (i + 1)..self.vessels.len() {
@@ -557,10 +560,8 @@ impl Universe {
                     continue;
                 }
                 let pair = (a.id().min(b.id()), a.id().max(b.id()));
-                let (body_a, body_b) = (
-                    a.as_body(&self.system, time, 0.0),
-                    b.as_body(&self.system, time, 0.0),
-                );
+                let (body_a, body_b) =
+                    (a.as_body(&self.system, time), b.as_body(&self.system, time));
                 let distance = body_a.center.distance(body_b.center);
                 let rough = |v: &Vessel| {
                     let widest = (v.propulsion.sections.iter())
@@ -568,7 +569,11 @@ impl Universe {
                         .fold(0.0, f64::max);
                     v.propulsion.length() + widest + 30.0
                 };
-                if distance > FAR_APART || distance > rough(a) + rough(b) {
+                let speed = (body_a.velocity - body_b.velocity).length()
+                    + (body_a.turned * body_a.spin).length() * distance
+                    + (body_b.turned * body_b.spin).length() * distance;
+                let reach = speed * dt + CONTACT_REACH;
+                if distance > FAR_APART.max(reach) || distance > rough(a) + rough(b) + reach {
                     self.clear_of.insert(pair);
                     continue;
                 }
@@ -593,101 +598,83 @@ impl Universe {
                     }
                     continue;
                 }
-                let speed = (body_a.velocity - body_b.velocity).length()
-                    + (body_a.turned * body_a.spin).length() * distance
-                    + (body_b.turned * body_b.spin).length() * distance;
-                if !mesh_a.within(frame_a, &mesh_b, frame_b, speed * dt + 0.01) {
+                // They may yet meet: have their parts cut ready by the time they do.
+                self.colliders.prepare(&mesh_a);
+                self.colliders.prepare(&mesh_b);
+                if !mesh_a.within(frame_a, &mesh_b, frame_b, reach) {
                     continue;
                 }
-                // Where in the tick they first touch: `back` is how long before its end.
-                let look = |back: f64| {
-                    let (ba, bb) = (
-                        a.as_body(&self.system, time, back),
-                        b.as_body(&self.system, time, back),
-                    );
-                    mesh_a.touches(a.frame_of(&ba), &mesh_b, b.frame_of(&bb))
+                near.insert(pair);
+                let member = |v: &Vessel, body, collider| Member {
+                    id: v.id(),
+                    body,
+                    held: v.held(),
+                    collider,
                 };
-                let looks = (speed * dt / LOOK_EVERY).ceil().clamp(1.0, MOST_LOOKS);
-                let mut first = None;
-                let mut before = dt;
-                for k in 1..=looks as usize {
-                    let back = dt * (1.0 - k as f64 / looks);
-                    if look(back) {
-                        first = Some(back);
-                        break;
-                    }
-                    before = back;
-                }
-                let Some(mut hit) = first else {
-                    continue;
-                };
-                // Already through each other at the start of the tick: nothing to go back to.
-                if look(dt) {
-                    before = hit;
-                } else {
-                    for _ in 0..BISECTIONS {
-                        let middle = (hit + before) / 2.0;
-                        if look(middle) {
-                            hit = middle;
-                        } else {
-                            before = middle;
-                        }
-                    }
-                }
-                let (at_a, at_b) = (
-                    a.as_body(&self.system, time, hit),
-                    b.as_body(&self.system, time, hit),
+                let outcome = self.contacts.step(
+                    member(a, body_a, mesh_a),
+                    member(b, body_b, mesh_b),
+                    now,
+                    dt,
                 );
-                let contacts = mesh_a.contacts(a.frame_of(&at_a), &mesh_b, b.frame_of(&at_b));
-                if contacts.is_empty() {
-                    continue;
+                // Said first: why the ports did not catch is how they were coming in.
+                if let Some(closing) = outcome.met {
+                    events.extend(self.vessels_met(i, j, closing));
                 }
-                // Just short of touching, and go on from there.
-                let mut stopped_a = a.as_body(&self.system, time, before);
-                let mut stopped_b = b.as_body(&self.system, time, before);
-                let closing = contact::solve(&mut stopped_a, &mut stopped_b, &contacts);
-                // Why the ports did not catch, if that is what they were trying to do.
-                let theirs = b.propulsion.docking_ports();
-                let why = (a.propulsion.docking_ports().iter())
-                    .flat_map(|p| theirs.iter().map(move |far| (p, far)))
-                    .filter(|(p, far)| p.fits(far))
-                    .map(|(p, far)| self.alignment(a, p, b, far, time))
-                    .min_by(|x, y| x.distance().total_cmp(&y.distance()))
-                    .and_then(|ports| ports.problem())
-                    .map_or(String::new(), |problem| format!(": {}", problem.label()));
-                let (id_a, id_b) = (a.id(), b.id());
-                let (name_a, name_b) = (a.name.clone(), b.name.clone());
-                self.vessels[i].set_body(&self.system, &stopped_a, time);
-                self.vessels[j].set_body(&self.system, &stopped_b, time);
-                if closing >= QUIET_BUMP {
-                    let said = format!("Bumped {name_b} at {closing:.2} m/s{why}");
-                    self.vessels[i].record(time, said);
-                    let said = format!("Bumped {name_a} at {closing:.2} m/s{why}");
-                    self.vessels[j].record(time, said);
-                    for id in [id_a, id_b] {
-                        events.push(SimEvent {
-                            vessel: id,
-                            event: VesselEvent {
-                                time,
-                                kind: VesselEventKind::Bumped { speed: closing },
-                            },
-                        });
-                    }
+                for (id, body) in outcome.moved {
+                    let k = if id == self.vessels[i].id() { i } else { j };
+                    self.vessels[k].set_body(&self.system, &body, time);
                 }
-                if closing >= BREAK_SPEED {
-                    let said = format!("Broke up, hitting at {closing:.0} m/s");
-                    for (k, id) in [(i, id_a), (j, id_b)] {
-                        if !self.vessels[k].is_destroyed() {
-                            self.vessels[k].break_up(time, said.clone());
-                            events.push(SimEvent {
-                                vessel: id,
-                                event: VesselEvent {
-                                    time,
-                                    kind: VesselEventKind::Destroyed,
-                                },
-                            });
-                        }
-                    }
+            }
+        }
+        self.contacts.keep_only(&near);
+        events
+    }
+
+    /// Vessels `i` and `j` have just hit each other, closing at this speed, m/s: say so, and break
+    /// them if that was too hard.
+    fn vessels_met(&mut self, i: usize, j: usize, closing: f64) -> Vec<SimEvent> {
+        let time = self.time;
+        let mut events = Vec::new();
+        let (a, b) = (&self.vessels[i], &self.vessels[j]);
+        // Why the ports did not catch, if that is what they were trying to do.
+        let theirs = b.propulsion.docking_ports();
+        let why = (a.propulsion.docking_ports().iter())
+            .flat_map(|p| theirs.iter().map(move |far| (p, far)))
+            .filter(|(p, far)| p.fits(far))
+            .map(|(p, far)| self.alignment(a, p, b, far, time))
+            .min_by(|x, y| x.distance().total_cmp(&y.distance()))
+            .and_then(|ports| ports.problem())
+            .map_or(String::new(), |problem| format!(": {}", problem.label()));
+        let (id_a, id_b) = (a.id(), b.id());
+        let (name_a, name_b) = (a.name.clone(), b.name.clone());
+        if closing >= QUIET_BUMP {
+            let said = format!("Bumped {name_b} at {closing:.2} m/s{why}");
+            self.vessels[i].record(time, said);
+            let said = format!("Bumped {name_a} at {closing:.2} m/s{why}");
+            self.vessels[j].record(time, said);
+            for id in [id_a, id_b] {
+                events.push(SimEvent {
+                    vessel: id,
+                    event: VesselEvent {
+                        time,
+                        kind: VesselEventKind::Bumped { speed: closing },
+                    },
+                });
+            }
+        }
+        if closing >= BREAK_SPEED {
+            let said = format!("Broke up, hitting at {closing:.0} m/s");
+            for (k, id) in [(i, id_a), (j, id_b)] {
+                if !self.vessels[k].is_destroyed() {
+                    self.vessels[k].break_up(time, said.clone());
+                    events.push(SimEvent {
+                        vessel: id,
+                        event: VesselEvent {
+                            time,
+                            kind: VesselEventKind::Destroyed,
+                        },
+                    });
                 }
             }
         }
@@ -803,6 +790,7 @@ impl Universe {
             Mission::new(scenario, sites, &self.system).map_err(UniverseError::Mission)?;
         self.vessels.clear();
         self.clear_of.clear();
+        self.contacts.clear();
         self.captures.clear();
         self.time = time;
         for mut vessel in vessels {
@@ -852,6 +840,8 @@ impl Universe {
         if new_game.is_some() {
             self.vessels.clear();
             self.clear_of.clear();
+            self.contacts.clear();
+            self.contacts.clear();
             self.captures.clear();
             self.mission = None;
             self.tutorial = None;
@@ -900,6 +890,7 @@ impl Universe {
         self.mission = snapshot.mission;
         self.tutorial = snapshot.tutorial;
         self.clear_of = snapshot.clear_of;
+        self.contacts.clear();
         self.captures = snapshot.captures;
         Ok(())
     }
