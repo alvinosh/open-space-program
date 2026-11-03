@@ -1,16 +1,11 @@
-// Main menu: play, pick a scenario, go back to the flight in progress (`game.resume`), or quit.
-// The game opens on it unless OSP_SCENARIO picks a scenario; Esc (`game.menu`) brings it
-// back.
+// Main menu: play, go back to the flight in progress (`game.resume`), or quit. The game opens on
+// it unless OSP_SCENARIO skips it; Esc (`game.menu`) brings it back.
 //
 // The Play page (`menu.page:play`) goes by steps, in `menu.play`: nothing yet, then `load` (the
 // saves in `menu.saves`: `game.load:<file>`, `game.delete_save:<file>` asks and then deletes),
 // `vessels` (`game.new` starts here: `menu.vessels` to fly, `game.fly:<id>`, or a new one) and
 // `craft` (`menu.craft`, each shown in the editor by `editor.open:<id>`, see editor.json5).
 // `menu.play` goes back. `game.save` saves the game in progress, `game.save_as` to a new save.
-//
-// A scenario is picked in two steps: where it starts (`menu.place:<pad|runway|orbit>`, shown when `menu.count.<place>` scenarios start there; `menu.place` goes back),
-// then the spacecraft (`game.start:<id>`), listed from `menu.scenarios` (id, craft, name,
-// description, start) in load order.
 //
 // The Tutorials page (`menu.page:tutorials`) lists the `tutorials` records, started with
 // `game.start_tutorial:<id>`.
@@ -41,7 +36,6 @@
             style: { gap: 4 },
             children: [
               { widget: "button", class: "menu_tab", text: "Play", action: "menu.page:play", active: "menu.page == play" },
-              { widget: "button", class: "menu_tab", text: "Scenarios", action: "menu.page:scenarios", active: "menu.page == scenarios" },
               { widget: "button", class: "menu_tab", text: "Tutorials", action: "menu.page:tutorials", active: "menu.page == tutorials", visible: "menu.tutorials" },
               { widget: "button", class: "menu_tab", text: "Graphics", action: "menu.page:graphics", active: "menu.page == graphics" },
               { widget: "button", class: "menu_tab", text: "Sound", action: "menu.page:sound", active: "menu.page == sound" },
@@ -268,125 +262,7 @@
             ],
           },
           {
-            widget: "column",
-            class: "menu_page",
-            visible: "menu.page == scenarios",
-            children: [
-              {
-                widget: "column",
-                class: "menu_page",
-                visible: "!menu.place",
-                children: [
-                  { widget: "label", class: "dim", text: "Choose where to start" },
-                  {
-                    widget: "column",
-                    class: "menu_list",
-                    children: [
-                      {
-                        widget: "button",
-                        class: "menu_item menu_place",
-                        action: "menu.place:pad",
-                        visible: "menu.count.pad",
-                        children: [
-                          { widget: "image", class: "menu_place_icon", image: "icons/launch_pad.svg" },
-                          {
-                            widget: "column",
-                            class: "menu_place_text",
-                            children: [
-                              { widget: "label", class: "menu_item_name", text: "Launch pad" },
-                              { widget: "label", class: "dim", text: "On the pad, ready to lift off." },
-                            ],
-                          },
-                          { widget: "label", class: "menu_count", text: "{menu.count.pad|int}" },
-                        ],
-                      },
-                      {
-                        widget: "button",
-                        class: "menu_item menu_place",
-                        action: "menu.place:runway",
-                        visible: "menu.count.runway",
-                        children: [
-                          { widget: "image", class: "menu_place_icon", image: "icons/runway.svg" },
-                          {
-                            widget: "column",
-                            class: "menu_place_text",
-                            children: [
-                              { widget: "label", class: "menu_item_name", text: "Runway" },
-                              { widget: "label", class: "dim", text: "Lined up at the end of a runway, on its wheels." },
-                            ],
-                          },
-                          { widget: "label", class: "menu_count", text: "{menu.count.runway|int}" },
-                        ],
-                      },
-                      {
-                        widget: "button",
-                        class: "menu_item menu_place",
-                        action: "menu.place:orbit",
-                        visible: "menu.count.orbit",
-                        children: [
-                          { widget: "image", class: "menu_place_icon", image: "icons/orbit.svg" },
-                          {
-                            widget: "column",
-                            class: "menu_place_text",
-                            children: [
-                              { widget: "label", class: "menu_item_name", text: "Orbit" },
-                              { widget: "label", class: "dim", text: "Already in orbit." },
-                            ],
-                          },
-                          { widget: "label", class: "menu_count", text: "{menu.count.orbit|int}" },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              },
-              {
-                widget: "column",
-                class: "menu_page",
-                visible: "menu.place",
-                children: [
-                  {
-                    widget: "row",
-                    children: [
-                      { widget: "button", class: "menu_option", text: "Back", action: "menu.place" },
-                      { widget: "label", class: "title", text: "Launch pad", visible: "menu.place == pad" },
-                      { widget: "label", class: "title", text: "Runway", visible: "menu.place == runway" },
-                      { widget: "label", class: "title", text: "Orbit", visible: "menu.place == orbit" },
-                      { widget: "spacer" },
-                      { widget: "label", class: "dim", text: "Choose a spacecraft" },
-                    ],
-                  },
-                  {
-                    widget: "column",
-                    class: "menu_list",
-                    repeat: "menu.scenarios",
-                    children: [
-                      {
-                        widget: "button",
-                        class: "menu_item",
-                        action: "game.start:{item.id}",
-                        children: [
-                          {
-                            widget: "row",
-                            class: "menu_item_head",
-                            children: [
-                              { widget: "label", class: "menu_item_name", text: "{item.craft}" },
-                              { widget: "spacer" },
-                              { widget: "label", class: "menu_item_start", text: "{item.start}" },
-                            ],
-                          },
-                          { widget: "label", class: "menu_item_setup", text: "{item.name}", visible: "item.name" },
-                          { widget: "label", class: "dim", text: "{item.description}", visible: "item.description" },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-          {
-            // Guided runs: each starts its scenario with the steps over it (`game.start_tutorial`).
+            // Guided runs, with the steps over the flight (`game.start_tutorial`).
             widget: "column",
             class: "menu_page",
             visible: "menu.page == tutorials",

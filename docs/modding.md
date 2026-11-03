@@ -1332,7 +1332,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `mods.count`, `mods.errors`, `mods.warnings` | |
 | `mods.list[]` | `id`, `name`, `version`, `authors`, `description` |
 | `mods.problems[]` | `error` (bool), `text` |
-| `menu.scenarios[]`, `menu.tutorials[]`, `menu.playing`, `menu.page` | Main menu: `id`, `name`, `description`; the tutorials: `id`, `name`, `description`, `steps`; a game is being flown; the page showing (`play`, `scenarios`, `tutorials`, `graphics`, `sound`, `controls`, `interface`) |
+| `menu.tutorials[]`, `menu.playing`, `menu.page` | Main menu: the tutorials: `id`, `name`, `description`, `steps`; a game is being flown; the page showing (`play`, `tutorials`, `graphics`, `sound`, `controls`, `interface`) |
 | `menu.play`, `menu.new_game`, `menu.vessels[]`, `menu.craft[]` | The Play page: its step (empty, `load`, `vessels`, `craft`); new game was picked and has not started; the vessels in the game to fly (`id`, `name`, `where`, `flying`), debris left out; every craft to pick a new vessel from (`id`, `name`, `parts`), by name |
 | `menu.saves[]`, `menu.has_saves`, `menu.save_name`, `menu.notice` | The saves, newest first: `file`, `name`, `saved` (how long ago), `time` (the game's date), `flying`, `vessels`, `problem` (why it cannot be loaded), `deleting` (asked once); whether there are any; the save the game in progress goes to; what just happened |
 | `editor.name`, `editor.height`, `editor.mass`, `editor.parts`, `editor.place`, `editor.pad`, `editor.runway`, `editor.orbit`, `editor.notice` | The craft on show in the editor (see the `editor` layout); where it will launch from (`pad`, `runway`, `orbit`); which site or orbit each of those is, empty if there is none; why a launch failed |
@@ -1384,8 +1384,8 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `ui.pin:<layout>` | Pin or unpin a popup, so a click outside does not close it |
 | `ui.toggle_group:<group>`, `ui.show_group:<group>`, `ui.hide_group:<group>` | Every layout in a group |
 | `game.reload` | Reload all mods and rebuild the UI |
-| `game.menu`, `game.resume`, `game.start:<scenario>`, `game.start_tutorial:<tutorial>`, `game.quit` | Main menu; a tutorial starts its scenario with its steps. In the editor `game.menu` goes back to the list of craft |
-| `menu.page:<play|scenarios|tutorials|graphics|sound|controls|interface>` | Switch the main menu's page |
+| `game.menu`, `game.resume`, `game.start_tutorial:<tutorial>`, `game.quit` | Main menu; a tutorial starts its scenario with its steps. In the editor `game.menu` goes back to the list of craft |
+| `menu.page:<play|tutorials|graphics|sound|controls|interface>` | Switch the main menu's page |
 | `menu.play:<load|vessels|craft>`, `menu.play` | Go to that step of the Play page; back to its start, which drops a new game that has not started |
 | `game.new` | Start choosing what to launch in a new game. Nothing changes until the launch; the game in progress goes on if the player goes back |
 | `game.fly:<vessel>` | Fly that vessel in the game in progress |

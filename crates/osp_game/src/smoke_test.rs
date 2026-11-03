@@ -348,8 +348,8 @@ const PLAY_SCRIPT: &[(f64, Action)] = &[
     (33.5, Action::Exit),
 ];
 
-/// `OSP_CAPTURE_MENU=1`: open the main menu, look at the spacecraft on the pad and in
-/// orbit, start the rocket plane on the runway from it, take off and climb out.
+/// `OSP_CAPTURE_MENU=1`: open the main menu, launch the rocket plane from the runway through the
+/// Play page, take off and climb out.
 /// `OSP_CAPTURE_SETTINGS=1`: the menu's pages of settings, then the flight view and the map at a
 /// bigger interface, the map's labels still on what they name.
 const SETTINGS_SCRIPT: &[(f64, Action)] = &[
@@ -373,13 +373,11 @@ const MENU_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.menu")),
     (1.6, Action::Capture("menu.png")),
-    (1.7, Action::Ui("menu.place:pad")),
-    (2.0, Action::Capture("menu_pad.png")),
-    (2.1, Action::Ui("menu.place:orbit")),
-    (2.4, Action::Capture("menu_orbit.png")),
-    (2.5, Action::Ui("menu.place:runway")),
-    (2.8, Action::Capture("menu_runway.png")),
-    (2.9, Action::Ui("game.start:runway")),
+    (1.7, Action::Ui("game.new")),
+    (1.8, Action::Ui("editor.open:comet")),
+    (2.4, Action::Ui("editor.place:runway")),
+    (2.5, Action::Capture("menu_runway.png")),
+    (2.9, Action::Ui("editor.launch")),
     (5.0, Action::Capture("runway.png")),
     (5.2, Action::Launch),
     (15.0, Action::Capture("rolling.png")),
