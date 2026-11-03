@@ -340,6 +340,8 @@ or [MIT](LICENSE-MIT), at your option. Some things in the repository are not our
 - `assets/core/fonts`: Barlow, SIL Open Font License 1.1 (`OFL.txt` is next to it).
 - `assets/core/clouds`: textures from EnvironmentalVisualEnhancements, MIT (`LICENSE.txt` is next to
   them). The way the clouds are drawn follows its code.
+- `assets/core/sounds`: engine recordings by newlocknew on Freesound, CC BY-NC 4.0, so non-commercial
+  (`CREDITS.md` is next to them).
 - Earth's terrain, imagery and star map are baked from NASA, NOAA, ESA and Copernicus data, which
   have terms of their own: see `assets/core/terrain/README.md` and `assets/core/sky/README.md`.
 - `mods/realism` is generated from community mods for KSP and is mostly non-commercial. It is not
