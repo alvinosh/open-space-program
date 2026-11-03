@@ -59,7 +59,7 @@ pub struct StorageDef {
 }
 
 /// One resource a tank holds.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TankContent {
     pub resource: String,
     /// kg when full.
@@ -74,7 +74,7 @@ pub struct TankContent {
 }
 
 /// A storage, sized for its cell.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Storage {
     /// The cell's element name.
     pub cell: String,
@@ -117,7 +117,7 @@ pub(crate) fn head(contents: &[TankContent], acceleration: f64, fill: impl Fn(&s
 }
 
 /// How a wall around a cell carries the cell's pressure.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 struct Load {
     /// The largest stress resultant its membrane carries per unit pressure, m.
     membrane: f64,

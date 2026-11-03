@@ -16,7 +16,9 @@ Nothing shows on entry yet. A vessel coming in at 11 km/s should wear a sheath o
 
 ## State
 
-First version: `osp_sim::plasma` (heating, hull map), `crate::plasma`, `shaders/plasma.wesl`. Shock, sheath, wake and sparks follow the hull from any angle. Left: close up at night it still blows out to white; it has not been watched in motion or through a whole entry; and it has no haze or clouds in front of it (same gap as T118).
+Rebuilt on 2026-11-03 after Lindner's paper and Firefly's breakdown of it, from a first version that ray-marched a box and looked nothing like either. `osp_sim::plasma`: heating, the look by speed and density (`entry_look`), points scattered by area over the vessel's own meshes, and the airstream map, a depth map along the flow with how far each texel is inside the hull's outline. `crate::plasma` and `shaders/plasma.wesl`: one mesh of strips the vertex shader shapes, as wgpu has no geometry shaders. Layers: hot hull, wake, closing streaks, trail, shock veil, sparks, and the forward bow dome. Streaks come off the outline the air sees, so a flat heat shield's rim counts.
+
+Checked in stills: Apollo-sized capsule by day and at night from four sides, a long rocket, at 95, 65 and 32 km, and on Venus. Left: not watched in motion or through a whole entry; the white Mach cone on the way up is barely visible; particles are the strips only, with no smoke or chunks; and no haze or clouds in front of it (same gap as T118).
 
 ## Where it comes from
 

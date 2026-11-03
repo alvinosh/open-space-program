@@ -79,7 +79,6 @@
     clouds: {
       base: 48000,
       top: 70000,
-      density: 0.002,
       albedo: [0.995, 0.97, 0.9],
       bands: [[0, 1.0], [90, 1.0]],
       storms: 6,
@@ -136,11 +135,12 @@
       ground_albedo: [0.11, 0.12, 0.08],
     },
     // Cover by latitude after satellite records: the rain belt, the clear subtropics, the storm
-    // tracks. Most clouds stay low; only deep storms reach the top of the layer.
+    // tracks. Most clouds stay low; only deep storms reach the top of the layer. It has a map of its
+    // own, so the weather is only for the thin high cloud.
     clouds: {
       base: 1000,
       top: 12000,
-      density: 0.025,
+      map: "clouds/fair",
       albedo: [0.995, 0.995, 0.995],
       bands: [[0, 0.6], [8, 0.68], [25, 0.34], [45, 0.6], [60, 0.78], [75, 0.62], [90, 0.5]],
       storms: 18,
@@ -149,8 +149,8 @@
       wind: 12,
       cirrus_height: 9500,
       cirrus: 0.5,
-      // Fair-weather cumulus and some high cloud over the Cape.
-      seed: 12,
+      // Turns the map to give broken cloud over the Cape, and some high cloud.
+      seed: 180,
     },
     // A fresh breeze blown over open water, for the waves' spectrum.
     ocean: {
@@ -230,7 +230,6 @@
     clouds: {
       base: 15000,
       top: 32000,
-      density: 0.0004,
       albedo: [0.97, 0.95, 0.92],
       bands: [[0, 0.16], [30, 0.07], [60, 0.2], [80, 0.34], [90, 0.3]],
       wind: 25,

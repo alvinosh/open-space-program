@@ -11,10 +11,11 @@ mod settled;
 use std::{f64::consts::PI, iter::Sum, ops::Add};
 
 use glam::{DMat3, DQuat, DVec3};
+use serde::{Deserialize, Serialize};
 
 /// A rigid mass distribution: kg, its centre (m) and its inertia tensor about that centre
 /// (kg·m²), in some frame.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Mass {
     pub mass: f64,
     pub center: DVec3,

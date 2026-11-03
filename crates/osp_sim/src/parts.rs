@@ -30,6 +30,7 @@ pub(crate) mod join;
 use std::{collections::BTreeMap, sync::Arc};
 
 use glam::{DMat3, DQuat, DVec2, DVec3};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     aero::Panel,
@@ -80,10 +81,10 @@ impl SeparationRing {
 }
 
 /// Names a part for as long as it exists, through splits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PartId(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConnectorKind {
     /// A node at one place on the part, joined to a fixed node of another part.
     Fixed,
@@ -93,7 +94,7 @@ pub enum ConnectorKind {
 }
 
 /// What crosses a connector.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Capabilities {
     /// Propellant flows through.
     pub fluid: bool,
@@ -136,7 +137,7 @@ impl Capabilities {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Connector {
     pub name: String,
     pub kind: ConnectorKind,
@@ -167,7 +168,7 @@ impl Connector {
 }
 
 /// Which way a joint runs, against the way its craft was built.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum JointWay {
     /// The part hangs from its parent as the craft was built.
     #[default]
@@ -180,7 +181,7 @@ pub enum JointWay {
 
 /// How a part hangs from its parent: which of the parent's connectors holds which of its
 /// own (indices into their `connectors`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Joint {
     pub parent: PartId,
     pub parent_connector: usize,
@@ -190,14 +191,14 @@ pub struct Joint {
 
 /// What a stage's place and size are read from: the part that is its body, usually the shell
 /// that carries the rest of it. Its frame's origin is the stage's base.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StageBody {
     pub diameter: f64,
     pub length: f64,
 }
 
 /// One thing a part does on its stage.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PartKind {
     /// A ring that holds its stage under the one above until released; its origin is its
     /// base.
@@ -264,7 +265,7 @@ impl PartKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Part {
     pub id: PartId,
     pub name: String,
@@ -323,7 +324,7 @@ const DECOUPLER_BOTTOM: usize = 1;
 const SHELL_STEPS: usize = 24;
 
 /// The parts of a vessel.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PartTree {
     /// By id.
     parts: Vec<Part>,

@@ -16,6 +16,14 @@ New, open, save, save as; the craft list with shipped and user craft; launch the
 
 - Also: vehicle files saved from the editor, and launch from a file. Choosing system, location and game type is the start menu task.
 
+## Done so far
+
+- Launch picks pad, runway or orbit and takes the sequences left in the editor; the Play page lists every craft.
+
+## Still open
+
+- New, open, save and save as; user craft files; revert to the editor from flight.
+
 ## Where it comes from
 
 - docs/build-editor-plan.md (E8)

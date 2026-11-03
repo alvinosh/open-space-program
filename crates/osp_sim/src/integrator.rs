@@ -8,6 +8,7 @@
 //! *rectified*: replaced by the osculating conic and δ reset to zero.
 
 use glam::DVec3;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     orbit::{Orbit, StateVector},
@@ -17,7 +18,7 @@ use crate::{
 /// Rectify when |δr| exceeds this fraction of the reference radius.
 pub const RECTIFY_RATIO: f64 = 1e-3;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Encke {
     reference: Orbit,
     time: SimTime,

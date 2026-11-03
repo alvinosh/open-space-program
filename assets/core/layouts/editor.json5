@@ -1,0 +1,83 @@
+// The editor (see `osp_game::editor`): a craft on show in the hangar, to look over before it
+// flies. Nothing can be placed yet. The staging window stays up beside it and works as it does in
+// flight (staging.json5); the sequences it is left with go with the launch.
+//
+// `editor.place:<pad|runway|orbit>` picks where it goes from (`editor.place` is the one picked,
+// `editor.pad`, `editor.runway` and `editor.orbit` say which site or orbit that is, and are empty
+// when there is none), `editor.launch` launches it, `editor.back` (or Esc) goes back to the list
+// of craft. `editor.name`, `editor.height`, `editor.mass` and `editor.parts` describe it, and
+// `editor.notice` says why a launch failed.
+{
+  id: "editor",
+  visible: false,
+  root: {
+    widget: "panel",
+    class: "editor",
+    children: [
+      { widget: "label", class: "section", text: "Editor" },
+      { widget: "label", class: "editor_name", text: "{editor.name}" },
+      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Height" }, { widget: "label", text: "{editor.height|distance}" }] },
+      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Mass" }, { widget: "label", text: "{editor.mass|mass}" }] },
+      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Parts" }, { widget: "label", text: "{editor.parts|int}" }] },
+      { widget: "label", class: "section", text: "Launch from" },
+      {
+        widget: "button",
+        class: "menu_item menu_place editor_place",
+        action: "editor.place:pad",
+        active: "editor.place == pad",
+        visible: "editor.pad",
+        children: [
+          { widget: "image", class: "editor_place_icon", image: "icons/launch_pad.svg" },
+          {
+            widget: "column",
+            class: "menu_place_text",
+            children: [
+              { widget: "label", class: "editor_place_name", text: "Launch pad" },
+              { widget: "label", class: "dim", text: "{editor.pad}" },
+            ],
+          },
+        ],
+      },
+      {
+        widget: "button",
+        class: "menu_item menu_place editor_place",
+        action: "editor.place:runway",
+        active: "editor.place == runway",
+        visible: "editor.runway",
+        children: [
+          { widget: "image", class: "editor_place_icon", image: "icons/runway.svg" },
+          {
+            widget: "column",
+            class: "menu_place_text",
+            children: [
+              { widget: "label", class: "editor_place_name", text: "Runway" },
+              { widget: "label", class: "dim", text: "{editor.runway}" },
+            ],
+          },
+        ],
+      },
+      {
+        widget: "button",
+        class: "menu_item menu_place editor_place",
+        action: "editor.place:orbit",
+        active: "editor.place == orbit",
+        visible: "editor.orbit",
+        children: [
+          { widget: "image", class: "editor_place_icon", image: "icons/orbit.svg" },
+          {
+            widget: "column",
+            class: "menu_place_text",
+            children: [
+              { widget: "label", class: "editor_place_name", text: "Orbit" },
+              { widget: "label", class: "dim", text: "{editor.orbit}" },
+            ],
+          },
+        ],
+      },
+      { widget: "label", class: "warning", text: "{editor.notice}", visible: "editor.notice" },
+      { widget: "button", class: "editor_launch", text: "Launch", action: "editor.launch" },
+      { widget: "button", text: "Back", action: "editor.back" },
+      { widget: "label", class: "dim", text: "Drag to look around, middle drag or WASD, Q and E to move, wheel to zoom. Drag rows in the staging window to change them." },
+    ],
+  },
+}

@@ -38,6 +38,8 @@
 //!   that unlocks them, so the game's date decides what is available.
 //! - **Planning**: burns ([`plan`]) are predicted as impulses with the same event code, and
 //!   flown as finite burns by the executor ([`autopilot`]).
+//! - **Saves** ([`save`]): the state of a universe to bytes and back, bit for bit, so a game
+//!   carries on from a save exactly as it would have without one.
 
 pub mod aero;
 pub mod assembly;
@@ -73,6 +75,7 @@ pub mod prediction;
 pub mod propulsion;
 pub mod rcs;
 pub mod rendezvous;
+pub mod save;
 pub mod scattering;
 pub mod search;
 pub mod shell;

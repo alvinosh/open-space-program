@@ -9,11 +9,12 @@ use std::f64::consts::TAU;
 use std::ops::{Add, Sub};
 
 use glam::{DQuat, DVec3};
+use serde::{Deserialize, Serialize};
 
 use crate::{kepler, search::first_crossing, time::SimTime};
 
 /// Position and velocity relative to some body, in inertial axes.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct StateVector {
     pub position: DVec3,
     pub velocity: DVec3,
@@ -64,7 +65,7 @@ pub struct Elements {
     pub true_anomaly: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Orbit {
     mu: f64,
     epoch: SimTime,

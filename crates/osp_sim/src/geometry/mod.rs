@@ -106,7 +106,7 @@ pub struct Settled {
 }
 
 /// A place on a part where another part's node meets it, node to node.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Node {
     /// Unique within the part: `bottom` and `top` for the ends of a stack, `root` and `tip`
     /// for a wing.
@@ -120,13 +120,13 @@ pub struct Node {
 }
 
 /// A glTF model, relative to its mod's root.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelRef {
     pub path: String,
     pub scale: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Kind {
     Revolved(Revolved),
     Lofted(Lofted),
@@ -134,7 +134,7 @@ pub enum Kind {
     Model(ModelRef),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Subpart {
     /// Unique within the part, or empty.
     pub name: String,
@@ -170,7 +170,7 @@ impl Subpart {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Geometry {
     pub subparts: Vec<Subpart>,
     pub nodes: Vec<Node>,

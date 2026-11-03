@@ -16,6 +16,14 @@
 
 - A person places an engine under a tank, a pair of fins on its side, and a payload on top, with the mouse.
 
+## Done so far
+
+- `osp_game::editor`, view only for now: the hangar scene, the orbit camera (right or left drag, middle drag or WASD, Q and E, the wheel), and the craft drawn by the vessel renderer, standing up, or level if it rolls on wheels. It is entered through the Play page rather than a Build entry.
+
+## Still open
+
+- Everything to do with placing parts, the orthographic views, the toolbar button, the greybox mode. The hangar is a plain hall with a floor and could look better.
+
 ## Where it comes from
 
 - docs/build-editor-plan.md (E6)

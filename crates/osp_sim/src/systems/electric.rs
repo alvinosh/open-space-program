@@ -4,6 +4,7 @@
 use std::any::Any;
 
 use glam::DVec3;
+use serde::{Deserialize, Serialize};
 
 use super::{Power, Reading, System};
 use crate::{
@@ -43,7 +44,7 @@ fn reading(id: &'static str, label: &'static str, value: f64, unit: &'static str
 
 /// Burns hydrogen and oxygen for as much electricity as the network asks, up to what it is rated
 /// for. It makes water, which the crew drink (T049).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FuelCell {
     /// W.
     pub rated: f64,
@@ -132,7 +133,7 @@ impl System for FuelCell {
 }
 
 /// Makes what the sunlight on it gives.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SolarArray {
     /// m².
     pub area: f64,
@@ -198,7 +199,7 @@ impl System for SolarArray {
 }
 
 /// Plutonium's heat turned into electricity, falling away as it decays.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Rtg {
     /// New, W.
     pub power: f64,
@@ -239,9 +240,10 @@ impl System for Rtg {
 }
 
 /// Uses electricity: avionics, a transmitter, a cabin, heaters.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Load {
-    pub label: &'static str,
+    #[serde(deserialize_with = "crate::save::interned")]
+    pub label: crate::save::Kept,
     /// W.
     pub watts: f64,
     /// The lowest on a network is shed first.
@@ -289,7 +291,7 @@ impl System for Load {
 }
 
 /// Guidance and control electronics: with power, it controls a vessel of up to so much mass.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Avionics {
     /// kg.
     pub controlled_mass: f64,
@@ -341,7 +343,7 @@ impl System for Avionics {
 }
 
 /// What talks to the ground. An antenna draws about four times what it sends.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Antenna {
     pub radio: Radio,
     /// It had power on the last step.

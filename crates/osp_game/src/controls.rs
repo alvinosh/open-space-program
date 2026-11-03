@@ -37,6 +37,7 @@ use osp_ui::{ActionState, LayoutVisibility, UiAction};
 use crate::{
     FrameSet,
     camera::CameraRig,
+    editor::Editor,
     menu::Menu,
     sim::{Sim, TimeWarp},
 };
@@ -92,6 +93,7 @@ fn apply_actions(
     mut rig: ResMut<CameraRig>,
     locked: Res<InputLocked>,
     menu: Res<Menu>,
+    editor: Res<Editor>,
     mut edits: ResMut<SequenceEdits>,
     mut layouts: ResMut<LayoutVisibility>,
 ) {
@@ -103,27 +105,33 @@ fn apply_actions(
     let now = time.elapsed_secs_f64();
     let ut = sim.universe.time();
 
-    let vessel = sim.active_vessel_mut();
-    let throttle_input = held.axis("vessel.throttle_up", "vessel.throttle_down");
-    if throttle_input != 0.0 {
-        // The pilot takes the throttle back from the burn executor.
-        vessel.disengage_burn(ut);
+    // A craft in the editor is only looked at, and its sequences changed.
+    if !editor.is_open() {
+        let vessel = sim.active_vessel_mut();
+        let throttle_input = held.axis("vessel.throttle_up", "vessel.throttle_down");
+        if throttle_input != 0.0 {
+            // The pilot takes the throttle back from the burn executor.
+            vessel.disengage_burn(ut);
+        }
+        let throttle = vessel.propulsion.throttle() + throttle_input * THROTTLE_RATE * dt;
+        vessel.set_throttle(throttle);
+        vessel.rotation_input = DVec3::new(
+            held.axis("vessel.pitch_up", "vessel.pitch_down"),
+            held.axis("vessel.yaw_right", "vessel.yaw_left"),
+            held.axis("vessel.roll_right", "vessel.roll_left"),
+        );
+        vessel.brakes = held.held("vessel.brakes");
+        vessel.translation_input = DVec3::new(
+            held.axis("vessel.translate_right", "vessel.translate_left"),
+            held.axis("vessel.translate_down", "vessel.translate_up"),
+            held.axis("vessel.translate_forward", "vessel.translate_back"),
+        );
     }
-    let throttle = vessel.propulsion.throttle() + throttle_input * THROTTLE_RATE * dt;
-    vessel.set_throttle(throttle);
-    vessel.rotation_input = DVec3::new(
-        held.axis("vessel.pitch_up", "vessel.pitch_down"),
-        held.axis("vessel.yaw_right", "vessel.yaw_left"),
-        held.axis("vessel.roll_right", "vessel.roll_left"),
-    );
-    vessel.brakes = held.held("vessel.brakes");
-    vessel.translation_input = DVec3::new(
-        held.axis("vessel.translate_right", "vessel.translate_left"),
-        held.axis("vessel.translate_down", "vessel.translate_up"),
-        held.axis("vessel.translate_forward", "vessel.translate_back"),
-    );
 
     for action in actions.read() {
+        if editor.is_open() && !action.name().starts_with("staging.") {
+            continue;
+        }
         match action.name() {
             "vessel.next" => {
                 sim.switch_vessel(1);

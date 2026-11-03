@@ -2,7 +2,7 @@
   "id": "T018",
   "title": "Editor scene in the game",
   "kind": "feature",
-  "status": "todo",
+  "status": "in_progress",
   "area": "editor",
   "size": "L",
   "parent": "T002",
@@ -14,7 +14,7 @@
     "docs/build-editor-plan.md (E6)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
+  "updated": "2026-11-03",
   "done": null,
   "milestone": "M3",
   "priority": 58

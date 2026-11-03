@@ -9,6 +9,7 @@
 //! the burn is removed from the plan.
 
 use glam::DVec3;
+use serde::{Deserialize, Serialize};
 
 use crate::{constants::G0, plan::Burn, propulsion::Propulsion, time::SimTime};
 
@@ -118,7 +119,7 @@ pub enum Finish {
     Aborted(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 enum Phase {
     #[default]
     Idle,
@@ -143,7 +144,7 @@ enum Phase {
 const MIN_ENGINE_BURN: f64 = 2.0;
 
 /// The burn executor's state. One per vessel; it flies the vessel's first planned burn.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BurnExecutor {
     phase: Phase,
 }

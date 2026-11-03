@@ -15,6 +15,7 @@
 use std::{f64::consts::PI, sync::Arc};
 
 use glam::DVec3;
+use serde::{Deserialize, Serialize};
 
 pub use crate::component::TankContent;
 use crate::{
@@ -43,7 +44,7 @@ const FIN_EDGE_DRAG: f64 = 1.0;
 
 /// The cell of a part that a tank of no plain shape (a common bulkhead, skirts, a torus) is:
 /// what it holds settles in it as it really is.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TankCell {
     pub geometry: Arc<Geometry>,
     /// Its element name.
@@ -51,7 +52,7 @@ pub struct TankCell {
 }
 
 /// A procedural tank, sized for its type and contents.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tank {
     pub tank_type: String,
     pub material: String,
@@ -234,7 +235,7 @@ impl Tank {
 }
 
 /// A stage's fins, sized from their geometry and material.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FinSet {
     pub def: FinDef,
     /// Planform area of one fin, m².
@@ -364,7 +365,7 @@ pub struct Conditions {
     pub landed: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Part {
     /// Index into the stage's tanks.
     Tank(usize),
@@ -374,7 +375,7 @@ pub enum Part {
 }
 
 /// What a part's load threatens to do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Mode {
     /// Tank wall crushed by the stack above.
     Buckling,
@@ -384,7 +385,7 @@ pub enum Mode {
     Bending,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PartLoad {
     /// Index into the stack, bottom first.
     pub stage: usize,

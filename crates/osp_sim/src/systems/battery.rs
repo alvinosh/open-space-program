@@ -2,10 +2,12 @@
 
 use std::any::Any;
 
+use serde::{Deserialize, Serialize};
+
 use super::{Power, Reading, System};
 use crate::{component::Component, environment::Environment, parts::Part};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Battery {
     /// When full, kJ.
     pub capacity: f64,

@@ -9,7 +9,7 @@
 //! step with [`Tutorial::complete`]. The words, the highlighted node and the hint are for the
 //! game to show.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -71,7 +71,7 @@ impl StepDef {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TutorialState {
     Running,
     /// Every step was done.
@@ -81,19 +81,19 @@ pub enum TutorialState {
 }
 
 /// What just happened, for the game to react to once.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TutorialEvent {
     /// The step at this index was done.
     StepDone(usize),
     Finished,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tutorial {
     def: TutorialDef,
     current: usize,
     state: TutorialState,
-    places: HashMap<String, crate::mission::Place>,
+    places: BTreeMap<String, crate::mission::Place>,
     /// When the current step began, and the time of the last look.
     step_started: SimTime,
     now: SimTime,
@@ -114,7 +114,7 @@ impl Tutorial {
         if def.steps.is_empty() {
             return Err(format!("tutorial `{}` has no steps", def.id));
         }
-        let mut places = HashMap::new();
+        let mut places = BTreeMap::new();
         for (i, step) in def.steps.iter().enumerate() {
             let at = format!("tutorial `{}`, step `{}`", def.id, step.id);
             if def.steps[..i].iter().any(|s| s.id == step.id) {

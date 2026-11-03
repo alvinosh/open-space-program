@@ -54,6 +54,7 @@ pub mod voxel;
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use glam::{DQuat, DVec2, DVec3};
+use serde::{Deserialize, Serialize};
 
 use self::voxel::Body;
 use crate::{
@@ -127,7 +128,7 @@ const BASE_PRESSURE: [(f64, f64); 7] = [
 ];
 
 /// The body across its axis at one height, where the slices are cut from.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 struct Station {
     /// Above the base of the stack, m.
     z: f64,

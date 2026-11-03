@@ -6,13 +6,14 @@ use std::{
 };
 
 use glam::{DMat3, DQuat, DVec3};
+use serde::{Deserialize, Serialize};
 
 use crate::mass::Mass;
 
 /// A shape's measure (an area, volume or length), first moment ∫x and second moment
 /// ∫x xᵀ, about the origin of its frame. Unlike [`Mass`] these add up directly, and
 /// become a mass distribution for any density ([`Self::mass`]).
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Moments {
     pub measure: f64,
     pub first: DVec3,

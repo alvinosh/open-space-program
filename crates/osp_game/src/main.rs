@@ -9,9 +9,11 @@ mod alerts;
 mod atmosphere;
 mod body_markers;
 mod camera;
+mod cloud_puffs;
 mod clouds;
 mod content;
 mod controls;
+mod editor;
 mod exhaust_trail;
 mod flight_plan;
 mod frame;
@@ -35,6 +37,7 @@ mod plasma;
 mod plume;
 mod profiler;
 mod recorder;
+mod saves;
 mod settings;
 mod sim;
 mod sky_light;
@@ -147,6 +150,7 @@ fn main() -> AppExit {
                 eclipse::EclipsePlugin,
                 ocean::OceanPlugin,
                 plasma::PlasmaPlugin,
+                cloud_puffs::CloudPuffsPlugin,
                 sky_light::SkyLightPlugin,
                 stars::StarsPlugin,
             ),
@@ -168,6 +172,8 @@ fn main() -> AppExit {
             smoke_test::SmokeTestPlugin,
             (
                 menu::MenuPlugin,
+                saves::SavesPlugin,
+                editor::EditorPlugin,
                 windows::WindowsPlugin,
                 mission::MissionPlugin,
                 tutorial::TutorialPlugin,

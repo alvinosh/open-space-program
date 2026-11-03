@@ -8,6 +8,7 @@
 //! depend on the sampling.
 
 use glam::DVec3;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     body::BodyId,
@@ -19,7 +20,7 @@ use crate::{
 };
 
 /// What a vessel is navigating towards.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Target {
     Body(BodyId),
     Vessel(VesselId),

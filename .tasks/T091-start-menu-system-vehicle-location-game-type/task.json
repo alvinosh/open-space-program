@@ -2,7 +2,7 @@
   "id": "T091",
   "title": "Start menu: system, vehicle, location, game type",
   "kind": "feature",
-  "status": "todo",
+  "status": "in_progress",
   "area": "ui",
   "size": "M",
   "parent": "T062",
@@ -13,7 +13,7 @@
     "Early feature checklist (since removed), Phase 3"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
+  "updated": "2026-11-03",
   "done": null,
   "milestone": "M3",
   "priority": 67

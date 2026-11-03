@@ -6,10 +6,11 @@
 //! ([`crate::autopilot`]) flies them as finite burns centred on their time.
 
 use glam::{DMat3, DVec3};
+use serde::{Deserialize, Serialize};
 
 use crate::{attitude::NavBasis, orbit::StateVector, time::SimTime};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Burn {
     pub time: SimTime,
     /// Δv in the orbit frame at `time`: prograde, normal, radial out, m/s.
@@ -38,7 +39,7 @@ impl Burn {
 }
 
 /// The burns a vessel has planned, in time order.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FlightPlan {
     burns: Vec<Burn>,
     /// Bumped on every change, so caches of the predicted trajectory know to rebuild.

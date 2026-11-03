@@ -16,6 +16,7 @@ pub mod model;
 use std::{collections::HashMap, fmt, sync::Arc};
 
 use glam::{DQuat, DVec3};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     assembly::Pose,
@@ -33,7 +34,7 @@ const MOST_CONTACTS: usize = 64;
 const LEG_SIDES: usize = 8;
 
 /// A box along its frame's axes.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Bounds {
     pub min: DVec3,
     pub max: DVec3,
@@ -111,7 +112,7 @@ impl Seen {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct Node {
     bounds: Bounds,
     /// A leaf's first triangle and how many; or else its first child, the other right after.
@@ -376,6 +377,16 @@ pub struct Collider {
 }
 
 impl Collider {
+    /// The box round all its parts, in the frame they are placed in, if it has any.
+    pub fn bounds(&self) -> Option<Bounds> {
+        let mut parts = self.parts.iter().map(|part| part.bounds);
+        let first = parts.next()?;
+        Some(parts.fold(first, |all, bounds| Bounds {
+            min: all.min.min(bounds.min),
+            max: all.max.max(bounds.max),
+        }))
+    }
+
     fn in_space(part: &PlacedMesh, at: Pose) -> Bounds {
         part.bounds.seen_from(&Seen::new(at))
     }

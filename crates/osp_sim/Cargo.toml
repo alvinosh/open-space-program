@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 serde = { workspace = true }
+rmp-serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 glam = { version = "0.33", features = ["serde"] }
 # To read the meshes of models: they are what vessels collide with.
@@ -15,7 +17,6 @@ gltf = { version = "1.4", default-features = false, features = ["utils"] }
 json5 = { workspace = true }
 # For examples/craft_report.rs, which loads craft the way the game does.
 osp_mods = { workspace = true }
-serde_json = { workspace = true }
 
 [lints]
 workspace = true

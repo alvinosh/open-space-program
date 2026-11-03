@@ -11,15 +11,19 @@
 //! ([`crate::propulsion::Propulsion::groups`]), and moves them together or one at a time.
 //! [`crate::propulsion::Propulsion`] carries them out.
 
-use crate::{parts::PartId, propulsion::Section};
+use serde::{Deserialize, Serialize};
+
+use crate::{parts::PartId, propulsion::Section, save::Kept};
 
 /// Something a part can do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Action {
     /// As written in craft files: `engines`, `decoupler`, or whatever a system calls it.
-    pub kind: &'static str,
+    #[serde(deserialize_with = "crate::save::interned")]
+    pub kind: Kept,
     /// What doing it is called on a button.
-    pub verb: &'static str,
+    #[serde(deserialize_with = "crate::save::interned")]
+    pub verb: Kept,
     /// What it is set to, for an action that has a setting: a thrust limit in percent.
     pub setting: Option<u16>,
 }
@@ -60,7 +64,7 @@ impl Action {
 }
 
 /// Something a sequence activates: an action, by the part that does it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Activation {
     pub part: PartId,
     pub action: Action,
@@ -159,7 +163,7 @@ pub enum SectionActivation {
 }
 
 /// Where to put an activation that is moved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Target {
     /// Into this sequence.
     Into(usize),
@@ -170,7 +174,7 @@ pub enum Target {
 }
 
 /// The sequences still to fire, the next first.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Sequences {
     list: Vec<Vec<Activation>>,
     /// How many have fired, so a sequence keeps its number as the ones before it fire.

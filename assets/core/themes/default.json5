@@ -114,7 +114,7 @@
       z_index: 50,
     },
     menu: {
-      width: 580,
+      width: 640,
       max_height: "86vh",
       padding: [24, 26],
       gap: 10,
@@ -151,6 +151,36 @@
     menu_item_head: { align_self: "stretch" },
     menu_item_start: { color: "#8fa3b4", font_size: 12 },
     menu_item_setup: { color: "#cfdbe5", font_size: 13 },
+
+    // --- the editor (see layouts/editor.json5) ---
+    editor: {
+      position: "absolute",
+      top: 12,
+      right: 12,
+      width: 280,
+      padding: [14, 16],
+      gap: 6,
+      gradient: ["#172839f5", "#0b1520f2"],
+      radius: 10,
+      border: 1,
+      border_gradient: ["#a6d0f066", "#6f98c014"],
+    },
+    editor_name: { font_size: 20, font_weight: 600, color: "#ffffff" },
+    editor_place: { align_self: "stretch", padding: [7, 10], gap: 10, active_background: "#1a3a40", active_border_color: "#38e0c4" },
+    editor_place_icon: { width: 22, height: 22, color: "#38e0c4" },
+    editor_place_name: { font_size: 14, font_weight: 600, color: "#ffffff" },
+    editor_launch: {
+      align_self: "stretch",
+      justify_content: "center",
+      padding: [10, 10],
+      font_size: 15,
+      font_weight: 600,
+      letter_spacing: 1.2,
+      uppercase: true,
+      background: "#1d6f62",
+      hover_background: "#26897a",
+      border_color: "#38e0c4",
+    },
 
     // --- docks (see layouts/docks.json5) ---
     // Every `dock` node stacks what is docked into it; `dock_root` places a dock column on

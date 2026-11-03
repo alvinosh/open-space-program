@@ -10,10 +10,11 @@
 use std::collections::HashSet;
 
 use glam::{DVec2, DVec3};
+use serde::{Deserialize, Serialize};
 
 use super::moments::Moments;
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TriMesh {
     pub positions: Vec<DVec3>,
     /// Counter-clockwise seen from outside.

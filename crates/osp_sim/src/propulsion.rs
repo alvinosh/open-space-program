@@ -16,6 +16,7 @@ use std::{
 };
 
 use glam::{DQuat, DVec2, DVec3};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use self::join::Joined;
@@ -86,7 +87,7 @@ pub const CREW_CONTROLS: f64 = 30_000.0;
 /// The `family` of a solid motor sized by [`crate::sizing`].
 pub const SEPARATION_MOTOR: &str = "Separation motor";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Engine {
     pub def: EngineDef,
     /// The part it is, and its section.
@@ -304,7 +305,7 @@ fn mean_share(curve: &[[f64; 2]]) -> f64 {
     if time > 0.0 { 1.0 / time } else { 1.0 }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RcsBlock {
     pub def: RcsDef,
     /// The part it is, and its section.
@@ -334,7 +335,7 @@ impl RcsBlock {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Propellant {
     pub name: String,
     pub amount: f64,
@@ -345,7 +346,7 @@ pub struct Propellant {
 /// sequence names (until sequences act on parts), and the stack the aero sees (until it
 /// runs on voxels). It is worked out from the parts whenever they change; what changes in
 /// flight (engines, tanks, RCS blocks, which sections are armed) is the [`Propulsion`]'s.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Section {
     /// Its number in firing order; stays the same as other sections fall away.
     pub id: usize,
@@ -566,7 +567,7 @@ pub fn placed(sections: &[Section]) -> impl Iterator<Item = (f64, &Section)> {
 }
 
 /// A payload fairing around a section.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Fairing {
     /// kg.
     pub mass: f64,
@@ -657,7 +658,7 @@ pub struct StageInfo {
 
 /// The parts, the engines, RCS blocks and tanks among them and what they are doing, the
 /// sections the parts make, the activation sequences, and throttle and ignition state.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Propulsion {
     /// What the vessel is made of. Staging releases joints on it, and the rest follows.
     parts: PartTree,
@@ -678,8 +679,10 @@ pub struct Propulsion {
     /// The tanks each engine and RCS block draws from, by its part: indices into `tanks`.
     feeds: BTreeMap<PartId, Vec<usize>>,
     /// How the air sees the parts, once worked out.
+    #[serde(skip)]
     shape: OnceLock<Arc<Shape>>,
     /// The docking ports on the parts, once worked out.
+    #[serde(skip)]
     ports: OnceLock<Vec<DockingPort>>,
     /// Sections hollow along the axis of the section they hang from: nothing lies across
     /// it, so that section's exhaust goes straight through (an interstage ring, the
@@ -698,13 +701,13 @@ pub struct Propulsion {
 }
 
 /// Something a vessel's avionics do by themselves, once.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Trigger {
     when: TriggerWhen,
     fire: Vec<Activation>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 enum TriggerWhen {
     /// Seconds after liftoff.
     Time(f64),

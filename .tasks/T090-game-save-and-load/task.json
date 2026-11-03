@@ -2,7 +2,7 @@
   "id": "T090",
   "title": "Game save and load",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "ui",
   "size": "L",
   "parent": "T062",
@@ -11,8 +11,8 @@
     "Early feature checklist (since removed), Phase 3"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
-  "done": null,
+  "updated": "2026-11-03",
+  "done": "2026-11-03",
   "milestone": "M3",
   "priority": 66
 }

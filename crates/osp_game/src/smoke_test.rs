@@ -113,6 +113,8 @@ impl Plugin for SmokeTestPlugin {
                 MARS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_DEBRIS").is_some() {
                 DEBRIS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_PLAY").is_some() {
+                PLAY_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_TUTORIAL").is_some() {
                 TUTORIAL_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MENU_TUTORIAL").is_some() {
@@ -241,6 +243,11 @@ enum Action {
     /// Stop the capture with a failure unless the sequences start like this: `<kind>x<count>`
     /// for each group, `,` between groups, ` | ` between sequences, the next first.
     ExpectSequences(&'static str),
+    /// Stop the capture with a failure unless the game holds this many vessels, debris left out,
+    /// and the one being flown is called this.
+    ExpectGame(usize, &'static str),
+    /// Stop the capture with a failure unless the active vessel's sequences number this many.
+    ExpectSequenceCount(usize),
     Exit,
 }
 
@@ -277,6 +284,68 @@ const GLIDER_RUNWAY_SCRIPT: &[(f64, Action)] = &[
     (15.5, Action::Section),
     (17.5, Action::Capture("clean.png")),
     (18.0, Action::Exit),
+];
+
+/// How many sequences the Saturn V is built with.
+const SATURN_V_SEQUENCES: usize = 9;
+
+/// `OSP_CAPTURE_PLAY=1` (with `OSP_USER_DIR=<empty folder>`, for the saves): the whole way through
+/// the Play page. A new game has nothing to fly but a new vessel; it is shown in the editor, its
+/// staging changed, and launched from the pad with that staging, which saves the game. A second
+/// vessel goes in from the editor to orbit, the first is flown again, and the save brings back
+/// the game as it was with one vessel in it.
+const PLAY_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.6, Action::Capture("play_start.png")),
+    (1.7, Action::Ui("game.new")),
+    (2.3, Action::Capture("play_new_game.png")),
+    (2.4, Action::Ui("menu.play:craft")),
+    (3.0, Action::Capture("play_craft.png")),
+    (3.1, Action::Ui("editor.open:saturn_v")),
+    (7.0, Action::Capture("editor_saturn_v.png")),
+    (7.1, Action::Unlock),
+    (7.2, Action::Ui("staging.add")),
+    (7.8, Action::Capture("editor_staging.png")),
+    (7.9, Action::ExpectSequenceCount(SATURN_V_SEQUENCES + 1)),
+    // Back to the list and in again: nothing has happened to the game.
+    (8.0, Action::Ui("editor.back")),
+    (8.6, Action::Capture("editor_back.png")),
+    (8.7, Action::ExpectGame(1, "Pathfinder")),
+    (8.8, Action::Ui("editor.open:saturn_v")),
+    (9.5, Action::Ui("staging.add")),
+    (9.7, Action::Ui("editor.place:pad")),
+    (10.0, Action::Ui("editor.launch")),
+    (14.0, Action::Capture("launched_pad.png")),
+    (14.1, Action::ExpectGame(1, "Saturn V")),
+    (14.2, Action::ExpectSequenceCount(SATURN_V_SEQUENCES + 1)),
+    (14.3, Action::Ui("game.menu")),
+    (14.4, Action::Ui("menu.play:load")),
+    (15.0, Action::Capture("play_load.png")),
+    (15.1, Action::Ui("menu.play:vessels")),
+    (15.7, Action::Capture("play_vessels.png")),
+    (15.8, Action::Ui("menu.play:craft")),
+    (15.9, Action::Ui("editor.open:glider")),
+    (19.0, Action::Capture("editor_glider.png")),
+    (19.1, Action::Ui("editor.place:orbit")),
+    (19.2, Action::Ui("editor.launch")),
+    (23.0, Action::Capture("launched_orbit.png")),
+    (23.1, Action::ExpectGame(2, "Kestrel")),
+    (23.2, Action::Ui("game.menu")),
+    (23.3, Action::Ui("menu.play:vessels")),
+    (24.0, Action::Capture("play_two_vessels.png")),
+    // The scenario behind the menu was 0, and the craft on show took numbers too.
+    (24.1, Action::Ui("game.fly:3")),
+    (28.0, Action::Capture("flying_first_again.png")),
+    (28.1, Action::ExpectGame(2, "Saturn V")),
+    (28.2, Action::Ui("game.menu")),
+    (28.3, Action::Ui("game.save_as")),
+    (28.5, Action::Ui("menu.play:load")),
+    (29.0, Action::Capture("play_load_two.png")),
+    (29.1, Action::Ui("game.load:game_1")),
+    (33.0, Action::Capture("loaded.png")),
+    (33.1, Action::ExpectGame(2, "Kestrel")),
+    (33.5, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_MENU=1`: open the main menu, look at the spacecraft on the pad and in
@@ -928,6 +997,22 @@ fn run_script(
         }
         Action::Ui(action) => {
             ui.write(UiAction(action.into()));
+        }
+        Action::ExpectGame(count, flying) => {
+            let vessels = sim.universe.vessels.iter();
+            let found = vessels.filter(|v| !v.is_debris()).count();
+            let name = &sim.active_vessel().name;
+            if found != count || name != flying {
+                error!("smoke test: {found} vessels, flying {name}: wanted {count}, {flying}");
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectSequenceCount(count) => {
+            let found = sim.active_vessel().propulsion.sequences.list().len();
+            if found != count {
+                error!("smoke test: {found} sequences, wanted {count}");
+                exit.write(AppExit::error());
+            }
         }
         Action::LineUpPorts(gap, closing) => {
             let index = sim.active_index();

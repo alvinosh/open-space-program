@@ -11,7 +11,7 @@
 //! passed when every goal is met, and failed the moment a `fail` condition holds. Both end
 //! it: the clock and the statistics stop there, for the results screen.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use glam::DVec3;
 use serde::{Deserialize, Serialize};
@@ -170,7 +170,7 @@ pub struct GoalDef {
 }
 
 /// What the player has done, for the results screen and for conditions that look back.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Stats {
     /// Mission time, s: the clock's, so it runs under time warp too.
     pub elapsed: f64,
@@ -188,7 +188,7 @@ pub struct Stats {
 }
 
 /// How a mission stands.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum State {
     Running,
     Passed,
@@ -197,7 +197,7 @@ pub enum State {
 }
 
 /// What just happened, for the game to tell the player once.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MissionEvent {
     /// The goal at this index was met.
     GoalMet(usize),
@@ -206,7 +206,7 @@ pub enum MissionEvent {
 }
 
 /// A goal and how far it has got.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Goal {
     pub def: GoalDef,
     /// Mission time it was met at, s.
@@ -216,20 +216,20 @@ pub struct Goal {
 }
 
 /// Where a launch site is, for `Landed`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Place {
     body: String,
     latitude: f64,
     longitude: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mission {
     goals: Vec<Goal>,
     fail: Vec<Goal>,
     /// A goal is only looked at once the ones before it are met.
     ordered: bool,
-    places: HashMap<String, Place>,
+    places: BTreeMap<String, Place>,
     state: State,
     stats: Stats,
     started: SimTime,
@@ -248,7 +248,7 @@ pub(crate) fn resolve(
     sites: &[LaunchSiteDef],
     system: &SolarSystem,
     goals: Option<&[GoalDef]>,
-    places: &mut HashMap<String, Place>,
+    places: &mut BTreeMap<String, Place>,
 ) -> Result<(), String> {
     let body = |name: &str| match system.find(name) {
         Some(_) => Ok(()),
@@ -314,7 +314,7 @@ impl Mission {
         if scenario.goals.is_empty() {
             return Ok(None);
         }
-        let mut places = HashMap::new();
+        let mut places = BTreeMap::new();
         for def in scenario.goals.iter().chain(&scenario.fail) {
             resolve(
                 &def.id,
@@ -482,7 +482,7 @@ pub(crate) struct View<'a> {
     pub universe: &'a Universe,
     pub vessel: &'a Vessel,
     pub stats: &'a Stats,
-    pub places: &'a HashMap<String, Place>,
+    pub places: &'a BTreeMap<String, Place>,
     /// The mission, for a tutorial step that waits for one of its goals.
     pub mission: Option<&'a Mission>,
 }
@@ -897,7 +897,7 @@ pub(crate) mod tests {
 
     /// `goal` looks at `universe` for `dt` more seconds.
     fn advance(goal: &mut Goal, universe: &Universe, dt: f64, elapsed: f64) -> bool {
-        let (stats, places) = (Stats::default(), HashMap::new());
+        let (stats, places) = (Stats::default(), BTreeMap::new());
         let view = View {
             universe,
             vessel: universe.vessel(universe.focus.unwrap()).unwrap(),

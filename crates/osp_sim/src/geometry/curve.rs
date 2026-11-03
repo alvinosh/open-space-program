@@ -10,6 +10,7 @@
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 
 use glam::DVec2;
+use serde::{Deserialize, Serialize};
 
 use super::quadrature::integrate;
 use crate::data::ShellProfile;
@@ -19,7 +20,7 @@ const MAX_TURN: f64 = 0.1;
 /// Deepest a tessellation halves a stretch of curve.
 const MAX_DEPTH: u32 = 20;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Segment {
     Line {
         from: DVec2,
@@ -302,7 +303,7 @@ pub struct CurvePoint {
     pub t: f64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Curve {
     segments: Vec<Segment>,
     /// (segment, t from, t to): stretches along which the height only rises or only falls.

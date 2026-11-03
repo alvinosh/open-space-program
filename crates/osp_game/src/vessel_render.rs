@@ -32,7 +32,7 @@ use crate::{
         PlumeQuality, plume_axis, plume_light,
     },
     settings::{GraphicsSettings, Quality},
-    sim::Sim,
+    sim::{Sim, SimRestarted},
     vessel_material::{Finish, PartModel, VesselMaterial, VesselMaterialPlugin},
 };
 
@@ -63,6 +63,7 @@ impl Plugin for VesselRenderPlugin {
             .add_systems(
                 Update,
                 (
+                    forget_on_restart,
                     sync_visuals,
                     rebuild_on_change,
                     place_vessels,
@@ -79,8 +80,8 @@ impl Plugin for VesselRenderPlugin {
 }
 
 #[derive(Component)]
-struct VesselVisual {
-    id: VesselId,
+pub(crate) struct VesselVisual {
+    pub(crate) id: VesselId,
     /// The parts it was built from (`None`: not built yet). A change (a stage falls away,
     /// fins tear off, the fairing goes) rebuilds it.
     built: Option<Vec<u32>>,
@@ -863,6 +864,19 @@ fn update_engines(
         }
         // The tower and the vessel cast the flame's shadows (six more shadow views).
         point.shadow_maps_enabled = false && lumens > 0.0 && settings.shadows >= Quality::High;
+    }
+}
+
+/// A loaded game numbers its vessels as it did when saved, so what has a number now may not be
+/// what is drawn under it.
+fn forget_on_restart(
+    mut restarted: MessageReader<SimRestarted>,
+    mut visuals: Query<&mut VesselVisual>,
+) {
+    if restarted.read().count() > 0 {
+        for mut visual in &mut visuals {
+            visual.built = None;
+        }
     }
 }
 

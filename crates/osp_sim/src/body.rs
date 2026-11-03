@@ -3,15 +3,16 @@ use std::f64::consts::{FRAC_PI_2, TAU};
 use std::sync::Arc;
 
 use glam::{DQuat, DVec3};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     atmosphere::Atmosphere,
     clouds::CloudsDef,
-    ocean::OceanDef,
-    scattering::ScatteringDef,
     constants::{OBLIQUITY_J2000, SECONDS_PER_DAY},
     data::RotationDef,
+    ocean::OceanDef,
     orbit::Orbit,
+    scattering::ScatteringDef,
     terrain::Terrain,
     time::SimTime,
 };
@@ -20,7 +21,7 @@ use crate::{
 /// coasting analytically, so they can touch down.
 pub const TERRAIN_MARGIN: f64 = 2_000.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct BodyId(pub usize);
 
 /// Orientation of a body over time (IAU model, expressed in ecliptic axes).

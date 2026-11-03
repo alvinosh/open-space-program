@@ -19,6 +19,7 @@ use std::{
 };
 
 use glam::{DVec2, DVec3};
+use serde::{Deserialize, Serialize};
 
 use super::{
     Fill, SurfacePoint,
@@ -34,21 +35,21 @@ const MESH_STEP: f64 = 5.0 * PI / 180.0;
 const MESH_TOLERANCE: f64 = 2.5e-4;
 
 /// A thin wall along a curve.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Wall {
     pub name: String,
     pub curve: Curve,
 }
 
 /// A closed region.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Region {
     pub name: String,
     pub boundary: Curve,
     pub fill: Fill,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Revolved {
     walls: Vec<Wall>,
     regions: Vec<Region>,
@@ -58,7 +59,31 @@ pub struct Revolved {
     wall_moments: Vec<Moments>,
     region_moments: Vec<Moments>,
     side_moments: Vec<Moments>,
+    #[serde(with = "unbuilt")]
     meshes: Vec<OnceLock<TriMesh>>,
+}
+
+/// The regions' meshes are not saved: a save says how many there are, to be built when wanted.
+mod unbuilt {
+    use std::sync::OnceLock;
+
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    use super::TriMesh;
+
+    pub fn serialize<S: Serializer>(
+        meshes: &[OnceLock<TriMesh>],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_u64(meshes.len() as u64)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Vec<OnceLock<TriMesh>>, D::Error> {
+        let count = u64::deserialize(deserializer)?;
+        Ok((0..count).map(|_| OnceLock::new()).collect())
+    }
 }
 
 impl Revolved {
@@ -296,7 +321,7 @@ fn polygon(boundary: &Curve, tolerance: f64) -> Vec<DVec2> {
 }
 
 /// Integrals turned through a span of angles.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct Turn {
     from: f64,
     to: f64,

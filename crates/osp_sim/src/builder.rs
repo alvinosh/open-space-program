@@ -22,6 +22,7 @@
 use std::collections::BTreeSet;
 
 use glam::DVec3;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     aero::{outer_triangles, voxel::Body},
@@ -119,7 +120,7 @@ impl Change {
 }
 
 /// Where a part is held: a connector of another part, and which of its own holds it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Place {
     /// `"<part id>.<connector>"`.
     pub on: String,

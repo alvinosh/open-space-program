@@ -12,6 +12,7 @@
 use std::f64::consts::FRAC_PI_2;
 
 use glam::{DMat2, DVec2, DVec3};
+use serde::{Deserialize, Serialize};
 
 use super::{
     Fill, SurfacePoint,
@@ -24,7 +25,7 @@ use super::{
 const MESH_TWIST: f64 = 1.0 * std::f64::consts::PI / 180.0;
 
 /// Where the section is at one height.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Station {
     /// Height up the subpart's axis, m.
     pub z: f64,
@@ -57,7 +58,7 @@ impl Station {
 }
 
 /// A polygon's own moments: its area, ∫x, ∫y, ∫x², ∫y² and ∫xy.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct Section {
     area: f64,
     first: DVec2,
@@ -142,7 +143,7 @@ fn weighed(p: DVec3, w: f64) -> [f64; 10] {
     ]
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lofted {
     pub name: String,
     pub fill: Fill,

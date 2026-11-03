@@ -2,10 +2,12 @@
 
 use std::any::Any;
 
+use serde::{Deserialize, Serialize};
+
 use super::{Reading, System};
 use crate::{component::Component, parts::Part};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Crew {
     pub seats: u32,
     /// How many are aboard: the seats are full until the crew are people of their own (T049).

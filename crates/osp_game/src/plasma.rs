@@ -1,61 +1,97 @@
-//! Re-entry: the shock and the wake around a vessel coming in hot (`shaders/plasma.wesl`).
+//! Re-entry: the plasma around a vessel coming in hot, after Lindner's atmospheric entry shader
+//! (`shaders/plasma.wesl` has how it is drawn).
 //!
-//! How hot comes from the air's density and the vessel's speed (`osp_sim::plasma`). Its shape comes
-//! from the vessel: a small map of its hull looking along the airflow, built on the CPU whenever
-//! the flow or the vessel changes, and uploaded in place. The light it throws on the vessel and
-//! anything else near is a point light at the shock.
+//! How strong it is and how it looks come from the air's density and the vessel's speed
+//! (`osp_sim::plasma`). Its shape comes from the vessel's own meshes: they are gathered when it is
+//! first needed and whenever the vessel changes, into one mesh of the hull's triangles and of strips
+//! on points scattered over them. The way the air goes and a depth map of the hull looking along it
+//! reach the shader from here as the flow turns. The light it throws on the vessel and anything else
+//! near is a point light at the shock.
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},
-    image::{ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
-    light::NotShadowCaster,
-    math::{DQuat, DVec3},
-    mesh::MeshVertexBufferLayoutRef,
+    camera::visibility::NoFrustumCulling,
+    light::{NotShadowCaster, NotShadowReceiver},
+    math::Affine3A,
+    mesh::{Indices, MeshVertexBufferLayoutRef, PrimitiveTopology, VertexAttributeValues},
     pbr::{MaterialPipeline, MaterialPipelineKey},
     platform::collections::HashMap,
     prelude::*,
     render::render_resource::{
-        AsBindGroup, CompareFunction, Extent3d, Face, RenderPipelineDescriptor, ShaderType,
-        SpecializedMeshPipelineError, TextureDimension, TextureFormat,
+        AsBindGroup, Extent3d, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
+        TextureDimension, TextureFormat, TextureUsages,
     },
     shader::ShaderRef,
 };
-use half::f16;
 use osp_sim::{
-    plasma::{HULL_MAP_SIZE, HullMap, flow_frame, glow_level, hull_map, stagnation_heating},
+    plasma::{
+        AIRSTREAM_SIZE, Airstream, EntryLook, HullPoints, HullTriangle, NOTHING_THERE, airstream,
+        entry_look, flow_in_vessel, nose_radius, scatter_points,
+    },
     vessel::VesselId,
 };
 
 use crate::{
     FrameSet,
-    frame::RenderFrame,
+    frame::{RenderFrame, rotation_to_render},
+    part_info::ShowsPart,
+    part_mesh::axes,
     settings::{GraphicsSettings, Quality},
     sim::Sim,
+    vessel_material::VesselMaterial,
+    vessel_render::VesselVisual,
 };
 
-/// How many blurred copies of the hull map there are (`HULL_LEVELS` in the shader).
-const HULL_LEVELS: usize = 6;
 /// Vessels with effects at once.
 const MOST_AT_ONCE: usize = 4;
 /// Below this strength, nothing is drawn.
 const LEAST_STRENGTH: f32 = 0.01;
-/// How fast the effect may change, per second, so it swells rather than pops on a stage drop.
+/// How fast the strength may change, per second, so it swells rather than pops on a stage drop.
 const CHANGE_RATE: f32 = 0.6;
+/// How fast the rest of the look follows, per second.
+const LOOK_RATE: f32 = 1.5;
 /// The flow has to turn this far before the map is rebuilt, radians.
-const REMAP_ANGLE: f64 = 0.015;
-/// Brightness of the gas at full strength, cd/m², per hull radius of it in the line of sight.
-const GAS_BRIGHTNESS: f32 = 45_000.0;
+const REMAP_ANGLE: f32 = 0.015;
+/// The most points on a hull per square metre, for a small one.
+const POINTS_PER_SQUARE_METRE: f32 = 220.0;
+/// Of the hull's points, every this many also gets a spark.
+const SPARK_EVERY: usize = 2;
+/// Strips in the long stream behind it all.
+const WAKE_STRIPS: usize = 72;
+/// A streak is this many times the distance between points wide, at the hull.
+const STRIP_WIDTH: f32 = 1.6;
+/// How wide a spark is, m.
+const SPARK_WIDTH: f32 = 0.04;
+/// Brightness of the gas at full strength, cd/m².
+const GAS_BRIGHTNESS: f32 = 42_000.0;
 /// Light the gas throws at full strength, lumens per square metre of hull.
 const LIGHT_PER_AREA: f32 = 1.2e7;
-/// How long the wake is at full strength, in hull radii.
-const WAKE_LENGTH: f64 = 22.0;
-/// How far the box reaches upstream of the hull, in radii, to hold the shock.
-const UPSTREAM: f64 = 1.5;
-/// How far the wake is shown to be moving, m/s, whatever the true speed: at the true 7 km/s the
-/// streaks would only be a blur.
-const SHOWN_FLOW: f32 = 90.0;
+/// How fast bits of hull are shown to leave, m/s, whatever the true speed: at the true 7 km/s they
+/// would only be a blur.
+const SHOWN_FLOW: f32 = 160.0;
 /// What air burns like when the data doesn't say.
 const AIR_PLASMA: [f32; 3] = [1.0, 0.42, 0.2];
+/// Colours that don't depend on the air: hot blue gas, the violet of the thinnest air.
+const BLUE: [f32; 3] = [0.36, 0.46, 1.0];
+const VIOLET: [f32; 3] = [0.5, 0.32, 1.0];
+
+/// Places along a strip: closer together near the hull, where more goes on.
+const LONG_STRIP: [f32; 6] = [0.0, 0.05, 0.14, 0.3, 0.58, 1.0];
+const SHORT_STRIP: [f32; 4] = [0.0, 0.2, 0.55, 1.0];
+const STREAM_STRIP: [f32; 9] = [0.0, 0.06, 0.14, 0.24, 0.36, 0.5, 0.65, 0.82, 1.0];
+const SPARK_STRIP: [f32; 2] = [0.0, 1.0];
+
+/// The layers, in the order they are drawn (`GLOW` and so on in the shader).
+#[derive(Clone, Copy)]
+enum Layer {
+    Glow = 0,
+    Wake = 1,
+    Wrap = 2,
+    Trail = 3,
+    Cone = 4,
+    Spark = 5,
+    Bow = 6,
+}
 
 pub struct PlasmaPlugin;
 
@@ -70,28 +106,40 @@ impl Plugin for PlasmaPlugin {
 
 #[derive(Debug, Clone, Copy, Default, ShaderType)]
 struct PlasmaParams {
-    box_size: Vec4,
-    color: Vec4,
-    hull: Vec4,
+    /// x: how many of the hull's points streaks can come off.
+    edge: Vec4,
+    flow: Vec4,
+    across_x: Vec4,
+    across_y: Vec4,
+    centre: Vec4,
     look: Vec4,
+    extent: Vec4,
+    hot: Vec4,
+    mid: Vec4,
+    far: Vec4,
+    wrap: Vec4,
+    shock: Vec4,
 }
 
 #[derive(Asset, AsBindGroup, TypePath, Debug, Clone)]
 struct PlasmaMaterial {
     #[uniform(0)]
     params: PlasmaParams,
-    #[texture(1, dimension = "3d")]
-    #[sampler(2)]
-    hull: Handle<Image>,
+    #[texture(1, sample_type = "float", filterable = false)]
+    airstream: Handle<Image>,
 }
 
 impl Material for PlasmaMaterial {
+    fn vertex_shader() -> ShaderRef {
+        "embedded://osp/shaders/plasma.wesl".into()
+    }
+
     fn fragment_shader() -> ShaderRef {
         "embedded://osp/shaders/plasma.wesl".into()
     }
 
     fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Add
+        AlphaMode::Premultiplied
     }
 
     fn enable_prepass() -> bool {
@@ -105,102 +153,269 @@ impl Material for PlasmaMaterial {
     fn specialize(
         _pipeline: &MaterialPipeline,
         descriptor: &mut RenderPipelineDescriptor,
-        _layout: &MeshVertexBufferLayoutRef,
+        layout: &MeshVertexBufferLayoutRef,
         _key: MaterialPipelineKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
-        // The inside of the box, whatever is in the way: the ray stops at what the depth says, and
-        // the camera may well be in the box.
-        descriptor.primitive.cull_mode = Some(Face::Front);
-        if let Some(depth) = &mut descriptor.depth_stencil {
-            depth.depth_compare = CompareFunction::Always.into();
-        }
+        descriptor.vertex.buffers = vec![layout.0.get_layout(&[
+            Mesh::ATTRIBUTE_POSITION.at_shader_location(0),
+            Mesh::ATTRIBUTE_NORMAL.at_shader_location(1),
+            Mesh::ATTRIBUTE_UV_0.at_shader_location(2),
+            Mesh::ATTRIBUTE_COLOR.at_shader_location(3),
+        ])?];
+        // Strips are seen from both sides, and models don't all wind their triangles the same way.
+        descriptor.primitive.cull_mode = None;
         Ok(())
     }
 }
 
+/// The vessel's hull, in the axes of its root (the base of the stack, render axes).
+#[derive(Default)]
+struct Gathered {
+    positions: Vec<Vec3>,
+    normals: Vec<Vec3>,
+    indices: Vec<u32>,
+    /// How many meshes it came from, and how many of those weren't loaded yet.
+    meshes: usize,
+    waiting: usize,
+}
+
+impl Gathered {
+    fn add(&mut self, mesh: &Mesh, transform: Affine3A) {
+        let Some(VertexAttributeValues::Float32x3(positions)) =
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            return;
+        };
+        let base = self.positions.len() as u32;
+        self.positions.extend(
+            positions
+                .iter()
+                .map(|p| transform.transform_point3(Vec3::from(*p))),
+        );
+        match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
+            Some(VertexAttributeValues::Float32x3(normals)) => {
+                self.normals.extend(normals.iter().map(|n| {
+                    transform
+                        .transform_vector3(Vec3::from(*n))
+                        .normalize_or_zero()
+                }));
+            }
+            _ => self
+                .normals
+                .extend(std::iter::repeat_n(Vec3::ZERO, positions.len())),
+        }
+        match mesh.indices() {
+            Some(indices) => self.indices.extend(indices.iter().map(|i| base + i as u32)),
+            None => self.indices.extend(base..base + positions.len() as u32),
+        }
+    }
+
+    fn triangles(&self) -> Vec<HullTriangle> {
+        self.indices
+            .chunks_exact(3)
+            .map(|t| {
+                let [a, b, c] = [t[0] as usize, t[1] as usize, t[2] as usize];
+                let positions = [self.positions[a], self.positions[b], self.positions[c]];
+                // A mesh without normals gets its triangles' own.
+                let flat = (positions[1] - positions[0])
+                    .cross(positions[2] - positions[0])
+                    .normalize_or_zero();
+                let normal = |n: Vec3| if n == Vec3::ZERO { flat } else { n };
+                HullTriangle {
+                    positions,
+                    normals: [
+                        normal(self.normals[a]),
+                        normal(self.normals[b]),
+                        normal(self.normals[c]),
+                    ],
+                }
+            })
+            .collect()
+    }
+}
+
+/// The attributes of the effect's mesh.
+#[derive(Default)]
+struct Pieces {
+    positions: Vec<[f32; 3]>,
+    normals: Vec<[f32; 3]>,
+    places: Vec<[f32; 2]>,
+    strips: Vec<[f32; 4]>,
+    indices: Vec<u32>,
+}
+
+/// A number in 0..1 that goes with `n`.
+fn random(n: usize, salt: u32) -> f32 {
+    let mut h = (n as u32).wrapping_mul(0x9E37_79B1) ^ salt.wrapping_mul(0x85EB_CA77);
+    h ^= h >> 15;
+    h = h.wrapping_mul(0xC2B2_AE3D);
+    h ^= h >> 13;
+    (h >> 8) as f32 / (1u32 << 24) as f32
+}
+
+impl Pieces {
+    /// The hull's triangles, as one layer.
+    fn hull(&mut self, hull: &Gathered, layer: Layer) {
+        let base = self.positions.len() as u32;
+        for (index, p) in hull.positions.iter().enumerate() {
+            self.positions.push(p.to_array());
+            // A mesh without normals of its own gets no glow to speak of, rather than none at all.
+            self.normals
+                .push(hull.normals[index].normalize_or(Vec3::Y).to_array());
+            self.places.push([0.0, 0.0]);
+            self.strips.push([layer as u32 as f32, 0.0, 0.0, 0.0]);
+        }
+        self.indices.extend(hull.indices.iter().map(|i| base + i));
+    }
+
+    /// A strip on a point of the hull, the vertex shader to shape it. Its two random numbers are
+    /// `n`'s, `width` its width at the hull.
+    fn strip(
+        &mut self,
+        (position, normal): (Vec3, Vec3),
+        layer: Layer,
+        rows: &[f32],
+        n: usize,
+        width: f32,
+    ) {
+        let base = self.positions.len() as u32;
+        let (r1, r2) = (random(n, 1), random(n, 2));
+        for &t in rows {
+            for side in [-1.0, 1.0] {
+                self.positions.push(position.to_array());
+                self.normals.push(normal.to_array());
+                self.places.push([t, side]);
+                self.strips.push([layer as u32 as f32, r1, r2, width]);
+            }
+        }
+        for row in 0..rows.len() as u32 - 1 {
+            let (a, b, c, d) = (
+                base + 2 * row,
+                base + 2 * row + 1,
+                base + 2 * row + 2,
+                base + 2 * row + 3,
+            );
+            self.indices.extend([a, b, c, b, d, c]);
+        }
+    }
+
+    fn into_mesh(self) -> Mesh {
+        Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::RENDER_WORLD,
+        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, self.places)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, self.strips)
+        .with_inserted_indices(Indices::U32(self.indices))
+    }
+}
+
+/// The effect's whole mesh, for a hull and its points, in the order it draws.
+fn effect_mesh(hull: &Gathered, points: &HullPoints) -> Mesh {
+    let mut pieces = Pieces::default();
+    let width = points.spacing * STRIP_WIDTH;
+    let at = |k: usize| {
+        let point = &points.points[k];
+        (point.position, point.normal)
+    };
+    let count = points.points.len();
+    pieces.hull(hull, Layer::Glow);
+    for k in 0..WAKE_STRIPS {
+        pieces.strip((Vec3::ZERO, Vec3::Z), Layer::Wake, &STREAM_STRIP, k, 0.0);
+    }
+    for k in 0..count {
+        pieces.strip(at(k), Layer::Wrap, &SHORT_STRIP, k, width * 2.0);
+    }
+    for k in 0..count {
+        pieces.strip(at(k), Layer::Trail, &LONG_STRIP, k, width);
+    }
+    for k in 0..count {
+        pieces.strip(at(k), Layer::Cone, &SHORT_STRIP, k, width * 2.5);
+    }
+    for k in (0..count).step_by(SPARK_EVERY) {
+        pieces.strip(at(k), Layer::Spark, &SPARK_STRIP, k, SPARK_WIDTH);
+    }
+    pieces.hull(hull, Layer::Bow);
+    pieces.into_mesh()
+}
+
 /// One vessel's effect.
 struct Effect {
-    entity: Entity,
+    /// Nothing is spawned until the hull has been gathered.
+    drawn: Option<Drawn>,
     light: Entity,
+    strength: f32,
+    look: EntryLook,
+    /// What the hull was gathered from, to tell when it changes.
+    gathered: (usize, usize),
+    points: HullPoints,
+    /// The map, for the flow it was built for.
+    map: Option<Airstream>,
+}
+
+struct Drawn {
+    entity: Entity,
     material: Handle<PlasmaMaterial>,
     image: Handle<Image>,
-    strength: f32,
-    /// The flow in the vessel's axes the map was built for, and the hull's size then.
-    mapped_flow: DVec3,
-    mapped_stations: usize,
-    map: Option<HullMap>,
+    mesh: Handle<Mesh>,
 }
 
 #[derive(Resource, Default)]
 struct PlasmaEffects(HashMap<VesselId, Effect>);
 
-/// The hull map, blurred more at each level, as the slices of a 3D texture. Not mip levels: an image
-/// updated in place only gets its top level rewritten. A box blur of twice the width each time,
-/// from a summed-area table.
-fn hull_image(map: Option<&HullMap>) -> Image {
-    let n = HULL_MAP_SIZE;
-    let top: Vec<[f32; 3]> = map.map_or_else(
-        || vec![[0.0; 3]; n * n],
-        // Front and back times coverage, so they average properly as they blur.
-        |m| {
-            m.texels
-                .iter()
-                .map(|t| [t[0] * t[2], t[1] * t[2], t[2]])
-                .collect()
+/// The map as a texture, its depth and how far inside the outline: read texel by texel in both
+/// stages, so it needs no filtering.
+fn airstream_image(map: Option<&Airstream>) -> Image {
+    let n = AIRSTREAM_SIZE;
+    let mut data = Vec::with_capacity(n * n * 8);
+    for k in 0..n * n {
+        let (depth, inside) = map.map_or((NOTHING_THERE, 0.0), |m| (m.depth[k], m.inside[k]));
+        data.extend_from_slice(&depth.to_le_bytes());
+        data.extend_from_slice(&inside.to_le_bytes());
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: n as u32,
+            height: n as u32,
+            depth_or_array_layers: 1,
         },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rg32Float,
+        // Rebuilt as the flow turns, so the main world keeps its copy to write into.
+        RenderAssetUsages::default(),
     );
-    let mut table = vec![[0.0f32; 3]; (n + 1) * (n + 1)];
-    for j in 0..n {
-        for i in 0..n {
-            let (left, up, both) = (
-                table[(j + 1) * (n + 1) + i],
-                table[j * (n + 1) + i + 1],
-                table[j * (n + 1) + i],
-            );
-            table[(j + 1) * (n + 1) + i + 1] =
-                std::array::from_fn(|c| top[j * n + i][c] + left[c] + up[c] - both[c]);
-        }
-    }
-    let mut data = Vec::with_capacity(n * n * HULL_LEVELS * 8);
-    for level in 0..HULL_LEVELS {
-        let reach = if level == 0 { 0 } else { 1usize << (level - 1) };
-        for j in 0..n {
-            for i in 0..n {
-                let (x0, x1) = (i.saturating_sub(reach), (i + reach + 1).min(n));
-                let (y0, y1) = (j.saturating_sub(reach), (j + reach + 1).min(n));
-                // What lies past the map's edge counts as nothing there.
-                let area = ((2 * reach + 1) * (2 * reach + 1)) as f32;
-                for c in 0..3 {
-                    let sum = table[y1 * (n + 1) + x1][c]
-                        - table[y0 * (n + 1) + x1][c]
-                        - table[y1 * (n + 1) + x0][c]
-                        + table[y0 * (n + 1) + x0][c];
-                    data.extend_from_slice(&f16::from_f32(sum / area).to_le_bytes());
-                }
-                data.extend_from_slice(&f16::from_f32(1.0).to_le_bytes());
-            }
-        }
-    }
-    let mut image = Image::default();
-    image.texture_descriptor.size = Extent3d {
-        width: n as u32,
-        height: n as u32,
-        depth_or_array_layers: HULL_LEVELS as u32,
-    };
-    image.texture_descriptor.dimension = TextureDimension::D3;
-    image.texture_descriptor.format = TextureFormat::Rgba16Float;
-    image.data = Some(data);
-    // Rebuilt as the flow turns, so the main world keeps its copy to write into.
-    image.asset_usage = RenderAssetUsages::default();
-    image.texture_descriptor.usage |= bevy::render::render_resource::TextureUsages::COPY_DST;
-    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-        mag_filter: ImageFilterMode::Linear,
-        min_filter: ImageFilterMode::Linear,
-        ..default()
-    });
+    image.texture_descriptor.usage |= TextureUsages::COPY_DST;
     image
 }
 
+fn mix3(a: [f32; 3], b: [f32; 3], k: f32) -> Vec3 {
+    Vec3::from(a).lerp(Vec3::from(b), k)
+}
+
+/// The gas's colours for its look: `tint` is what the body's air burns like.
+fn colours(tint: [f32; 3], look: &EntryLook, strength: f32) -> [Vec3; 5] {
+    let (thin, white) = (look.thin as f32, look.white as f32);
+    // At the hull, between yellow and blue with how strong it is and how thin the air.
+    let yellow = mix3(tint, [1.0, 0.86, 0.62], 0.7).to_array();
+    let hot = mix3(
+        yellow,
+        BLUE,
+        (thin * thin * 0.5 + (strength - 0.8).max(0.0)).min(0.8),
+    );
+    let mid = Vec3::from(tint);
+    // A pale red, going violet only in the thinnest air.
+    let pale = Vec3::from(tint) * Vec3::new(0.85, 0.55, 0.5);
+    let far = mix3(pale.to_array(), VIOLET, thin * thin * thin * 0.75);
+    let wrap = mix3(BLUE, VIOLET, thin * 0.5);
+    let shock = Vec3::from(BLUE);
+    // A Mach cone's white over it all.
+    [hot, mid, far, wrap, shock].map(|c| c.lerp(Vec3::ONE, white))
+}
+
+#[allow(clippy::too_many_arguments)]
 fn update_effects(
     mut commands: Commands,
     sim: Res<Sim>,
@@ -211,22 +426,29 @@ fn update_effects(
     mut materials: ResMut<Assets<PlasmaMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut boxes: Query<&mut Transform, Without<PointLight>>,
-    mut lights: Query<(&mut PointLight, &mut Transform), With<PointLight>>,
-    mut unit_cube: Local<Option<Handle<Mesh>>>,
+    mut transforms: Query<&mut Transform, Without<PointLight>>,
+    mut lights: Query<(&mut PointLight, &mut Transform)>,
+    visuals: Query<(Entity, &VesselVisual, &GlobalTransform)>,
+    children: Query<&Children>,
+    parents: Query<&ChildOf>,
+    parts: Query<(), With<ShowsPart>>,
+    hull_meshes: Query<
+        (&Mesh3d, &GlobalTransform),
+        Or<(
+            With<MeshMaterial3d<VesselMaterial>>,
+            With<MeshMaterial3d<StandardMaterial>>,
+        )>,
+    >,
 ) {
     if frame.origin_body.is_none() {
         return;
     }
     let system = &sim.universe.system;
-    let cube = unit_cube
-        .get_or_insert_with(|| meshes.add(Cuboid::new(1.0, 1.0, 1.0)))
-        .clone();
-    let steps = match settings.effects {
-        Quality::Off | Quality::Low => 24.0,
-        Quality::Medium => 40.0,
-        Quality::High => 56.0,
-        Quality::Ultra => 80.0,
+    let most_points = match settings.effects {
+        Quality::Off | Quality::Low => 3_000,
+        Quality::Medium => 6_000,
+        Quality::High => 9_000,
+        Quality::Ultra => 12_000,
     };
     let mut seen = Vec::new();
     for vessel in &sim.universe.vessels {
@@ -240,42 +462,24 @@ fn update_effects(
             continue;
         }
         let airflow = state.velocity - body.surface_velocity(state.position);
-        let speed = airflow.length();
-        let outline = vessel.propulsion.shape();
-        let radius = (outline.reference_area() / std::f64::consts::PI)
-            .sqrt()
-            .max(0.3);
-        let heating = stagnation_heating(air.sample(altitude).density, speed, radius);
-        let target = glow_level(heating) as f32;
-        if target <= 0.0 && !effects.0.contains_key(&vessel.id()) {
+        let radius = nose_radius(vessel.propulsion.shape().reference_area());
+        let climbing = airflow.dot(state.position.normalize_or_zero());
+        let target = entry_look(
+            air.sample(altitude).density,
+            airflow.length(),
+            radius,
+            climbing,
+        );
+        if target.strength <= 0.0 && !effects.0.contains_key(&vessel.id()) {
             continue;
         }
         if seen.len() >= MOST_AT_ONCE {
             continue;
         }
         seen.push(vessel.id());
-        // In the vessel's axes: which way the air goes over it.
-        let attitude = vessel.attitude_at(system, frame.time);
-        let flow_local = attitude.inverse() * (-airflow).normalize_or(-DVec3::Z);
-        let stations = outline.outline().len();
-        let effect = effects.0.entry(vessel.id()).or_insert_with(|| {
-            let image = images.add(hull_image(None));
-            let material = materials.add(PlasmaMaterial {
-                params: PlasmaParams::default(),
-                hull: image.clone(),
-            });
-            let entity = commands
-                .spawn((
-                    Mesh3d(cube.clone()),
-                    MeshMaterial3d(material.clone()),
-                    Transform::default(),
-                    NotShadowCaster,
-                    // The box follows the flow and its size changes with it.
-                    bevy::camera::visibility::NoFrustumCulling,
-                    Name::new("Re-entry"),
-                ))
-                .id();
-            let light = commands
+        let effect = effects.0.entry(vessel.id()).or_insert_with(|| Effect {
+            drawn: None,
+            light: commands
                 .spawn((
                     PointLight {
                         intensity: 0.0,
@@ -285,116 +489,177 @@ fn update_effects(
                     },
                     Transform::default(),
                 ))
-                .id();
-            Effect {
-                entity,
-                light,
-                material,
-                image,
-                strength: 0.0,
-                mapped_flow: DVec3::ZERO,
-                mapped_stations: 0,
-                map: None,
-            }
+                .id(),
+            strength: 0.0,
+            look: target,
+            gathered: (0, 0),
+            points: HullPoints::default(),
+            map: None,
         });
 
         // Swells and fades instead of jumping when a stage goes, or the view changes vessel.
         let most = CHANGE_RATE * time.delta_secs();
-        effect.strength += (target - effect.strength).clamp(-most, most);
+        effect.strength += (target.strength as f32 - effect.strength).clamp(-most, most);
+        let follow = (LOOK_RATE * time.delta_secs()).min(1.0) as f64;
+        effect.look.length += (target.length - effect.look.length) * follow;
+        effect.look.spread += (target.spread - effect.look.spread) * follow;
+        effect.look.thin += (target.thin - effect.look.thin) * follow;
+        effect.look.white += (target.white - effect.look.white) * follow;
 
-        // Middle of the hull as the box's centre: rings are from the middle of the base.
-        let middle = vessel.propulsion.length() * 0.5;
-        let remap = effect.map.is_none()
-            || effect.mapped_stations != stations
-            || effect.mapped_flow.angle_between(flow_local) > REMAP_ANGLE;
-        if remap && effect.strength > 0.0 {
-            let rings: Vec<(DVec3, f64)> = outline
-                .rings()
-                .map(|(centre, reach)| (centre - DVec3::Z * middle, reach))
+        // The vessel's own meshes, loaded or not yet, whenever they change.
+        let attitude = vessel.attitude_at(system, frame.time);
+        if effect.strength > 0.0
+            && let Some((root, _, root_transform)) = visuals
+                .iter()
+                .find(|(_, visual, _)| visual.id == vessel.id())
+        {
+            let parts_of = |entity: Entity| {
+                parts.contains(entity) || parents.iter_ancestors(entity).any(|a| parts.contains(a))
+            };
+            let mut hull = Gathered::default();
+            let to_root = root_transform.affine().inverse();
+            let found: Vec<_> = children
+                .iter_descendants(root)
+                .filter_map(|e| hull_meshes.get(e).ok().filter(|_| parts_of(e)))
                 .collect();
-            let map = hull_map(&rings, DVec3::Z, flow_local);
-            if let Some(mut image) = images.get_mut(&effect.image) {
-                *image = hull_image(Some(&map));
+            hull.waiting = found
+                .iter()
+                .filter(|(mesh, _)| meshes.get(&mesh.0).is_none())
+                .count();
+            hull.meshes = found.len();
+            if (hull.meshes, hull.waiting) != effect.gathered {
+                for (mesh, transform) in &found {
+                    if let Some(mesh) = meshes.get(&mesh.0) {
+                        hull.add(mesh, to_root * transform.affine());
+                    }
+                }
+                effect.gathered = (hull.meshes, hull.waiting);
+                effect.points =
+                    scatter_points(&hull.triangles(), most_points, POINTS_PER_SQUARE_METRE);
+                effect.map = None;
+                if !effect.points.points.is_empty() {
+                    let mesh = effect_mesh(&hull, &effect.points);
+                    match &mut effect.drawn {
+                        Some(drawn) => {
+                            if let Some(mut old) = meshes.get_mut(&drawn.mesh) {
+                                *old = mesh;
+                            }
+                        }
+                        None => {
+                            let image = images.add(airstream_image(None));
+                            let material = materials.add(PlasmaMaterial {
+                                params: PlasmaParams::default(),
+                                airstream: image.clone(),
+                            });
+                            let mesh = meshes.add(mesh);
+                            let entity = commands
+                                .spawn((
+                                    Mesh3d(mesh.clone()),
+                                    MeshMaterial3d(material.clone()),
+                                    Transform::default(),
+                                    NotShadowCaster,
+                                    NotShadowReceiver,
+                                    // Its strips go where the flow takes them.
+                                    NoFrustumCulling,
+                                    Name::new("Re-entry"),
+                                ))
+                                .id();
+                            effect.drawn = Some(Drawn {
+                                entity,
+                                material,
+                                image,
+                                mesh,
+                            });
+                        }
+                    }
+                }
             }
-            effect.mapped_flow = flow_local;
-            effect.mapped_stations = stations;
+        }
+
+        // The way the air goes, in the mesh's axes.
+        let flow = flow_in_vessel(attitude, airflow);
+        let flow = axes([flow.x as f32, flow.y as f32, flow.z as f32]);
+        let remap = effect
+            .map
+            .as_ref()
+            .is_none_or(|map| map.flow.angle_between(flow) > REMAP_ANGLE);
+        if remap && effect.strength > 0.0 && !effect.points.points.is_empty() {
+            let map = airstream(&effect.points, flow);
+            if let Some(drawn) = &effect.drawn
+                && let Some(mut image) = images.get_mut(&drawn.image)
+            {
+                *image = airstream_image(Some(&map));
+            }
             effect.map = Some(map);
         }
 
-        let show = effect.strength > LEAST_STRENGTH;
-        let Some(map) = effect.map.as_ref().filter(|_| show) else {
-            if let Ok(mut transform) = boxes.get_mut(effect.entity) {
-                transform.scale = Vec3::ZERO;
-            }
-            if let Ok((mut light, _)) = lights.get_mut(effect.light) {
-                light.intensity = 0.0;
-            }
+        let (Some(drawn), Some(map)) = (&effect.drawn, &effect.map) else {
             continue;
         };
-
-        // The box: z along the flow, from just ahead of the shock to the end of the wake.
-        let hull_radius = map.reach;
-        let wake = WAKE_LENGTH * hull_radius * (0.35 + 0.65 * effect.strength as f64);
-        let start = map.front - UPSTREAM * hull_radius;
-        let end = map.back + wake;
-        let half_width = map.half_width;
-        let to_flow: DQuat = flow_frame(flow_local);
-        let box_rotation = attitude * to_flow.inverse();
-        let base = vessel.base_at(system, frame.time);
-        let centre_body = base + attitude * (DVec3::Z * middle);
-        let box_centre = centre_body + box_rotation * (DVec3::Z * ((start + end) * 0.5));
-        if let Ok(mut transform) = boxes.get_mut(effect.entity) {
-            transform.translation = frame.to_render(vessel.parent(), box_centre);
-            // The box's own axes are in the sim's convention, flow along its Z, unlike a model's:
-            // only the world side of the rotation changes axes.
-            transform.rotation =
-                (DQuat::from_rotation_x(-std::f64::consts::FRAC_PI_2) * box_rotation).as_quat();
-            transform.scale = Vec3::new(
-                (2.0 * half_width) as f32,
-                (2.0 * half_width) as f32,
-                (end - start) as f32,
-            );
+        let show = effect.strength > LEAST_STRENGTH;
+        // The same place as the vessel's own visual.
+        let root = Transform {
+            translation: frame.to_render(vessel.parent(), vessel.base_at(system, frame.time)),
+            rotation: rotation_to_render(attitude),
+            scale: if show { Vec3::ONE } else { Vec3::ZERO },
+        };
+        if let Ok(mut transform) = transforms.get_mut(drawn.entity) {
+            *transform = root;
         }
-        if let Some(mut material) = materials.get_mut(&effect.material) {
-            let tint = body
-                .scattering
-                .as_ref()
-                .and_then(|s| s.plasma)
-                .unwrap_or(AIR_PLASMA.map(f64::from))
-                .map(|c| c as f32);
+        let tint = body
+            .scattering
+            .as_ref()
+            .and_then(|s| s.plasma)
+            .map_or(AIR_PLASMA, |c| c.map(|v| v as f32));
+        if show && let Some(mut material) = materials.get_mut(&drawn.material) {
+            let [hot, mid, far, wrap, shock] = colours(tint, &effect.look, effect.strength);
             material.params = PlasmaParams {
-                box_size: Vec4::new(half_width as f32, start as f32, end as f32, steps),
-                color: Vec4::new(tint[0], tint[1], tint[2], effect.strength),
-                hull: Vec4::new(
-                    hull_radius as f32,
-                    map.front as f32,
-                    map.back as f32,
+                edge: Vec4::new(map.on_edge as f32, 0.0, 0.0, 0.0),
+                flow: map.flow.extend(map.half_width),
+                across_x: map.across[0].extend(map.reach),
+                across_y: map.across[1].extend(map.back),
+                centre: map.centre.extend(map.front),
+                look: Vec4::new(
+                    effect.strength,
+                    effect.look.length as f32,
+                    effect.look.thin as f32,
+                    effect.look.white as f32,
+                ),
+                extent: Vec4::new(
+                    effect.look.spread as f32,
+                    effect.points.spacing,
+                    GAS_BRIGHTNESS,
                     SHOWN_FLOW,
                 ),
-                look: Vec4::new(GAS_BRIGHTNESS, map.half_width as f32, 0.0, 0.0),
+                hot: hot.extend(1.0),
+                mid: mid.extend(1.0),
+                far: far.extend(1.0),
+                wrap: wrap.extend(1.0),
+                shock: shock.extend(1.0),
             };
         }
         if let Ok((mut light, mut transform)) = lights.get_mut(effect.light) {
-            let tint = body
-                .scattering
-                .as_ref()
-                .and_then(|s| s.plasma)
-                .unwrap_or(AIR_PLASMA.map(f64::from));
-            light.color = Color::linear_rgb(tint[0] as f32, tint[1] as f32, tint[2] as f32);
-            let area = (hull_radius * hull_radius) as f32;
+            light.color = Color::linear_rgb(tint[0], tint[1], tint[2]);
+            let area = map.reach * map.reach;
             light.intensity = LIGHT_PER_AREA * area * effect.strength * effect.strength;
-            let ahead = box_rotation * (DVec3::Z * (map.front - hull_radius * 0.6));
-            transform.translation = frame.to_render(vessel.parent(), centre_body + ahead);
+            if !show {
+                light.intensity = 0.0;
+            }
+            let ahead = map.centre + map.flow * (map.front - map.reach * 0.6);
+            transform.translation = root.translation + root.rotation * ahead;
         }
     }
     // Gone, or cooled right down.
     effects.0.retain(|id, effect| {
         let keep = seen.contains(id);
         if !keep {
-            commands.entity(effect.entity).despawn();
             commands.entity(effect.light).despawn();
-            images.remove(&effect.image);
-            materials.remove(&effect.material);
+            if let Some(drawn) = &effect.drawn {
+                commands.entity(drawn.entity).despawn();
+                images.remove(&drawn.image);
+                materials.remove(&drawn.material);
+                meshes.remove(&drawn.mesh);
+            }
         }
         keep
     });

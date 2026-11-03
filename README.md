@@ -29,6 +29,7 @@ times. With `OSP_CAPTURE`, `OSP_CAPTURE_QUICK=1` takes a single still, and
 `OSP_CAPTURE_AT=20,30` launches (SAS on, a small pitch kick at 10 s, the Vessel,
 Attitude and Structure windows open) and takes stills at those times. `OSP_CAPTURE_HIDE_UI=1` leaves the flight UI out
 of the stills, `OSP_CAPTURE_PART=<vessel>-<part>` opens that part's window, and `OSP_CAPTURE_SIZE=1280x720` sets the size of the stills (1600x900 by default).
+`OSP_CAPTURE_PLAY=1` with `OSP_USER_DIR=<empty folder>` goes through the Play page: a new game, a craft in the editor, its staging changed, launches, saving and loading, failing if the game does not end up as it should.
 `OSP_CAPTURE_GRAPHICS=1` captures the Graphics page with the performance overlay, then the Low
 preset.
 
@@ -40,7 +41,7 @@ The toolchain is pinned in `rust-toolchain.toml` (Bevy 0.20 needs Rust 1.97.1+).
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screenshots/look_pad.jpg" alt="The rocket on the pad under fair-weather cumulus"><br><b>Clouds</b>: volumetric, from a weather map of the whole planet, with shadows on the ground and in the air.</td>
+<td width="50%"><img src="docs/screenshots/look_pad.jpg" alt="The rocket on the pad under fair-weather cumulus"><br><b>Clouds</b>: a map of real cloud systems with soft puffs around the camera, with shadows on the ground and in the air.</td>
 <td width="50%"><img src="docs/screenshots/look_dusk.jpg" alt="Sunset over the Cape with long shadows"><br><b>Sky</b>: full multiple scattering for each body with air, and all of the scene sits in the same haze.</td>
 </tr>
 <tr>
@@ -337,6 +338,8 @@ The code and the assets in `assets/core` are licensed under either of [Apache Li
 or [MIT](LICENSE-MIT), at your option. Some things in the repository are not ours:
 
 - `assets/core/fonts`: Barlow, SIL Open Font License 1.1 (`OFL.txt` is next to it).
+- `assets/core/clouds`: textures from EnvironmentalVisualEnhancements, MIT (`LICENSE.txt` is next to
+  them). The way the clouds are drawn follows its code.
 - Earth's terrain, imagery and star map are baked from NASA, NOAA, ESA and Copernicus data, which
   have terms of their own: see `assets/core/terrain/README.md` and `assets/core/sky/README.md`.
 - `mods/realism` is generated from community mods for KSP and is mostly non-commercial. It is not

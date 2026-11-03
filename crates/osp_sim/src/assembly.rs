@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use crate::geometry::{Geometry, Node};
 
 /// Where something is and how it is turned, in some frame.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Pose {
     pub position: DVec3,
     pub rotation: DQuat,
@@ -117,7 +117,7 @@ impl Carries {
 }
 
 /// Where a joint holds a part.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Mount {
     /// At one of its nodes.
     Node(String),
@@ -143,7 +143,7 @@ impl Mount {
 }
 
 /// One end of a joint: a part, by index, and where the joint holds it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct End {
     pub part: usize,
     pub mount: Mount,
@@ -161,7 +161,7 @@ pub enum Motion {
     Slide,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Joint {
     pub ends: [End; 2],
     /// How far the second end is turned about the line they meet along, rad.

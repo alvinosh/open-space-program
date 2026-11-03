@@ -186,7 +186,7 @@ fn sync_hover(
         marks.scripted = action.arg().and_then(parse_group);
     }
     let over = hover.0.as_deref().and_then(group_of);
-    let hover = if shown.hidden_groups.contains(GROUP) {
+    let hover = if shown.hidden_groups.contains(GROUP) && !shown.visible("staging", Some(GROUP)) {
         None
     } else {
         over.or_else(|| marks.scripted.clone())
@@ -302,7 +302,8 @@ fn tint_parts(
         if wanted.get(&parent.parent()) == Some(&kind.color) {
             wanted.remove(&parent.parent());
         } else {
-            commands.entity(tint).despawn();
+            // It may have gone already, with the vessel it was on.
+            commands.entity(tint).try_despawn();
         }
     }
     for (mesh, color) in wanted {

@@ -106,6 +106,8 @@ pub struct CameraRig {
     /// Camera position relative to the render origin (f64, sim axes), for systems such as
     /// planet LOD that need more precision than the f32 transform.
     pub position: DVec3,
+    /// Something else is moving the camera (see [`crate::editor`]).
+    pub held: bool,
 }
 
 impl Default for CameraRig {
@@ -122,6 +124,7 @@ impl Default for CameraRig {
             focus_height: None,
             port_view: false,
             position: DVec3::ZERO,
+            held: false,
         };
         // Debugging and screenshots: `OSP_CAMERA=<yaw°>,<pitch°>,<distance m>[,<focus m>]`,
         // the last being the height above the base of the stack to look at.
@@ -158,6 +161,11 @@ impl CameraRig {
             Some(Follow::Body(body)) => body,
             _ => self.viewed_vessel(sim).parent(),
         })
+    }
+
+    /// Stand far enough off to see a vessel `size` metres long.
+    pub fn frame(&mut self, size: f64) {
+        self.flight_distance = (size * 1.2 + 8.0).clamp(15.0, 400.0);
     }
 
     /// Follow `what` (`None`: the active vessel again); following a body opens the map.
@@ -426,6 +434,9 @@ pub(crate) fn update_camera(
     over_ui: Res<PointerOverUi>,
     mut camera: Single<&mut Transform, With<MainCamera>>,
 ) {
+    if rig.held {
+        return;
+    }
     if !locked.0 && buttons.pressed(MouseButton::Right) {
         rig.yaw += motion.delta.x as f64 * 0.005;
         rig.pitch = (rig.pitch + motion.delta.y as f64 * 0.005).clamp(-MAX_PITCH, MAX_PITCH);

@@ -9,6 +9,7 @@
 use std::f64::consts::PI;
 
 use glam::DVec3;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     body::BodyId, constants::SPEED_OF_LIGHT, data::GroundStationDef, environment::occulted_by,
@@ -36,7 +37,7 @@ pub fn decibels(share: f64) -> f64 {
 }
 
 /// What sends and receives on a vessel.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Radio {
     /// What it sends, W.
     pub power: f64,
@@ -47,7 +48,7 @@ pub struct Radio {
 }
 
 /// A ground station, ready to use.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Station {
     pub id: String,
     pub name: String,
@@ -89,7 +90,7 @@ impl Station {
 }
 
 /// A link to the ground.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Link {
     /// Which station.
     pub station: String,

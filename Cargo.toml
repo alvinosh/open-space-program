@@ -17,9 +17,10 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 bevy = { version = "0.20", features = ["serialize"] }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 json5 = "1.3"
 serde_json = { version = "1", features = ["preserve_order"] }
+rmp-serde = "1"
 indexmap = "2"
 thiserror = "2"
 osp_sim = { path = "crates/osp_sim" }

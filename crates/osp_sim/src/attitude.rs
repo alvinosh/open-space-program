@@ -14,6 +14,7 @@
 use std::{array, f64::consts::PI};
 
 use glam::{DMat3, DQuat, DVec2, DVec3};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     body::Body,
@@ -29,7 +30,7 @@ use crate::{
 /// diagonal, with equal pitch and yaw moments; a tail fin or anything else to one side adds
 /// products of inertia, and the principal axes ([`Self::principal`]) tilt away from the
 /// vessel's.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Inertia {
     pub tensor: DMat3,
 }
@@ -67,7 +68,7 @@ impl Inertia {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct MassProperties {
     pub mass: f64,
     /// The centre of mass from the middle of the vessel's base, vessel axes, m: how far off
@@ -260,7 +261,7 @@ pub fn actuate(
 }
 
 /// Orientation (vessel to inertial axes) and angular velocity (vessel axes, rad/s).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Attitude {
     pub orientation: DQuat,
     pub angular_velocity: DVec3,
@@ -448,7 +449,7 @@ pub fn integrate_with(
 }
 
 /// Reference for prograde and the other navigation directions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum NavFrame {
     /// Velocity relative to the ground (and the air, which turns with it).
     #[default]
@@ -470,7 +471,7 @@ impl NavFrame {
 }
 
 /// Prograde, orbit normal and radial-out directions, in inertial axes.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct NavBasis {
     pub prograde: DVec3,
     pub normal: DVec3,
@@ -527,7 +528,7 @@ impl NavBasis {
 }
 
 /// What SAS steers to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SasMode {
     /// Stop rotating and hold the attitude.
     #[default]
@@ -637,7 +638,7 @@ const MAX_RATE: f64 = 0.5;
 /// For each axis it commands the fastest turn rate that can still be stopped at the
 /// target with half the available angular acceleration (a time-optimal braking curve,
 /// linear close in), then the torque that reaches that rate in [`RESPONSE`] seconds.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Sas {
     enabled: bool,
     mode: SasMode,

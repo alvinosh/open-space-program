@@ -13,7 +13,7 @@ use osp_sim::{
     staging::Activation,
     structure::{Mode, Part, PartLoad},
     time::SimTime,
-    vessel::{Motion, Situation, VesselEventKind, VesselId},
+    vessel::{Motion, Situation, VesselId},
 };
 use osp_ui::{Formatters, UiData, UiValue, record};
 
@@ -22,6 +22,7 @@ use crate::{
     camera::CameraRig,
     content::GameContent,
     controls::SequenceEdits,
+    editor::Editor,
     orbit_lines::Prediction,
     part_highlight::PartMarks,
     sim::{MAX_PHYSICS_WARP, Sim, SimEventMessage, TimeWarp, WARP_RATES},
@@ -60,7 +61,6 @@ impl Plugin for UiDataPlugin {
 /// What the flight UI remembers between frames.
 #[derive(Default)]
 struct FlightMemory {
-    liftoff: Option<SimTime>,
     /// Latest log entry and the real time it appeared.
     message: Option<(SimTime, String, f64)>,
 }
@@ -73,6 +73,7 @@ fn publish_flight(
     prediction: Res<Prediction>,
     marks: Res<PartMarks>,
     edits: Res<SequenceEdits>,
+    editor: Res<Editor>,
     time: Res<Time>,
     mut memory: Local<FlightMemory>,
     mut data: ResMut<UiData>,
@@ -86,7 +87,7 @@ fn publish_flight(
     let altitude = state.position.length() - body.radius;
     let (lat, lon) = body.lat_lon(state.position, now);
     let mass = vessel.flight.mass.max(1.0);
-    let local_g = body.gm / state.position.length_squared();
+    let local_g = (editor.gravity()).unwrap_or(body.gm / state.position.length_squared());
 
     data.set("time.ut", now.as_seconds());
     data.set("time.warp", warp.rate());
@@ -134,16 +135,12 @@ fn publish_flight(
         };
         data.set("sim.last_event", text);
         data.set("sim.last_event_time", event.event.time.as_seconds());
-        if event.vessel == active && event.event.kind == VesselEventKind::Liftoff {
-            memory.liftoff.get_or_insert(event.event.time);
-        }
     }
-    data.set("time.launched", memory.liftoff.is_some());
+    let liftoff = vessel.lifted_off();
+    data.set("time.launched", liftoff.is_some());
     data.set(
         "time.met",
-        memory
-            .liftoff
-            .map_or(0.0, |t| now.seconds_since(t).max(0.0)),
+        liftoff.map_or(0.0, |t| now.seconds_since(t).max(0.0)),
     );
 
     data.set("vessel.name", vessel.name.as_str());

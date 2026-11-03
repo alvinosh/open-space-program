@@ -1,6 +1,14 @@
-// Main menu: pick a scenario, go back to the flight in progress (`game.resume`), or quit.
+// Main menu: play, pick a scenario, go back to the flight in progress (`game.resume`), or quit.
 // The game opens on it unless OSP_SCENARIO picks a scenario; Esc (`game.menu`) brings it
-// back. A scenario is picked in two steps: where it starts (`menu.place:<pad|runway|orbit>`, shown when `menu.count.<place>` scenarios start there; `menu.place` goes back),
+// back.
+//
+// The Play page (`menu.page:play`) goes by steps, in `menu.play`: nothing yet, then `load` (the
+// saves in `menu.saves`: `game.load:<file>`, `game.delete_save:<file>` asks and then deletes),
+// `vessels` (`game.new` starts here: `menu.vessels` to fly, `game.fly:<id>`, or a new one) and
+// `craft` (`menu.craft`, each shown in the editor by `editor.open:<id>`, see editor.json5).
+// `menu.play` goes back. `game.save` saves the game in progress, `game.save_as` to a new save.
+//
+// A scenario is picked in two steps: where it starts (`menu.place:<pad|runway|orbit>`, shown when `menu.count.<place>` scenarios start there; `menu.place` goes back),
 // then the spacecraft (`game.start:<id>`), listed from `menu.scenarios` (id, craft, name,
 // description, start) in load order.
 //
@@ -32,12 +40,231 @@
             widget: "row",
             style: { gap: 4 },
             children: [
+              { widget: "button", class: "menu_tab", text: "Play", action: "menu.page:play", active: "menu.page == play" },
               { widget: "button", class: "menu_tab", text: "Scenarios", action: "menu.page:scenarios", active: "menu.page == scenarios" },
               { widget: "button", class: "menu_tab", text: "Tutorials", action: "menu.page:tutorials", active: "menu.page == tutorials", visible: "menu.tutorials" },
               { widget: "button", class: "menu_tab", text: "Graphics", action: "menu.page:graphics", active: "menu.page == graphics" },
               { widget: "button", class: "menu_tab", text: "Sound", action: "menu.page:sound", active: "menu.page == sound" },
               { widget: "button", class: "menu_tab", text: "Controls", action: "menu.page:controls", active: "menu.page == controls" },
               { widget: "button", class: "menu_tab", text: "Interface", action: "menu.page:interface", active: "menu.page == interface" },
+            ],
+          },
+          {
+            widget: "column",
+            class: "menu_page",
+            visible: "menu.page == play",
+            children: [
+              {
+                widget: "column",
+                class: "menu_page",
+                visible: "!menu.play",
+                children: [
+                  { widget: "label", class: "dim", text: "Start a new game, or carry on with a saved one" },
+                  {
+                    widget: "column",
+                    class: "menu_list",
+                    children: [
+                      {
+                        widget: "button",
+                        class: "menu_item menu_place",
+                        action: "game.new",
+                        children: [
+                          { widget: "image", class: "menu_place_icon", image: "icons/play.svg" },
+                          {
+                            widget: "column",
+                            class: "menu_place_text",
+                            children: [
+                              { widget: "label", class: "menu_item_name", text: "New game" },
+                              { widget: "label", class: "dim", text: "Nothing flying yet: pick a vessel and launch it." },
+                            ],
+                          },
+                        ],
+                      },
+                      {
+                        widget: "button",
+                        class: "menu_item menu_place",
+                        action: "menu.play:load",
+                        children: [
+                          { widget: "image", class: "menu_place_icon", image: "icons/log.svg" },
+                          {
+                            widget: "column",
+                            class: "menu_place_text",
+                            children: [
+                              { widget: "label", class: "menu_item_name", text: "Load game" },
+                              { widget: "label", class: "dim", text: "Carry on from a save." },
+                            ],
+                          },
+                        ],
+                      },
+                      {
+                        widget: "button",
+                        class: "menu_item menu_place",
+                        action: "menu.play:vessels",
+                        visible: "menu.playing",
+                        children: [
+                          { widget: "image", class: "menu_place_icon", image: "icons/flight.svg" },
+                          {
+                            widget: "column",
+                            class: "menu_place_text",
+                            children: [
+                              { widget: "label", class: "menu_item_name", text: "Vessels" },
+                              { widget: "label", class: "dim", text: "Fly another vessel in this game, or launch a new one." },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                widget: "column",
+                class: "menu_page",
+                visible: "menu.play == load",
+                children: [
+                  {
+                    widget: "row",
+                    children: [
+                      { widget: "button", class: "menu_option", text: "Back", action: "menu.play" },
+                      { widget: "label", class: "title", text: "Load game" },
+                    ],
+                  },
+                  { widget: "label", class: "dim", text: "No saved games yet: a game is saved from its first launch on.", visible: "!menu.has_saves" },
+                  {
+                    widget: "column",
+                    class: "menu_list",
+                    repeat: "menu.saves",
+                    children: [
+                      {
+                        widget: "row",
+                        style: { gap: 6 },
+                        children: [
+                          {
+                            widget: "button",
+                            class: "menu_item",
+                            style: { grow: 1 },
+                            action: "game.load:{item.file}",
+                            children: [
+                              {
+                                widget: "row",
+                                class: "menu_item_head",
+                                children: [
+                                  { widget: "label", class: "menu_item_name", text: "{item.name}" },
+                                  { widget: "spacer" },
+                                  { widget: "label", class: "menu_item_start", text: "{item.saved}" },
+                                ],
+                              },
+                              { widget: "label", class: "menu_item_setup", text: "{item.flying}", visible: "item.flying" },
+                              { widget: "label", class: "dim", text: "{item.time}, vessels in the game: {item.vessels|int}", visible: "!item.problem" },
+                              { widget: "label", class: "warning", text: "{item.problem}", visible: "item.problem" },
+                            ],
+                          },
+                          { widget: "button", class: "menu_option", text: "Delete", action: "game.delete_save:{item.file}", visible: "!item.deleting" },
+                          { widget: "button", class: "menu_option", text: "Sure?", action: "game.delete_save:{item.file}", visible: "item.deleting", active: "item.deleting" },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                widget: "column",
+                class: "menu_page",
+                visible: "menu.play == vessels",
+                children: [
+                  {
+                    widget: "row",
+                    children: [
+                      { widget: "button", class: "menu_option", text: "Back", action: "menu.play" },
+                      { widget: "label", class: "title", text: "New game", visible: "menu.new_game" },
+                      { widget: "label", class: "title", text: "Vessels", visible: "!menu.new_game" },
+                      { widget: "spacer" },
+                      { widget: "label", class: "dim", text: "Choose a vessel to fly, or a new one", visible: "menu.vessels" },
+                      { widget: "label", class: "dim", text: "Nothing is flying yet", visible: "!menu.vessels" },
+                    ],
+                  },
+                  {
+                    widget: "button",
+                    class: "menu_item menu_place",
+                    style: { margin: [0, 12, 0, 0] },
+                    action: "menu.play:craft",
+                    children: [
+                      { widget: "image", class: "menu_place_icon", image: "icons/launch_pad.svg" },
+                      {
+                        widget: "column",
+                        class: "menu_place_text",
+                        children: [
+                          { widget: "label", class: "menu_item_name", text: "Fly a new vessel" },
+                          { widget: "label", class: "dim", text: "Pick a craft, look it over in the editor, and launch it." },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    widget: "column",
+                    class: "menu_list",
+                    repeat: "menu.vessels",
+                    children: [
+                      {
+                        widget: "button",
+                        class: "menu_item",
+                        action: "game.fly:{item.id}",
+                        children: [
+                          {
+                            widget: "row",
+                            class: "menu_item_head",
+                            children: [
+                              { widget: "label", class: "menu_item_name", text: "{item.name}" },
+                              { widget: "spacer" },
+                              { widget: "label", class: "menu_item_start", text: "Flying now", visible: "item.flying" },
+                            ],
+                          },
+                          { widget: "label", class: "dim", text: "{item.where}" },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                widget: "column",
+                class: "menu_page",
+                visible: "menu.play == craft",
+                children: [
+                  {
+                    widget: "row",
+                    children: [
+                      { widget: "button", class: "menu_option", text: "Back", action: "menu.play:vessels" },
+                      { widget: "label", class: "title", text: "Fly a new vessel" },
+                      { widget: "spacer" },
+                      { widget: "label", class: "dim", text: "Choose a vessel" },
+                    ],
+                  },
+                  {
+                    widget: "column",
+                    class: "menu_list",
+                    repeat: "menu.craft",
+                    children: [
+                      {
+                        widget: "button",
+                        class: "menu_item",
+                        action: "editor.open:{item.id}",
+                        children: [
+                          {
+                            widget: "row",
+                            class: "menu_item_head",
+                            children: [
+                              { widget: "label", class: "menu_item_name", text: "{item.name}" },
+                              { widget: "spacer" },
+                              { widget: "label", class: "menu_item_start", text: "{item.parts|int} parts" },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
             ],
           },
           {
@@ -469,10 +696,13 @@
               { widget: "label", class: "dim", text: "Render scale and anti-aliasing matter most when the GPU limits the frame rate. Changes apply at once and are saved." },
             ],
           },
+          { widget: "label", class: "dim", text: "{menu.notice}", visible: "menu.notice" },
           {
             widget: "row",
             children: [
               { widget: "button", text: "Resume", action: "game.resume", visible: "menu.playing" },
+              { widget: "button", text: "Save", action: "game.save", visible: "menu.playing", tooltip: "Save this game" },
+              { widget: "button", text: "Save as new", action: "game.save_as", visible: "menu.playing", tooltip: "Keep the last save, and save this game as another" },
               { widget: "spacer" },
               { widget: "button", text: "Quit", action: "game.quit" },
             ],

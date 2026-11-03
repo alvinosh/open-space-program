@@ -2,10 +2,11 @@
 //! length, so a lattice's mass follows the mass per metre of its members.
 
 use glam::DVec3;
+use serde::{Deserialize, Serialize};
 
 use super::moments::Moments;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lattice {
     pub name: String,
     nodes: Vec<DVec3>,

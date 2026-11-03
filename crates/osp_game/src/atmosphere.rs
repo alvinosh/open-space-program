@@ -23,7 +23,10 @@ use bevy::{
         core_3d::{main_opaque_pass_3d, main_transparent_pass_3d},
         schedule::Core3d,
     },
-    image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
+    image::{
+        CompressedImageFormats, ImageAddressMode, ImageFilterMode, ImageSampler,
+        ImageSamplerDescriptor, ImageType,
+    },
     light::light_consts::lux,
     math::DVec3,
     platform::collections::HashMap,
@@ -50,13 +53,14 @@ use bevy::{
 use half::f16;
 use osp_sim::{
     body::BodyId,
-    clouds::{CloudsDef, WEATHER_SIZE, Weather},
+    clouds::{CloudMap, CloudsDef, WEATHER_SIZE, Weather},
     scattering::{Air, SKY_TABLE_SIZE, ScatteringDef, TRANSMITTANCE_SIZE},
 };
 
 use crate::{
     FrameSet,
     camera::{CameraRig, MainCamera},
+    content::GameContent,
     eclipse::{EclipseUniform, eclipse_for},
     frame::{RenderFrame, Sunlight, rotation_to_render},
     settings::{GraphicsSettings, Quality},
@@ -79,6 +83,89 @@ const OVERCAST_EV: f32 = 1.6;
 const SMALLEST_ON_SCREEN: f64 = 3e-4;
 /// Mip levels of a weather map, for far views and soft shadows.
 const WEATHER_MIP_LEVELS: u32 = 4;
+/// The cloud map of a body without one of its own.
+const SHARED_CLOUD_MAP: &str = "clouds/fair";
+
+/// A cloud map from a mod's files, or why not.
+fn read_cloud_map(content: &osp_mods::Content, path: &str) -> Result<CloudMap, String> {
+    let read = |file: String| {
+        let found = content
+            .resolve_file(&file)
+            .ok_or_else(|| format!("no {file} in any mod"))?;
+        let bytes = std::fs::read(found).map_err(|e| format!("{file}: {e}"))?;
+        Image::from_buffer(
+            &bytes,
+            ImageType::Extension("png"),
+            CompressedImageFormats::NONE,
+            false,
+            ImageSampler::Default,
+            RenderAssetUsages::RENDER_WORLD,
+        )
+        .map_err(|e| format!("{file}: {e}"))
+    };
+    let (positive, negative) = (read(format!("{path}P.png"))?, read(format!("{path}N.png"))?);
+    let size = positive.width() as usize;
+    if positive.height() as usize != size || negative.size() != positive.size() {
+        return Err(format!("{path}: its two images should be the same square"));
+    }
+    let (Some(positive), Some(negative)) = (&positive.data, &negative.data) else {
+        return Err(format!("{path}: no data"));
+    };
+    Ok(CloudMap::from_two_textures(size, 4, positive, negative))
+}
+
+/// A cloud map as a filterable cubemap with all its mips, one channel.
+fn cloud_map_image(map: &CloudMap) -> Image {
+    let levels = map.size.ilog2() + 1;
+    let mut data = Vec::with_capacity(map.data.len() * 4 / 3 + 64);
+    for face in map.data.chunks(map.size * map.size) {
+        let (mut level, mut size) = (face.to_vec(), map.size);
+        data.extend_from_slice(&level);
+        while size > 1 {
+            let half = size / 2;
+            let mut next = vec![0u8; half * half];
+            for y in 0..half {
+                for x in 0..half {
+                    let at = |dx: usize, dy: usize| level[(2 * y + dy) * size + 2 * x + dx] as u32;
+                    next[y * half + x] = ((at(0, 0) + at(1, 0) + at(0, 1) + at(1, 1)) / 4) as u8;
+                }
+            }
+            data.extend_from_slice(&next);
+            level = next;
+            size = half;
+        }
+    }
+    let mut image = Image::default();
+    image.texture_descriptor.size = Extent3d {
+        width: map.size as u32,
+        height: map.size as u32,
+        depth_or_array_layers: 6,
+    };
+    image.texture_descriptor.format = TextureFormat::R8Unorm;
+    image.texture_descriptor.mip_level_count = levels;
+    image.data = Some(data);
+    image.asset_usage = RenderAssetUsages::RENDER_WORLD;
+    image.texture_view_descriptor = Some(TextureViewDescriptor {
+        dimension: Some(TextureViewDimension::Cube),
+        ..default()
+    });
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        mag_filter: ImageFilterMode::Linear,
+        min_filter: ImageFilterMode::Linear,
+        mipmap_filter: ImageFilterMode::Linear,
+        ..default()
+    });
+    image
+}
+
+/// The cloud map's axes from a body's fixed axes, and its second copy's from those.
+pub fn map_turns(def: &CloudsDef) -> (Mat3, Mat3) {
+    let (first, second) = osp_sim::clouds::map_turns(def.seed);
+    (
+        Mat3::from_quat(first.as_quat()),
+        Mat3::from_quat(second.as_quat()),
+    )
+}
 
 pub struct AtmospherePlugin;
 
@@ -117,12 +204,49 @@ impl Plugin for AtmospherePlugin {
                     .collect()
             })
         };
+        // Each map once, whoever else uses it. What a map says also goes for the shade under it.
+        let mut maps: HashMap<String, Option<CloudMap>> = HashMap::new();
+        {
+            let content = &app.world().resource::<GameContent>().0;
+            for (_, _, clouds) in &tables {
+                let Some(clouds) = clouds else { continue };
+                let path = clouds.def.map.as_deref().unwrap_or(SHARED_CLOUD_MAP);
+                maps.entry(path.to_owned()).or_insert_with(|| {
+                    match read_cloud_map(content, path) {
+                        Ok(map) => Some(map),
+                        Err(why) => {
+                            warn!("cloud map: {why}");
+                            None
+                        }
+                    }
+                });
+            }
+        }
+        let mut tables = tables;
+        for (_, _, clouds) in &mut tables {
+            if let Some(clouds) = clouds
+                && let Some(Some(map)) = clouds.def.map.as_deref().and_then(|path| maps.get(path))
+            {
+                clouds.weather.take_cover(map, clouds.def.seed);
+            }
+        }
         let mut images = app.world_mut().resource_mut::<Assets<Image>>();
-        let airs = tables
+        let map_images: HashMap<String, Handle<Image>> = maps
             .into_iter()
-            .map(|(id, air, clouds)| (id, BodyAir::new(air, clouds, &mut images)))
+            .filter_map(|(path, map)| Some((path, images.add(cloud_map_image(&map?)))))
             .collect();
         let no_weather = images.add(clear_cubemap());
+        let airs = tables
+            .into_iter()
+            .map(|(id, air, clouds)| {
+                let map = clouds
+                    .as_ref()
+                    .and_then(|c| map_images.get(c.def.map.as_deref().unwrap_or(SHARED_CLOUD_MAP)))
+                    .cloned()
+                    .unwrap_or_else(|| no_weather.clone());
+                (id, BodyAir::new(air, clouds, map, &mut images))
+            })
+            .collect();
         app.insert_resource(BodyAirs { airs, no_weather })
             .init_resource::<SkyDraws>()
             .add_plugins(ExtractResourcePlugin::<SkyDraws>::default())
@@ -212,11 +336,19 @@ pub struct BodyAir {
     pub clouds: Option<BodyClouds>,
     /// The clouds' weather map; a placeholder without clouds.
     pub weather: Handle<Image>,
+    /// The clouds' map of what they look like.
+    pub cloud_map: Handle<Image>,
 }
 
 impl BodyAir {
-    fn new(air: Air, clouds: Option<BodyClouds>, images: &mut Assets<Image>) -> Self {
+    fn new(
+        air: Air,
+        clouds: Option<BodyClouds>,
+        cloud_map: Handle<Image>,
+        images: &mut Assets<Image>,
+    ) -> Self {
         Self {
+            cloud_map,
             uniform: AirUniform::new(&air.def, air.radius),
             transmittance: images.add(table_image(air.transmittance_table(), TRANSMITTANCE_SIZE)),
             multiple: images.add(table_image(air.multiple_table(), SKY_TABLE_SIZE)),
@@ -252,6 +384,7 @@ pub struct AirBindings {
     pub irradiance: Handle<Image>,
     pub uniform: AirUniform,
     pub weather: Handle<Image>,
+    pub cloud_map: Handle<Image>,
     /// `Clouds` in `shaders/atmosphere.wesl`.
     pub clouds: Vec4,
 }
@@ -273,6 +406,7 @@ impl BodyAirs {
         self.get(body).map_or_else(
             || AirBindings {
                 weather: self.no_weather.clone(),
+                cloud_map: self.no_weather.clone(),
                 ..default()
             },
             |air| AirBindings {
@@ -285,6 +419,7 @@ impl BodyAirs {
                 } else {
                     self.no_weather.clone()
                 },
+                cloud_map: air.cloud_map.clone(),
                 clouds: air.clouds_uniform(true),
             },
         )

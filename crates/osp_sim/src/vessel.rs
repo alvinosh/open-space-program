@@ -22,6 +22,7 @@
 //! translating forward ([`crate::rcs`]) after a coast.
 
 use glam::{DMat3, DQuat, DVec3};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
@@ -77,6 +78,8 @@ const SEPARATION_SPEED: f64 = 1.0;
 const FAIRING_SWING: f64 = 0.3;
 const FAIRING_PUSH: f64 = 0.5;
 const MAX_LOG: usize = 64;
+/// How far over the star's pole a vessel on display is, m: far from anything there is to see.
+const DISPLAY_DISTANCE: f64 = 1.5e13;
 
 #[derive(Debug, Error)]
 pub enum VesselError {
@@ -90,7 +93,7 @@ pub enum VesselError {
     NoRunway(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Motion {
     /// Standing on the ground: the base of the stack and the attitude, both in the
     /// body-fixed (rotating) frame.
@@ -103,7 +106,9 @@ pub enum Motion {
 }
 
 /// Stable identity of a vessel, unchanged as vessels come and go.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
 pub struct VesselId(pub u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,14 +165,14 @@ pub struct VesselEvent {
     pub kind: VesselEventKind,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub time: SimTime,
     pub message: String,
 }
 
 /// Instrument readings from the last physics step.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct FlightData {
     pub mass: f64,
     pub thrust: f64,
@@ -192,7 +197,7 @@ pub struct FlightData {
 
 /// The vessel's rotation: exact at `epoch`, and how it continues from there until a
 /// physics step changes it.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct AttitudeTrack {
     epoch: SimTime,
     state: Attitude,
@@ -200,7 +205,7 @@ struct AttitudeTrack {
     hold: Hold,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 enum Hold {
     /// Torque-free rotation.
     Free,
@@ -211,7 +216,7 @@ enum Hold {
     Tracking { frame: NavFrame, basis: DMat3 },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Vessel {
     pub name: String,
     /// Assigned by the universe the vessel is in.
@@ -479,6 +484,28 @@ impl Vessel {
         Ok(vessel)
     }
 
+    /// To be looked at rather than flown, out of the way of everything: far over the star's pole,
+    /// with its axes along the star's, standing up with its nose along +Z, or if it rolls on wheels
+    /// level with its nose along +X and its feet along -Z.
+    pub fn on_display(
+        craft: &CraftDef,
+        catalog: &PartCatalog,
+        system: &SolarSystem,
+        time: SimTime,
+    ) -> Result<Self, VesselError> {
+        let parent = system.root();
+        let body = system.body(parent);
+        let speed = (body.gm / DISPLAY_DISTANCE).sqrt();
+        let state = StateVector::new(DVec3::Z * DISPLAY_DISTANCE, DVec3::X * speed);
+        let motion = Motion::Coasting(Orbit::new(body.gm, time, state));
+        let mut vessel = Self::new(craft, catalog, parent, motion, DQuat::IDENTITY, time)?;
+        if gear::legs(&vessel.propulsion).iter().any(|leg| !leg.foot) {
+            vessel.attitude.state.orientation =
+                DQuat::from_mat3(&DMat3::from_cols(DVec3::NEG_Y, DVec3::NEG_Z, DVec3::X));
+        }
+        Ok(vessel)
+    }
+
     /// Flying through the air, as if just dropped from a carrier aircraft: nose along the
     /// flight path, feet towards the ground, wings level.
     pub fn in_flight(
@@ -516,6 +543,21 @@ impl Vessel {
         )?;
         vessel.record(time, format!("{} flying over {}", vessel.name, body.name));
         Ok(vessel)
+    }
+
+    /// Where on a circular orbit of `body` at `inclination`, its node at the equator's zero
+    /// (degrees), the sun is highest at `time`: the mean anomaly to start in daylight, degrees.
+    pub fn sunlit_anomaly(
+        system: &SolarSystem,
+        body: &str,
+        inclination: f64,
+        time: SimTime,
+    ) -> Option<f64> {
+        let id = system.find(body)?;
+        let to_sun = system.relative_state(system.root(), id, time).position;
+        let sun = system.body(id).rotation.equatorial_frame().inverse() * to_sun;
+        let (sin, cos) = inclination.to_radians().sin_cos();
+        Some((sun.y * cos + sun.z * sin).atan2(sun.x).to_degrees())
     }
 
     /// In orbit, from elements relative to the body's equator (or in the plane of a body
@@ -616,6 +658,11 @@ impl Vessel {
 
     pub fn is_landed(&self) -> bool {
         matches!(self.motion, Motion::Landed { .. })
+    }
+
+    /// When it left the ground, if it has.
+    pub fn lifted_off(&self) -> Option<SimTime> {
+        self.lifted_off
     }
 
     pub fn is_coasting(&self) -> bool {

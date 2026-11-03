@@ -596,7 +596,7 @@ pub struct GearLegDef {
 }
 
 /// A part, built: measured, sized and weighed.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuiltPart {
     pub name: String,
     pub geometry: Arc<Geometry>,
@@ -613,7 +613,7 @@ pub struct BuiltPart {
 }
 
 /// A piece of a part's geometry as built.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Piece {
     /// Its element's name.
     pub element: String,
@@ -623,7 +623,7 @@ pub struct Piece {
     pub mass: Mass,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Component {
     Storage(Storage),
     /// Propellant ratios normalised. It pushes the part along +Z, from its origin.
@@ -650,7 +650,7 @@ pub enum Component {
 }
 
 /// A coat on a part's walls, as built.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SurfaceLayer {
     /// The walls it covers, by element name.
     pub walls: Vec<String>,
@@ -663,7 +663,7 @@ pub struct SurfaceLayer {
     pub mass: f64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Battery {
     /// kJ.
     pub charge: f64,
@@ -671,14 +671,14 @@ pub struct Battery {
     pub technology: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Container {
     /// Its inside nodes, in the part's frame.
     pub nodes: Vec<Node>,
 }
 
 /// A lifting surface as its loft lays it out: a panel between each pair of stations.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LiftingSurface {
     /// The loft's element name.
     pub loft: String,
@@ -691,7 +691,7 @@ pub struct LiftingSurface {
 /// One panel of a lifting surface, in the part's frame. A loft that lifts has its
 /// section's chord along its x, the leading edge first, and lifts towards its −y, as the
 /// `wing` preset's does.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Planform {
     /// The leading edge at its inner and outer station, m.
     pub root: DVec3,

@@ -8,6 +8,7 @@
 //! capture bump like anything else ([`crate::contact`]).
 
 use glam::{DQuat, DVec3};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     component::PortKind,
@@ -44,7 +45,7 @@ pub(crate) const LATCH_ANGLE: f64 = 1.0 * std::f64::consts::PI / 180.0;
 pub(crate) const LATCH_TIME: f64 = 8.0;
 
 /// A docking port on a vessel, in its assembly frame.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DockingPort {
     pub part: PartId,
     pub node: String,

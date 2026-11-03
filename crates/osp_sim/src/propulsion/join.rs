@@ -22,6 +22,7 @@
 use std::{collections::BTreeSet, ops::Range};
 
 use glam::DVec3;
+use serde::{Deserialize, Serialize};
 
 use super::{Propulsion, Released, Trigger, thrust_axis};
 use crate::{
@@ -40,7 +41,7 @@ pub struct Port<'a> {
 
 /// A vessel that joined this one, and what it takes back when it lets go. Its `armed`,
 /// `triggers` and `control_part` are in its own numbers; they are not in use until then.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Joined {
     /// Its part at the join, which hangs from this vessel's.
     pub part: PartId,

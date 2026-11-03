@@ -18,6 +18,7 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
@@ -37,7 +38,7 @@ use crate::{
     orbit::{Orbit, StateVector},
     propulsion::Port,
     rendezvous::Target,
-    staging::Activation,
+    staging::{Activation, Sequences},
     system::{SolarSystem, SystemError},
     terrain::{self, HeightSource},
     time::{SimTime, Ticks},
@@ -88,7 +89,7 @@ pub enum UniverseError {
 }
 
 /// Two ports that have caught, being drawn together.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct SoftCapture {
     /// The vessel that stays the vessel, and its port.
     stay: VesselId,
@@ -137,6 +138,50 @@ pub struct Universe {
     captures: Vec<SoftCapture>,
     time: SimTime,
     next_id: u64,
+}
+
+/// `craft` at `start`, at `time`.
+fn spawn_vessel(
+    craft: &CraftDef,
+    catalog: &PartCatalog,
+    system: &SolarSystem,
+    sites: &[LaunchSiteDef],
+    start: &StartDef,
+    time: SimTime,
+) -> Result<Vessel, UniverseError> {
+    let site = |id: &str| {
+        sites
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| UniverseError::UnknownSite(id.to_owned()))
+    };
+    Ok(match start {
+        StartDef::LaunchSite(start) => {
+            Vessel::on_launch_site(craft, catalog, system, site(&start.site)?, time)?
+        }
+        StartDef::Runway(start) => {
+            Vessel::on_runway(craft, catalog, system, site(&start.site)?, time)?
+        }
+        StartDef::Orbit(orbit) => Vessel::in_orbit(craft, catalog, system, orbit, time)?,
+        StartDef::Flight(flight) => Vessel::in_flight(craft, catalog, system, flight, time)?,
+    })
+}
+
+/// Everything that happens in a universe, for saving: all of it but the solar system, the ground
+/// stations and the colliders, which come from the records as they are loaded.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Snapshot {
+    /// The bodies it was saved among, in the order vessels' parents number them.
+    bodies: Vec<String>,
+    time: SimTime,
+    next_id: u64,
+    link_ticks: u32,
+    vessels: Vec<Vessel>,
+    focus: Option<VesselId>,
+    mission: Option<Mission>,
+    tutorial: Option<Tutorial>,
+    clear_of: BTreeSet<(VesselId, VesselId)>,
+    captures: Vec<SoftCapture>,
 }
 
 impl Universe {
@@ -726,24 +771,7 @@ impl Universe {
         let time = SimTime::from_seconds(scenario.start_time);
         let spawn = |craft: &str, start: &StartDef| -> Result<Vessel, UniverseError> {
             let craft = craft_of(craft).map_err(UniverseError::Craft)?;
-            let site = |id: &str| {
-                sites
-                    .iter()
-                    .find(|s| s.id == id)
-                    .ok_or_else(|| UniverseError::UnknownSite(id.to_owned()))
-            };
-            Ok(match start {
-                StartDef::LaunchSite(start) => {
-                    Vessel::on_launch_site(&craft, catalog, system, site(&start.site)?, time)?
-                }
-                StartDef::Runway(start) => {
-                    Vessel::on_runway(&craft, catalog, system, site(&start.site)?, time)?
-                }
-                StartDef::Orbit(orbit) => Vessel::in_orbit(&craft, catalog, system, orbit, time)?,
-                StartDef::Flight(flight) => {
-                    Vessel::in_flight(&craft, catalog, system, flight, time)?
-                }
-            })
+            spawn_vessel(&craft, catalog, system, sites, start, time)
         };
         let mut vessels = vec![spawn(&scenario.craft, &scenario.start)?];
         for _ in 0..scenario.sequences_done {
@@ -799,6 +827,81 @@ impl Universe {
 
     pub fn time(&self) -> SimTime {
         self.time
+    }
+
+    /// Put `craft` at `start` and fly it, its sequences as `sequences` if given. The game carries
+    /// on around it, or with `new_game` starts over at that time with nothing else in it. On an
+    /// error nothing changes.
+    #[allow(clippy::too_many_arguments)]
+    pub fn launch(
+        &mut self,
+        sites: &[LaunchSiteDef],
+        catalog: &PartCatalog,
+        craft: &CraftDef,
+        start: &StartDef,
+        sequences: Option<Sequences>,
+        new_game: Option<SimTime>,
+    ) -> Result<VesselId, UniverseError> {
+        let time = new_game.unwrap_or(self.time);
+        let mut vessel = spawn_vessel(craft, catalog, &self.system, sites, start, time)?;
+        if let Some(sequences) = sequences {
+            vessel.propulsion.sequences = sequences;
+        }
+        // In a game, nothing flies without avionics or a crew to fly it.
+        vessel.propulsion.require_control();
+        if new_game.is_some() {
+            self.vessels.clear();
+            self.clear_of.clear();
+            self.captures.clear();
+            self.mission = None;
+            self.tutorial = None;
+            self.time = time;
+        }
+        let id = self.add_vessel(vessel);
+        self.focus = Some(id);
+        Ok(id)
+    }
+
+    fn body_names(&self) -> Vec<String> {
+        let bodies = self.system.bodies().iter();
+        bodies.map(|body| body.name.clone()).collect()
+    }
+
+    /// Everything that happens here, for saving.
+    pub fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            bodies: self.body_names(),
+            time: self.time,
+            next_id: self.next_id,
+            link_ticks: self.link_ticks,
+            vessels: self.vessels.clone(),
+            focus: self.focus,
+            mission: self.mission.clone(),
+            tutorial: self.tutorial.clone(),
+            clear_of: self.clear_of.clone(),
+            captures: self.captures.clone(),
+        }
+    }
+
+    /// Carry on from `snapshot`, in this solar system. It must be among the same bodies as it was
+    /// saved among, as vessels' parents number them; if not, nothing changes.
+    pub fn restore(&mut self, snapshot: Snapshot) -> Result<(), String> {
+        if snapshot.bodies != self.body_names() {
+            return Err("it was saved with other bodies in the solar system".into());
+        }
+        if snapshot.vessels.is_empty() {
+            return Err("it has no vessels".into());
+        }
+        self.time = snapshot.time;
+        self.next_id = snapshot.next_id;
+        self.link_ticks = snapshot.link_ticks;
+        self.vessels = snapshot.vessels;
+        self.focus = snapshot.focus;
+        self.mission = snapshot.mission;
+        self.tutorial = snapshot.tutorial;
+        self.clear_of = snapshot.clear_of;
+        self.captures = snapshot.captures;
+        Ok(())
     }
 
     /// Rails warp is possible only when every vessel is landed or coasting with engines off,

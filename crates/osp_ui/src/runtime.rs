@@ -62,13 +62,16 @@ impl ActionState {
 
 /// Which layouts are open (`ui.toggle:<id>`, `ui.show:<id>`, `ui.hide:<id>`), which
 /// groups are hidden (`ui.toggle_group:<group>`, ...) and which popups are pinned
-/// (`ui.pin:<id>`). A layout shows when it is open and its group is not hidden. Copies of
-/// instanced layouts open and close by their [`crate::layout::instance_id`].
+/// (`ui.pin:<id>`). A layout shows when it is open and its group is not hidden, or it is one of
+/// those `kept` when its group is. Copies of instanced layouts open and close by their
+/// [`crate::layout::instance_id`].
 #[derive(Resource, Default, Debug)]
 pub struct LayoutVisibility {
     pub layouts: HashMap<String, bool>,
     pub hidden_groups: HashSet<String>,
     pub pinned: HashSet<String>,
+    /// Layouts, copies of them included, that stay up while their group is hidden.
+    pub kept: HashSet<String>,
 }
 
 impl LayoutVisibility {
@@ -78,7 +81,10 @@ impl LayoutVisibility {
     }
 
     pub fn visible(&self, layout: &str, group: Option<&str>) -> bool {
-        self.shown(layout) && group.is_none_or(|g| !self.hidden_groups.contains(g))
+        let template = layout.split(':').next().unwrap_or(layout);
+        self.shown(layout)
+            && (group.is_none_or(|g| !self.hidden_groups.contains(g))
+                || self.kept.contains(template))
     }
 
     /// Open the layout `id` if it is closed, close it if it is open.
@@ -1626,6 +1632,29 @@ pub fn publish_inspector(shown: Res<LayoutVisibility>, mut data: ResMut<UiData>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_kept_layout_stays_up_while_its_group_is_hidden() {
+        let mut shown = LayoutVisibility::default();
+        for layout in ["staging", "navball", "part_info:1-2"] {
+            shown.layouts.insert(layout.to_owned(), true);
+        }
+        let visible = |shown: &LayoutVisibility, layout| shown.visible(layout, Some("flight"));
+        assert!(visible(&shown, "staging") && visible(&shown, "navball"));
+
+        shown.hidden_groups.insert("flight".to_owned());
+        assert!(!visible(&shown, "staging") && !visible(&shown, "part_info:1-2"));
+
+        shown.kept.extend(["staging".to_owned(), "part_info".to_owned()]);
+        assert!(visible(&shown, "staging"));
+        // Copies of a kept layout stay up too, and what is not kept stays hidden.
+        assert!(visible(&shown, "part_info:1-2"));
+        assert!(!visible(&shown, "navball"));
+
+        // Kept is only about the group: what is closed stays closed.
+        shown.layouts.insert("staging".to_owned(), false);
+        assert!(!visible(&shown, "staging"));
+    }
 
     fn bar(min: f64, max: f64) -> BoundBar {
         BoundBar {

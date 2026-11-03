@@ -6,12 +6,14 @@
 
 use std::f64::consts::FRAC_PI_2;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     data::{ShellDef, ShellProfile},
     geometry::curve::remaining,
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Shell {
     pub name: String,
     /// Height of its base above the base of its stage, m.

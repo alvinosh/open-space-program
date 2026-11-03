@@ -3,8 +3,8 @@
 //! A component is a definition in the craft file ([`crate::component::ComponentDef`]), a built
 //! form ([`crate::component::Component`]), and, if it holds state or does something over time,
 //! a [`System`] here. [`KINDS`] is the list of them: a new system is a type that implements
-//! [`System`] and a line in it, and the physics, the part window and the smoke report pick it up
-//! with no code of their own for it. A component no one knows is an error when the craft loads,
+//! [`System`] and a line in it, and the physics, the part window, the smoke report and saved
+//! games pick it up with no code of their own for it. A component no one knows is an error when the craft loads,
 //! which names it.
 //!
 //! [`Systems`] holds the state part by part, next to the tanks and engines of the
@@ -15,6 +15,8 @@ mod crew;
 mod electric;
 
 use std::{any::Any, collections::BTreeMap, fmt::Debug};
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::DeserializeOwned, ser};
 
 pub use self::{
     battery::Battery,
@@ -39,8 +41,19 @@ pub struct Reading {
     pub unit: &'static str,
 }
 
+/// A system's state as bytes, for a saved game; [`Kind::load`] reads it back.
+pub trait SavedState {
+    fn saved_state(&self) -> Result<Vec<u8>, String>;
+}
+
+impl<T: Serialize> SavedState for T {
+    fn saved_state(&self) -> Result<Vec<u8>, String> {
+        rmp_serde::to_vec_named(self).map_err(|e| e.to_string())
+    }
+}
+
 /// A component at run time.
-pub trait System: Debug + Send + Sync {
+pub trait System: SavedState + Debug + Send + Sync {
     /// Its component's name in a craft file.
     fn kind(&self) -> &'static str;
 
@@ -137,10 +150,46 @@ pub enum Power {
     Load { watts: f64, priority: u8 },
 }
 
-/// A kind of system: which built components become one, and how, and the actions it can offer.
+/// A kind of system: which built components become one, and how, the actions it can offer, and
+/// what a saved game knows it by.
 pub struct Kind {
     pub of: fn(&Component, &Part) -> Option<Box<dyn System>>,
     pub actions: &'static [Action],
+    /// Its [`System::kind`].
+    pub name: &'static str,
+    pub load: fn(&[u8]) -> Result<Box<dyn System>, String>,
+}
+
+/// Read a system saved by [`SavedState`].
+fn load<T: System + DeserializeOwned + 'static>(state: &[u8]) -> Result<Box<dyn System>, String> {
+    let system: T = rmp_serde::from_slice(state).map_err(|e| e.to_string())?;
+    Ok(Box::new(system))
+}
+
+/// A system in a saved game: its kind, and its state as that kind writes it.
+#[derive(Serialize, Deserialize)]
+struct SavedSystem {
+    kind: String,
+    state: Vec<u8>,
+}
+
+impl Serialize for Box<dyn System> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        SavedSystem {
+            kind: self.kind().to_owned(),
+            state: (**self).saved_state().map_err(ser::Error::custom)?,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Box<dyn System> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let saved = SavedSystem::deserialize(deserializer)?;
+        let kind = (KINDS.iter().find(|k| k.name == saved.kind))
+            .ok_or_else(|| de::Error::custom(format!("no system is called `{}`", saved.kind)))?;
+        (kind.load)(&saved.state).map_err(de::Error::custom)
+    }
 }
 
 /// Every kind of system there is.
@@ -148,39 +197,55 @@ pub const KINDS: &[Kind] = &[
     Kind {
         of: battery::of,
         actions: &[],
+        name: "battery",
+        load: load::<Battery>,
     },
     Kind {
         of: crew::of,
         actions: &[],
+        name: "crew",
+        load: load::<Crew>,
     },
     Kind {
         of: electric::fuel_cell,
         actions: &[],
+        name: "fuel_cell",
+        load: load::<FuelCell>,
     },
     Kind {
         of: electric::solar_array,
         actions: &[],
+        name: "solar_array",
+        load: load::<SolarArray>,
     },
     Kind {
         of: electric::rtg,
         actions: &[],
+        name: "rtg",
+        load: load::<Rtg>,
     },
     Kind {
         of: electric::load,
         actions: &[],
+        name: "load",
+        load: load::<Load>,
     },
     Kind {
         of: electric::avionics,
         actions: &[],
+        name: "avionics",
+        load: load::<Avionics>,
     },
     Kind {
         of: electric::antenna,
         actions: &[],
+        name: "antenna",
+        load: load::<Antenna>,
     },
 ];
 
 /// The systems of a vessel, by the part each is on.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Systems {
     parts: BTreeMap<PartId, Vec<Box<dyn System>>>,
     /// The parts with systems on them that power and data pass between.
@@ -561,13 +626,13 @@ mod tests {
     }
 
     /// A source that makes `watts` while the sun shines on it, for the network's tests.
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Serialize)]
     struct Source {
         watts: f64,
     }
 
     /// A load that remembers whether it has power.
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     struct Load {
         watts: f64,
         priority: u8,
@@ -952,7 +1017,7 @@ mod tests {
     }
 
     /// A system nobody has heard of, with an action nobody has heard of.
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Serialize)]
     struct Wiggler {
         wiggles: u32,
     }
@@ -1027,5 +1092,35 @@ mod tests {
               components: [{ flux_capacitor: {} }] } ] }"#;
         let error = json5::from_str::<CraftDef>(text).unwrap_err().to_string();
         assert!(error.contains("flux_capacitor"), "{error}");
+    }
+
+    #[test]
+    fn a_system_is_saved_under_its_kind_and_reads_back_as_itself() {
+        let battery: Box<dyn System> = Box::new(Battery {
+            capacity: 2_000.0,
+            charge: 1_500.0,
+        });
+        let saved = rmp_serde::to_vec_named(&battery).unwrap();
+        let read: Box<dyn System> = rmp_serde::from_slice(&saved).unwrap();
+        assert_eq!(read.kind(), "battery");
+        assert_eq!(
+            read.any().downcast_ref(),
+            battery.any().downcast_ref::<Battery>()
+        );
+
+        // One nobody has heard of cannot be read: better that than a vessel missing a system.
+        let wiggler: Box<dyn System> = Box::new(Wiggler { wiggles: 3 });
+        let saved = rmp_serde::to_vec_named(&wiggler).unwrap();
+        let read = rmp_serde::from_slice::<Box<dyn System>>(&saved);
+        assert!(read.unwrap_err().to_string().contains("wiggler"));
+    }
+
+    #[test]
+    fn every_kind_of_system_can_be_found_by_the_name_it_goes_by() {
+        let mut names: Vec<_> = KINDS.iter().map(|kind| kind.name).collect();
+        names.sort();
+        let count = names.len();
+        names.dedup();
+        assert_eq!(names.len(), count, "two kinds share a name");
     }
 }
