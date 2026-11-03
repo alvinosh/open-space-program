@@ -12,7 +12,10 @@ use bevy::{
     shader::{ShaderDefVal, ShaderRef, load_shader_library},
 };
 
-use crate::{atmosphere::view_steps, settings::GraphicsSettings};
+use crate::{
+    atmosphere::{AirUniform, view_steps},
+    settings::{GraphicsSettings, Quality},
+};
 
 pub type TerrainMaterial = ExtendedMaterial<StandardMaterial, TerrainExtension>;
 
@@ -30,21 +33,27 @@ impl Plugin for TerrainMaterialPlugin {
     }
 }
 
-/// The haze's steps on every chunk (new chunks get them when they spawn).
+/// The reflected sky's steps and whether clouds shade the ground, on every chunk (new chunks get
+/// them when they spawn).
 fn apply_effects_setting(
     settings: Res<GraphicsSettings>,
     mut materials: ResMut<Assets<TerrainMaterial>>,
 ) {
     let steps = view_steps(settings.effects) as f32;
+    let clouds = settings.clouds != Quality::Off;
     // Only the ones that differ: `iter_mut` would mark every chunk's material modified.
     let stale: Vec<_> = materials
         .iter()
-        .filter(|(_, m)| m.extension.params.quality.x != steps)
+        .filter(|(_, m)| {
+            m.extension.params.quality.x != steps || (m.extension.clouds.z > 0.0) != clouds
+        })
         .map(|(id, _)| id)
         .collect();
     for id in stale {
         if let Some(mut material) = materials.get_mut(id) {
             material.extension.params.quality.x = steps;
+            material.extension.clouds.z = f32::from(u8::from(clouds));
+            material.extension.clouds.y = material.extension.clouds.z * material.extension.clouds.w;
         }
     }
 }
@@ -55,10 +64,9 @@ pub struct TerrainParams {
     pub planet: Vec4,
     /// xyz: chunk centre in body-fixed axes modulo `planet::DETAIL_PERIOD`.
     pub detail_origin: Vec4,
-    /// x: chunk level, y: colour data level, z: cover data level, w: 1 for an Earth-like
-    /// atmosphere.
+    /// x: chunk level, y: colour data level, z: cover data level, w: 1 if the body has air.
     pub levels: Vec4,
-    /// x: ray-marching steps for the haze (`atmosphere::view_steps`).
+    /// x: ray-marching steps for the sky reflected in water (`atmosphere::view_steps`).
     pub quality: Vec4,
 }
 
@@ -77,10 +85,25 @@ pub struct TerrainExtension {
     /// Land-cover class per sample.
     #[texture(105, sample_type = "u_int")]
     pub cover: Handle<Image>,
-    /// The body's sunlight transmittance (`atmosphere::TransmittanceLut`).
+    /// The body's air (`atmosphere::BodyAir`, as `shaders/atmosphere.wesl` binds it).
     #[texture(110)]
     #[sampler(111)]
     pub transmittance: Handle<Image>,
+    #[texture(112)]
+    pub multiple: Handle<Image>,
+    #[texture(113)]
+    pub irradiance: Handle<Image>,
+    #[uniform(114)]
+    pub air: AirUniform,
+    /// The body's weather and where its clouds are (`atmosphere::BodyAir`).
+    #[texture(115, dimension = "cube")]
+    pub weather: Handle<Image>,
+    #[uniform(116)]
+    pub clouds: Vec4,
+    /// The waves' slopes and foam (`ocean`), shared by every chunk.
+    #[texture(120, dimension = "2d_array")]
+    #[sampler(121)]
+    pub waves: Handle<Image>,
 }
 
 impl MaterialExtension for TerrainExtension {

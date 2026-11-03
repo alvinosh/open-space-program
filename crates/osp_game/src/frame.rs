@@ -150,27 +150,31 @@ fn apply_shadow_settings(
     sun: Single<(&mut DirectionalLight, &mut CascadeShadowConfig), With<Sunlight>>,
 ) {
     let (size, num_cascades, maximum_distance) = match settings.shadows {
-        Quality::Off => (map.size, 1, 0.0),
+        // Nothing casts, but the terrain darkens itself through the shadow factor, which Bevy only
+        // applies to a light with shadows.
+        Quality::Off => (256, 1, 1.0),
         Quality::Low => (1024, 2, 1_000.0),
         Quality::Medium => (2048, 3, 2_500.0),
         Quality::High => (2048, 4, 4_000.0),
         Quality::Ultra => (4096, 4, 4_000.0),
     };
     let (mut light, mut cascades) = sun.into_inner();
-    light.shadow_maps_enabled = settings.shadows != Quality::Off;
+    light.shadow_maps_enabled = true;
     if map.size != size {
         map.size = size;
     }
-    if light.shadow_maps_enabled {
-        *cascades = CascadeShadowConfigBuilder {
-            num_cascades,
-            minimum_distance: 0.5,
-            first_cascade_far_bound: 40.0,
-            maximum_distance,
-            overlap_proportion: 0.2,
-        }
-        .build();
+    *cascades = CascadeShadowConfigBuilder {
+        num_cascades,
+        minimum_distance: 0.5,
+        first_cascade_far_bound: if settings.shadows == Quality::Off {
+            maximum_distance
+        } else {
+            40.0
+        },
+        maximum_distance,
+        overlap_proportion: 0.2,
     }
+    .build();
 }
 
 pub fn update_sunlight(

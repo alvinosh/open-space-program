@@ -67,7 +67,7 @@ parts of it instead.
 
 | Collection | Contents | Notes |
 | --- | --- | --- |
-| `bodies` | Planets, moons, stars | Keplerian `orbit` (J2000 ecliptic, degrees), IAU `rotation`, optional `atmosphere`, `terrain` dataset and `max_terrain_height` (m) |
+| `bodies` | Planets, moons, stars | Keplerian `orbit` (J2000 ecliptic, degrees), IAU `rotation`, optional `atmosphere`, `scattering` (the sky, see [Skies](#skies)), `terrain` dataset and `max_terrain_height` (m) |
 | `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `response`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }`, `length` and `exit_diameter` (m), `exit_pressure` (Pa), `plume`, `turbine_exhaust`, `model`, `model_scale` (draw the model this many times its size), `nodes` (see below); see [Engine response and plumes](#engine-response-and-plumes), optional `thrust_curve` ([share of propellant left, share of full thrust] points, as a solid's) |
 | `plumes` | Exhaust looks | `propellants` it is the exhaust of (alternatives with `\|`), `kinds`, `fallback`, `core`, `flame` and `shock` colours (linear RGB), `luminance` (cd/m² per m at full thrust), `soot` (0..1), `temperature` (K), `smoke` (colour), `haze` (0..1); see [Engine response and plumes](#engine-response-and-plumes) |
 | `resources` | Propellants and gases | `density` (kg/m³ as stored), storage `temperature` (K) and `pressure` (Pa) |
@@ -820,7 +820,46 @@ wins. Real scale in metres, +Y up (Blender's default glTF export from Z-up):
 Without a model the game draws a stand-in of the right size. The stock models are built by
 scripts in `tools/blender/`.
 
-### Missions
+### Skies
+
+A body's `scattering` says what its air does to light. `atmosphere` is the air a vessel flies through, for drag and lift; `scattering` is the air you see, and air without it is not drawn. The sky, the haze over the ground, sunsets, and how the Sun lights the ground and the vessels all follow from it, in one model for every body. Coefficients are per metre at the surface, as `[red, green, blue]`:
+
+| Field | Meaning |
+| --- | --- |
+| `height` | Top of the air above the mean radius, m |
+| `rayleigh`, `rayleigh_height` | Scattering by molecules and its scale height (m): more in blue makes a blue sky |
+| `mie`, `mie_absorption`, `mie_height` | Scattering and absorption by aerosols, haze or dust, and their scale height (m). Absorbing more blue makes a red sky |
+| `mie_g` | How much aerosols scatter forward, -1 to 1, per colour. Higher in blue gives a blue glow around the Sun, as on Mars |
+| `ozone`, `ozone_height`, `ozone_width` | Optional band of absorption: its peak, the height of the peak and how far it reaches either way (m). Keeps Earth's twilight sky blue |
+| `ground_albedo` | Share of light the ground sends back up |
+
+Thick air is fine as long as its vertical optical depth (`mie * mie_height`) stays around 5 or less. Beyond that the sky gets dark and the sunlight stops reaching the ground, because the model is at its best with light that mostly gets through. Venus in `assets/core/bodies/solar_system.json5` shows how to fake a far thicker one.
+
+### Clouds
+
+A body's `clouds` draw a layer of volumetric cloud and shade what is under it. Without them there are none.
+
+| Field | Meaning |
+| --- | --- |
+| `base`, `top` | Bottom and top of the layer above the mean radius, m. Most clouds stay low in it; only deep storms reach the top |
+| `density` | Extinction inside a dense cloud, per metre: about 0.025 for water clouds |
+| `albedo` | Share of the light each scattering keeps, `[red, green, blue]` |
+| `bands` | Share of the sky covered by latitude, `[latitude, share]` from the equator to the pole, the same in both hemispheres |
+| `storms`, `storm_latitude` | Lows with their fronts, and the band of latitudes they keep to (degrees) |
+| `hurricanes` | Hurricanes, in the tropics |
+| `wind` | How fast the clouds' fine structure moves, m/s |
+| `cirrus_height`, `cirrus` | Height of the thin high layer (m) and how much of it there is, 0 to 1 |
+| `seed` | Picks the pattern |
+
+### Seas
+
+A body's `ocean` sets the waves on any water it has, from the JONSWAP spectrum: `wind_speed` (m/s), `wind_direction` (degrees), `fetch` (how much open water the wind has crossed, m) and `gravity` (m/s²).
+
+### Re-entry
+
+A vessel coming in fast glows by itself, from its speed, the air's density and its own shape. `scattering.plasma` (`[red, green, blue]`) sets the colour a body's air burns; the default is the orange of air.
+
+## Missions
 
 A scenario with `goals` is a mission: the game says what there is to do, ticks goals off as
 they are met, and shows the results when it ends. A scenario without goals is a start state and

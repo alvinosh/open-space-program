@@ -2,16 +2,17 @@
   "id": "T119",
   "title": "Ocean: FFT spectrum, foam, refraction, underwater",
   "kind": "feature",
-  "status": "todo",
+  "status": "in_progress",
   "area": "rendering",
   "size": "L",
   "parent": "T067",
   "depends_on": [],
   "refs": [
-    "Early feature checklist (since removed), Phase 8"
+    "Early feature checklist (since removed), Phase 8",
+    "references/Scatterer (technique only, see T067)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
+  "updated": "2026-11-03",
   "done": null,
   "milestone": "M5",
   "priority": 86

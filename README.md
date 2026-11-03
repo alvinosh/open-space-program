@@ -36,6 +36,22 @@ Planned work and open problems are in `.tasks/` (one folder per task, with depen
 
 The toolchain is pinned in `rust-toolchain.toml` (Bevy 0.20 needs Rust 1.97.1+).
 
+## Sky, clouds and sea
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/look_pad.jpg" alt="The rocket on the pad under fair-weather cumulus"><br><b>Clouds</b>: volumetric, from a weather map of the whole planet, with shadows on the ground and in the air.</td>
+<td width="50%"><img src="docs/screenshots/look_dusk.jpg" alt="Sunset over the Cape with long shadows"><br><b>Sky</b>: full multiple scattering for each body with air, and all of the scene sits in the same haze.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/look_earth.jpg" alt="Earth from 12,000 km with hurricanes and cloud bands"><br><b>Earth from far out</b>: storm tracks, rain belts and hurricanes.</td>
+<td><img src="docs/screenshots/look_sea.jpg" alt="Waves on the open sea under a cloud deck"><br><b>Sea</b>: FFT waves from a measured wave spectrum, with the sky and clouds in them.</td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/screenshots/look_entry.jpg" alt="A vessel entering the atmosphere with a glowing wake"><br><b>Re-entry</b> (first version): shock and wake shaped by the vessel's own hull, as hot as its speed and the air make it.</td>
+</tr>
+</table>
+
 ## Scenarios
 
 The main menu lists these; `OSP_SCENARIO=<id>` starts one straight away.
@@ -144,14 +160,15 @@ periapsis at the target, and Circ Pe plans the capture there.
 The main menu's Graphics page (Esc, then Graphics) picks a preset (Low, Medium, High,
 Ultra) or each setting on its own: render scale (the 3D view at 50 to 100% of the window's
 resolution, with the UI kept sharp), anti-aliasing (off, FXAA or 4x MSAA), shadows, bloom,
-the sky's, haze's and plumes' ray-marching steps, terrain detail, how far trees reach,
+the sky's, haze's and plumes' ray-marching steps, clouds, terrain detail, how far trees reach,
 vsync and a frame rate cap. Changes apply at once and the frame rate under the menu updates
 live. The first run picks a preset for the GPU; the settings are saved in `settings.json`
 in the platform's config directory (on macOS `~/Library/Application Support/OpenSpaceProgram`).
 
 Measured on the pad at 2560x1440 on an Apple M5: Low 3.7 ms, Medium 5.9 ms, High 12.2 ms,
-Ultra 14.4 ms a frame. When the GPU sets the pace, render scale and anti-aliasing matter
-most; on Apple GPUs MSAA is especially expensive.
+Ultra 14.4 ms a frame. Those figures are from before the clouds, the current sky and the FFT
+sea, which cost more and have not been measured yet. When the GPU sets the pace, render scale
+and anti-aliasing matter most; on Apple GPUs MSAA is especially expensive.
 
 ## Profiling
 

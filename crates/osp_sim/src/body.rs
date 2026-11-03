@@ -6,6 +6,9 @@ use glam::{DQuat, DVec3};
 
 use crate::{
     atmosphere::Atmosphere,
+    clouds::CloudsDef,
+    ocean::OceanDef,
+    scattering::ScatteringDef,
     constants::{OBLIQUITY_J2000, SECONDS_PER_DAY},
     data::RotationDef,
     orbit::Orbit,
@@ -88,6 +91,12 @@ pub struct Body {
     pub terrain: Arc<Terrain>,
     pub rotation: Rotation,
     pub atmosphere: Option<Atmosphere>,
+    /// How its air scatters sunlight.
+    pub scattering: Option<ScatteringDef>,
+    /// Its clouds.
+    pub clouds: Option<CloudsDef>,
+    /// The waves on its seas.
+    pub ocean: Option<OceanDef>,
     /// Orbit around `parent`. `None` for the root body.
     pub orbit: Option<Orbit>,
     /// Sphere of influence radius; infinite for the root body.

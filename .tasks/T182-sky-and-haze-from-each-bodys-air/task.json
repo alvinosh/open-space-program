@@ -1,0 +1,20 @@
+{
+  "id": "T182",
+  "title": "Sky and haze from each body's air, with multiple scattering",
+  "kind": "feature",
+  "status": "done",
+  "area": "rendering",
+  "size": "L",
+  "parent": "T067",
+  "depends_on": [],
+  "refs": [
+    "references/Scatterer (technique only, see T067)",
+    "Hillaire 2020, A Scalable and Production Ready Sky and Atmosphere Rendering Technique",
+    "Bruneton and Neyret 2008, Precomputed Atmospheric Scattering"
+  ],
+  "created": "2026-11-03",
+  "updated": "2026-11-03",
+  "done": "2026-11-03",
+  "milestone": "M7",
+  "priority": null
+}

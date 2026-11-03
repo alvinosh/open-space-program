@@ -405,6 +405,17 @@
                   { widget: "button", class: "menu_option", text: "Ultra", action: "graphics.set:effects:ultra", active: "graphics.effects == ultra" },
                 ],
               },
+              {
+                widget: "row",
+                children: [
+                  { widget: "label", class: "key", text: "Clouds" },
+                  { widget: "button", class: "menu_option", text: "Off", action: "graphics.set:clouds:off", active: "graphics.clouds == off" },
+                  { widget: "button", class: "menu_option", text: "Low", action: "graphics.set:clouds:low", active: "graphics.clouds == low" },
+                  { widget: "button", class: "menu_option", text: "Medium", action: "graphics.set:clouds:medium", active: "graphics.clouds == medium" },
+                  { widget: "button", class: "menu_option", text: "High", action: "graphics.set:clouds:high", active: "graphics.clouds == high" },
+                  { widget: "button", class: "menu_option", text: "Ultra", action: "graphics.set:clouds:ultra", active: "graphics.clouds == ultra" },
+                ],
+              },
               { widget: "label", class: "section", text: "WORLD" },
               {
                 widget: "row",

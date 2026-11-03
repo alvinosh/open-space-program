@@ -13,12 +13,12 @@ import bevy_pbr::render::{
     pbr_fragment::pbr_input_from_standard_material,
     forward_io::{VertexOutput, FragmentOutput},
     pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
-    mesh_view_bindings::{view, lights, globals},
+    mesh_view_bindings::{view, lights},
     mesh_functions::{get_world_from_local, get_local_from_world},
 };
 import osp::shaders::atmosphere::{
-    scatter, sun_transmittance, light_transmittance, luminance, sphere_hits, THICKNESS,
-    SKY_MESH_SCALE, PI,
+    air, clouds, cloud_shadow, lut_sampler, scatter, sky_irradiance, sun_transmittance, weather,
+    light_transmittance, luminance, sphere_hits, CLOUD_THROUGH, PI,
 };
 
 struct TerrainParams {
@@ -26,10 +26,9 @@ struct TerrainParams {
     planet: vec4<f32>,
     /// xyz: chunk centre in body-fixed axes modulo DETAIL_PERIOD.
     detail_origin: vec4<f32>,
-    /// x: chunk level, y: colour data level, z: cover data level, w: 1 for an Earth-like
-    /// atmosphere.
+    /// x: chunk level, y: colour data level, z: cover data level, w: 1 if the body has air.
     levels: vec4<f32>,
-    /// x: ray-marching steps for the haze.
+    /// x: ray-marching steps for the sky reflected in water.
     quality: vec4<f32>,
 };
 
@@ -39,18 +38,17 @@ struct TerrainParams {
 @group(constants::MATERIAL_BIND_GROUP) @binding(103) var surface_texture: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(104) var surface_sampler: sampler;
 @group(constants::MATERIAL_BIND_GROUP) @binding(105) var cover_texture: texture_2d<u32>;
+/// Slope of the waves, its square, and foam, per cascade (see `crate::ocean`).
+@group(constants::MATERIAL_BIND_GROUP) @binding(120) var waves_texture: texture_2d_array<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(121) var waves_sampler: sampler;
 
 const CELLS: f32 = 128.0;
 /// Detail noise repeats every this many metres along each body-fixed axis, so it can be
 /// evaluated in f32 anywhere on a planet (see `planet::DETAIL_PERIOD`).
 const DETAIL_PERIOD: f32 = 4096.0;
 
-/// Skylight on level ground with the sun overhead, as a share of the sunlight above the
-/// air, and its colour (unit luminance) with the sun at the horizon and high up. Fitted to
-/// `atmosphere::scatter` integrated over the sky.
-const SKYLIGHT: f32 = 0.103;
-const SKY_LOW: vec3<f32> = vec3<f32>(1.15, 0.95, 1.05);
-const SKY_HIGH: vec3<f32> = vec3<f32>(0.51, 1.04, 2.02);
+/// Most steps for the sky reflected in the sea: it is seen through the waves.
+const REFLECTION_STEPS: i32 = 16;
 /// Colour of sunlit shallows over sand.
 const SHALLOW_WATER: vec3<f32> = vec3<f32>(0.05, 0.16, 0.15);
 
@@ -156,56 +154,66 @@ fn bump(normal: vec3<f32>, position: vec3<f32>, height: f32) -> vec3<f32> {
     return normalize(bumped);
 }
 
-/// The sea: 16 wind waves from 80 m down to 0.6 m long, each this steep (peak slope), which
-/// together give about the slope spread Cox and Munk measured for a 7 m/s wind.
-const WAVE_COUNT: i32 = 16;
-const LONGEST_WAVE: f32 = 80.0;
-const WAVE_SHRINK: f32 = 0.72;
-const WAVE_STEEPNESS: f32 = 0.06;
-/// Where the wind blows from, body-fixed; the waves run within a cone about it.
-const WIND: vec3<f32> = vec3<f32>(0.70, 0.20, 0.69);
-/// GGX roughness of the ripples too small to model.
-const RIPPLE_ALPHA: f32 = 0.03;
+/// The waves' tiles, m (`osp_sim::ocean::CASCADES`). They divide DETAIL_PERIOD, so they line up
+/// across chunks whatever chunk `p` came from.
+const CASCADES: vec3<f32> = vec3<f32>(4096.0, 512.0, 64.0);
+/// GGX α² of the ripples too small for the finest cascade, from Cox and Munk's slopes less those
+/// the spectrum has.
+const RIPPLE_ALPHA2: f32 = 0.012;
 
 struct Sea {
-    /// Slope of the resolved waves (body-fixed axes).
+    /// Slope of the resolved waves (render axes, tangent to the surface).
     slope: vec3<f32>,
     /// GGX α² of everything finer than a pixel.
     alpha2: f32,
+    /// How much of the surface is foam.
+    foam: f32,
 };
 
-/// The sea surface at `p` (body-fixed, m) with `up` the local vertical (body-fixed axes) and
-/// `footprint` the size of a pixel. Each wave is a plane wave in body-fixed space with a
-/// whole number of cycles per DETAIL_PERIOD along each axis, so it is continuous across
-/// chunks, travelling at the deep-water speed for its length; slow noise bends the crests
-/// so they never line up into a grid. Waves too short for the pixel fade out and widen the
-/// reflections instead: from orbit the sun's glint spreads over a wide patch of sea.
-fn sea(p: vec3<f32>, up: vec3<f32>, t: f32, footprint: f32) -> Sea {
+/// The waves at `p` (body-fixed, m) with `up` the local vertical. The tiles are flat and the planet
+/// isn't, so they are read from the two or three coordinate planes it's most nearly facing, which
+/// blend wherever two of them meet.
+fn sea(p: vec3<f32>, up: vec3<f32>, ddx_p: vec3<f32>, ddy_p: vec3<f32>, footprint: f32) -> Sea {
     var out: Sea;
     out.slope = vec3<f32>(0.0);
-    out.alpha2 = RIPPLE_ALPHA * RIPPLE_ALPHA;
-    let wind = normalize(WIND);
-    let across = normalize(cross(wind, vec3<f32>(0.0, 1.0, 0.0)));
-    let over = cross(wind, across);
-    let bend = 2.5 * noise(p, 256.0) + 1.2 * noise(p, 64.0);
-    let cycle = 2.0 * PI / DETAIL_PERIOD;
-    var wavelength = LONGEST_WAVE;
-    for (var i = 0; i < WAVE_COUNT; i++) {
-        let fi = f32(i);
-        let around = 2.399963 * fi;
-        let spread = 0.25 + 0.55 * fract(fi * 0.618034);
-        let direction = normalize(wind + spread * (cos(around) * across + sin(around) * over));
-        let k = round(direction * DETAIL_PERIOD / wavelength) * cycle;
-        let along = k - up * dot(k, up);
-        let resolved = 1.0 - smoothstep(0.15 * wavelength, 0.6 * wavelength, footprint);
-        let omega = sqrt(9.81 * length(k));
-        let phase = dot(k, p) - omega * t + 1.7 * fi + bend * (1.0 + 0.15 * fi);
-        out.slope += along / max(length(k), 1e-6) * WAVE_STEEPNESS * cos(phase) * resolved;
-        // GGX α² is about twice the slope variance.
-        out.alpha2 += WAVE_STEEPNESS * WAVE_STEEPNESS * (1.0 - resolved);
-        wavelength *= WAVE_SHRINK;
+    out.alpha2 = RIPPLE_ALPHA2;
+    out.foam = 0.0;
+    let weights = pow(abs(up), vec3<f32>(10.0));
+    let share = weights / (weights.x + weights.y + weights.z);
+    if share.x > 0.01 {
+        add_plane(&out, share.x, p.yz, ddx_p.yz, ddy_p.yz, vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0), footprint);
     }
+    if share.y > 0.01 {
+        add_plane(&out, share.y, p.xz, ddx_p.xz, ddy_p.xz, vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 0.0, 1.0), footprint);
+    }
+    if share.z > 0.01 {
+        add_plane(&out, share.z, p.xy, ddx_p.xy, ddy_p.xy, vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), footprint);
+    }
+    out.slope -= up * dot(out.slope, up);
     return out;
+}
+
+fn add_plane(
+    out: ptr<function, Sea>,
+    share: f32,
+    uv: vec2<f32>,
+    ddx_uv: vec2<f32>,
+    ddy_uv: vec2<f32>,
+    u_axis: vec3<f32>,
+    v_axis: vec3<f32>,
+    footprint: f32,
+) {
+    for (var i = 0; i < 3; i++) {
+        let size = CASCADES[i];
+        let s = textureSampleGrad(waves_texture, waves_sampler, uv / size, i, ddx_uv / size, ddy_uv / size);
+        // From high up a tile's own pattern would show repeating across the sea: past where a pixel
+        // is a fair share of it, its waves only count as roughness.
+        let seen = 1.0 - smoothstep(size / 256.0, size / 48.0, footprint);
+        (*out).slope += (u_axis * s.x + v_axis * s.y) * share * seen;
+        // What this pixel averaged away: GGX α² is about twice the slope's variance.
+        (*out).alpha2 += 2.0 * max(s.z - seen * seen * dot(s.xy, s.xy), 0.0) * share;
+        (*out).foam += s.w * share * (1.0 - 0.25 * f32(i));
+    }
 }
 
 @fragment
@@ -299,7 +307,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let shallows = exp(-depth / 8.0) * (1.0 - smoothstep(2.0, 10.0, surface.z));
     let water_albedo = mix(imagery * 0.85, SHALLOW_WATER, 0.6 * shallows);
 
-    let albedo = mix(land, water_albedo, water);
+    var albedo = mix(land, water_albedo, water);
 
     // Normal: baked terrain normal, then fine relief on land and waves on water.
     let tangent = surface.xy;
@@ -307,10 +315,14 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     var normal = normalize(east * tangent.x + north * tangent.y + up * normal_up);
     normal = bump(normal, position, n_relief * relief * (1.0 - water));
     let up_fixed = normalize((local_from_world * vec4<f32>(up, 0.0)).xyz);
-    let waves = sea(p, up_fixed, globals.time, footprint);
+    let waves = sea(p, up_fixed, dpdx(p), dpdy(p), footprint);
     let slope = (world_from_local * vec4<f32>(waves.slope, 0.0)).xyz * water;
     normal = normalize(normal - (slope - dot(slope, normal) * normal));
-    roughness = mix(roughness, sqrt(sqrt(waves.alpha2)), water);
+    // Foam is rough white water, broken up by the noise so it isn't the map's own blur.
+    let foam = smoothstep(0.15, 0.75, waves.foam * (0.65 + 0.5 * o4 + 0.4 * o3)) * water;
+    roughness = mix(roughness, mix(sqrt(sqrt(waves.alpha2)), 0.8, foam), water);
+
+    albedo = mix(albedo, vec3<f32>(0.8), foam);
 
     pbr_input.N = normal;
     pbr_input.material.base_color = vec4<f32>(albedo, 1.0);
@@ -318,16 +330,21 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     pbr_input.material.reflectance = vec3<f32>(mix(0.5, 0.35, water));
 
     let sun = lights.directional_lights[0].direction_to_light;
-    let earthlike = params.levels.w > 0.5;
+    let has_air = params.levels.w > 0.5;
     let from_center = position - planet_center;
     var sun_color = lights.directional_lights[0].color.rgb;
+    // Sunlight through the air here, and the share that clouds take out of the beam.
     var sun_here = vec3<f32>(1.0);
-    if earthlike {
+    var under_cloud = 0.0;
+    if has_air {
         // The light was dimmed for the air at the vessel; use this point's instead.
         let at_vessel = light_transmittance(sun_color);
         sun_color /= at_vessel;
-        sun_here = sun_transmittance(from_center, sun, radius);
-        let ratio = sun_here / at_vessel;
+        let local_axes = mat3x3<f32>(local_from_world[0].xyz, local_from_world[1].xyz, local_from_world[2].xyz);
+        sun_here = sun_transmittance(from_center, sun);
+        let shade = cloud_shadow(from_center, sun, local_axes);
+        under_cloud = 1.0 - shade;
+        let ratio = sun_here * shade / at_vessel;
         let level = luminance(ratio);
         pbr_input.directional_shadow_factor = level;
         let tint = clamp(ratio / max(level, 1e-6), vec3<f32>(0.0), vec3<f32>(4.0));
@@ -345,50 +362,50 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     out.color = apply_pbr_lighting(pbr_input);
 
     // Light from the sky dome over this point (the camera's environment map is the sky at
-    // the vessel, see `crate::sky_light`): it fades through twilight and turns from grey
-    // to blue as the sun climbs; slopes facing away from the sky get less.
-    if earthlike {
-        let level = 1.0 - exp(-max(sun_up + 0.06, 0.0) / 0.2);
-        let tint = mix(SKY_LOW, SKY_HIGH, 1.0 - exp(-max(sun_up, 0.0) / 0.17));
+    // the vessel, see `crate::sky_light`): slopes facing away from the sky get less, and it is
+    // occluded like the rest of the indirect light (ambient occlusion, if on).
+    if has_air {
         let facing = 0.5 + 0.5 * dot(normal, up);
-        // Occluded like the rest of the indirect light (ambient occlusion, if on).
-        let irradiance = sun_color * SKYLIGHT * level * tint * facing * pbr_input.diffuse_occlusion;
+        // The sunlight clouds scattered out of the beam comes down from the whole sky instead.
+        let through_clouds = sun_here * max(sun_up, 0.0) * under_cloud * CLOUD_THROUGH;
+        let irradiance = (sky_irradiance(from_center, sun) + through_clouds) * sun_color * facing
+            * pbr_input.diffuse_occlusion;
         out.color = vec4<f32>(out.color.rgb + albedo / PI * irradiance * view.exposure, out.color.a);
     }
 
     // The sky reflected in the water: the same scattering as the sky itself, along the
     // reflected ray (kept above the horizon), weighted by Fresnel. The sun's glint comes
-    // from the lighting above, spread by the wave roughness.
-    if earthlike && water > 0.0 {
+    // from the lighting above, spread by the wave roughness. The haze in front of all this is
+    // the sky pass's (`shaders/sky.wesl`).
+    if has_air && water > 0.0 {
         let view_dir = normalize(camera - position);
         var reflected = reflect(-view_dir, normal);
         reflected = normalize(reflected + up * max(0.02 - dot(reflected, up), 0.0));
         let origin = from_center + up * 2.0;
-        let exit = sphere_hits(origin, reflected, radius + THICKNESS).y;
+        let exit = sphere_hits(origin, reflected, air.shape.y).y;
         let sky = scatter(
-            origin, reflected, 0.0, max(exit, 0.0), sun, sun_color, radius, i32(params.quality.x),
+            origin, reflected, 0.0, max(exit, 0.0), sun, sun_color,
+            min(i32(params.quality.x), REFLECTION_STEPS),
         );
+        var reflected_light = sky.inscatter;
+        // The clouds in it, as the ground sees them: the map at the height they mostly are.
+        if clouds.shell.y > 0.0 {
+            let cloud_hit = sphere_hits(origin, reflected, clouds.shell.x).y;
+            if cloud_hit > 0.0 {
+                let at = origin + reflected * cloud_hit;
+                let local = mat3x3<f32>(local_from_world[0].xyz, local_from_world[1].xyz, local_from_world[2].xyz);
+                let cover = textureSampleLevel(weather, lut_sampler, local * at, 2.0).r;
+                let lit = sun_transmittance(at, sun) * max(dot(normalize(at), sun), 0.0)
+                    + sky_irradiance(at, sun);
+                reflected_light = mix(reflected_light, lit * sun_color * 0.25, cover);
+            }
+        }
         let fresnel = 0.02 + 0.98 * pow(1.0 - max(dot(normal, view_dir), 0.0), 5.0);
         out.color = vec4<f32>(
-            out.color.rgb + sky.inscatter * fresnel * water * pbr_input.specular_occlusion
+            out.color.rgb + reflected_light * fresnel * water * (1.0 - foam) * pbr_input.specular_occlusion
                 * view.exposure,
             out.color.a,
         );
-    }
-
-    // Aerial perspective while the camera is inside the sky mesh (from outside it, the
-    // mesh's near side does it), over the part of the ray inside the atmosphere.
-    if earthlike {
-        let eye = camera - planet_center;
-        let top = radius + THICKNESS;
-        if length(eye) < top * SKY_MESH_SCALE {
-            let ray = (position - camera) / max(distance_to_camera, 1e-3);
-            let entry = max(sphere_hits(eye, ray, top).x, 0.0);
-            let s = scatter(
-                eye, ray, entry, distance_to_camera, sun, sun_color, radius, i32(params.quality.x),
-            );
-            out.color = vec4<f32>(out.color.rgb * s.transmittance + s.inscatter * view.exposure, out.color.a);
-        }
     }
 
     out.color = main_pass_post_lighting_processing(pbr_input, out.color);

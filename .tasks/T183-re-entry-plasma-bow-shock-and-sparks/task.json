@@ -1,0 +1,19 @@
+{
+  "id": "T183",
+  "title": "Re-entry: plasma, bow shock and sparks",
+  "kind": "feature",
+  "status": "in_progress",
+  "area": "rendering",
+  "size": "L",
+  "parent": "T067",
+  "depends_on": [],
+  "refs": [
+    "references/Firefly (technique only, see T067)",
+    "https://leah-lindner.com/blog/atmospheric-entry/"
+  ],
+  "created": "2026-11-03",
+  "updated": "2026-11-03",
+  "done": null,
+  "milestone": "M7",
+  "priority": 167
+}

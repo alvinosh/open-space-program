@@ -31,9 +31,10 @@ use osp_terrain::{Layer, TILE_CELLS, TILE_SAMPLES, TileKey, cube::east_north};
 
 use crate::{
     FrameSet,
-    atmosphere::TransmittanceLuts,
+    atmosphere::{AirBindings, BodyAirs},
     camera::CameraRig,
     frame::{RenderFrame, rotation_to_render, to_render},
+    ocean::OceanMaps,
     settings::{GraphicsSettings, Quality},
     sim::{Sim, WorldData},
     surface::Surface,
@@ -119,6 +120,11 @@ pub struct SurfaceAnchor {
 #[derive(Component)]
 struct Star(BodyId);
 
+/// A star's disc on screen, multiplied by its colour, after exposure. Sunlight's true value, over
+/// the Sun's small disc, is about 50,000 at a daylight exposure, which through the bloom would
+/// white out half the view; this leaves a hard white disc in a wide glare.
+const STAR_BRIGHTNESS: f32 = 3000.0;
+
 fn spawn_bodies(
     mut commands: Commands,
     sim: Res<Sim>,
@@ -133,7 +139,11 @@ fn spawn_bodies(
                 Star(body.id),
                 Mesh3d(meshes.add(Sphere::new(1.0).mesh().ico(6).unwrap())),
                 MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: Color::linear_rgb(r * 4.0, g * 4.0, b * 4.0),
+                    base_color: Color::linear_rgb(
+                        r * STAR_BRIGHTNESS,
+                        g * STAR_BRIGHTNESS,
+                        b * STAR_BRIGHTNESS,
+                    ),
                     unlit: true,
                     ..default()
                 })),
@@ -223,7 +233,8 @@ fn update_lod(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<TerrainMaterial>>,
-    luts: Res<TransmittanceLuts>,
+    airs: Res<BodyAirs>,
+    waves: Res<OceanMaps>,
     settings: Res<GraphicsSettings>,
     mut visibility: Query<&mut Visibility, With<PlanetChunk>>,
 ) {
@@ -257,7 +268,7 @@ fn update_lod(
             let entity = built.spawn(
                 &mut commands,
                 planet.body,
-                (luts.texture(planet.body), &settings),
+                (airs.bindings(planet.body), waves.0.clone(), &settings),
                 &mut meshes,
                 &mut images,
                 &mut materials,
@@ -422,7 +433,7 @@ impl BuiltChunk {
         mut self,
         commands: &mut Commands,
         body: BodyId,
-        (transmittance, settings): (Handle<Image>, &GraphicsSettings),
+        (air, waves, settings): (AirBindings, Handle<Image>, &GraphicsSettings),
         meshes: &mut Assets<Mesh>,
         images: &mut Assets<Image>,
         materials: &mut Assets<TerrainMaterial>,
@@ -441,7 +452,23 @@ impl BuiltChunk {
                 color: images.add(self.color),
                 surface: images.add(self.surface),
                 cover: images.add(self.cover),
-                transmittance,
+                transmittance: air.transmittance,
+                multiple: air.multiple,
+                irradiance: air.irradiance,
+                air: air.uniform,
+                waves,
+                weather: air.weather,
+                // x: radius sunlight crosses at; y: on; z: the setting; w: whether it has any.
+                clouds: {
+                    let on = settings.clouds != Quality::Off;
+                    let has = air.clouds.y;
+                    Vec4::new(
+                        air.clouds.x,
+                        has * f32::from(u8::from(on)),
+                        f32::from(u8::from(on)),
+                        has,
+                    )
+                },
             },
         });
         commands
@@ -659,7 +686,7 @@ fn build_chunk(surface: &Surface, key: TileKey) -> BuiltChunk {
             level as f32,
             data_level(&color_view),
             data_level(&cover_view),
-            if surface.earthlike { 1.0 } else { 0.0 },
+            if surface.has_air { 1.0 } else { 0.0 },
         ),
         // Set when the chunk spawns.
         quality: Vec4::ZERO,

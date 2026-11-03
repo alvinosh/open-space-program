@@ -21,29 +21,28 @@ pub struct Surface {
     pub fallback_color: [u8; 3],
     /// Class where there is no land-cover data.
     pub fallback_cover: Cover,
-    /// Earth-like air: scattering, and the night lights mean something.
-    pub earthlike: bool,
+    /// Its air scatters light, so the shader lights it through that air.
+    pub has_air: bool,
 }
 
 impl Surface {
     pub fn new(body: &Body, data: Option<Arc<Dataset>>) -> Self {
         let srgb = |c: f32| (c.clamp(0.0, 1.0).powf(1.0 / 2.2) * 255.0).round() as u8;
-        let earthlike = Self::is_earthlike(body);
         Self {
             radius: body.radius,
             terrain: body.terrain.clone(),
             data,
             fallback_color: body.color.map(srgb),
-            fallback_cover: if earthlike {
+            fallback_cover: if Self::is_earthlike(body) {
                 Cover::Grassland
             } else {
                 Cover::Barren
             },
-            earthlike,
+            has_air: body.scattering.is_some(),
         }
     }
 
-    /// Bodies whose air scatters light like Earth's (the only model the sky shader has).
+    /// Bodies with air like Earth's, and so land cover like it.
     pub fn is_earthlike(body: &Body) -> bool {
         body.atmosphere
             .as_ref()

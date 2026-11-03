@@ -14,7 +14,8 @@
       prime_meridian: 84.176,
       rate: 14.1844,
     },
-    color: [1.0, 0.85, 0.55],
+    // Sunlight above the air is white: it is the air that yellows and reddens it.
+    color: [1.0, 0.97, 0.92],
   },
   {
     id: "Mercury",
@@ -60,6 +61,32 @@
       },
       height: 250000.0,
     },
+    // Effective numbers, not the real optical depth of about 100: the clouds scatter so far
+    // forward that some 2% of the sunlight still reaches the ground, which a single-scattering
+    // march only gets from a depth of about 4. The result is a creamy disc from space and a
+    // dim orange sky at the surface, as the Venera probes saw.
+    scattering: {
+      height: 200000,
+      rayleigh: [1e-6, 2e-6, 5e-6],
+      rayleigh_height: 15900,
+      mie: [2.5e-4, 2.3e-4, 1.7e-4],
+      mie_absorption: [1e-6, 8e-6, 3e-5],
+      mie_height: 15900,
+      mie_g: [0.75, 0.75, 0.75],
+      ground_albedo: [0.2, 0.15, 0.1],
+    },
+    // The unbroken sulphuric deck; the bands only leave it its faint large-scale structure.
+    clouds: {
+      base: 48000,
+      top: 70000,
+      density: 0.002,
+      albedo: [0.995, 0.97, 0.9],
+      bands: [[0, 1.0], [90, 1.0]],
+      storms: 6,
+      storm_latitude: [50, 80],
+      wind: 80,
+      seed: 7,
+    },
     orbit: {
       semi_major_axis: 108208000000,
       eccentricity: 0.006772,
@@ -91,6 +118,46 @@
         type: "Us1976",
       },
       height: 140000.0,
+    },
+    // Hillaire's (2020) clear-air fit: Rayleigh from Bucholtz, aerosols near sea level, and the
+    // ozone that keeps the twilight sky blue.
+    scattering: {
+      height: 100000,
+      rayleigh: [5.802e-6, 13.558e-6, 33.1e-6],
+      rayleigh_height: 8000,
+      mie: [3.996e-6, 3.996e-6, 3.996e-6],
+      mie_absorption: [4.44e-7, 4.44e-7, 4.44e-7],
+      mie_height: 1200,
+      mie_g: [0.8, 0.8, 0.8],
+      ozone: [6.5e-7, 1.881e-6, 8.5e-8],
+      ozone_height: 25000,
+      ozone_width: 15000,
+      // Vegetation, soil and sand; the sea is darker, snow and cloud brighter.
+      ground_albedo: [0.11, 0.12, 0.08],
+    },
+    // Cover by latitude after satellite records: the rain belt, the clear subtropics, the storm
+    // tracks. Most clouds stay low; only deep storms reach the top of the layer.
+    clouds: {
+      base: 1000,
+      top: 12000,
+      density: 0.025,
+      albedo: [0.995, 0.995, 0.995],
+      bands: [[0, 0.6], [8, 0.68], [25, 0.34], [45, 0.6], [60, 0.78], [75, 0.62], [90, 0.5]],
+      storms: 18,
+      storm_latitude: [35, 65],
+      hurricanes: 3,
+      wind: 12,
+      cirrus_height: 9500,
+      cirrus: 0.5,
+      // Fair-weather cumulus and some high cloud over the Cape.
+      seed: 12,
+    },
+    // A fresh breeze blown over open water, for the waves' spectrum.
+    ocean: {
+      wind_speed: 8,
+      wind_direction: 40,
+      fetch: 300000,
+      gravity: 9.81,
     },
     orbit: {
       semi_major_axis: 149598023000,
@@ -145,6 +212,29 @@
         molar_mass: 0.04334,
       },
       height: 125000.0,
+    },
+    // Thin CO2, mostly dust: an optical depth of about 0.5 (Tomasko 1999, Smith 2008). Dust
+    // takes out blue, which makes the butterscotch day, and throws blue into a narrower cone
+    // than red, which makes the blue glow around the setting sun.
+    scattering: {
+      height: 100000,
+      rayleigh: [2e-7, 4.6e-7, 1.1e-6],
+      rayleigh_height: 11100,
+      mie: [4.37e-5, 4.1e-5, 3.6e-5],
+      mie_absorption: [1.3e-6, 4e-6, 9e-6],
+      mie_height: 11100,
+      mie_g: [0.65, 0.69, 0.76],
+      ground_albedo: [0.3, 0.17, 0.1],
+    },
+    // Thin water ice, mostly over the poles and the high volcanoes of the tropics.
+    clouds: {
+      base: 15000,
+      top: 32000,
+      density: 0.0004,
+      albedo: [0.97, 0.95, 0.92],
+      bands: [[0, 0.16], [30, 0.07], [60, 0.2], [80, 0.34], [90, 0.3]],
+      wind: 25,
+      seed: 4,
     },
     orbit: {
       semi_major_axis: 227939366000,

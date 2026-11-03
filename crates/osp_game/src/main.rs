@@ -9,6 +9,7 @@ mod alerts;
 mod atmosphere;
 mod body_markers;
 mod camera;
+mod clouds;
 mod content;
 mod controls;
 mod exhaust_trail;
@@ -21,13 +22,16 @@ mod menu;
 mod meshgen;
 mod mission;
 mod docking_view;
+mod eclipse;
 mod navball;
+mod ocean;
 mod orbit_lines;
 mod part_highlight;
 mod part_info;
 mod paint_layers;
 mod part_mesh;
 mod planet;
+mod plasma;
 mod plume;
 mod profiler;
 mod recorder;
@@ -139,6 +143,10 @@ fn main() -> AppExit {
             planet::PlanetPlugin,
             (
                 atmosphere::AtmospherePlugin,
+                clouds::CloudsPlugin,
+                eclipse::EclipsePlugin,
+                ocean::OceanPlugin,
+                plasma::PlasmaPlugin,
                 sky_light::SkyLightPlugin,
                 stars::StarsPlugin,
             ),

@@ -11,9 +11,12 @@ use serde::{Deserialize, Serialize};
 use crate::{
     assembly::Side,
     atmosphere::Atmosphere,
+    clouds::CloudsDef,
     component::{ComponentDef, PaintDef, StructureDef},
     geometry::{ShapeDef, preset::NodeDef},
     mission::GoalDef,
+    ocean::OceanDef,
+    scattering::ScatteringDef,
     sizing::ProceduralDef,
     skip::*,
 };
@@ -45,6 +48,15 @@ pub struct BodyDef {
     pub rotation: RotationDef,
     #[serde(default)]
     pub atmosphere: Option<Atmosphere>,
+    /// How its air scatters sunlight, for the sky and the haze. Air without this is not drawn.
+    #[serde(default)]
+    pub scattering: Option<ScatteringDef>,
+    /// Its clouds, for the eye and for the sunlight that gets through.
+    #[serde(default)]
+    pub clouds: Option<CloudsDef>,
+    /// The waves on its seas.
+    #[serde(default)]
+    pub ocean: Option<OceanDef>,
     #[serde(default)]
     pub orbit: Option<OrbitDef>,
     /// Linear RGB used until bodies get real textures.

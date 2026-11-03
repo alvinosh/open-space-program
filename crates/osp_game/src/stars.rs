@@ -3,8 +3,8 @@
 //! space stays black.
 //!
 //! The stars are shown at a fixed screen brightness rather than their real one, which no
-//! exposure for a sunlit vessel would show. They fade out under a daylit sky; the sky's
-//! own haze also covers them, since it is drawn over the skybox.
+//! exposure for a sunlit vessel would show. The sky is drawn over the skybox and fades them by
+//! its own brightness (`shaders/sky.wesl`), wherever in the sky you look and whatever the air.
 
 use bevy::{
     camera::Exposure,
@@ -15,21 +15,12 @@ use bevy::{
 };
 use osp_sim::constants::OBLIQUITY_J2000;
 
-use crate::{
-    FrameSet,
-    camera::{CameraRig, MainCamera},
-    content,
-    frame::{RenderFrame, rotation_to_render},
-    sim::Sim,
-    surface::Surface,
-};
+use crate::{FrameSet, camera::MainCamera, content, frame::rotation_to_render};
 
 /// The baked cubemap, relative to the asset root.
 const PATH: &str = "core/sky/starmap.png";
 /// Screen brightness of the map's white, after exposure.
 const BRIGHTNESS: f32 = 1.0;
-/// Heights over which a daylit sky fades to black, m.
-const AIR: (f64, f64) = (20_000.0, 70_000.0);
 
 pub struct StarsPlugin;
 
@@ -39,7 +30,7 @@ impl Plugin for StarsPlugin {
             Update,
             (
                 attach_skybox.run_if(resource_exists::<Starmap>),
-                fade_stars.in_set(FrameSet::Render),
+                keep_stars_steady.in_set(FrameSet::Render),
             ),
         );
     }
@@ -84,32 +75,9 @@ fn attach_skybox(
     commands.remove_resource::<Starmap>();
 }
 
-/// Full stars in the map view and in space; none under a daylit sky.
-fn fade_stars(
-    sim: Res<Sim>,
-    frame: Res<RenderFrame>,
-    rig: Res<CameraRig>,
-    camera: Single<(&mut Skybox, &Exposure), With<MainCamera>>,
-) {
+/// Bevy multiplies the skybox by the exposure; undo it so the stars keep their look as the view
+/// adapts between day and night.
+fn keep_stars_steady(camera: Single<(&mut Skybox, &Exposure), With<MainCamera>>) {
     let (mut skybox, exposure) = camera.into_inner();
-    let mut visible = 1.0;
-    if let (false, Some(origin_body)) = (rig.map_view, frame.origin_body) {
-        let body = sim.universe.system.body(origin_body);
-        if Surface::is_earthlike(body) {
-            let origin = -frame.body_offset(origin_body);
-            let to_sun = frame.body_offset(sim.universe.system.root()).normalize();
-            let up = origin.normalize();
-            let daylight = smoothstep(-0.12, 0.1, up.dot(to_sun));
-            let air = 1.0 - smoothstep(AIR.0, AIR.1, origin.length() - body.radius);
-            visible = 1.0 - daylight * air;
-        }
-    }
-    // Bevy multiplies the skybox by the exposure; undo it so the stars keep their look as
-    // the view adapts between day and night.
-    skybox.brightness = BRIGHTNESS * visible as f32 / exposure.exposure();
-}
-
-fn smoothstep(e0: f64, e1: f64, x: f64) -> f64 {
-    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
+    skybox.brightness = BRIGHTNESS / exposure.exposure();
 }

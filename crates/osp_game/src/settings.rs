@@ -4,7 +4,7 @@
 //!
 //! Each setting is applied by the module it tunes (render scale, anti-aliasing, ambient
 //! occlusion and bloom in `camera`, shadows in `frame`, terrain detail in `planet`, trees in `trees`, the sky's and
-//! plumes' ray-marching steps in `atmosphere` and `plume`); this module owns the values,
+//! plumes' ray-marching steps in `atmosphere` and `plume`, clouds in `clouds`); this module owns the values,
 //! vsync and the frame cap.
 //!
 //! The first run picks a preset from the GPU (see [`recommended`]). The settings live in
@@ -230,6 +230,8 @@ pub struct GraphicsSettings {
     pub trees: Quality,
     /// Ray-marching steps for the sky, the haze over the ground and engine plumes.
     pub effects: Quality,
+    /// How finely clouds are drawn; off leaves them out altogether.
+    pub clouds: Quality,
     pub bloom: bool,
     pub vsync: bool,
     /// Frames per second cap, 0 for none.
@@ -268,6 +270,7 @@ impl GraphicsSettings {
             terrain,
             trees,
             effects,
+            clouds: effects,
             bloom,
             vsync: true,
             fps_limit: 0,
@@ -314,6 +317,7 @@ impl GraphicsSettings {
             "terrain" => self.terrain = quality(value)?.max(Quality::Low),
             "trees" => self.trees = quality(value)?,
             "effects" => self.effects = quality(value)?.max(Quality::Low),
+            "clouds" => self.clouds = quality(value)?,
             "bloom" => self.bloom = on_off(value)?,
             "vsync" => self.vsync = on_off(value)?,
             "fps_limit" => self.fps_limit = number(value)?,
@@ -325,7 +329,7 @@ impl GraphicsSettings {
     /// One line for logs and profiles.
     pub fn describe(&self) -> String {
         format!(
-            "{} (render scale {}%, anti-aliasing {}, shadows {}, ambient occlusion {}, terrain {}, trees {}, effects {}, bloom {}, vsync {}, fps limit {})",
+            "{} (render scale {}%, anti-aliasing {}, shadows {}, ambient occlusion {}, terrain {}, trees {}, effects {}, clouds {}, bloom {}, vsync {}, fps limit {})",
             self.matching_preset().map_or("custom", Quality::name),
             self.render_scale,
             self.antialiasing.name(),
@@ -334,6 +338,7 @@ impl GraphicsSettings {
             self.terrain.name(),
             self.trees.name(),
             self.effects.name(),
+            self.clouds.name(),
             on_off(self.bloom),
             on_off(self.vsync),
             if self.fps_limit == 0 {
@@ -756,6 +761,7 @@ fn publish(settings: Res<GraphicsSettings>, mut data: ResMut<UiData>) {
     data.set("graphics.terrain", settings.terrain.name());
     data.set("graphics.trees", settings.trees.name());
     data.set("graphics.effects", settings.effects.name());
+    data.set("graphics.clouds", settings.clouds.name());
     data.set("graphics.bloom", on_off(settings.bloom));
     data.set("graphics.vsync", on_off(settings.vsync));
     data.set("graphics.fps_limit", settings.fps_limit.to_string());

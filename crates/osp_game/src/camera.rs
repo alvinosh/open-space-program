@@ -19,8 +19,10 @@ use bevy::{
     post_process::bloom::Bloom,
     prelude::*,
     render::{
+        RenderApp,
         camera::{MipBias, TemporalJitter},
-        render_resource::TextureFormat,
+        extract_component::ExtractComponent,
+        render_resource::{TextureFormat, TextureUsages},
         view::{Msaa, Tonemapping},
     },
     window::PrimaryWindow,
@@ -70,7 +72,8 @@ impl Plugin for CameraPlugin {
 #[derive(Resource, Default)]
 pub struct ViewOutput(pub Option<Handle<Image>>);
 
-#[derive(Component)]
+#[derive(Component, Clone, ExtractComponent)]
+#[extract_app(RenderApp)]
 pub struct MainCamera;
 
 /// What the camera looks at instead of the active vessel.
@@ -170,7 +173,13 @@ impl CameraRig {
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         MainCamera,
-        Camera3d::default(),
+        Camera3d {
+            // The sky pass reads how far each pixel's ray goes.
+            depth_texture_usages: (TextureUsages::RENDER_ATTACHMENT
+                | TextureUsages::TEXTURE_BINDING)
+                .into(),
+            ..default()
+        },
         // Lighting, sky and haze are physically scaled; tonemap once at the end.
         Hdr,
         Projection::Perspective(PerspectiveProjection {
@@ -181,6 +190,8 @@ fn spawn_camera(mut commands: Commands) {
             ..default()
         }),
         Exposure::SUNLIGHT,
+        // Keeps hue: the others grey the sunset's gradient and turn the horizon green.
+        Tonemapping::KhronosPbrNeutral,
         Transform::default(),
     ));
 }
@@ -231,6 +242,8 @@ fn apply_view_settings(
         }
         Antialiasing::Off | Antialiasing::Msaa => {}
     }
+    // Re-entry's shock and the reflections on hulls read it.
+    camera.insert(DepthPrepass);
     let ao_level = match settings.ambient_occlusion {
         Quality::Off => None,
         Quality::Low => Some(ScreenSpaceAmbientOcclusionQualityLevel::Low),

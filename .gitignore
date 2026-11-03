@@ -1,4 +1,6 @@
 /target
+# Other projects' source, read for technique only: some of it is GPL or NC (T067).
+/references/
 .DS_Store
 # Downloads for the terrain bake (cargo run -p osp_bake --release).
 /.bake-cache/

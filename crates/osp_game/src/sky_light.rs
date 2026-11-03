@@ -19,7 +19,9 @@ use bevy::{
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_asset::RenderAssets,
         render_resource::{
-            binding_types::{sampler, texture_2d, texture_storage_2d_array, uniform_buffer},
+            binding_types::{
+                sampler, texture_2d, texture_cube, texture_storage_2d_array, uniform_buffer,
+            },
             *,
         },
         renderer::{RenderContext, RenderDevice, RenderQueue},
@@ -30,18 +32,17 @@ use bevy::{
 
 use crate::{
     FrameSet,
-    atmosphere::{TransmittanceLuts, view_steps},
+    atmosphere::{AirBindings, AirUniform, BodyAirs, view_steps},
     camera::MainCamera,
-    frame::{RenderFrame, to_render},
+    frame::{RenderFrame, rotation_to_render, to_render},
     settings::{GraphicsSettings, Quality},
     sim::Sim,
-    surface::Surface,
 };
 
-/// Albedo of the ground under an Earth-like atmosphere: vegetation, soil and sand.
-const EARTH_GROUND: Vec3 = Vec3::new(0.11, 0.12, 0.08);
 /// Airless bodies' ground albedo as a share of their display colour.
 const AIRLESS_GROUND: f32 = 0.25;
+/// Most ray-marching steps for the probe: Bevy blurs most of it away, and it has six faces.
+const PROBE_STEPS: u32 = 24;
 
 pub struct SkyLightPlugin;
 
@@ -85,10 +86,12 @@ struct SkyLightParams {
     planet: Vec4,
     /// xyz: direction to the sun; w: its illuminance above the atmosphere.
     sun: Vec4,
-    /// rgb: ground albedo; w: 1 for an Earth-like atmosphere.
+    /// rgb: ground albedo; w: 1 if the body has air.
     ground: Vec4,
     /// x: ray-marching steps.
     options: Vec4,
+    /// The body's fixed axes from render axes.
+    local_from_render: Mat3,
 }
 
 /// The probe's cubemap and what the shader needs to fill it this frame.
@@ -97,8 +100,8 @@ struct SkyLightParams {
 pub struct SkyLight {
     /// The cubemap and its size, once the graphics settings are known.
     image: Option<(Handle<Image>, u32)>,
-    /// The origin body's sunlight transmittance table.
-    transmittance: Handle<Image>,
+    /// The air of the body the vessel is at.
+    air: AirBindings,
     params: SkyLightParams,
 }
 
@@ -169,7 +172,7 @@ fn place_probe(
     sim: Res<Sim>,
     frame: Res<RenderFrame>,
     settings: Res<GraphicsSettings>,
-    luts: Res<TransmittanceLuts>,
+    airs: Res<BodyAirs>,
     mut sky_light: ResMut<SkyLight>,
 ) {
     let Some(vessel_body) = frame.vessel_body else {
@@ -177,23 +180,31 @@ fn place_probe(
     };
     let system = &sim.universe.system;
     let body = system.body(vessel_body);
-    let earthlike = Surface::is_earthlike(body);
-    let ground = if body.parent.is_none() {
-        Vec3::ZERO
-    } else if earthlike {
-        EARTH_GROUND
-    } else {
-        Vec3::from(body.color) * AIRLESS_GROUND
+    let ground = match &body.scattering {
+        _ if body.parent.is_none() => Vec3::ZERO,
+        Some(def) => Vec3::from_array(def.ground_albedo.map(|c| c as f32)),
+        None => Vec3::from(body.color) * AIRLESS_GROUND,
     };
     let vessel = frame.relative(vessel_body, frame.vessel_offset);
     let sun = to_render(frame.body_offset(system.root()) - vessel).normalize_or(Vec3::Y);
     sky_light.params = SkyLightParams {
         planet: to_render(-frame.vessel_offset).extend(body.radius as f32),
         sun: sun.extend(lux::RAW_SUNLIGHT),
-        ground: ground.extend(if earthlike { 1.0 } else { 0.0 }),
-        options: Vec4::new(view_steps(settings.effects) as f32, 0.0, 0.0, 0.0),
+        ground: ground.extend(if body.scattering.is_some() { 1.0 } else { 0.0 }),
+        options: Vec4::new(
+            view_steps(settings.effects).min(PROBE_STEPS) as f32,
+            0.0,
+            0.0,
+            0.0,
+        ),
+        local_from_render: Mat3::from_quat(rotation_to_render(
+            body.orientation(frame.time).inverse(),
+        )),
     };
-    sky_light.transmittance = luts.texture(vessel_body);
+    sky_light.air = airs.bindings(vessel_body);
+    if settings.clouds == Quality::Off {
+        sky_light.air.clouds = Vec4::ZERO;
+    }
 }
 
 #[derive(Resource)]
@@ -225,6 +236,20 @@ fn init_pipeline(
                     texture_2d(TextureSampleType::Float { filterable: true }),
                 ),
                 (111, sampler(SamplerBindingType::Filtering)),
+                (
+                    112,
+                    texture_2d(TextureSampleType::Float { filterable: true }),
+                ),
+                (
+                    113,
+                    texture_2d(TextureSampleType::Float { filterable: true }),
+                ),
+                (114, uniform_buffer::<AirUniform>(false)),
+                (
+                    115,
+                    texture_cube(TextureSampleType::Float { filterable: true }),
+                ),
+                (116, uniform_buffer::<Vec4>(false)),
             ),
         ),
     );
@@ -261,10 +286,16 @@ fn prepare_bind_group(
     else {
         return;
     };
-    // Bodies without an atmosphere have no table; the shader doesn't sample it then.
-    let lut = images.get(&sky_light.transmittance).unwrap_or(&fallback.d2);
+    // Bodies without an atmosphere have no tables; the shader doesn't sample them then.
+    let image = |handle: &Handle<Image>| images.get(handle).unwrap_or(&fallback.d2);
+    let lut = image(&sky_light.air.transmittance);
     let mut params = UniformBuffer::from(sky_light.params);
     params.write_buffer(&device, &queue);
+    let mut air = UniformBuffer::from(sky_light.air.uniform);
+    air.write_buffer(&device, &queue);
+    let mut clouds = UniformBuffer::from(sky_light.air.clouds);
+    clouds.write_buffer(&device, &queue);
+    let weather = images.get(&sky_light.air.weather).unwrap_or(&fallback.cube);
     let output = target.texture.create_view(&TextureViewDescriptor {
         dimension: Some(TextureViewDimension::D2Array),
         ..default()
@@ -277,6 +308,11 @@ fn prepare_bind_group(
             (1, &output),
             (110, &lut.texture_view),
             (111, &lut.sampler),
+            (112, &image(&sky_light.air.multiple).texture_view),
+            (113, &image(&sky_light.air.irradiance).texture_view),
+            (114, &air),
+            (115, &weather.texture_view),
+            (116, &clouds),
         )),
     );
     bind_group.0 = Some((group, size));

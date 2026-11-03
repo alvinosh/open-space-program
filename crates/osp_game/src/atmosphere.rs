@@ -1,67 +1,68 @@
-//! Sky and sunlight for Earth-like atmospheres.
+//! Sky, haze and sunlight for bodies with air.
 //!
-//! The sky is a sphere enclosing the atmosphere drawn with `shaders/sky.wesl` (single
-//! scattering). Sunlight is dimmed and reddened for the air between the sun and the vessel
-//! the camera looks at, so the vessel and everything around it is lit like the ground it
-//! stands on: orange at sunset, dark at night. The terrain and sky shaders read that
-//! dimming back from the light's colour, divide it out and apply each fragment's own value.
+//! How much light gets through the air, and how much it scatters, comes from
+//! [`osp_sim::scattering`]: each body with `scattering` in its data has tables of it, built once
+//! here and uploaded for the shaders (`shaders/atmosphere.wesl`).
 //!
-//! How much sunlight gets through depends only on height and the sun's angle, so it is
-//! integrated once per body into a [`TransmittanceLut`] that the shaders sample
-//! (`shaders/atmosphere.wesl`) instead of marching towards the sun from every point of
-//! every view ray. The CPU dims the light from the same table.
+//! The sky and the haze are one pass (`shaders/sky.wesl`), drawn over the whole view for every
+//! body with air in sight, between the opaque scene and anything transparent. Working from the
+//! depth buffer, it treats everything in the opaque scene alike: the ground, the vessel, the
+//! launch site and the trees all sit in the same haze. It is one draw per body, farthest first,
+//! so the Moon seen through Earth's air, or Mars's glow from Earth's sky, come out right.
+//!
+//! Sunlight is dimmed and reddened for the air between the sun and the vessel the camera looks
+//! at, so the vessel and everything around it is lit like the ground it stands on: orange at
+//! sunset, dark at night. The terrain reads that dimming back from the light's colour, divides it
+//! out and applies each fragment's own value.
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},
-    camera::{Exposure, visibility::NoFrustumCulling},
+    camera::Exposure,
+    core_pipeline::{
+        FullscreenShader,
+        core_3d::{main_opaque_pass_3d, main_transparent_pass_3d},
+        schedule::Core3d,
+    },
     image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
-    light::{NotShadowCaster, NotShadowReceiver, light_consts::lux},
+    light::light_consts::lux,
     math::DVec3,
-    mesh::MeshVertexBufferLayoutRef,
-    pbr::{MaterialPipeline, MaterialPipelineKey},
     platform::collections::HashMap,
     prelude::*,
-    render::render_resource::{
-        AsBindGroup, Extent3d, RenderPipelineDescriptor, SpecializedMeshPipelineError,
-        TextureDimension, TextureFormat,
+    render::{
+        Render, RenderApp, RenderStartup, RenderSystems,
+        extract_component::ExtractComponentPlugin,
+        extract_resource::{ExtractResource, ExtractResourcePlugin},
+        render_asset::RenderAssets,
+        render_resource::{
+            binding_types::{
+                sampler, texture_2d, texture_2d_multisampled, texture_cube, uniform_buffer,
+            },
+            *,
+        },
+        renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery},
+        texture::{FallbackImage, GpuImage},
+        view::{
+            Msaa, ViewDepthStencilTexture, ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms,
+        },
     },
-    shader::ShaderRef,
+    shader::ShaderDefVal,
 };
 use half::f16;
-use osp_sim::body::BodyId;
+use osp_sim::{
+    body::BodyId,
+    clouds::{CloudsDef, WEATHER_SIZE, Weather},
+    scattering::{Air, SKY_TABLE_SIZE, ScatteringDef, TRANSMITTANCE_SIZE},
+};
 
 use crate::{
     FrameSet,
     camera::{CameraRig, MainCamera},
-    frame::{RenderFrame, Sunlight},
+    eclipse::{EclipseUniform, eclipse_for},
+    frame::{RenderFrame, Sunlight, rotation_to_render},
     settings::{GraphicsSettings, Quality},
     sim::Sim,
-    surface::Surface,
 };
 
-/// Height of the scattering atmosphere above the surface (`THICKNESS` in the shader).
-const THICKNESS: f64 = 100_000.0;
-/// The sky mesh's radius over the atmosphere's top (`SKY_MESH_SCALE` in the shader): enough
-/// for its flat faces to clear the shell. The shaders decide what to draw by which side of
-/// the mesh the camera is on, so it must match.
-const SKY_MESH_SCALE: f64 = 1.002;
-/// Icosphere subdivisions of the sky mesh: each edge of the icosahedron in 21 pieces, so
-/// the faces dip at most about 0.05% inside its vertices.
-const SKY_MESH_SUBDIVISIONS: u32 = 20;
-const RAYLEIGH: [f64; 3] = [5.802e-6, 13.558e-6, 33.1e-6];
-const RAYLEIGH_HEIGHT: f64 = 8000.0;
-const MIE_EXTINCTION: f64 = 4.44e-6;
-const MIE_HEIGHT: f64 = 1200.0;
-const OZONE: [f64; 3] = [0.650e-6, 1.881e-6, 0.085e-6];
-/// Sun rays grazing deeper than this below the mean surface are in the planet's shadow
-/// (the shadow's soft edge spans `SHADOW_DEPTH` to `SHADOW_EDGE`), so the transmittance
-/// table starts there (`LUT_DEPTH` in the shader).
-const SHADOW_DEPTH: f64 = 6000.0;
-const SHADOW_EDGE: f64 = 1000.0;
-/// Transmittance table size: sun angle across, height down (`LUT_SIZE` in the shader).
-const LUT_SIZE: (usize, usize) = (256, 64);
-/// Integration steps along each ray of the table.
-const LUT_STEPS: usize = 128;
 /// Lower bound of the light's dimming, so the shaders can divide it back out.
 const MIN_TRANSMITTANCE: f64 = 1e-4;
 /// Camera exposure (EV100) in daylight and in darkness: the view adapts like an eye or an
@@ -70,328 +71,622 @@ const DAY_EV: f32 = 15.0;
 const NIGHT_EV: f32 = 9.0;
 /// Time constant of that adaptation, s.
 const ADAPTATION: f32 = 1.5;
+/// The least share of sunlight the exposure takes account of in an eclipse.
+const MIN_ECLIPSE_LIGHT: f32 = 0.004;
+/// How many stops the exposure opens up under full cloud.
+const OVERCAST_EV: f32 = 1.6;
+/// Air this small on screen is left out, as the tangent of the half-angle: under half a pixel.
+const SMALLEST_ON_SCREEN: f64 = 3e-4;
+/// Mip levels of a weather map, for far views and soft shadows.
+const WEATHER_MIP_LEVELS: u32 = 4;
 
 pub struct AtmospherePlugin;
 
 impl Plugin for AtmospherePlugin {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "shaders/sky.wesl");
-        // Built here rather than at startup so terrain and skies can rely on them.
-        let luts: Vec<_> = app
-            .world()
-            .resource::<Sim>()
-            .universe
-            .system
-            .bodies()
-            .iter()
-            .filter(|body| Surface::is_earthlike(body))
-            .map(|body| (body.id, TransmittanceLut::new(body.radius)))
-            .collect();
-        let mut images = app.world_mut().resource_mut::<Assets<Image>>();
-        let luts = luts
-            .into_iter()
-            .map(|(id, lut)| {
-                let image = images.add(lut.image());
-                (id, (lut, image))
+        // Built here rather than at startup so terrain and skies can rely on them. Each takes a
+        // few tenths of a second.
+        let tables: Vec<(BodyId, Air, Option<BodyClouds>)> = {
+            let system = &app.world().resource::<Sim>().universe.system;
+            std::thread::scope(|scope| {
+                let builds: Vec<_> = system
+                    .bodies()
+                    .iter()
+                    .filter_map(|body| {
+                        Some((
+                            body.id,
+                            body.scattering.as_ref()?,
+                            body.clouds.as_ref(),
+                            body.radius,
+                        ))
+                    })
+                    .map(|(id, def, clouds, radius)| {
+                        scope.spawn(move || {
+                            let clouds = clouds.map(|def| BodyClouds {
+                                weather: Weather::new(def),
+                                def: def.clone(),
+                            });
+                            (id, Air::new(def, radius), clouds)
+                        })
+                    })
+                    .collect();
+                builds
+                    .into_iter()
+                    .map(|build| build.join().expect("building the air tables"))
+                    .collect()
             })
+        };
+        let mut images = app.world_mut().resource_mut::<Assets<Image>>();
+        let airs = tables
+            .into_iter()
+            .map(|(id, air, clouds)| (id, BodyAir::new(air, clouds, &mut images)))
             .collect();
-        app.insert_resource(TransmittanceLuts(luts))
-            .add_plugins(MaterialPlugin::<SkyMaterial>::default())
-            .add_systems(Startup, spawn_skies)
-            .add_systems(
-                Update,
-                apply_effects_setting.run_if(resource_changed::<GraphicsSettings>),
-            )
+        let no_weather = images.add(clear_cubemap());
+        app.insert_resource(BodyAirs { airs, no_weather })
+            .init_resource::<SkyDraws>()
+            .add_plugins(ExtractResourcePlugin::<SkyDraws>::default())
+            .add_plugins(ExtractComponentPlugin::<MainCamera>::default())
             .add_systems(
                 Update,
                 (place_skies, dim_sunlight)
                     .after(crate::frame::update_sunlight)
                     .in_set(FrameSet::Render),
             );
+        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
+            return;
+        };
+        render_app
+            .init_resource::<SkyBuffers>()
+            .add_systems(RenderStartup, init_pipelines)
+            .add_systems(Render, prepare_sky.in_set(RenderSystems::PrepareBindGroups))
+            .add_systems(
+                Core3d,
+                render_sky
+                    .after(main_opaque_pass_3d)
+                    .before(main_transparent_pass_3d),
+            );
     }
 }
 
-/// Ray-marching steps through the air, for the sky and the haze over the ground, at each
-/// `effects` setting.
+/// Ray-marching steps through the air for the sky and the haze at each `effects` setting.
+/// Against a fine march (see `osp_sim::scattering`) the worst ray in the sky is 16% off at 16
+/// steps, 4% at 24, 2.2% at 32 and 1% at 48, and that only on a few rays through the shadow's
+/// edge at dusk.
 pub fn view_steps(quality: Quality) -> u32 {
     match quality {
-        Quality::Off | Quality::Low => 6,
-        Quality::Medium => 8,
-        Quality::High => 12,
-        Quality::Ultra => 16,
+        Quality::Off | Quality::Low => 16,
+        Quality::Medium => 24,
+        Quality::High => 32,
+        Quality::Ultra => 48,
     }
 }
 
-#[derive(Asset, AsBindGroup, TypePath, Debug, Clone)]
-pub struct SkyMaterial {
-    /// x: planet mean radius, y: ray-marching steps.
-    #[uniform(0)]
-    params: Vec4,
-    /// The body's [`TransmittanceLut`].
-    #[texture(110)]
-    #[sampler(111)]
-    transmittance: Handle<Image>,
+/// A body's air as the shaders take it (`Air` in `shaders/atmosphere.wesl`). All zero for a body
+/// without any, whose shaders never read it.
+#[derive(Debug, Clone, Copy, Default, ShaderType, Reflect)]
+pub struct AirUniform {
+    rayleigh: Vec4,
+    mie: Vec4,
+    mie_extinction: Vec4,
+    mie_g: Vec4,
+    ozone: Vec4,
+    shape: Vec4,
 }
 
-impl Material for SkyMaterial {
-    fn fragment_shader() -> ShaderRef {
-        "embedded://osp/shaders/sky.wesl".into()
-    }
-
-    fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Premultiplied
-    }
-
-    fn enable_prepass() -> bool {
-        false
-    }
-
-    fn enable_shadows() -> bool {
-        false
-    }
-
-    fn specialize(
-        _pipeline: &MaterialPipeline,
-        descriptor: &mut RenderPipelineDescriptor,
-        _layout: &MeshVertexBufferLayoutRef,
-        _key: MaterialPipelineKey<Self>,
-    ) -> Result<(), SpecializedMeshPipelineError> {
-        // Seen from inside, only back faces exist.
-        descriptor.primitive.cull_mode = None;
-        Ok(())
+impl AirUniform {
+    fn new(def: &ScatteringDef, radius: f64) -> Self {
+        let rgb = |c: [f64; 3], w: f64| Vec4::new(c[0] as f32, c[1] as f32, c[2] as f32, w as f32);
+        Self {
+            rayleigh: rgb(def.rayleigh, 1.0 / def.rayleigh_height),
+            mie: rgb(def.mie, 1.0 / def.mie_height),
+            mie_extinction: rgb(
+                std::array::from_fn(|c| def.mie[c] + def.mie_absorption[c]),
+                0.0,
+            ),
+            mie_g: rgb(def.mie_g, 0.0),
+            ozone: rgb(def.ozone, def.ozone_height),
+            shape: Vec4::new(
+                radius as f32,
+                (radius + def.height) as f32,
+                (1.0 / def.ozone_width) as f32,
+                0.0,
+            ),
+        }
     }
 }
 
-#[derive(Component)]
-struct Sky(BodyId);
+/// A body's clouds: its data and its map of them.
+pub struct BodyClouds {
+    pub def: CloudsDef,
+    pub weather: Weather,
+}
 
-fn spawn_skies(
-    mut commands: Commands,
+/// A body's air: its tables, and their GPU copies.
+pub struct BodyAir {
+    pub air: Air,
+    pub uniform: AirUniform,
+    pub transmittance: Handle<Image>,
+    pub multiple: Handle<Image>,
+    pub irradiance: Handle<Image>,
+    pub clouds: Option<BodyClouds>,
+    /// The clouds' weather map; a placeholder without clouds.
+    pub weather: Handle<Image>,
+}
+
+impl BodyAir {
+    fn new(air: Air, clouds: Option<BodyClouds>, images: &mut Assets<Image>) -> Self {
+        Self {
+            uniform: AirUniform::new(&air.def, air.radius),
+            transmittance: images.add(table_image(air.transmittance_table(), TRANSMITTANCE_SIZE)),
+            multiple: images.add(table_image(air.multiple_table(), SKY_TABLE_SIZE)),
+            irradiance: images.add(table_image(air.irradiance_table(), SKY_TABLE_SIZE)),
+            weather: clouds
+                .as_ref()
+                .map_or_else(Handle::default, |c| images.add(weather_image(&c.weather))),
+            clouds,
+            air,
+        }
+    }
+
+    /// `Clouds` in `shaders/atmosphere.wesl`, with clouds if `on`.
+    fn clouds_uniform(&self, on: bool) -> Vec4 {
+        match &self.clouds {
+            Some(clouds) if on => Vec4::new(
+                (self.air.radius + clouds.def.shadow_height()) as f32,
+                1.0,
+                0.0,
+                0.0,
+            ),
+            _ => Vec4::ZERO,
+        }
+    }
+}
+
+/// What a material or pass that imports `shaders/atmosphere.wesl` binds. Placeholders for a body
+/// without air, whose shaders never sample them.
+#[derive(Clone, Default)]
+pub struct AirBindings {
+    pub transmittance: Handle<Image>,
+    pub multiple: Handle<Image>,
+    pub irradiance: Handle<Image>,
+    pub uniform: AirUniform,
+    pub weather: Handle<Image>,
+    /// `Clouds` in `shaders/atmosphere.wesl`.
+    pub clouds: Vec4,
+}
+
+/// The tables of every body with air.
+#[derive(Resource)]
+pub struct BodyAirs {
+    airs: HashMap<BodyId, BodyAir>,
+    /// A clear cubemap for bodies without weather: the binding wants a cube whatever is in it.
+    no_weather: Handle<Image>,
+}
+
+impl BodyAirs {
+    pub fn get(&self, body: BodyId) -> Option<&BodyAir> {
+        self.airs.get(&body)
+    }
+
+    pub fn bindings(&self, body: BodyId) -> AirBindings {
+        self.get(body).map_or_else(
+            || AirBindings {
+                weather: self.no_weather.clone(),
+                ..default()
+            },
+            |air| AirBindings {
+                transmittance: air.transmittance.clone(),
+                multiple: air.multiple.clone(),
+                irradiance: air.irradiance.clone(),
+                uniform: air.uniform,
+                weather: if air.clouds.is_some() {
+                    air.weather.clone()
+                } else {
+                    self.no_weather.clone()
+                },
+                clouds: air.clouds_uniform(true),
+            },
+        )
+    }
+}
+
+/// A table as a filterable texture for the shaders.
+fn table_image(table: &[[f32; 3]], (width, height): (usize, usize)) -> Image {
+    let data = table
+        .iter()
+        .flat_map(|d| [d[0], d[1], d[2], 0.0])
+        .flat_map(|x| f16::from_f32(x).to_le_bytes())
+        .collect();
+    let mut image = Image::new(
+        Extent3d {
+            width: width as u32,
+            height: height as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba16Float,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        address_mode_u: ImageAddressMode::ClampToEdge,
+        address_mode_v: ImageAddressMode::ClampToEdge,
+        mag_filter: ImageFilterMode::Linear,
+        min_filter: ImageFilterMode::Linear,
+        mipmap_filter: ImageFilterMode::Linear,
+        ..default()
+    });
+    image
+}
+
+/// The weather map as a filterable cubemap, with a few mips for far views and soft shadows.
+fn weather_image(weather: &Weather) -> Image {
+    let n = WEATHER_SIZE;
+    let mut data = Vec::with_capacity(6 * n * n * 4 * 4 / 3);
+    for face in weather.data.chunks(n * n) {
+        let (mut level, mut size) = (face.to_vec(), n);
+        data.extend(level.iter().flatten());
+        for _ in 1..WEATHER_MIP_LEVELS {
+            let half = size / 2;
+            let mut next = vec![[0u8; 4]; half * half];
+            for y in 0..half {
+                for x in 0..half {
+                    let mut sum = [0u32; 4];
+                    for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                        let texel = level[(2 * x + dx) + (2 * y + dy) * size];
+                        for (s, v) in sum.iter_mut().zip(texel) {
+                            *s += v as u32;
+                        }
+                    }
+                    next[x + y * half] = sum.map(|s| (s / 4) as u8);
+                }
+            }
+            data.extend(next.iter().flatten());
+            level = next;
+            size = half;
+        }
+    }
+    let mut image = Image::default();
+    image.texture_descriptor.size = Extent3d {
+        width: n as u32,
+        height: n as u32,
+        depth_or_array_layers: 6,
+    };
+    image.texture_descriptor.format = TextureFormat::Rgba8Unorm;
+    image.texture_descriptor.mip_level_count = WEATHER_MIP_LEVELS;
+    image.data = Some(data);
+    image.asset_usage = RenderAssetUsages::RENDER_WORLD;
+    image.texture_view_descriptor = Some(TextureViewDescriptor {
+        dimension: Some(TextureViewDimension::Cube),
+        ..default()
+    });
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        mag_filter: ImageFilterMode::Linear,
+        min_filter: ImageFilterMode::Linear,
+        mipmap_filter: ImageFilterMode::Linear,
+        ..default()
+    });
+    image
+}
+
+fn clear_cubemap() -> Image {
+    let mut image = Image::new_fill(
+        Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 6,
+        },
+        TextureDimension::D2,
+        &[0; 4],
+        TextureFormat::Rgba8Unorm,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.texture_view_descriptor = Some(TextureViewDescriptor {
+        dimension: Some(TextureViewDimension::Cube),
+        ..default()
+    });
+    image
+}
+
+/// `SkyDraw` in `shaders/sky.wesl`.
+#[derive(Debug, Clone, Copy, Default, ShaderType)]
+struct SkyDrawUniform {
+    /// xyz: the camera relative to the body's centre (render axes, m); w: ray-marching steps.
+    eye: Vec4,
+    /// xyz: direction to the sun from the body; w: its illuminance above the air.
+    sun: Vec4,
+}
+
+/// One body's air to draw this frame.
+#[derive(Clone)]
+struct SkyDraw {
+    air: AirBindings,
+    draw: SkyDrawUniform,
+    /// The body's fixed axes from render axes.
+    local_from_render: Mat3,
+    /// Other bodies' shadows, relative to this body's centre.
+    eclipse: EclipseUniform,
+    /// The direction to the Sun.
+    sun: Vec4,
+}
+
+/// This frame's draws, farthest first.
+#[derive(Resource, Clone, Default, ExtractResource)]
+#[extract_app(RenderApp)]
+struct SkyDraws(Vec<SkyDraw>);
+
+fn place_skies(
     sim: Res<Sim>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<SkyMaterial>>,
-    luts: Res<TransmittanceLuts>,
+    frame: Res<RenderFrame>,
+    settings: Res<GraphicsSettings>,
+    airs: Res<BodyAirs>,
+    camera: Single<&Transform, With<MainCamera>>,
+    mut draws: ResMut<SkyDraws>,
 ) {
-    // Fine enough that its flat faces stay within `SKY_MESH_SCALE` of the sphere.
-    let mesh = meshes.add(Sphere::new(1.0).mesh().ico(SKY_MESH_SUBDIVISIONS).unwrap());
-    for body in sim.universe.system.bodies() {
-        if !Surface::is_earthlike(body) {
+    draws.0.clear();
+    if frame.origin_body.is_none() {
+        return;
+    }
+    let system = &sim.universe.system;
+    let steps = view_steps(settings.effects) as f32;
+    let star = frame.body_offset(system.root());
+    let mut sorted = Vec::new();
+    for (&id, air) in &airs.airs {
+        let centre = frame.to_render(id, DVec3::ZERO);
+        let eye = camera.translation - centre;
+        let distance = eye.length() as f64;
+        if air.air.top() / distance.max(1.0) < SMALLEST_ON_SCREEN {
             continue;
         }
-        commands.spawn((
-            Sky(body.id),
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(materials.add(SkyMaterial {
-                // The steps are set by `apply_effects_setting`.
-                params: Vec4::new(body.radius as f32, 0.0, 0.0, 0.0),
-                transmittance: luts.texture(body.id),
-            })),
-            Transform::default(),
-            NotShadowCaster,
-            NotShadowReceiver,
-            NoFrustumCulling,
-            Name::new(format!("{} sky", body.name)),
+        let sun = crate::frame::to_render(star - frame.body_offset(id)).normalize_or(Vec3::Y);
+        let mut bindings = airs.bindings(id);
+        bindings.clouds = air.clouds_uniform(settings.clouds != Quality::Off);
+        let turned = rotation_to_render(system.body(id).orientation(frame.time).inverse());
+        sorted.push((
+            distance,
+            SkyDraw {
+                air: bindings,
+                draw: SkyDrawUniform {
+                    eye: eye.extend(steps),
+                    sun: sun.extend(lux::RAW_SUNLIGHT),
+                },
+                local_from_render: Mat3::from_quat(turned),
+                eclipse: eclipse_for(system, &frame, &airs, id, DVec3::ZERO),
+                sun: sun.extend(0.0),
+            },
+        ));
+    }
+    sorted.sort_by(|a, b| b.0.total_cmp(&a.0));
+    draws.0.extend(sorted.into_iter().map(|(_, draw)| draw));
+}
+
+#[derive(Resource)]
+pub(crate) struct SkyPipelines {
+    layout: BindGroupLayoutDescriptor,
+    layout_msaa: BindGroupLayoutDescriptor,
+    pipeline: CachedRenderPipelineId,
+    pipeline_msaa: CachedRenderPipelineId,
+}
+
+fn init_pipelines(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    pipeline_cache: Res<PipelineCache>,
+    fullscreen: Res<FullscreenShader>,
+    device: Res<RenderDevice>,
+) {
+    let layout = |label: &'static str, msaa: bool| {
+        let lut = || texture_2d(TextureSampleType::Float { filterable: true });
+        let depth = if msaa {
+            texture_2d_multisampled(TextureSampleType::Depth)
+        } else {
+            texture_2d(TextureSampleType::Depth)
+        };
+        BindGroupLayoutDescriptor::new(
+            label,
+            &BindGroupLayoutEntries::with_indices(
+                ShaderStages::FRAGMENT,
+                (
+                    (0, uniform_buffer::<ViewUniform>(true)),
+                    (1, uniform_buffer::<SkyDrawUniform>(false)),
+                    (2, depth),
+                    (110, lut()),
+                    (111, sampler(SamplerBindingType::Filtering)),
+                    (112, lut()),
+                    (113, lut()),
+                    (114, uniform_buffer::<AirUniform>(false)),
+                    (
+                        115,
+                        texture_cube(TextureSampleType::Float { filterable: true }),
+                    ),
+                    (116, uniform_buffer::<Vec4>(false)),
+                    (117, uniform_buffer::<Mat3>(false)),
+                    (118, uniform_buffer::<EclipseUniform>(false)),
+                    (119, uniform_buffer::<Vec4>(false)),
+                ),
+            ),
+        )
+    };
+    let (plain, msaa) = (layout("sky", false), layout("sky_msaa", true));
+    let dual_source = device
+        .features()
+        .contains(WgpuFeatures::DUAL_SOURCE_BLENDING);
+    let queue = |layout: &BindGroupLayoutDescriptor, samples: u32| {
+        // `atmosphere.wesl` binds its tables in the material group; here that is group 0.
+        let mut shader_defs = vec![
+            ShaderDefVal::UInt("MATERIAL_BIND_GROUP".into(), 0),
+            "CLOUD_RAYS".into(),
+        ];
+        if samples > 1 {
+            shader_defs.push("MULTISAMPLED".into());
+        }
+        if dual_source {
+            shader_defs.push("DUAL_SOURCE_BLENDING".into());
+        }
+        pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
+            label: Some("sky".into()),
+            layout: vec![layout.clone()],
+            vertex: fullscreen.to_vertex_state(),
+            fragment: Some(FragmentState {
+                shader: asset_server.load("embedded://osp/shaders/sky.wesl"),
+                shader_defs,
+                targets: vec![Some(ColorTargetState {
+                    format: TextureFormat::Rgba16Float,
+                    blend: Some(BlendState {
+                        color: BlendComponent {
+                            src_factor: BlendFactor::One,
+                            dst_factor: if dual_source {
+                                BlendFactor::Src1
+                            } else {
+                                BlendFactor::SrcAlpha
+                            },
+                            operation: BlendOperation::Add,
+                        },
+                        alpha: BlendComponent {
+                            src_factor: BlendFactor::Zero,
+                            dst_factor: BlendFactor::One,
+                            operation: BlendOperation::Add,
+                        },
+                    }),
+                    write_mask: ColorWrites::ALL,
+                })],
+                ..default()
+            }),
+            multisample: MultisampleState {
+                count: samples,
+                ..default()
+            },
+            ..default()
+        })
+    };
+    let (pipeline, pipeline_msaa) = (queue(&plain, 1), queue(&msaa, Msaa::Sample4.samples()));
+    commands.insert_resource(SkyPipelines {
+        layout: plain,
+        layout_msaa: msaa,
+        pipeline,
+        pipeline_msaa,
+    });
+}
+
+/// The buffers and bind groups of this frame's draws; the buffers are reused.
+#[derive(Resource, Default)]
+pub(crate) struct SkyBuffers {
+    buffers: Vec<SkyDrawBuffers>,
+    groups: Vec<BindGroup>,
+}
+
+#[derive(Default)]
+struct SkyDrawBuffers {
+    air: UniformBuffer<AirUniform>,
+    params: UniformBuffer<SkyDrawUniform>,
+    clouds: UniformBuffer<Vec4>,
+    local_from_render: UniformBuffer<Mat3>,
+    eclipse: UniformBuffer<EclipseUniform>,
+    sun: UniformBuffer<Vec4>,
+}
+
+fn prepare_sky(
+    draws: Res<SkyDraws>,
+    pipelines: Res<SkyPipelines>,
+    pipeline_cache: Res<PipelineCache>,
+    images: Res<RenderAssets<GpuImage>>,
+    fallback: Res<FallbackImage>,
+    device: Res<RenderDevice>,
+    queue: Res<RenderQueue>,
+    view_uniforms: Res<ViewUniforms>,
+    views: Query<(&ViewDepthStencilTexture, &Msaa), With<MainCamera>>,
+    mut sky: ResMut<SkyBuffers>,
+) {
+    sky.groups.clear();
+    let Some(view) = view_uniforms.uniforms.binding() else {
+        return;
+    };
+    let Ok((depth, msaa)) = views.single() else {
+        return;
+    };
+    let Some(depth) = depth.attachment.depth_stencil_views().depth_only_view() else {
+        return;
+    };
+    let layout = if msaa.samples() > 1 {
+        &pipelines.layout_msaa
+    } else {
+        &pipelines.layout
+    };
+    let layout = pipeline_cache.get_bind_group_layout(layout);
+    let sky = &mut *sky;
+    sky.buffers.resize_with(draws.0.len(), Default::default);
+    for (draw, buffers) in draws.0.iter().zip(&mut sky.buffers) {
+        buffers.air.set(draw.air.uniform);
+        buffers.air.write_buffer(&device, &queue);
+        buffers.params.set(draw.draw);
+        buffers.params.write_buffer(&device, &queue);
+        buffers.clouds.set(draw.air.clouds);
+        buffers.clouds.write_buffer(&device, &queue);
+        buffers.local_from_render.set(draw.local_from_render);
+        buffers.local_from_render.write_buffer(&device, &queue);
+        buffers.eclipse.set(draw.eclipse);
+        buffers.eclipse.write_buffer(&device, &queue);
+        buffers.sun.set(draw.sun);
+        buffers.sun.write_buffer(&device, &queue);
+        let image = |handle: &Handle<Image>| images.get(handle).unwrap_or(&fallback.d2);
+        let weather = images.get(&draw.air.weather).unwrap_or(&fallback.cube);
+        let transmittance = image(&draw.air.transmittance);
+        sky.groups.push(device.create_bind_group(
+            "sky",
+            &layout,
+            &BindGroupEntries::with_indices((
+                (0, view.clone()),
+                (1, &buffers.params),
+                (2, depth),
+                (110, &transmittance.texture_view),
+                (111, &transmittance.sampler),
+                (112, &image(&draw.air.multiple).texture_view),
+                (113, &image(&draw.air.irradiance).texture_view),
+                (114, &buffers.air),
+                (115, &weather.texture_view),
+                (116, &buffers.clouds),
+                (117, &buffers.local_from_render),
+                (118, &buffers.eclipse),
+                (119, &buffers.sun),
+            )),
         ));
     }
 }
 
-fn apply_effects_setting(
-    settings: Res<GraphicsSettings>,
-    mut materials: ResMut<Assets<SkyMaterial>>,
+pub(crate) fn render_sky(
+    view: ViewQuery<(&ViewTarget, &ViewUniformOffset, &Msaa), With<MainCamera>>,
+    sky: Res<SkyBuffers>,
+    pipelines: Res<SkyPipelines>,
+    pipeline_cache: Res<PipelineCache>,
+    mut ctx: RenderContext,
 ) {
-    let steps = view_steps(settings.effects) as f32;
-    let stale: Vec<_> = materials
-        .iter()
-        .filter(|(_, m)| m.params.y != steps)
-        .map(|(id, _)| id)
-        .collect();
-    for id in stale {
-        if let Some(mut material) = materials.get_mut(id) {
-            material.params.y = steps;
-        }
-    }
-}
-
-fn place_skies(sim: Res<Sim>, frame: Res<RenderFrame>, mut skies: Query<(&Sky, &mut Transform)>) {
-    if frame.origin_body.is_none() {
+    if sky.groups.is_empty() {
         return;
     }
-    for (sky, mut transform) in &mut skies {
-        let body = sim.universe.system.body(sky.0);
-        transform.translation = frame.to_render(sky.0, DVec3::ZERO);
-        transform.scale = Vec3::splat(((body.radius + THICKNESS) * SKY_MESH_SCALE) as f32);
-    }
-}
-
-fn densities(height: f64) -> [f64; 3] {
-    let h = height.max(0.0);
-    let ozone = (1.0 - (h - 25_000.0).abs() / 15_000.0).max(0.0);
-    [(-h / RAYLEIGH_HEIGHT).exp(), (-h / MIE_HEIGHT).exp(), ozone]
-}
-
-fn smoothstep(e0: f64, e1: f64, x: f64) -> f64 {
-    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
-
-/// Sunlight transmittance tables for Earth-like bodies, with their GPU copies.
-#[derive(Resource)]
-pub struct TransmittanceLuts(HashMap<BodyId, (TransmittanceLut, Handle<Image>)>);
-
-impl TransmittanceLuts {
-    /// The body's table for a material; a placeholder for bodies without one (their
-    /// shaders never sample it).
-    pub fn texture(&self, body: BodyId) -> Handle<Image> {
-        self.0
-            .get(&body)
-            .map_or_else(Handle::default, |(_, image)| image.clone())
-    }
-
-    pub fn get(&self, body: BodyId) -> Option<&TransmittanceLut> {
-        self.0.get(&body).map(|(lut, _)| lut)
-    }
-}
-
-/// Optical depth (per RGB channel) from a point to the top of the atmosphere, towards the
-/// sun, tabulated by the point's distance from the centre `r` and the cosine `mu` of the
-/// sun's angle from its zenith. Uses Bruneton's parametrisation, which packs texels where
-/// the light changes fastest (near the horizon), with the shadow depth as its floor:
-/// rays that pass deeper are in the planet's shadow anyway. Inside the planet the air is
-/// as dense as at the surface, like the per-point march it replaces.
-pub struct TransmittanceLut {
-    radius: f64,
-    /// Row-major, `LUT_SIZE.0` per row.
-    depths: Vec<[f32; 3]>,
-}
-
-impl TransmittanceLut {
-    pub fn new(radius: f64) -> Self {
-        let (width, height) = LUT_SIZE;
-        let (bottom, top) = (radius - SHADOW_DEPTH, radius + THICKNESS);
-        let horizon = ((top - bottom) * (top + bottom)).sqrt();
-        let mut depths = Vec::with_capacity(width * height);
-        for j in 0..height {
-            let rho = horizon * j as f64 / (height - 1) as f64;
-            let r = (rho * rho + bottom * bottom).sqrt();
-            let (d_min, d_max) = (top - r, rho + horizon);
-            for i in 0..width {
-                let d = d_min + (d_max - d_min) * i as f64 / (width - 1) as f64;
-                let mu = if d <= 0.0 {
-                    1.0
-                } else {
-                    ((horizon * horizon - rho * rho - d * d) / (2.0 * r * d)).clamp(-1.0, 1.0)
-                };
-                // Midpoint rule along the ray, by distance from the point.
-                let ds = d / LUT_STEPS as f64;
-                let mut depth = [0.0; 3];
-                for k in 0..LUT_STEPS {
-                    let t = ds * (k as f64 + 0.5);
-                    let height = (t * t + 2.0 * r * mu * t + r * r).sqrt() - radius;
-                    let density = densities(height);
-                    for (c, depth) in depth.iter_mut().enumerate() {
-                        *depth += (RAYLEIGH[c] * density[0]
-                            + MIE_EXTINCTION * density[1]
-                            + OZONE[c] * density[2])
-                            * ds;
-                    }
-                }
-                depths.push(depth.map(|x| x as f32));
-            }
-        }
-        Self { radius, depths }
-    }
-
-    /// The table as a filterable texture for the shaders.
-    fn image(&self) -> Image {
-        let (width, height) = LUT_SIZE;
-        let data = self
-            .depths
-            .iter()
-            .flat_map(|d| [d[0], d[1], d[2], 0.0])
-            .flat_map(|x| f16::from_f32(x).to_le_bytes())
-            .collect();
-        let mut image = Image::new(
-            Extent3d {
-                width: width as u32,
-                height: height as u32,
-                depth_or_array_layers: 1,
-            },
-            TextureDimension::D2,
-            data,
-            TextureFormat::Rgba16Float,
-            RenderAssetUsages::RENDER_WORLD,
-        );
-        image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-            address_mode_u: ImageAddressMode::ClampToEdge,
-            address_mode_v: ImageAddressMode::ClampToEdge,
-            mag_filter: ImageFilterMode::Linear,
-            min_filter: ImageFilterMode::Linear,
-            ..default()
+    let (target, view_offset, msaa) = view.into_inner();
+    let pipeline = if msaa.samples() > 1 {
+        pipelines.pipeline_msaa
+    } else {
+        pipelines.pipeline
+    };
+    let Some(pipeline) = pipeline_cache.get_render_pipeline(pipeline) else {
+        return;
+    };
+    let mut pass = ctx
+        .command_encoder()
+        .begin_render_pass(&RenderPassDescriptor {
+            label: Some("sky"),
+            color_attachments: &[Some(target.get_color_attachment())],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
         });
-        image
-    }
-
-    /// Texture coordinates of `(r, mu)`, in texels (centres at `k + 0.5`).
-    fn texel(&self, r: f64, mu: f64) -> (f64, f64) {
-        let (width, height) = LUT_SIZE;
-        let (bottom, top) = (self.radius - SHADOW_DEPTH, self.radius + THICKNESS);
-        let r = r.clamp(bottom, top);
-        let horizon = ((top - bottom) * (top + bottom)).sqrt();
-        let rho = ((r - bottom) * (r + bottom)).max(0.0).sqrt();
-        let d = (-r * mu + ((top - r) * (top + r) + r * r * mu * mu).max(0.0).sqrt()).max(0.0);
-        let (d_min, d_max) = (top - r, rho + horizon);
-        let x_mu = (d - d_min) / (d_max - d_min);
-        let x_r = rho / horizon;
-        // Unit range to texel space with the end texel centres on 0 and 1.
-        let texel = |x: f64, n: usize| 0.5 + x * (n - 1) as f64;
-        (texel(x_mu, width), texel(x_r, height))
-    }
-
-    /// Bilinear lookup with clamped edges, as the GPU samples it.
-    fn depth(&self, r: f64, mu: f64) -> [f64; 3] {
-        let (width, height) = LUT_SIZE;
-        let (u, v) = self.texel(r, mu);
-        let split = |x: f64, n: usize| {
-            let x = (x - 0.5).clamp(0.0, (n - 1) as f64);
-            let i = (x.floor() as usize).min(n - 2);
-            (i, x - i as f64)
-        };
-        let ((i, fu), (j, fv)) = (split(u, width), split(v, height));
-        let at = |i: usize, j: usize| self.depths[j * width + i].map(f64::from);
-        let (a, b, c, d) = (at(i, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1));
-        std::array::from_fn(|k| {
-            let top = a[k] + (b[k] - a[k]) * fu;
-            let bottom = c[k] + (d[k] - c[k]) * fu;
-            top + (bottom - top) * fv
-        })
-    }
-
-    /// Fraction of sunlight (per RGB channel) reaching `p` (relative to the planet centre)
-    /// through the atmosphere, including the planet's shadow. Mirrors the shader.
-    pub fn sun_transmittance(&self, p: DVec3, sun: DVec3) -> [f64; 3] {
-        let radius = self.radius;
-        let r = p.length();
-        let b = p.dot(sun);
-        let along = (-b).max(0.0);
-        let closest = ((r - along) * (r + along)).max(0.0).sqrt();
-        let shadow = smoothstep(radius - SHADOW_DEPTH, radius - SHADOW_EDGE, closest);
-        if shadow <= 0.0 {
-            return [0.0; 3];
-        }
-        let top = radius + THICKNESS;
-        let (mut r, mut mu) = (r, b / r.max(1.0));
-        if r > top {
-            // From outside, the light only dims from where the ray enters the atmosphere.
-            let c = (r - top) * (r + top);
-            let disc = b * b - c;
-            if disc < 0.0 || b >= 0.0 {
-                return [shadow; 3];
-            }
-            let entry = p + sun * (-b - disc.sqrt());
-            r = top;
-            mu = entry.dot(sun) / top;
-        }
-        self.depth(r, mu).map(|x| (-x).exp() * shadow)
+    pass.set_pipeline(pipeline);
+    for group in &sky.groups {
+        pass.set_bind_group(0, group, &[view_offset.offset]);
+        pass.draw(0..3, 0..1);
     }
 }
 
@@ -406,7 +701,8 @@ fn dim_sunlight(
     mut light: Single<&mut DirectionalLight, With<Sunlight>>,
     mut exposure: Single<&mut Exposure, With<MainCamera>>,
     rig: Res<CameraRig>,
-    luts: Res<TransmittanceLuts>,
+    settings: Res<GraphicsSettings>,
+    airs: Res<BodyAirs>,
 ) {
     let Some(vessel_body) = frame.vessel_body else {
         return;
@@ -417,10 +713,31 @@ fn dim_sunlight(
         (frame.body_offset(system.root()) - frame.relative(vessel_body, vessel)).normalize();
     // The map camera is above all air: what it sees is lit by the full sun, not the light
     // that reaches the vessel (in Earth's shadow, that left the Moon and Mars black).
-    let lut = luts.get(vessel_body).filter(|_| !rig.map_view);
-    let transmittance = lut.map_or([1.0; 3], |lut| {
-        lut.sun_transmittance(vessel, to_sun)
-            .map(|t| t.max(MIN_TRANSMITTANCE))
+    let air = airs.get(vessel_body).filter(|_| !rig.map_view);
+    let cloud_shadow = |air: &BodyAir| {
+        let Some(clouds) = air
+            .clouds
+            .as_ref()
+            .filter(|_| settings.clouds != Quality::Off)
+        else {
+            return 1.0;
+        };
+        // The map's axes: the body's fixed axes as the renderer turns them, Y to the pole.
+        let to_fixed = system.body(vessel_body).orientation(frame.time).inverse();
+        let turn = |v: DVec3| {
+            let v = to_fixed * v;
+            DVec3::new(v.x, v.z, -v.y)
+        };
+        let radius = air.air.radius;
+        clouds
+            .weather
+            .sunlight(&clouds.def, radius, turn(vessel), turn(to_sun))
+    };
+    let shade = air.map_or(1.0, cloud_shadow);
+    let transmittance = air.map_or([1.0; 3], |air| {
+        air.air
+            .sun_transmittance(vessel, to_sun)
+            .map(|t| (t * shade).max(MIN_TRANSMITTANCE))
     });
     let [r, g, b] = transmittance.map(|t| t as f32);
     light.color = Color::linear_rgb(r, g, b);
@@ -431,116 +748,80 @@ fn dim_sunlight(
     // Expose for the ground below: the sunlit disc in the map view, otherwise day or night
     // where the vessel is (in orbit over the night side, that shows the city lights).
     let scene = if rig.map_view { 1.0 } else { daylight };
-    let target = NIGHT_EV + (DAY_EV - NIGHT_EV) * scene.sqrt();
+    // Under cloud there is less light, and the eye opens up to it.
+    let overcast = OVERCAST_EV * (1.0 - shade as f32);
+    // In another body's shadow the eye opens up, but only makes up for half the stops: an eclipse
+    // should look dark.
+    let eclipsed =
+        crate::eclipse::sunlight_left(system, &frame, vessel_body, frame.vessel_offset) as f32;
+    let day_ev = DAY_EV + 0.5 * eclipsed.max(MIN_ECLIPSE_LIGHT).log2();
+    let target = NIGHT_EV + (day_ev - NIGHT_EV) * scene.sqrt() - overcast;
     let blend = 1.0 - (-time.delta_secs() / ADAPTATION).exp();
     exposure.ev100 += (target - exposure.ev100) * blend;
 }
 
+fn smoothstep(e0: f64, e1: f64, x: f64) -> f64 {
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 #[cfg(test)]
 mod tests {
-    use std::sync::LazyLock;
+    use osp_sim::scattering::sphere_hits;
 
     use super::*;
 
-    const R: f64 = 6_371_000.0;
-
-    #[test]
-    fn sky_mesh_faces_clear_the_top_of_the_atmosphere() {
-        use bevy::mesh::{Indices, VertexAttributeValues};
-        let mesh = Sphere::new(1.0).mesh().ico(SKY_MESH_SUBDIVISIONS).unwrap();
-        let Some(VertexAttributeValues::Float32x3(points)) =
-            mesh.attribute(Mesh::ATTRIBUTE_POSITION)
-        else {
-            panic!("no positions");
-        };
-        let Some(Indices::U32(indices)) = mesh.indices() else {
-            panic!("no indices");
-        };
-        // Closest any face comes to the centre: its plane's distance from it.
-        let closest = indices
-            .chunks(3)
-            .map(|t| {
-                let [a, b, c] = [0, 1, 2].map(|k| Vec3::from(points[t[k] as usize]));
-                (b - a).cross(c - a).normalize().dot(a).abs()
-            })
-            .fold(1.0f32, f32::min) as f64;
-        // Scaled to the mesh, every face stays outside the atmosphere with room to spare.
-        assert!(closest * SKY_MESH_SCALE > 1.001, "{closest}");
-    }
-    static LUT: LazyLock<TransmittanceLut> = LazyLock::new(|| TransmittanceLut::new(R));
-
-    fn sun_transmittance(p: DVec3, sun: DVec3) -> [f64; 3] {
-        LUT.sun_transmittance(p, sun)
-    }
-
-    /// Brute-force march towards the sun from `p`, for checking the table.
-    fn reference(p: DVec3, sun: DVec3) -> [f64; 3] {
-        let r = p.length();
-        let b = p.dot(sun);
-        let along = (-b).max(0.0);
-        let closest = ((r - along) * (r + along)).max(0.0).sqrt();
-        let shadow = smoothstep(R - SHADOW_DEPTH, R - SHADOW_EDGE, closest);
-        let top = R + THICKNESS;
-        let exit = (-b + (b * b - (r - top) * (r + top)).max(0.0).sqrt()).max(0.0);
-        let steps = 100_000;
-        let ds = exit / steps as f64;
-        let mut depth = [0.0; 3];
-        for i in 0..steps {
-            let d = densities((p + sun * (ds * (i as f64 + 0.5))).length() - R);
-            for k in 0..3 {
-                depth[k] += (RAYLEIGH[k] * d[0] + MIE_EXTINCTION * d[1] + OZONE[k] * d[2]) * ds;
-            }
-        }
-        depth.map(|x| (-x).exp() * shadow)
+    fn shipped_bodies() -> Vec<osp_sim::data::BodyDef> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/core");
+        let content = osp_mods::load(&root, None);
+        content.registry.all("bodies", &mut Vec::new())
     }
 
     #[test]
-    fn table_matches_a_fine_march() {
-        // Ground, mountains, flight, the stratosphere and orbit; sun high, low, setting and
-        // just below the horizon (lit through the shadow's soft edge).
-        for height in [0.0, 3_000.0, 12_000.0, 40_000.0, 400_000.0] {
-            for elevation in [80.0f64, 30.0, 10.0, 3.0, 1.0, 0.0, -0.5, -1.5] {
-                let p = DVec3::new(0.0, 0.0, R + height);
-                let e = elevation.to_radians();
-                let sun = DVec3::new(e.cos(), 0.0, e.sin());
-                let (table, exact) = (sun_transmittance(p, sun), reference(p, sun));
-                for k in 0..3 {
-                    // Within 1% of the light, or 2% of what gets through.
-                    let error = (table[k] - exact[k]).abs();
-                    assert!(
-                        error < 0.01 || error < 0.02 * exact[k],
-                        "h {height} m, sun {elevation} deg: {table:?} vs {exact:?}"
-                    );
+    fn every_shipped_body_with_air_has_a_sky_and_it_looks_like_one() {
+        let bodies = shipped_bodies();
+        assert!(!bodies.is_empty());
+        for body in &bodies {
+            // Air that is not drawn would look like a bug in the game.
+            let Some(def) = &body.scattering else {
+                assert!(body.atmosphere.is_none(), "{} has no scattering", body.id);
+                continue;
+            };
+            let air = Air::new(def, body.radius);
+            let uniform = AirUniform::new(def, body.radius);
+            assert!(uniform.shape.y > uniform.shape.x, "{}", body.id);
+            let eye = DVec3::new(0.0, 0.0, body.radius + 2.0);
+            let sun = DVec3::new(0.6, 0.0, 0.8);
+            for look in [DVec3::Z, DVec3::new(1.0, 0.0, 0.05).normalize()] {
+                let exit = sphere_hits(eye, look, air.top()).unwrap().1;
+                let ray = air.scatter(
+                    eye,
+                    look,
+                    0.0,
+                    exit,
+                    sun,
+                    view_steps(Quality::Ultra) as usize,
+                );
+                for c in 0..3 {
+                    let (light, through) = (ray.inscatter[c], ray.transmittance[c]);
+                    assert!(light > 1e-4 && light < 1.0, "{}: {light}", body.id);
+                    assert!((0.0..=1.0).contains(&through), "{}: {through}", body.id);
                 }
             }
         }
     }
 
     #[test]
-    fn overhead_sun_is_bright_and_slightly_yellow() {
-        let p = DVec3::new(0.0, 0.0, R + 10.0);
-        let t = sun_transmittance(p, DVec3::Z);
-        assert!(t[0] > 0.9 && t[2] > 0.6 && t[0] > t[2], "{t:?}");
-    }
-
-    #[test]
-    fn low_sun_is_red_and_set_sun_is_dark() {
-        let p = DVec3::new(0.0, 0.0, R + 10.0);
-        let low = sun_transmittance(p, DVec3::new(1.0, 0.0, 0.03).normalize());
-        assert!(low[0] > 3.0 * low[2], "{low:?}");
-        let set = sun_transmittance(p, DVec3::new(1.0, 0.0, -0.1).normalize());
-        assert_eq!(set, [0.0; 3]);
-    }
-
-    #[test]
-    fn space_is_unaffected_unless_in_shadow() {
-        let lit = sun_transmittance(DVec3::new(0.0, 0.0, R + 400e3), DVec3::X);
-        assert!(lit.iter().all(|&t| t > 0.999), "{lit:?}");
-        let shadow = sun_transmittance(DVec3::new(-(R + 400e3), 0.0, 0.0), DVec3::X);
-        assert_eq!(shadow, [0.0; 3]);
-        // Far out, sunlight grazing the atmosphere on its way is reddened.
-        let grazing = DVec3::new(-2.0 * R, 0.0, R + 20e3);
-        let t = sun_transmittance(grazing, DVec3::X);
-        assert!(t[2] < 0.5 && t[0] > t[2], "{t:?}");
+    fn the_uniform_gives_the_shader_what_the_tables_were_built_from() {
+        let bodies = shipped_bodies();
+        let earth = bodies.iter().find(|b| b.id == "Earth").unwrap();
+        let def = earth.scattering.as_ref().unwrap();
+        let uniform = AirUniform::new(def, earth.radius);
+        assert_eq!(uniform.shape.x, earth.radius as f32);
+        assert_eq!(uniform.shape.y, (earth.radius + def.height) as f32);
+        assert_eq!(uniform.rayleigh.w, (1.0 / def.rayleigh_height) as f32);
+        // Extinction is scattering plus absorption.
+        let extinction = def.mie[1] + def.mie_absorption[1];
+        assert_eq!(uniform.mie_extinction.y, extinction as f32);
     }
 }
