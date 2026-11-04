@@ -195,6 +195,10 @@ pub struct Joint {
 pub struct StageBody {
     pub diameter: f64,
     pub length: f64,
+    /// How far up from its base it reached as built, a fairing's whole height included, m: what
+    /// stands inside that is carried in it, whether or not the fairing has gone since.
+    #[serde(default)]
+    pub reach: f64,
 }
 
 /// One thing a part does on its stage.
@@ -373,6 +377,7 @@ impl PartTree {
             tree.part_mut(hull).body = Some(StageBody {
                 diameter: def.diameter,
                 length: def.length,
+                reach: 0.0,
             });
             hulls.push(hull);
             // Each of the stage's parts is mounted on the hull, turned `rotation`.
@@ -750,6 +755,15 @@ impl PartTree {
     /// The parts of craft stage `stage` still on the tree.
     pub fn stage(&self, stage: usize) -> impl Iterator<Item = &Part> {
         self.parts.iter().filter(move |p| p.stage == stage)
+    }
+
+    /// Whether any part has seats for a crew.
+    pub fn has_seats(&self) -> bool {
+        self.parts.iter().any(|part| {
+            part.is(|kind| matches!(kind, PartKind::Pod(_)))
+                || (part.built.iter().flat_map(|built| &built.components))
+                    .any(|component| matches!(component, crate::component::Component::Crew { .. }))
+        })
     }
 
     /// What the joint `id` hangs from carries; `None` for the root.

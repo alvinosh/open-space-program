@@ -2,7 +2,7 @@
   "id": "T044",
   "title": "The lunar module from procedural parts, and the descent tool",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "landing",
   "size": "L",
   "parent": "T008",
@@ -19,7 +19,7 @@
   ],
   "created": "2026-10-30",
   "updated": "2026-11-04",
-  "done": null,
+  "done": "2026-11-04",
   "milestone": "M2",
-  "priority": 47
+  "priority": 46
 }

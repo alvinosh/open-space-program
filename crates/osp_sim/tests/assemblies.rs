@@ -30,6 +30,8 @@ fn the_gemini_titan_is_its_two_assemblies_placed_together() {
         parts: spacecraft.parts.clone(),
         sequences: craft.sequences.clone(),
         triggers: Vec::new(),
+        rcs_shut: Vec::new(),
+        abort: Vec::new(),
     };
     built
         .place(
@@ -289,14 +291,6 @@ fn service_modules_carry_their_contents() {
         parts.iter().map(|p| p.id.clone()).collect()
     };
     assert_eq!(ids(&ib.parts[..csm.parts.len()]), ids(&csm.parts));
-    for id in ["saturn_v"] {
-        let craft: CraftDef = registry.get("craft", id).unwrap();
-        assert_eq!(
-            value(&craft.parts[..csm.parts.len()]),
-            value(&csm.parts),
-            "{id}"
-        );
-    }
     // The SPS burns its four tanks down together; the RCS quads have their own.
     let craft: CraftDef = registry.get("craft", "saturn_v").unwrap();
     let mut p = Propulsion::from_craft(&craft, &catalog).unwrap();

@@ -321,6 +321,9 @@ pub struct RcsBlock {
     /// How hard each nozzle fired on the last physics tick, 0..1: the ones pushing along the
     /// block's +Z, its −Z, its +Y and its −Y.
     pub firing: [f64; 4],
+    /// Its valves are shut until an `rcs` activation on its section opens them.
+    #[serde(default)]
+    pub shut: bool,
 }
 
 impl RcsBlock {
@@ -355,6 +358,10 @@ pub struct Section {
     pub parent: Option<usize>,
     /// It hangs beside its parent (a radial booster), not under it.
     pub beside: bool,
+    /// It rides on its parent's axis above the parent's base: a payload in it or on it, not a
+    /// stage under it (see [`Propulsion::carried`]).
+    #[serde(default)]
+    pub carried: bool,
     /// The middle of its base, in the assembly frame, m.
     pub bottom: DVec3,
     /// How many engines, RCS blocks and tanks it has.
@@ -395,6 +402,7 @@ impl Section {
             name: String::new(),
             parent: None,
             beside: false,
+            carried: false,
             bottom: DVec3::ZERO,
             engines: 0,
             rcs: 0,
@@ -508,7 +516,13 @@ impl Section {
                 .find(|p| p.body.is_some())
                 .map_or(DVec3::ZERO, |p| p.position);
             let built = holder.frame.rotation.inverse();
-            section.beside = (built * (section.bottom - under)).truncate().length() > 1e-6;
+            let from_it = built * (section.bottom - under);
+            let off_axis = from_it.truncate().length() > 1e-6;
+            let reach = stage_reach(tree, holder.stage);
+            // Inside what holds it, it is carried. On top of it, it is no more under it than one
+            // beside it is: an escape tower on a capsule.
+            section.carried = !off_axis && from_it.z > 1e-6 && from_it.z < reach - 1e-6;
+            section.beside = off_axis || from_it.z >= reach - 1e-6;
         }
         section
     }
@@ -692,12 +706,30 @@ pub struct Propulsion {
     pub systems: Systems,
     /// What its avionics are still to do by themselves.
     triggers: Vec<Trigger>,
+    /// What the abort does, in order; what has been done is gone.
+    #[serde(default)]
+    abort: Vec<AbortStep>,
+    /// How long ago the abort began, s, once it has.
+    #[serde(default)]
+    abort_clock: Option<f64>,
     /// It was started from a scenario, where a vessel with no unit and no crew has no control.
     needs_control: bool,
     /// The part it is flown from, if not its own axes.
     control_part: Option<PartId>,
     /// The vessels that have joined it in flight.
     joined: Vec<Joined>,
+}
+
+/// How far up from its base a stage reached as built, m.
+fn stage_reach(tree: &PartTree, stage: usize) -> f64 {
+    (tree.stage(stage).find_map(|p| p.body)).map_or(0.0, |body| body.reach.max(body.length))
+}
+
+/// One step of an abort.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AbortStep {
+    after: f64,
+    fire: Vec<Activation>,
 }
 
 /// Something a vessel's avionics do by themselves, once.
@@ -793,6 +825,37 @@ impl Propulsion {
             triggers.push(Trigger { when, fire });
         }
         propulsion.triggers = triggers;
+        let named = |text: &str, propulsion: &Self| -> Result<Vec<Activation>, CraftError> {
+            let bad = |problem: String| CraftError::BadSequence(format!("the abort: {problem}"));
+            let (kind, id) = (text.split_once(':'))
+                .ok_or_else(|| bad(format!("`{text}`: write it as `<kind>:<part id>`")))?;
+            let part = (craft.find(id.trim()))
+                .map(|i| propulsion.parts.parts()[i].id)
+                .ok_or_else(|| bad(format!("no part `{id}`")))?;
+            propulsion
+                .activations(kind.trim(), part, None)
+                .map_err(|e| bad(format!("`{text}`: {e}")))
+        };
+        let mut abort = Vec::new();
+        for step in &def.abort {
+            let mut fire = Vec::new();
+            for text in &step.fire {
+                fire.extend(named(text, &propulsion)?);
+            }
+            abort.push(AbortStep {
+                after: step.after,
+                fire,
+            });
+        }
+        propulsion.abort = abort;
+        for id in &def.rcs_shut {
+            let part = (craft.find(id))
+                .map(|i| propulsion.parts.parts()[i].id)
+                .ok_or_else(|| CraftError::BadSequence(format!("rcs_shut: no part `{id}`")))?;
+            for block in propulsion.rcs.iter_mut().filter(|b| b.part == part) {
+                block.shut = true;
+            }
+        }
         Ok(propulsion)
     }
 
@@ -883,6 +946,57 @@ impl Propulsion {
             }
         }
         messages
+    }
+
+    /// The canopies open on it: where each pulls from, stack coordinates, and its drag coefficient
+    /// times its area, m².
+    pub fn canopies(&self) -> Vec<(DVec3, f64)> {
+        let base = DVec3::Z * self.parts.base();
+        (self.systems.all::<crate::systems::Parachute>())
+            .filter(|(_, chute)| chute.drag_area() > 0.0)
+            .filter_map(|(part, chute)| {
+                let part = self.parts.get(part)?;
+                Some((part.position - base, chute.drag_area()))
+            })
+            .collect()
+    }
+
+    /// Whether it has an abort, and has not begun it.
+    pub fn can_abort(&self) -> bool {
+        !self.abort.is_empty() && self.abort_clock.is_none()
+    }
+
+    /// Whether an abort is still going on.
+    pub fn aborting(&self) -> bool {
+        self.abort_clock.is_some() && !self.abort.is_empty()
+    }
+
+    /// Begin the abort. False if it has none or has begun it.
+    pub fn begin_abort(&mut self) -> bool {
+        let can = self.can_abort();
+        if can {
+            self.abort_clock = Some(0.0);
+        }
+        can
+    }
+
+    /// Move the abort on `dt` seconds, and do what has come due.
+    pub(crate) fn step_abort(&mut self, dt: f64) -> Option<Staged> {
+        let clock = self.abort_clock.as_mut()?;
+        *clock += dt;
+        let now = *clock;
+        let (due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.abort)
+            .into_iter()
+            .partition(|step| step.after <= now);
+        self.abort = later;
+        if due.is_empty() {
+            return None;
+        }
+        let fire: Vec<Activation> = due.into_iter().flat_map(|step| step.fire).collect();
+        for activation in &fire {
+            self.sequences.take(*activation);
+        }
+        Some(self.run(fire))
     }
 
     /// What `<kind>:<part>` in a craft's sequences activates. Naming the part that does it
@@ -1098,6 +1212,7 @@ impl Propulsion {
                         mount: part.position,
                         rotation: part.rotation,
                         firing: [0.0; 4],
+                        shut: false,
                     }),
                     PartKind::Tank(tank) => tanks.push(Tank {
                         part: part.id,
@@ -1125,6 +1240,8 @@ impl Propulsion {
             hollow: BTreeSet::new(),
             systems: Systems::default(),
             triggers: Vec::new(),
+            abort: Vec::new(),
+            abort_clock: None,
             needs_control: false,
             control_part: None,
             joined: Vec::new(),
@@ -1135,7 +1252,8 @@ impl Propulsion {
     }
 
     /// What came loose from a vessel, as one of its own: nothing left to stage, throttle
-    /// closed (engines that were running tail off).
+    /// closed (engines that were running tail off). What was left to stage on its own parts
+    /// comes with it.
     pub fn from_released(released: Released) -> Self {
         // A motor lit in the sequence that let it go has yet to start.
         let lit_late = (released.engines.iter()).any(|e| {
@@ -1158,6 +1276,8 @@ impl Propulsion {
             hollow: BTreeSet::new(),
             systems: released.systems,
             triggers: Vec::new(),
+            abort: Vec::new(),
+            abort_clock: None,
             needs_control: released.needs_control,
             control_part: None,
             joined: released.joined,
@@ -1276,8 +1396,15 @@ impl Propulsion {
                     continue;
                 }
                 let burned = self.systems.on_mut(part)[k].take_consumption();
-                let fed = self.draw(part, &burned);
-                self.systems.on_mut(part)[k].fed(fed);
+                // What it can go without is taken if it is there, and does not matter if not.
+                let (spare, needed): (Vec<_>, Vec<_>) = burned
+                    .into_iter()
+                    .partition(|(resource, _)| self.systems.on(part)[k].can_go_without(resource));
+                for (resource, kg) in spare {
+                    self.draw(part, &[(resource, kg)]);
+                }
+                let fed = self.draw(part, &needed);
+                self.systems.on_mut(part)[k].fed_for(fed, dt);
             }
         }
     }
@@ -1287,7 +1414,14 @@ impl Propulsion {
     pub fn next_system_event(&self, environment: &Environment) -> Option<f64> {
         let dry = self.systems.consumers().into_iter().flat_map(|part| {
             let systems = self.systems.on(part);
-            let rates: Vec<(&str, f64)> = systems.iter().flat_map(|s| s.consuming()).collect();
+            let rates: Vec<(&str, f64)> = (systems.iter())
+                .flat_map(|s| {
+                    let needs = s.consuming();
+                    needs
+                        .into_iter()
+                        .filter(|(resource, _)| !s.can_go_without(resource))
+                })
+                .collect();
             rates.into_iter().filter_map(move |(resource, rate)| {
                 (rate > 0.0).then(|| self.reachable(part, resource) / rate)
             })
@@ -1575,17 +1709,41 @@ impl Propulsion {
     /// hangs by a part the exhaust passes through (a truss or vented interstage: hot
     /// staging), or it is hollow along the axis and clear itself (an interstage left on
     /// after the stage under it fell away, a booster skirt round the engine; see
-    /// [`Self::hollow`]).
+    /// [`Self::hollow`]). One it carries above its base is not under it, and a section being
+    /// carried is held in by what carries it, until it lets go.
     pub fn clear(&self, index: usize) -> bool {
         self.blocker(index).is_none()
     }
 
-    /// The section under the one at `index` that keeps its exhaust in, if any (see
-    /// [`Self::clear`]).
+    /// Whether section `id` rides in or on the stage holding it, or hangs from something that
+    /// does: the lander in its adapter. It flies with what carries it, and none of its engines or
+    /// RCS blocks work until it has let go.
+    pub fn carried(&self, id: usize) -> bool {
+        self.carrier(id).is_some()
+    }
+
+    /// The section holding the payload that section `id` is, or is part of.
+    fn carrier(&self, id: usize) -> Option<usize> {
+        let mut at = self.sections.iter().find(|s| s.id == id);
+        while let Some(section) = at {
+            let holder = (self.sections.iter()).position(|s| Some(s.id) == section.parent);
+            if section.carried && holder.is_some() {
+                return holder;
+            }
+            at = holder.map(|k| &self.sections[k]);
+        }
+        None
+    }
+
+    /// The section under the one at `index`, or carrying it, that keeps its exhaust in, if any
+    /// (see [`Self::clear`]).
     pub fn blocker(&self, index: usize) -> Option<usize> {
         let id = self.sections[index].id;
+        if let Some(carrier) = self.carrier(id) {
+            return Some(carrier);
+        }
         (self.sections.iter().enumerate())
-            .filter(|(_, s)| s.parent == Some(id) && !s.beside)
+            .filter(|(_, s)| s.parent == Some(id) && !s.beside && !s.carried)
             .find(|&(k, s)| {
                 !(self.vented(s.id, id) || (self.hollow.contains(&s.id) && self.clear(k)))
             })
@@ -1815,7 +1973,9 @@ impl Propulsion {
                             ));
                         }
                     }
-                    if blocker.is_none() && self.throttle > 0.0 {
+                    // Nothing holds a solid back, whatever the throttle says.
+                    let solid = (self.engines.iter()).any(|e| e.part == target && e.is_solid());
+                    if blocker.is_none() && (self.throttle > 0.0 || solid) {
                         self.ignition_pending = true;
                     }
                 }
@@ -1836,6 +1996,9 @@ impl Propulsion {
                 }
                 "rcs" => {
                     staged.rcs_on = true;
+                    for block in self.rcs.iter_mut().filter(|b| b.section == id) {
+                        block.shut = false;
+                    }
                     if said.insert(("rcs", 0)) {
                         staged.messages.push("RCS on".into());
                     }
@@ -1856,6 +2019,11 @@ impl Propulsion {
                     if let Some(engine) = self.engines.iter_mut().find(|e| e.part == target) {
                         engine.running = false;
                         staged.messages.push(format!("{}: cut off", engine.def.id));
+                    }
+                }
+                "board" => {
+                    if self.systems.board(target) {
+                        staged.messages.push("Someone moved across".into());
                     }
                 }
                 "control" => {

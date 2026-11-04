@@ -235,8 +235,8 @@ fn an_engine_on_its_own_is_a_stage() {
     panic!("the engine's stage never left");
 }
 
-/// Two stages on the axis, one under the host and one on its top, both hang from it: both
-/// are there, and both can go.
+/// Two stages on the axis, one under the host and one on its top, both hang from it: both are
+/// there, and both can go. The one on top goes as one beside it does, as it is not under it.
 #[test]
 fn two_stages_can_hang_on_one_axis() {
     let parts = [
@@ -246,10 +246,9 @@ fn two_stages_can_hang_on_one_axis() {
     ];
     let mut p = fly(&parts);
     assert_eq!(p.sections.len(), 3);
-    let hung: Vec<_> = (p.sections.iter())
-        .filter(|s| s.parent.is_some() && !s.beside)
-        .collect();
+    let hung: Vec<_> = (p.sections.iter()).filter(|s| s.parent.is_some()).collect();
     assert_eq!(hung.len(), 2);
+    assert_eq!(hung.iter().filter(|s| s.beside).count(), 1);
     assert!((p.mass() - 128.0).abs() < 1e-9);
     let mut released = 0;
     while let Some(staged) = p.activate_next_sequence() {

@@ -26,6 +26,7 @@ const CANCELLED: f64 = 1e-9;
 /// What the blocks with propellant give pushing along the nose, N: one nozzle each.
 pub fn forward_thrust(propulsion: &Propulsion, pressure: f64) -> f64 {
     (propulsion.rcs.iter())
+        .filter(|block| !block.shut && propulsion.flown(block.section))
         .filter(|block| {
             propulsion
                 .rcs_fraction(block.section)
@@ -56,7 +57,7 @@ pub fn fire(
     for k in 0..propulsion.rcs.len() {
         let block = &propulsion.rcs[k];
         // A vessel that has joined this one keeps its thrusters to itself.
-        if !propulsion.flown(block.section) {
+        if block.shut || !propulsion.flown(block.section) {
             propulsion.rcs[k].firing = [0.0; 4];
             continue;
         }
@@ -104,7 +105,7 @@ pub fn torque_authority(propulsion: &Propulsion, center_of_mass: f64, pressure: 
     for block in propulsion
         .rcs
         .iter()
-        .filter(|b| propulsion.flown(b.section) && has_propellant(propulsion, b))
+        .filter(|b| !b.shut && propulsion.flown(b.section) && has_propellant(propulsion, b))
     {
         let lever = lever(block, base, center_of_mass);
         let about = |axis: DVec3| {

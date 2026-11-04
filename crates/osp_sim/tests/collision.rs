@@ -173,7 +173,13 @@ fn engines_and_legs_collide() {
 fn every_port_is_where_its_part_is() {
     let mut game = game();
     for id in ["saturn_v", "saturn_ib", "lunar_module"] {
-        let p = game.craft(id);
+        let mut p = game.craft(id);
+        // The Saturn V's escape tower and its cover stand over the port until they go.
+        if id == "saturn_v" {
+            for _ in 0..4 {
+                p.activate_next_sequence();
+            }
+        }
         let port = the_port(&p);
         let part = p.parts().get(port.part).unwrap();
         let tree = p.parts();

@@ -13,6 +13,9 @@
 mod battery;
 mod crew;
 mod electric;
+mod leg;
+mod parachute;
+mod thermal;
 
 use std::{any::Any, collections::BTreeMap, fmt::Debug};
 
@@ -20,8 +23,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Deserializ
 
 pub use self::{
     battery::Battery,
-    crew::Crew,
+    crew::{BOARD, Crew},
     electric::{Antenna, Avionics, FuelCell, Load, Rtg, SolarArray},
+    leg::{DEPLOY_LEG, Leg},
+    parachute::{ARM, CUT, ChuteState, DEPLOY, Parachute},
+    thermal::{HeatShield, Thermal},
 };
 use crate::{
     component::Component,
@@ -50,6 +56,31 @@ impl<T: Serialize> SavedState for T {
     fn saved_state(&self) -> Result<Vec<u8>, String> {
         rmp_serde::to_vec_named(self).map_err(|e| e.to_string())
     }
+}
+
+/// How a vessel is flying, for the systems that care.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct FlightNow {
+    /// Over the sea, m.
+    pub altitude: f64,
+    /// kg/m³.
+    pub density: f64,
+    /// Pa.
+    pub dynamic_pressure: f64,
+    /// What it feels, m/s².
+    pub acceleration: f64,
+    /// W/m² at a blunt nose of the vessel's size.
+    pub stagnation_heating: f64,
+    pub on_the_ground: bool,
+}
+
+/// The heat a part is taking on this tick, W, and how much of it the part's shield could take.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct PartHeat {
+    pub bare: f64,
+    pub shielded: f64,
+    /// What of the shield faces the flow, m².
+    pub shield_area: f64,
 }
 
 /// A component at run time.
@@ -103,6 +134,36 @@ pub trait System: SavedState + Debug + Send + Sync {
 
     /// Tell it whether the tanks gave what it burned.
     fn fed(&mut self, _fed: bool) {}
+
+    /// Whether going short of this resource is not its concern for now: it does not count against
+    /// [`Self::fed`], and time warp need not stop for it.
+    fn can_go_without(&self, _resource: &str) -> bool {
+        false
+    }
+
+    /// The same, with how long that was for, s.
+    fn fed_for(&mut self, fed: bool, _dt: f64) {
+        self.fed(fed);
+    }
+
+    /// One tick of flight, with the heat falling on its part. A system takes the heat it deals with
+    /// and leaves the rest for the next on the part.
+    fn fly(&mut self, _flight: &FlightNow, _heat: &mut PartHeat, _dt: f64) {}
+
+    /// What to tell the pilot, once, if anything has happened.
+    fn announce(&mut self) -> Option<String> {
+        None
+    }
+
+    /// Have someone leave its seat. False if there was nobody.
+    fn take_person(&mut self) -> bool {
+        false
+    }
+
+    /// Seat someone. False if there is no room.
+    fn seat_person(&mut self) -> bool {
+        false
+    }
 
     /// Whether a load the vessel cannot do without has no power.
     fn browned_out(&self) -> bool {
@@ -242,6 +303,30 @@ pub const KINDS: &[Kind] = &[
         name: "antenna",
         load: load::<Antenna>,
     },
+    Kind {
+        of: parachute::of,
+        actions: &[parachute::ARM, parachute::DEPLOY, parachute::CUT],
+        name: "parachute",
+        load: load::<Parachute>,
+    },
+    Kind {
+        of: leg::of,
+        actions: &[leg::DEPLOY_LEG],
+        name: "leg",
+        load: load::<Leg>,
+    },
+    Kind {
+        of: thermal::heat_shield,
+        actions: &[],
+        name: "heat_shield",
+        load: load::<HeatShield>,
+    },
+    Kind {
+        of: |_, _| None,
+        actions: &[],
+        name: "thermal",
+        load: load::<Thermal>,
+    },
 ];
 
 /// The systems of a vessel, by the part each is on.
@@ -292,6 +377,10 @@ impl Systems {
                         parts.entry(part.id).or_default().push(system);
                     }
                 }
+            }
+            // Last on the part: what its heat shield leaves, it takes.
+            if let Some(thermal) = Thermal::of_part(part) {
+                parts.entry(part.id).or_default().push(Box::new(thermal));
             }
         }
         let mut systems = Self {
@@ -374,6 +463,66 @@ impl Systems {
             .iter_mut()
             .find(|s| s.actions().iter().any(|a| a.kind == action.kind))?;
         system.act(action)
+    }
+
+    /// One tick of flight for every system. `heat` is what falls on each part; what is left of a
+    /// part's heat when its systems have had it is gone.
+    pub fn fly(
+        &mut self,
+        flight: &FlightNow,
+        heat: &BTreeMap<PartId, PartHeat>,
+        dt: f64,
+    ) -> Vec<String> {
+        let mut said = Vec::new();
+        for (part, systems) in &mut self.parts {
+            let mut here = heat.get(part).copied().unwrap_or_default();
+            for system in systems {
+                system.fly(flight, &mut here, dt);
+                said.extend(system.announce());
+            }
+        }
+        said
+    }
+
+    /// Whether a part has got hotter than the vessel can stand.
+    pub fn overheated(&self) -> bool {
+        self.all::<Thermal>().any(|(_, thermal)| thermal.failed())
+    }
+
+    /// Everyone aboard, alive.
+    pub fn crew_aboard(&self) -> u32 {
+        self.all::<Crew>().map(|(_, crew)| crew.aboard).sum()
+    }
+
+    /// Everyone lost.
+    pub fn crew_lost(&self) -> u32 {
+        self.all::<Crew>().map(|(_, crew)| crew.lost).sum()
+    }
+
+    /// Move one person to the seats on `to` from the others on this vessel. Whether it could.
+    pub fn board(&mut self, to: PartId) -> bool {
+        let room = (self.parts.get(&to).into_iter().flatten())
+            .filter_map(|s| s.any().downcast_ref::<Crew>())
+            .any(|crew| crew.aboard < crew.seats);
+        if !room {
+            return false;
+        }
+        let from = self.parts.iter_mut().filter(|(part, _)| **part != to);
+        let mut moved = false;
+        for (_, systems) in from {
+            if systems.iter_mut().any(|s| s.take_person()) {
+                moved = true;
+                break;
+            }
+        }
+        if moved && let Some(systems) = self.parts.get_mut(&to) {
+            for system in systems {
+                if system.seat_person() {
+                    break;
+                }
+            }
+        }
+        moved
     }
 
     /// Move every system on `dt` seconds: first the power networks, under `environment`.

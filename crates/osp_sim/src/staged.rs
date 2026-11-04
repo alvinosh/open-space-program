@@ -302,6 +302,7 @@ pub fn convert(
                         let mut child = shaped(&ids[s], &node, strut.clone());
                         child.name = Some(leg.name.clone());
                         child.components = vec![ComponentDef::Gear(GearLegDef {
+                            stowed: None,
                             length: leg.length,
                             wheel_radius: leg.wheel_radius,
                             stroke: leg.stroke,
@@ -462,6 +463,8 @@ pub fn convert(
         parts,
         sequences: None,
         triggers: Vec::new(),
+        rcs_shut: Vec::new(),
+        abort: Vec::new(),
     };
     paint_liveries(&mut craft, &liveried, catalog).map_err(&bad)?;
     let parts = craft.parts;
@@ -497,6 +500,8 @@ pub fn convert(
         parts,
         sequences,
         triggers: Vec::new(),
+        rcs_shut: Vec::new(),
+        abort: Vec::new(),
     })
 }
 
@@ -1218,6 +1223,7 @@ fn shaped(stage: &str, node: &str, shape: ShapeDef) -> CraftPartDef {
 
 fn blank(id: String) -> CraftPartDef {
     CraftPartDef {
+        mass_center: None,
         id,
         name: None,
         on: None,

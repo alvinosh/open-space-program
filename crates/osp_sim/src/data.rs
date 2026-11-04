@@ -701,6 +701,24 @@ pub struct CraftDef {
     /// What its avionics do by themselves, once each, when the time comes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub triggers: Vec<TriggerDef>,
+    /// RCS blocks, by part id, whose valves stay shut until an `rcs` activation on their stage
+    /// opens them: a spacecraft's thrusters while a booster's fly the stack.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rcs_shut: Vec<String>,
+    /// What the abort does: steps in order, each `after` seconds from the abort.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub abort: Vec<AbortStepDef>,
+}
+
+/// One step of an abort, written as `sequences` writes an activation. Parts that have left by then
+/// are passed over, so one abort does for the whole flight.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AbortStepDef {
+    /// Seconds after the abort.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub after: f64,
+    pub fire: Vec<String>,
 }
 
 /// Something a powered avionics unit does by itself when one of its conditions comes true: a
@@ -768,6 +786,10 @@ pub struct CraftPartDef {
     /// How it looks; a template's model looks as it is made.
     #[serde(default, skip_serializing_if = "is_default")]
     pub paint: PaintDef,
+    /// Where its mass sits, in its own frame, if not where its shape puts it: what is inside a
+    /// capsule sits low and to one side.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mass_center: Option<[f64; 3]>,
 }
 
 /// A group of parts placed together (collection `assemblies`): a spacecraft, a booster with

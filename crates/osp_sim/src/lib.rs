@@ -61,6 +61,8 @@ pub mod elliptic;
 pub mod environment;
 pub mod events;
 pub mod gear;
+pub mod guidance;
+pub mod heating;
 pub mod geometry;
 pub mod integrator;
 pub mod kepler;

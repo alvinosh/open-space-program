@@ -1345,6 +1345,8 @@ mod tests {
                 parts: Vec::new(),
                 sequences: None,
                 triggers: Vec::new(),
+                rcs_shut: Vec::new(),
+                abort: Vec::new(),
             }),
             vessel: VesselId(0),
             flown: Some(VesselId(0)),

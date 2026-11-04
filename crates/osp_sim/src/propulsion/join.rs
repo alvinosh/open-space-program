@@ -46,7 +46,7 @@ pub(crate) struct Joined {
     /// Its part at the join, which hangs from this vessel's.
     pub part: PartId,
     /// The part that was its root.
-    root: PartId,
+    pub root: PartId,
     /// The ids of its parts here, and what its own ids were raised by.
     parts: Range<u32>,
     part_shift: u32,
@@ -228,8 +228,11 @@ impl Propulsion {
     }
 
     /// Whether section `id` belongs to the vessel it is flown from: this one, unless it is
-    /// controlled from a part of one that joined it.
+    /// controlled from a part of one that joined it, and not a payload being carried.
     pub fn flown(&self, id: usize) -> bool {
+        if self.carried(id) {
+            return false;
+        }
         if self.joined.is_empty() {
             return true;
         }
@@ -240,8 +243,9 @@ impl Propulsion {
     }
 
     /// What the vessels joined here take with `parts`, just let go of: the record of the vessel
-    /// that let go, if its join was the joint that opened, with its sequences; and those of the
-    /// vessels joined to what came off.
+    /// that let go, if its join was the joint that opened; and those of the vessels joined to what
+    /// came off. And what was left to stage on those parts, which goes with them: a piece that only
+    /// fell away never uses it, and one with a lander on it has the lander's staging still to come.
     pub(super) fn released_joined(
         &mut self,
         parts: &PartTree,
@@ -254,10 +258,8 @@ impl Propulsion {
         let (undocked, nested): (Vec<_>, Vec<_>) =
             leaving.into_iter().partition(|j| Some(j.part) == root);
         let undocked = undocked.into_iter().next();
-        let sequences = match &undocked {
-            Some(joined) => (self.sequences).take_parts(|p| parts.get(p).is_some(), joined.fired),
-            None => Sequences::default(),
-        };
+        let fired = undocked.as_ref().map_or(0, |joined| joined.fired);
+        let sequences = (self.sequences).take_parts(|p| parts.get(p).is_some(), fired);
         (undocked, nested, sequences)
     }
 

@@ -25,6 +25,7 @@
 //! Throttle and SAS commands disengage the burn executor (see `flight_plan` for its actions).
 
 use bevy::{math::DVec3, prelude::*};
+use osp_sim::guidance::Guidance;
 use osp_sim::{
     attitude::{NavFrame, SasMode},
     parts::PartId,
@@ -143,6 +144,29 @@ fn apply_actions(
             }
             "vessel.stage" => {
                 sim.stage_active();
+                continue;
+            }
+            "vessel.abort" => {
+                sim.abort_active();
+                continue;
+            }
+            // What its computer flies by itself.
+            "guidance.off" | "guidance.land" | "guidance.hover" | "guidance.entry" => {
+                let wanted = match action.name() {
+                    "guidance.land" => Guidance::Land,
+                    "guidance.hover" => Guidance::Hover,
+                    "guidance.entry" => Guidance::Entry,
+                    _ => Guidance::Off,
+                };
+                sim.active_vessel_mut().guidance = wanted;
+                continue;
+            }
+            "guidance.hold" => {
+                let rate = action
+                    .arg()
+                    .and_then(|rate| rate.parse().ok())
+                    .unwrap_or(1.0);
+                sim.active_vessel_mut().guidance = Guidance::HoldRate(rate);
                 continue;
             }
             "staging.menu" => {

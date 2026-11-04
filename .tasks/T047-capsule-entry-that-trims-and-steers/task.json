@@ -2,7 +2,7 @@
   "id": "T047",
   "title": "Capsule entry that trims and steers",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "aero",
   "size": "M",
   "parent": "T009",
@@ -14,8 +14,8 @@
     "old issue list, issue 12 (docs/issues.md, removed; see git history)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
-  "done": null,
-  "milestone": "M5",
-  "priority": 83
+  "updated": "2026-11-04",
+  "done": "2026-11-04",
+  "milestone": "M2",
+  "priority": 54
 }

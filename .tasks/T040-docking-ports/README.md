@@ -44,14 +44,16 @@ This was marked done on a scripted pilot alone. By hand it was first "the parts 
 - A hit left Eagle tumbling for good. It now holds its attitude.
 - The readout was closed by default and nothing in the world showed where to fly.
 
-## Still open
+## The hand test
 
-- A script with on/off keys is not a person: this needs a hand test before it is done.
+The user flew it by hand on 2026-11-04: "docking feels good".
+
+## Left out
+
 - The target port is the nearest one that fits: a station with several gives no way to choose yet.
 - A picture-in-picture port camera waits for the viewports (T123); C takes over the main view for now. The crew tunnel is T049.
 - The target is forgotten when two dock, so it has to be chosen again after undocking.
-- `apollo11_docking` says `sequences_done: 8` of the Saturn V's nine: T044 changes those sequences and has to keep this.
-- The Saturn V and the LM are not yet flying together: T041, T044.
+- `apollo11_docking` says `sequences_done: 7` of the Saturn V's sequences, up to the CSM leaving the adapter: changing those sequences has to keep this.
 
 ## Where it comes from
 

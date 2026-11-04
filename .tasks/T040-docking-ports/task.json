@@ -2,7 +2,7 @@
   "id": "T040",
   "title": "Docking ports",
   "kind": "feature",
-  "status": "in_progress",
+  "status": "done",
   "area": "docking",
   "size": "L",
   "parent": "T007",
@@ -16,7 +16,7 @@
   ],
   "created": "2026-10-30",
   "updated": "2026-11-04",
-  "done": null,
+  "done": "2026-11-04",
   "milestone": "M2",
-  "priority": 44
+  "priority": 43
 }

@@ -220,7 +220,7 @@
     "description": "Collins in Columbia, with Eagle's ascent stage holding still just behind: turn round, line up, dock, then let Eagle go.",
     "start_time": -960819900.0,
     "craft": "saturn_v",
-    "sequences_done": 8,
+    "sequences_done": 7,
     "rcs": true,
     "start": {
       "type": "Orbit",
@@ -247,6 +247,79 @@
       { "id": "dock", "text": "Dock with Eagle", "when": { "type": "Docked", "target": "Eagle" } },
       { "id": "away", "text": "Let Eagle go and back off 30 m", "when": { "type": "Undocked", "target": "Eagle", "distance": 30 } }
     ]
+  },
+  {
+    "id": "apollo11_entry",
+    "name": "Apollo 11: the way home (1969-07-24)",
+    "description": "The command module alone, coming back from the Moon at 11 km/s: heat shield first, the lift to steer with, the parachutes and the Pacific.",
+    "start_time": -960300000.0,
+    "craft": "saturn_v",
+    "sequences_done": 8,
+    "rcs": true,
+    "start": {
+      "type": "Flight",
+      "body": "Earth",
+      "latitude": -3.0,
+      "longitude": -160.0,
+      "altitude": 200000,
+      "heading": 60,
+      "speed": 11000,
+      "climb": -9.0
+    }
+  },
+  {
+    "id": "apollo11_parachutes",
+    "name": "Apollo 11: under the parachutes (1969-07-24)",
+    "description": "The command module at 3.4 km over the Pacific, the drogues about to give way to the mains.",
+    "start_time": -960300000.0,
+    "craft": "saturn_v",
+    "sequences_done": 8,
+    "rcs": true,
+    "start": {
+      "type": "Flight",
+      "body": "Earth",
+      "latitude": 13.3,
+      "longitude": -169.1,
+      "altitude": 3400,
+      "heading": 60,
+      "speed": 60,
+      "climb": -85
+    }
+  },
+  {
+    "id": "apollo11_splashdown",
+    "name": "Apollo 11: splashdown (1969-07-24)",
+    "description": "The last moments over the Pacific, under the main parachutes.",
+    "start_time": -960300000.0,
+    "craft": "saturn_v",
+    "sequences_done": 8,
+    "rcs": true,
+    "start": {
+      "type": "Flight",
+      "body": "Earth",
+      "latitude": 13.3,
+      "longitude": -169.1,
+      "altitude": 60,
+      "heading": 60,
+      "speed": 9,
+      "climb": -85
+    }
+  },
+  {
+    "id": "apollo11_transposition",
+    "name": "Apollo 11: transposition and docking (1969-07-16)",
+    "description": "Collins in Columbia on the S-IVB, the lunar module folded in the adapter: let go, turn round, dock with it and pull it out.",
+    "start_time": -961270000.0,
+    "craft": "saturn_v",
+    "sequences_done": 6,
+    "rcs": true,
+    "start": {
+      "type": "Orbit",
+      "body": "Earth",
+      "periapsis_altitude": 190000,
+      "apoapsis_altitude": 190000,
+      "mean_anomaly": 30
+    }
   },
   {
     "id": "apollo11",

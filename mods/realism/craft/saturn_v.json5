@@ -1,7 +1,8 @@
 // Saturn V (1969).
-// S-IC, S-II and S-IVB, then the lunar module, service module and command module. The lunar
-// module is still a payload drum below the CSM: the real one cannot let go from inside the
-// adapter yet (T041, T044). The CM has its docking probe.
+// S-IC, S-II and S-IVB, the adapter with the lunar module in it, then the service module and the
+// command module with its docking probe. The adapter's four panels open as the CSM lets go, leaving
+// the lunar module on the S-IVB to be docked with and pulled out, its legs folded up its descent stage
+// until it goes to land.
 // Built by hand from the generator's output. The S-IVB carries four APS thrusters for attitude
 // control between its burns. The S-II lights from four solid ullage motors
 // in the S-IC/S-II interstage and the S-IVB from two on its aft skirt, as the real ones did;
@@ -46,12 +47,26 @@
         ],
       },
       structure: { thickness: 0, mass: 1560 },
-      components: [{ antenna: { power: 20, data_rate: 1600 } }, { avionics: { controlled_mass: 50000, interplanetary: true } }, { electric_load: { watts: 1200, priority: 9, essential: true } }, { container: {} }, { docking_port: { node: "dock", kind: "probe", impulse: 2000 } }],
+      mass_center: [0.2, 0, 0.6],
+      components: [{ heat_shield: { ablator: 850 } }, { antenna: { power: 20, data_rate: 1600 } }, { avionics: { controlled_mass: 50000, interplanetary: true } }, { electric_load: { watts: 1200, priority: 9, essential: true } }, { container: {} }, { docking_port: { node: "dock", kind: "probe", impulse: 2000 } }],
       nodes: [
         { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 3.9 },
         { name: "top", position: [0, 0, 3.2], direction: [0, 0, 1], size: 3.9 },
         { name: "pod", position: [0, 0, 1.085], direction: [0, 0, 1], size: 3.918 },
         { name: "dock", position: [0, 0, 3.177], direction: [0, 0, 1], size: 1.0 },
+        { name: "rcs_1", position: [1.28, 0, 1.75], direction: [1, 0, 0], size: 0.3 },
+        { name: "rcs_2", position: [0, 1.28, 1.75], direction: [0, 1, 0], size: 0.3 },
+        { name: "rcs_3", position: [-1.28, 0, 1.75], direction: [-1, 0, 0], size: 0.3 },
+        { name: "rcs_4", position: [0, -1.28, 1.75], direction: [0, -1, 0], size: 0.3 },
+        { name: "rcs_tank", position: [0.6, 0.6, 0.5], direction: [0, 0, 1], size: 0.6 },
+        { name: "oxygen", position: [-0.6, 0.6, 0.5], direction: [0, 0, 1], size: 0.6 },
+        { name: "water", position: [-0.6, -0.6, 0.5], direction: [0, 0, 1], size: 0.6 },
+        { name: "food", position: [0.6, -0.6, 0.5], direction: [0, 0, 1], size: 0.5 },
+        { name: "drogue_1", position: [0.3, 0, 2.95], direction: [0, 0, 1], size: 0.4 },
+        { name: "drogue_2", position: [-0.3, 0, 2.95], direction: [0, 0, 1], size: 0.4 },
+        { name: "main_1", position: [0.3, 0.3, 2.85], direction: [0, 0, 1], size: 0.4 },
+        { name: "main_2", position: [-0.3, 0.3, 2.85], direction: [0, 0, 1], size: 0.4 },
+        { name: "main_3", position: [0, -0.3, 2.85], direction: [0, 0, 1], size: 0.4 },
       ],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
@@ -59,6 +74,169 @@
       id: "command_module_pod",
       on: "command_module.pod",
       template: "Apollo Command Module (CM)",
+      components: [{ life_support: {} }],
+      // Low and to one side of the pod's own frame, which starts 1.085 m up the capsule: its
+      // centre of mass off the axis trims it at an angle, and that is its lift.
+      mass_center: [0.2, 0, -0.1],
+    },
+    // What brings the capsule home: its own thrusters and what they burn, its supplies, and five
+    // parachutes under the apex: two drogues and three mains.
+    { id: "cm_rcs_1", name: "Command module thrusters", on: "command_module.rcs_1", by: "mount", template: "R-4D Quad" },
+    { id: "cm_rcs_2", name: "Command module thrusters", on: "command_module.rcs_2", by: "mount", template: "R-4D Quad" },
+    { id: "cm_rcs_3", name: "Command module thrusters", on: "command_module.rcs_3", by: "mount", template: "R-4D Quad" },
+    { id: "cm_rcs_4", name: "Command module thrusters", on: "command_module.rcs_4", by: "mount", template: "R-4D Quad" },
+    {
+      id: "cm_rcs_propellant",
+      name: "Command module RCS propellant",
+      on: "command_module.rcs_tank",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.6 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 0.385, NTO: 0.615 } } }],
+    },
+    {
+      id: "cm_oxygen",
+      name: "Cabin oxygen",
+      on: "command_module.oxygen",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.5 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { LqdOxygen: 1 } } }],
+    },
+    {
+      id: "cm_water",
+      name: "Water",
+      on: "command_module.water",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.75 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Water: 1 } } }],
+    },
+    {
+      id: "cm_food",
+      name: "Food",
+      on: "command_module.food",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.65 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Food: 1 } } }],
+    },
+    {
+      id: "drogue_1",
+      name: "Drogue parachute",
+      on: "command_module.drogue_1",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.4 } }, unseen: true }] },
+      structure: { thickness: 0, mass: 30 },
+      components: [{ parachute: { diameter: 5, deploy_altitude: 7000, cut_altitude: 3000 } }],
+    },
+    {
+      id: "drogue_2",
+      name: "Drogue parachute",
+      on: "command_module.drogue_2",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.4 } }, unseen: true }] },
+      structure: { thickness: 0, mass: 30 },
+      components: [{ parachute: { diameter: 5, deploy_altitude: 7000, cut_altitude: 3000 } }],
+    },
+    {
+      id: "main_1",
+      name: "Main parachute",
+      on: "command_module.main_1",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.4 } }, unseen: true }] },
+      structure: { thickness: 0, mass: 60 },
+      components: [{ parachute: { diameter: 25.4, deploy_altitude: 3000, opening_time: 6, max_pressure: 8000 } }],
+    },
+    {
+      id: "main_2",
+      name: "Main parachute",
+      on: "command_module.main_2",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.4 } }, unseen: true }] },
+      structure: { thickness: 0, mass: 60 },
+      components: [{ parachute: { diameter: 25.4, deploy_altitude: 3000, opening_time: 6, max_pressure: 8000 } }],
+    },
+    {
+      id: "main_3",
+      name: "Main parachute",
+      on: "command_module.main_3",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.4 } }, unseen: true }] },
+      structure: { thickness: 0, mass: 60 },
+      components: [{ parachute: { diameter: 25.4, deploy_altitude: 3000, opening_time: 6, max_pressure: 8000 } }],
+    },
+    // The launch escape system on the command module's apex: a tower with a big solid motor to pull
+    // the capsule off a failing rocket, a small one to throw the tower away, and the cover that
+    // keeps the capsule's skin clean. It goes 30 s after the S-II lights.
+    {
+      id: "les_decoupler",
+      name: "Decoupler",
+      on: "command_module.top",
+      shape: { ring: { diameter: 0.9, height: 0.05, thickness: 0.1 } },
+      structure: { mass: 20 },
+      components: [{ decoupler: { node: "bottom", impulse: 2000 } }],
+      paint: { color: [0.55, 0.55, 0.57], finish: "metal" },
+    },
+    {
+      id: "les_tower",
+      name: "Launch escape tower",
+      on: "les_decoupler.top",
+      shape: {
+        compound: [
+          {
+            name: "boost_cover",
+            shape: { shell: { bottom_diameter: 3.96, sections: [{ length: 3.4, top_diameter: 0.9 }] } },
+            position: [0, 0, -3.3],
+          },
+          {
+            name: "leg_1",
+            shape: { beam: { length: 2.7, section: { circle: { diameter: 0.09 } } } },
+            position: [0.4, 0.4, 0.05],
+            rotation: [180, 0, 0],
+          },
+          {
+            name: "leg_2",
+            shape: { beam: { length: 2.7, section: { circle: { diameter: 0.09 } } } },
+            position: [-0.4, 0.4, 0.05],
+            rotation: [180, 0, 0],
+          },
+          {
+            name: "leg_3",
+            shape: { beam: { length: 2.7, section: { circle: { diameter: 0.09 } } } },
+            position: [-0.4, -0.4, 0.05],
+            rotation: [180, 0, 0],
+          },
+          {
+            name: "leg_4",
+            shape: { beam: { length: 2.7, section: { circle: { diameter: 0.09 } } } },
+            position: [0.4, -0.4, 0.05],
+            rotation: [180, 0, 0],
+          },
+          {
+            name: "motor_case",
+            shape: { shell: { bottom_diameter: 0.66, sections: [{ length: 4.7 }] } },
+            position: [0, 0, 2.75],
+          },
+          {
+            name: "nose",
+            shape: { shell: { bottom_diameter: 0.66, sections: [{ length: 1.0, top_diameter: 0.08 }] } },
+            position: [0, 0, 7.45],
+          },
+        ],
+      },
+      structure: { thickness: 0, mass: 1700 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.9 },
+        { name: "top", position: [0, 0, 8.45], direction: [0, 0, 1], size: 0.1 },
+        // Off the axis by as much as the centre of mass of the capsule and tower is, so that it
+        // pulls straight and does not tumble them.
+        { name: "escape_motor", position: [0.12, 0, 7.4], direction: [0, 0, -1], size: 0.66 },
+        { name: "jettison_motor", position: [0.3, 0, 8.1], direction: [0, 0, -1], size: 0.2 },
+      ],
+      paint: { color: [0.85, 0.85, 0.83] },
+    },
+    {
+      id: "les_escape_motor",
+      name: "Escape motor",
+      on: "les_tower.escape_motor",
+      by: "top",
+      procedural: { separation_motor: { impulse: 2100000, burn_time: 3.2 } },
+    },
+    {
+      id: "les_jettison_motor",
+      name: "Tower jettison motor",
+      on: "les_tower.jettison_motor",
+      by: "top",
+      procedural: { separation_motor: { impulse: 140000, burn_time: 1 } },
     },
     {
       id: "service_module_decoupler",
@@ -383,79 +561,116 @@
       by: "mount",
       template: "R-4D Quad",
     },
+    // The spacecraft-lunar module adapter, 8.5 m tall: 2 m fixed to the S-IVB and four panels above,
+    // with the CSM on the panels' top edge. This ring is at the panels' hinges and stays there: the
+    // joint it lets go of is up where the service module stands on the panels, which are no use for
+    // holding anything once they open.
     {
-      id: "lunar_module",
-      name: "Lunar Module",
-      on: "lunar_module_shell_1.bottom",
-      by: "top",
-      shape: {
-        compound: [
-          {
-            name: "skin",
-            shape: {
-              revolved: {
-                walls: [
-                  {
-                    name: "aft_skirt",
-                    curve: { start: [3.3, 0], segments: [{ line: [3.3, 1.94] }] },
-                  },
-                  {
-                    name: "separation_ring",
-                    curve: { start: [3.3, 1.94], segments: [{ line: [3.3, 2] }] },
-                  },
-                  {
-                    name: "floor",
-                    curve: { start: [0, 0], segments: [{ line: [3.3, 0] }] },
-                  },
-                ],
-              },
-            },
-          },
-          {
-            name: "equipment",
-            shape: { ring: { diameter: 6.6, height: 2, thickness: 3.3 } },
-            unseen: true,
-          },
-        ],
-      },
-      structure: { thickness: 0, mass: 15089.66 },
-      components: [{ container: {} }],
-      nodes: [
-        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 6.6 },
-        { name: "top", position: [0, 0, 2], direction: [0, 0, 1], size: 6.6 },
-      ],
-      paint: {
-        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
-        pieces: {
-          "skin/separation_ring": {
-            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
-            finish: "metal",
-          },
-        },
-      },
-    },
-    {
-      id: "lunar_module_shell_1_decoupler",
+      id: "adapter_decoupler",
       name: "Decoupler",
       on: "service_module.bottom",
+      by: "csm",
+      shape: { ring: { diameter: 6.6, height: 0.05, thickness: 0.05 } },
+      structure: { mass: 40 },
+      components: [{ decoupler: { node: "csm" } }],
+      nodes: [{ name: "csm", position: [0, 0, 6.5], direction: [0, 0, 1], size: 3.9 }],
+      paint: { color: [0.55, 0.55, 0.57], finish: "metal" },
+    },
+    // What the panels hinge on, the stage's body.
+    {
+      id: "adapter",
+      name: "Adapter",
+      on: "adapter_decoupler.bottom",
       by: "top",
-      procedural: { decoupler: { diameter: 3.91, load: 1e+06 } },
+      shape: { shell: { bottom_diameter: 6.6, sections: [{ length: 0.05 }] } },
+      structure: { mass: 100 },
+      components: [{ container: {} }],
+      nodes: [
+        { name: "panel_1", position: [3.3, 0, 0], direction: [0, 0, 1], size: 6.6 },
+        { name: "panel_2", position: [0, -3.3, 0], direction: [0, 0, 1], size: 6.6 },
+        { name: "panel_3", position: [-3.3, 0, 0], direction: [0, 0, 1], size: 6.6 },
+        { name: "panel_4", position: [0, 3.3, 0], direction: [0, 0, 1], size: 6.6 },
+      ],
+      paint: { color: [0.85, 0.85, 0.83] },
     },
     {
-      id: "lunar_module_shell_1",
-      name: "Adapter",
-      on: "lunar_module_shell_1_decoupler.bottom",
-      by: "top",
+      id: "adapter_panel_1",
+      name: "Adapter panel",
+      on: "adapter.panel_1",
+      roll: 0,
       shape: {
-        shell: { bottom_diameter: 6.6, sections: [{ length: 8.5, top_diameter: 3.9 }] },
+        shell: {
+          bottom_diameter: 6.6,
+          sections: [{ length: 0.1 }, { length: 6.4, top_diameter: 3.9 }],
+          span: [-45, 45],
+        },
       },
-      components: [],
-      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+      structure: { mass: 275 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: { color: [0.85, 0.85, 0.83] },
+    },
+    {
+      id: "adapter_panel_2",
+      name: "Adapter panel",
+      on: "adapter.panel_2",
+      roll: -90,
+      shape: {
+        shell: {
+          bottom_diameter: 6.6,
+          sections: [{ length: 0.1 }, { length: 6.4, top_diameter: 3.9 }],
+          span: [-45, 45],
+        },
+      },
+      structure: { mass: 275 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: { color: [0.85, 0.85, 0.83] },
+    },
+    {
+      id: "adapter_panel_3",
+      name: "Adapter panel",
+      on: "adapter.panel_3",
+      roll: -180,
+      shape: {
+        shell: {
+          bottom_diameter: 6.6,
+          sections: [{ length: 0.1 }, { length: 6.4, top_diameter: 3.9 }],
+          span: [-45, 45],
+        },
+      },
+      structure: { mass: 275 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: { color: [0.85, 0.85, 0.83] },
+    },
+    {
+      id: "adapter_panel_4",
+      name: "Adapter panel",
+      on: "adapter.panel_4",
+      roll: -270,
+      shape: {
+        shell: {
+          bottom_diameter: 6.6,
+          sections: [{ length: 0.1 }, { length: 6.4, top_diameter: 3.9 }],
+          span: [-45, 45],
+        },
+      },
+      structure: { mass: 275 },
+      components: [{ decoupler: { node: "bottom" } }],
+      paint: { color: [0.85, 0.85, 0.83] },
+    },
+    {
+      id: "adapter_lower",
+      name: "Adapter",
+      on: "adapter.bottom",
+      by: "top",
+      shape: { shell: { bottom_diameter: 6.6, sections: [{ length: 2 }] } },
+      structure: { mass: 550 },
+      nodes: [{ name: "lander", position: [0, 0, 2.0], direction: [0, 0, 1], size: 0.1 }],
+      paint: { color: [0.85, 0.85, 0.83] },
     },
     {
       id: "s_ivb_decoupler",
       name: "Decoupler",
-      on: "lunar_module.bottom",
+      on: "adapter_lower.bottom",
       by: "top",
       procedural: { decoupler: { diameter: 6.6, load: 3e+06 } },
     },
@@ -1178,12 +1393,285 @@
         ],
       },
     },
+    {
+      id: "lm_oxygen",
+      name: "Cabin oxygen",
+      on: "lm_ascent_stage.oxygen",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.25 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { LqdOxygen: 1 } } }],
+    },
+    {
+      id: "lm_water",
+      name: "Water",
+      on: "lm_ascent_stage.water",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.4 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Water: 1 } } }],
+    },
+    {
+      id: "lm_food",
+      name: "Food",
+      on: "lm_ascent_stage.food",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.35 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Food: 1 } } }],
+    },
+    // The lunar module, as in its own craft file.
+    // What holds it in the adapter: inside the descent stage, too small to see, and it goes with it.
+    {
+      id: "lm_mount",
+      name: "Decoupler",
+      on: "adapter_lower.lander",
+      shape: { ring: { diameter: 0.1, height: 0.01, thickness: 0.05 } },
+      structure: { mass: 2 },
+      components: [{ decoupler: { node: "bottom", impulse: 3000 } }],
+    },
+    {
+      id: "lm_ascent_stage",
+      name: "Lunar Module",
+      on: "lm_mount.top",
+      by: "adapter",
+      // Nodes and a container to be a stage's body in the stack, as the craft of its own needs none.
+      shape: {
+        model: {
+          path: "models/pods/ROC-LEMAscentBDB.glb",
+          proxy: { compound: [{ shape: { prism: { sides: 8, diameter: 4.0, length: 3.7 } }, position: [0, 0, -0.89] }] },
+          nodes: [
+            { name: "interstage", position: [0, 0, -0.89], direction: [0, 0, -1], size: 2.0 },
+            // What holds it in the adapter, its cabin's floor 1.5 m above the panels' hinges.
+            { name: "adapter", position: [0, 0, -1.5], direction: [0, 0, -1], size: 0.1 },
+            { name: "bottom", position: [0, 0, -0.89], direction: [0, 0, -1], size: 2.0 },
+            { name: "top", position: [0, 0, 2.0], direction: [0, 0, 1], size: 1.0 },
+            // The rim of the tunnel on the cabin's roof, which the command module's nose meets.
+            { name: "dock", position: [0, 0, 2.0], direction: [0, 0, 1], size: 1.0 },
+            { name: "aps", position: [0, 0, 0], direction: [0, 0, -1], size: 0.9 },
+            { name: "fuel", position: [-1.6, 0, 0.1], direction: [0, 0, 1], size: 1.2 },
+            { name: "oxidizer", position: [1.0, 0, 0.1], direction: [0, 0, 1], size: 1.2 },
+            { name: "rcs_tank_1", position: [0, 1.05, 0.2], direction: [0, 0, 1], size: 0.6 },
+            { name: "rcs_tank_2", position: [0, -1.05, 0.2], direction: [0, 0, 1], size: 0.6 },
+            { name: "oxygen", position: [0.5, 0.9, -0.3], direction: [0, 0, 1], size: 0.3 },
+            { name: "water", position: [-0.5, 0.9, -0.3], direction: [0, 0, 1], size: 0.35 },
+            { name: "food", position: [0.5, -0.9, -0.3], direction: [0, 0, 1], size: 0.3 },
+            { name: "rcs_1", position: [1.55, 1.55, 1.0], direction: [0.707, 0.707, 0], size: 0.3 },
+            { name: "rcs_2", position: [-1.55, 1.55, 1.0], direction: [-0.707, 0.707, 0], size: 0.3 },
+            { name: "rcs_3", position: [-1.55, -1.55, 1.0], direction: [-0.707, -0.707, 0], size: 0.3 },
+            { name: "rcs_4", position: [1.55, -1.55, 1.0], direction: [0.707, -0.707, 0], size: 0.3 },
+          ],
+        },
+      },
+      // The cabin, crew, equipment and structure of the 2,150 kg stage, less its engine and tanks.
+      structure: { thickness: 0, mass: 1830 },
+      components: [
+        { container: {} },
+        { crew: { seats: 2, aboard: 0 } },
+        { life_support: {} },
+        { electric_load: { watts: 800, priority: 3 } },
+        { avionics: { controlled_mass: 20000, interplanetary: true } },
+        { antenna: { power: 20, data_rate: 51.2 } },
+        { battery: { charge: 59675 } },
+        { docking_port: { node: "dock", kind: "drogue" } },
+      ],
+    },
+    { id: "lm_aps_engine", name: "Ascent engine", on: "lm_ascent_stage.aps", by: "top", template: "LMAE" },
+    {
+      id: "lm_aps_fuel",
+      name: "Ascent fuel",
+      on: "lm_ascent_stage.fuel",
+      shape: { compound: [{ shape: { sphere: { diameter: 1.55 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "lm_aps_oxidizer",
+      name: "Ascent oxidizer",
+      on: "lm_ascent_stage.oxidizer",
+      shape: { compound: [{ shape: { sphere: { diameter: 1.55 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { MON1: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "lm_rcs_tank_1",
+      name: "RCS propellant",
+      on: "lm_ascent_stage.rcs_tank_1",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.6 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 0.385, NTO: 0.615 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "lm_rcs_tank_2",
+      name: "RCS propellant",
+      on: "lm_ascent_stage.rcs_tank_2",
+      shape: { compound: [{ shape: { sphere: { diameter: 0.6 } }, unseen: true }] },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 0.385, NTO: 0.615 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    { id: "lm_rcs_1", on: "lm_ascent_stage.rcs_1", by: "mount", template: "R-4D Quad" },
+    { id: "lm_rcs_2", on: "lm_ascent_stage.rcs_2", by: "mount", template: "R-4D Quad" },
+    { id: "lm_rcs_3", on: "lm_ascent_stage.rcs_3", by: "mount", template: "R-4D Quad" },
+    { id: "lm_rcs_4", on: "lm_ascent_stage.rcs_4", by: "mount", template: "R-4D Quad" },
+    {
+      id: "lm_stage_separation",
+      name: "Decoupler",
+      on: "lm_ascent_stage.interstage",
+      by: "top",
+      procedural: { decoupler: { diameter: 2.0, load: 200000 } },
+    },
+    {
+      id: "lm_descent_stage",
+      name: "Descent Stage",
+      on: "lm_stage_separation.bottom",
+      by: "top",
+      shape: { prism: { sides: 8, diameter: 4.6, length: 1.7 } },
+      // Its structure, wiring and batteries' cases, less its engine, tanks and legs.
+      structure: { thickness: 0, mass: 1100 },
+      components: [{ battery: { charge: 167000 } }],
+      nodes: [
+        { name: "dps", position: [0, 0, 1.35], direction: [0, 0, -1], size: 1.5 },
+        { name: "tank_1", position: [1.0, 1.0, 0.03], direction: [0, 0, 1], size: 1.3 },
+        { name: "tank_2", position: [-1.0, -1.0, 0.03], direction: [0, 0, 1], size: 1.3 },
+        { name: "tank_3", position: [-1.0, 1.0, 0.03], direction: [0, 0, 1], size: 1.3 },
+        { name: "tank_4", position: [1.0, -1.0, 0.03], direction: [0, 0, 1], size: 1.3 },
+        { name: "leg_1", position: [2.0, 0, 0.5], direction: [0.78, 0, -0.626], size: 0.2 },
+        { name: "leg_2", position: [-2.0, 0, 0.5], direction: [-0.78, 0, -0.626], size: 0.2 },
+        { name: "leg_3", position: [0, 2.0, 0.5], direction: [0, 0.78, -0.626], size: 0.2 },
+        { name: "leg_4", position: [0, -2.0, 0.5], direction: [0, -0.78, -0.626], size: 0.2 },
+      ],
+      paint: { color: [0.8, 0.62, 0.24], finish: "metal" },
+    },
+    { id: "lm_dps_engine", name: "Descent engine", on: "lm_descent_stage.dps", by: "top", template: "LMDE-H" },
+    {
+      id: "lm_dps_fuel_1",
+      name: "Descent fuel",
+      on: "lm_descent_stage.tank_1",
+      shape: { cylinder_tank: { diameter: 1.37, length: 1.64 } },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "lm_dps_fuel_2",
+      name: "Descent fuel",
+      on: "lm_descent_stage.tank_2",
+      shape: { cylinder_tank: { diameter: 1.37, length: 1.64 } },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { Aerozine50: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "lm_dps_oxidizer_1",
+      name: "Descent oxidizer",
+      on: "lm_descent_stage.tank_3",
+      shape: { cylinder_tank: { diameter: 1.37, length: 1.64 } },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { MON1: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "lm_dps_oxidizer_2",
+      name: "Descent oxidizer",
+      on: "lm_descent_stage.tank_4",
+      shape: { cylinder_tank: { diameter: 1.37, length: 1.64 } },
+      components: [{ storage: { type: "HP Refined Al Stringer Tank", contents: { MON1: 1 } } }],
+      paint: { color: [0.75, 0.75, 0.72], finish: "metal" },
+    },
+    {
+      id: "lm_leg_1",
+      name: "Landing leg",
+      on: "lm_descent_stage.leg_1",
+      shape: {
+        compound: [
+          {
+            shape: { beam: { length: 3.2, section: { circle: { diameter: 0.14 } } } },
+            rotation: [180, 0, 0],
+          },
+        ],
+      },
+      components: [
+        { gear: { stowed: [0.12, 0, 0.993], length: 3.2, wheel_radius: 0.4, stroke: 0.8, load: 800, mass: 65, foot: true } },
+      ],
+      paint: { color: [0.72, 0.6, 0.3], finish: "metal" },
+    },
+    {
+      id: "lm_leg_2",
+      name: "Landing leg",
+      on: "lm_descent_stage.leg_2",
+      shape: {
+        compound: [
+          {
+            shape: { beam: { length: 3.2, section: { circle: { diameter: 0.14 } } } },
+            rotation: [180, 0, 0],
+          },
+        ],
+      },
+      components: [
+        { gear: { stowed: [-0.12, 0, 0.993], length: 3.2, wheel_radius: 0.4, stroke: 0.8, load: 800, mass: 65, foot: true } },
+      ],
+      paint: { color: [0.72, 0.6, 0.3], finish: "metal" },
+    },
+    {
+      id: "lm_leg_3",
+      name: "Landing leg",
+      on: "lm_descent_stage.leg_3",
+      shape: {
+        compound: [
+          {
+            shape: { beam: { length: 3.2, section: { circle: { diameter: 0.14 } } } },
+            rotation: [180, 0, 0],
+          },
+        ],
+      },
+      components: [
+        { gear: { stowed: [0, 0.12, 0.993], length: 3.2, wheel_radius: 0.4, stroke: 0.8, load: 800, mass: 65, foot: true } },
+      ],
+      paint: { color: [0.72, 0.6, 0.3], finish: "metal" },
+    },
+    {
+      id: "lm_leg_4",
+      name: "Landing leg",
+      on: "lm_descent_stage.leg_4",
+      shape: {
+        compound: [
+          {
+            shape: { beam: { length: 3.2, section: { circle: { diameter: 0.14 } } } },
+            rotation: [180, 0, 0],
+          },
+        ],
+      },
+      components: [
+        { gear: { stowed: [0, -0.12, 0.993], length: 3.2, wheel_radius: 0.4, stroke: 0.8, load: 800, mass: 65, foot: true } },
+      ],
+      paint: { color: [0.72, 0.6, 0.3], finish: "metal" },
+    },
   ],
   // The instrument unit's own: the centre F-1 shuts down at 2 min 15 s, holding the stack to
   // 3.9 g, and the outboard ones when the oxygen runs low, with a little left in the tanks.
   triggers: [
     { time: 135, fire: ["cutoff:s_ic_engine_1"] },
     { propellant_below: 0.01, of: "s_ic", fire: ["cutoff:s_ic"] },
+  ],
+  // The S-IVB's APS flies the stack; the service module's thrusters wait until it has let go.
+  rcs_shut: [
+    "rcs_quad_1",
+    "rcs_quad_2",
+    "rcs_quad_3",
+    "rcs_quad_4",
+    "cm_rcs_1",
+    "cm_rcs_2",
+    "cm_rcs_3",
+    "cm_rcs_4",
+  ],
+  // Let go of the service module and all below it and pull the capsule away, then throw the tower
+  // off. Anything already gone by then is passed over.
+  abort: [
+    { fire: ["decoupler:service_module", "engines:les_escape_motor"] },
+    {
+      after: 14,
+      fire: [
+        "engines:les_jettison_motor",
+        "decoupler:les_decoupler",
+        "rcs:cm_rcs_1",
+        "arm:drogue_1",
+        "arm:drogue_2",
+        "arm:main_1",
+        "arm:main_2",
+        "arm:main_3",
+      ],
+    },
   ],
   sequences: [
     ["engines:s_ic"],
@@ -1201,12 +1689,38 @@
       "engines:s_ii_ullage_4",
     ],
     ["engines:s_ii"],
-    ["decoupler:interstage"],
+    // The spent interstage, and the tower 30 s after the S-II lights.
+    ["decoupler:interstage", "engines:les_jettison_motor", "decoupler:les_decoupler"],
     // The same for the S-IVB's first start, from its two ullage motors.
     ["decoupler:s_ii", "engines:s_ivb_ullage_1", "engines:s_ivb_ullage_2"],
     ["engines:s_ivb"],
-    ["decoupler:s_ivb"],
-    ["decoupler:lunar_module", "engines:service_module"],
-    ["decoupler:service_module"],
+    // The panels open and the CSM leaves, with its engine armed. The S-IVB takes the lunar module
+    // and what is left for it to do with it: being let go, then its own two stages.
+    [
+      "fairing:adapter_panel_1", "fairing:adapter_panel_2", "fairing:adapter_panel_3", "fairing:adapter_panel_4",
+      "decoupler:adapter_decoupler",
+      "engines:service_module",
+      "rcs:rcs_quad_1",
+    ],
+    ["decoupler:lm_mount"],
+    [
+      "rcs:lm_ascent_stage",
+      "engines:lm_descent_stage",
+      "deploy_leg:lm_leg_1",
+      "deploy_leg:lm_leg_2",
+      "deploy_leg:lm_leg_3",
+      "deploy_leg:lm_leg_4",
+    ],
+    ["decoupler:lm_descent_stage", "engines:lm_ascent_stage"],
+    // The capsule alone: its own thrusters, and its parachutes armed for the way down.
+    [
+      "decoupler:service_module",
+      "rcs:cm_rcs_1",
+      "arm:drogue_1",
+      "arm:drogue_2",
+      "arm:main_1",
+      "arm:main_2",
+      "arm:main_3",
+    ],
   ],
 }

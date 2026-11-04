@@ -333,7 +333,7 @@ fn templates_weigh_what_their_records_say() {
         assert!(
             part.components
                 .iter()
-                .any(|c| matches!(c, Component::Crew { seats } if *seats == pod.crew))
+                .any(|c| matches!(c, Component::Crew { seats, .. } if *seats == pod.crew))
         );
         let joined = part.assembly_part("pod");
         assert!(joined.node("bottom").is_some() && joined.node("top").is_some());

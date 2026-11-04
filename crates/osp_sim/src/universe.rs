@@ -289,6 +289,12 @@ impl Universe {
         debris.into_iter().map(|d| self.add_vessel(d)).collect()
     }
 
+    /// Begin vessel `index`'s abort, if it has one; what it sheds flies on as debris.
+    pub fn abort(&mut self, index: usize) -> Vec<VesselId> {
+        let debris = self.vessels[index].abort(&self.system, self.time);
+        debris.into_iter().map(|d| self.add_vessel(d)).collect()
+    }
+
     /// Do one activation on vessel `id` by hand (see [`Vessel::perform`]); what it sheds
     /// flies on as debris. Whether the vessel's part offered it.
     pub fn perform(&mut self, id: VesselId, activation: Activation) -> bool {
@@ -1093,6 +1099,16 @@ impl Universe {
             }));
         }
         self.time = t1;
+        // Aborts under way: what they let go of flies on as debris.
+        for k in 0..self.vessels.len() {
+            if self.vessels[k].propulsion.aborting() {
+                let dt = PHYSICS_STEP.as_seconds();
+                let debris = self.vessels[k].step_abort(&self.system, t1, dt);
+                for d in debris {
+                    self.add_vessel(d);
+                }
+            }
+        }
         for event in &events {
             if matches!(event.event.kind, VesselEventKind::Crashed { .. })
                 && self

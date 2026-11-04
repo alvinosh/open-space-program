@@ -178,6 +178,8 @@ impl<'a> Builder<'a> {
                 parts: Vec::new(),
                 sequences: None,
                 triggers: Vec::new(),
+                rcs_shut: Vec::new(),
+                abort: Vec::new(),
             },
             catalog,
         )
@@ -313,6 +315,8 @@ impl<'a> Builder<'a> {
                 }],
                 sequences: None,
                 triggers: Vec::new(),
+                rcs_shut: Vec::new(),
+                abort: Vec::new(),
             };
             let alone = Craft::build(&alone, catalog)
                 .map_err(|e| Refusal::new(Rule::Join, e.to_string()))?;

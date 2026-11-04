@@ -382,7 +382,10 @@ fn build_part(part: &CraftPartDef, catalog: &PartCatalog) -> Result<CraftPart, C
         .unwrap_or_else(|| part.template.clone().unwrap_or_else(|| part.id.clone()));
     def.components.extend(part.components.iter().cloned());
     def.nodes.extend(part.nodes.iter().cloned());
-    let built = def.build(catalog)?;
+    let mut built = def.build(catalog)?;
+    if let Some(center) = part.mass_center {
+        built.mass.center = DVec3::from(center);
+    }
     Ok(CraftPart {
         id: part.id.clone(),
         name: def.name.clone(),

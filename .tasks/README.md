@@ -75,11 +75,11 @@ dependency graph decides where a milestone cannot start earlier.
 | Milestone | What it delivers |
 | --- | --- |
 | `M0` | Decisions and licences, in days: contact solver, scripting, real Solar System only, how the project earns, licence files. |
-| `M1` | Flying feels good: the in-progress work, the visible bugs, sound, and menus that make sense (T185, put ahead of the Apollo work on 2026-11-04). |
+| `M1` | Flying feels good: the in-progress work, the visible bugs, sound, and menus that make sense (T185). T189 moved to M3 on 2026-11-04, when the Apollo work went first. |
 | `M2` | Ship parts and systems, before the editor: the build core (physics on any part, open components, sizers, surface layers, environment), decouplers and separation motors, batteries, solar arrays, fuel cells, avionics, antennas, ground stations, link policy. Craft files can hold the new parts before a player can place them. |
 | `M3` | Build and save: the editor chain to its gate (T025), save and load, the start menu. |
 | `M4` | Flight planning, then the first scenarios and their tutorials: first launch, rendezvous, the Mars orbiter probe, the build tutorial. Missions and the tutorial layer (T165, T166) are done. |
-| `M5` | The way home and the Moon flyby: heat, entry, parachutes and the sea, life support, the systems tutorial, the crewed flyby. |
+| `M5` | The Moon flyby: life support, the systems tutorial, the crewed flyby. Heat, entry and parachutes went to M2 for the Apollo gate (T180) on 2026-11-04. |
 | `M6` | Landings: contact physics, docking, the Moon's terrain, the lander, Mars relief, the Moon landing and the Mars lander. |
 | `M7` | Polish and depth: trailer-grade visuals, reliability, the Saturn V from procedural parts only. Pull a task forward if a scenario needs it. |
 | `M8` | Together: multiplayer, and the paid servers that depend on it. |

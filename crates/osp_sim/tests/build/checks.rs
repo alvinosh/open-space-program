@@ -245,7 +245,7 @@ pub fn kept(craft: &Craft, p: &Propulsion) -> Outcome {
         .iter()
         .flat_map(|part| &part.built.components)
         .filter_map(|c| match c {
-            Component::Crew { seats } => Some(*seats),
+            Component::Crew { seats, .. } => Some(*seats),
             _ => None,
         })
         .sum();

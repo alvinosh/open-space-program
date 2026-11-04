@@ -2,7 +2,7 @@
   "id": "T041",
   "title": "Nested holds and hinged panels (the LM in the adapter)",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "docking",
   "size": "M",
   "parent": "T007",
@@ -15,7 +15,7 @@
   ],
   "created": "2026-10-30",
   "updated": "2026-11-04",
-  "done": null,
+  "done": "2026-11-04",
   "milestone": "M2",
-  "priority": 45
+  "priority": 44
 }

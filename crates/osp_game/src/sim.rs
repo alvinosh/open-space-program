@@ -49,9 +49,11 @@ impl Plugin for SimPlugin {
         // `OSP_TUTORIAL=<id>` plays a tutorial, over its own scenario.
         let tutorial = std::env::var("OSP_TUTORIAL").ok();
         let scenario = match &tutorial {
-            Some(id) => crate::content::tutorial_def(&content.registry, id)
-                .unwrap_or_else(|e| panic!("cannot start tutorial `{id}`: {e}"))
-                .scenario,
+            Some(id) => {
+                crate::content::tutorial_def(&content.registry, id)
+                    .unwrap_or_else(|e| panic!("cannot start tutorial `{id}`: {e}"))
+                    .scenario
+            }
             None => std::env::var("OSP_SCENARIO").unwrap_or_else(|_| {
                 // The scripted captures were written for a launch from the pad.
                 if std::env::var_os("OSP_CAPTURE").is_some() {
@@ -158,6 +160,12 @@ impl Sim {
     pub fn stage_active(&mut self) {
         let index = self.active_index();
         self.universe.activate_next_stage(index);
+    }
+
+    /// Begin the active vessel's abort, if it has one.
+    pub fn abort_active(&mut self) {
+        let index = self.active_index();
+        self.universe.abort(index);
     }
 
     /// Do one activation on a vessel's part by hand, outside its sequences.

@@ -35,6 +35,10 @@
 //! the S-IVB's structure, and the Saturn V's cutoffs are its triggers, in no sequence. The Saturn
 //! IB got sequences of its own, ullage motors and Apollo 7's part load in its service module.
 //!
+//! The Saturn V was rerecorded when the real lunar module went into its adapter in place of a 15 t
+//! drum, with the adapter's panels at their real 8.5 m and 1.8 t: the stack is 2 m shorter and the
+//! CSM's leaving and the lander's staging change its sequences.
+//!
 //! The Aerobee and the WAC Corporal were rebuilt by hand so they fly as the real ones did:
 //! the sustainer lit with its booster over an open joint, its tank above the motor
 //! compartment, the instruments in the nose and fins that keep it stable.

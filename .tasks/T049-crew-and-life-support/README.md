@@ -19,6 +19,14 @@ This waits for T039 (join two vessels) because crew moving through a docked tunn
 
 - 2026-11-02: T040's `docking_port` has no tunnel yet: this adds whether crew can pass, next to `crossfeed`.
 
+## Done
+
+- Crew are counted in seats, and `life_support` has them use oxygen, water and food from the tanks they can reach. No oxygen for 5 minutes, or too much acceleration for too long, loses them. `board` moves people between seats through a docked tunnel. The Spacecraft window shows it.
+
+## Left out
+
+No cabin pressure, CO2 or temperature limit. They are a count and not people yet. T194.
+
 ## Where it comes from
 
 - docs/systems-plan.md (step 24)

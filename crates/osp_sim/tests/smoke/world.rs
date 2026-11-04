@@ -434,7 +434,8 @@ impl World {
         let met = time.seconds_since(self.liftoff.unwrap_or(self.start));
         let text = match kind {
             VesselEventKind::Liftoff => {
-                self.liftoff = Some(time);
+                // The mission's clock starts once, not again when a lander lifts off.
+                self.liftoff.get_or_insert(time);
                 "Liftoff".to_owned()
             }
             VesselEventKind::SoiChange { from, to } => {

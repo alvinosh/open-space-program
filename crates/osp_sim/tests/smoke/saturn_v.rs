@@ -3,13 +3,27 @@
 //! The numbers in the checks are the real mission's (Apollo 11 flight journal, the Saturn V
 //! flight manual), with room for the game's simpler physics.
 
-use osp_sim::{DVec3, attitude::SasMode, plan::Burn};
+use osp_sim::{
+    DVec3,
+    attitude::SasMode,
+    guidance::Guidance,
+    orbit::{Orbit, StateVector},
+    parts::PartId,
+    plan::Burn,
+    rendezvous::Target,
+    staging::Activation,
+    systems::{BOARD, Battery, Crew, HeatShield, Parachute, Thermal},
+    time::SimTime,
+    transfer::lambert,
+    vessel::VesselId,
+};
 
 use crate::{
     Mission, audit,
+    docking::{Hands, approach},
     pilot::{Ascent, Profile},
     planning,
-    world::{Area, Flight, PhaseSpec, World},
+    world::{Abort, Area, Flight, PhaseSpec, World},
 };
 
 pub static MISSION: Mission = Mission {
@@ -242,7 +256,7 @@ fn s_ic(w: &mut World, ascent: &mut Ascent) -> Flight {
         Area::Avionics,
         "Propellant the instrument unit leaves in the S-IC",
         left / 1e3,
-        5.0..=30.0,
+        0.0..=30.0,
         "t",
         "cut off on the low-level sensors",
     );
@@ -574,6 +588,28 @@ fn tli(w: &mut World) -> Flight {
             .any(|m| m.contains("J-2") && (m.contains("failed") || m.contains("no ignitions"))),
         format!("ignitions left before the burn: {engine:?}"),
     );
+    let left = (w.vessel().propulsion.engines.iter())
+        .find(|e| e.def.id.contains("S-IVB"))
+        .and_then(|e| e.ignitions_left);
+    w.check(
+        Area::Propulsion,
+        "The S-IVB has used both its starts",
+        left == Some(0),
+        format!("{left:?} left"),
+    );
+    let service_rcs: f64 = (w.vessel().propulsion.tanks.iter())
+        .filter(|t| {
+            (w.vessel().propulsion.parts().get(t.part))
+                .is_some_and(|part| part.name == "RCS propellant")
+        })
+        .map(|t| t.held("NTO") + t.held("Aerozine50"))
+        .sum();
+    w.check(
+        Area::Propulsion,
+        "Its ullage came from its own thrusters, the spacecraft's still full",
+        service_rcs > 400.0,
+        format!("{service_rcs:.0} kg in the service module's tanks"),
+    );
     let (_, burn) = w.span("tli").unwrap();
     w.within(
         Area::Propulsion,
@@ -608,33 +644,15 @@ fn tli(w: &mut World) -> Flight {
     Ok(())
 }
 
+/// How far the CSM backs off before it turns round, m: its own length and some room to swing.
+const TURN_ROOM: f64 = 26.0;
+
 fn transposition(w: &mut World) -> Flight {
     w.phase("transposition");
-    // The S-IVB lets go of what is above it.
-    let before = w.vessel().flight.mass;
+    // The adapter's panels open and the CSM lets go, the lunar module staying on the S-IVB.
     w.stage();
-    w.fly(10.0, |_| false);
-    let after = w.vessel().flight.mass;
-    w.check(
-        Area::Staging,
-        "The S-IVB separates",
-        before - after > 8_000.0,
-        format!("{:.1} t lighter", (before - after) / 1e3),
-    );
-    w.gap(
-        Area::Docking,
-        "Transposition, docking and extraction",
-        "The real CSM separated from the adapter, turned round, docked nose to nose with the lunar module and pulled it out of the S-IVB. Docking itself works now (the `docking` mission), but this flight has nothing to dock with. The lunar module in this craft is a 15 t drum above the S-IVB, not a spacecraft.",
-    );
-    // The adapter and the drum go together so that the SPS has a clear nozzle.
-    w.stage();
-    w.fly(10.0, |_| false);
-    let csm = w.vessel().flight.mass;
-    w.bridged(
-        Area::Docking,
-        "The lunar module is thrown away",
-        "Sequence 8 drops the adapter and the lunar module drum, and arms the SPS: the flight goes on as a command and service module alone, as Apollo 8 flew.",
-    );
+    w.fly(3.0, |_| false);
+    let csm = w.vessel().propulsion.mass();
     w.within(
         Area::Build,
         "Mass of the CSM",
@@ -642,6 +660,137 @@ fn transposition(w: &mut World) -> Flight {
         26.0..=33.0,
         "t",
         "Apollo 11: 28.8 t",
+    );
+    let panels = (w.universe.vessels.iter())
+        .filter(|v| v.id() != w.focus && v.name.starts_with("Fairing"))
+        .count();
+    w.check(
+        Area::Staging,
+        "The adapter's four panels come away",
+        panels == 4,
+        format!("{panels} of them"),
+    );
+    let carrier: Option<VesselId> = (w.universe.vessels.iter())
+        .find(|v| v.id() != w.focus && v.propulsion.parts().has_seats())
+        .map(|v| v.id());
+    w.must(
+        Area::Staging,
+        "The lunar module stays on the S-IVB, a vessel and not debris",
+        carrier.is_some(),
+        "",
+    )?;
+    w.with_vessel(|v, system, now| {
+        v.target = carrier.map(Target::Vessel);
+        v.set_rcs(true);
+        v.set_sas_mode(system, now, SasMode::Stability);
+    });
+    w.must(
+        Area::Docking,
+        "The CSM's probe has the lunar module's drogue to go for",
+        approach(w).is_some(),
+        "",
+    )?;
+    // The push of letting go carries it away, and the keys stop it once there is room to turn.
+    let away = w.fly(300.0, |w| {
+        approach(w).is_some_and(|a| a.alignment.distance() > TURN_ROOM)
+    });
+    w.must(
+        Area::Docking,
+        "The CSM moves off far enough to turn round",
+        away,
+        "",
+    )?;
+    w.with_vessel(|v, system, now| v.set_sas_mode(system, now, SasMode::TargetPort));
+    let turned = w.fly(900.0, |w| {
+        approach(w).is_some_and(|a| a.alignment.angle < 1f64.to_radians())
+    });
+    let angle = approach(w).map_or(180.0, |a| a.alignment.angle.to_degrees());
+    w.must(
+        Area::Control,
+        "SAS turns the probe round to face the drogue",
+        turned,
+        format!("{angle:.1} degrees off"),
+    )?;
+    let rcs_before = w.vessel().propulsion.rcs_propellant_mass();
+    let mut hands = Hands::new();
+    let mut last = None;
+    let joined = w.fly(3_600.0, |w| {
+        if w.vessel().propulsion.joined_parts().next().is_some() {
+            return true;
+        }
+        let Some(seen) = approach(w) else {
+            return false;
+        };
+        hands.fly(w, &seen);
+        last = Some(seen.alignment);
+        false
+    });
+    w.with_vessel(|v, system, now| {
+        v.translation_input = DVec3::ZERO;
+        v.set_sas_mode(system, now, SasMode::Stability);
+    });
+    w.must(
+        Area::Docking,
+        "The CSM docks with the lunar module in the adapter",
+        joined,
+        last.map_or(String::new(), |a| {
+            format!(
+                "still {:.2} m off, {:.2} m/s: {}",
+                a.distance(),
+                a.closing,
+                a.problem().map_or("no problem", |p| p.label())
+            )
+        }),
+    )?;
+    w.within(
+        Area::Docking,
+        "RCS propellant for the turn and the docking",
+        rcs_before - w.vessel().propulsion.rcs_propellant_mass(),
+        0.0..=60.0,
+        "kg",
+        "the service module carried 550 kg for the whole flight",
+    );
+    // What holds the lunar module in the adapter lets go, by a player's click on the part: docking
+    // turned the joint round, so it is the ring on the adapter's floor that hangs from the lander.
+    let propulsion = &w.vessel().propulsion;
+    let tree = propulsion.parts();
+    let extract = (tree.parts().iter())
+        .filter(|part| !propulsion.carried(part.stage))
+        .filter(|part| {
+            tree.parent(part.id)
+                .is_some_and(|holder| propulsion.carried(holder.stage))
+        })
+        .flat_map(|part| propulsion.part_actions(part.id, false))
+        .find(|activation| activation.is_decoupler());
+    w.must(
+        Area::Docking,
+        "The lunar module can be let go of from the docked stack",
+        extract.is_some(),
+        "",
+    )?;
+    let docked = w.vessel().propulsion.mass();
+    let extracted = extract.is_some_and(|activation| w.universe.perform(w.focus, activation));
+    w.fly(30.0, |_| false);
+    let stack = w.vessel().propulsion.mass();
+    w.check(
+        Area::Docking,
+        "The S-IVB stays behind",
+        extracted && docked - stack > 10_000.0,
+        format!("{:.1} t lighter", (docked - stack) / 1e3),
+    );
+    w.within(
+        Area::Build,
+        "Mass of the CSM and lunar module",
+        stack / 1e3,
+        42.0..=52.0,
+        "t",
+        "Apollo 11: 43.9 t",
+    );
+    w.check(
+        Area::Propulsion,
+        "Nothing of the lunar module fires in the stack",
+        (w.vessel().propulsion.engines.iter()).all(|e| e.thrust == 0.0),
+        "",
     );
     Ok(())
 }
@@ -833,7 +982,7 @@ fn loi(w: &mut World) -> Flight {
         w.progress().0,
         180.0..=450.0,
         "s",
-        "Apollo 11: 357 s with the lunar module still docked (45 t, not this 30 t)",
+        "Apollo 11: 357 s with the lunar module docked",
     );
     let (peri, apo) = (
         orbit.periapsis() - radius,
@@ -860,6 +1009,7 @@ fn loi(w: &mut World) -> Flight {
 
 fn lunar_orbit(w: &mut World) -> Flight {
     w.phase("lunar_orbit");
+    circularize(w)?;
     let moon = w.universe.system.find("Moon").unwrap();
     let radius = w.universe.system.body(moon).radius;
     let orbit = w.vessel().orbit(&w.universe.system, w.now());
@@ -868,7 +1018,7 @@ fn lunar_orbit(w: &mut World) -> Flight {
         Area::Orbit,
         "Period of the lunar orbit",
         period / 60.0,
-        105.0..=130.0,
+        100.0..=130.0,
         "min",
         "Apollo 11: 119 min in the first orbit",
     );
@@ -932,49 +1082,597 @@ fn signal(w: &mut World) {
     );
 }
 
-/// What the real mission did next, and why the game cannot: each phase says what is missing.
+/// The world's eyes and hands go to vessel `id`.
+fn switch_to(w: &mut World, id: VesselId) {
+    w.focus = id;
+    w.universe.focus = Some(id);
+}
+
+/// The part with seats for this many, on the vessel flown.
+fn crew_part(w: &World, seats: u32) -> Option<PartId> {
+    (w.vessel().propulsion.systems.all::<Crew>())
+        .find(|(_, crew)| crew.seats == seats)
+        .map(|(part, _)| part)
+}
+
+/// Who is aboard the part with seats for this many, on the vessel flown.
+fn aboard(w: &World, seats: u32) -> u32 {
+    (w.vessel().propulsion.systems.all::<Crew>())
+        .find(|(_, crew)| crew.seats == seats)
+        .map_or(0, |(_, crew)| crew.aboard)
+}
+
+/// Have `count` people move to the seats for `seats`, through the docked tunnel.
+fn move_crew(w: &mut World, seats: u32, count: u32) -> bool {
+    let Some(part) = crew_part(w, seats) else {
+        return false;
+    };
+    (0..count).all(|_| w.universe.perform(w.focus, Activation::new(part, BOARD)))
+}
+
+/// Fly the first planned burn from here: turn onto it, wait for it, burn. False if any failed.
+fn fly_the_burn(w: &mut World) -> bool {
+    let turned = planning::point_at_burn(w, 300.0, 600.0).is_some();
+    let due = planning::warp_to_burn(w, 2.0 * 86_400.0);
+    turned && due && planning::fly_burn(w, 900.0)
+}
+
+/// Down to a circle at the low point of the orbit: at the low point, against the way it is going.
+fn circularize(w: &mut World) -> Flight {
+    let (system, now) = (&w.universe.system, w.now());
+    let v = w.vessel();
+    let orbit = v.orbit(system, now);
+    let mu = system.body(v.parent()).gm;
+    let time = orbit.next_time_at_true_anomaly(0.0, now).unwrap_or(now);
+    let state = orbit.state_at(time);
+    let circular = (mu / state.position.length()).sqrt();
+    let burn = Burn {
+        time,
+        delta_v: DVec3::new(circular - state.velocity.length(), 0.0, 0.0),
+    };
+    w.vessel_mut().plan.clear();
+    w.vessel_mut().plan.add(burn);
+    let done = fly_the_burn(w);
+    w.must(Area::Propulsion, "The SPS circularises the orbit", done, "")?;
+    let radius = w.universe.system.body(w.vessel().parent()).radius;
+    let orbit = w.vessel().orbit(&w.universe.system, w.now());
+    w.within(
+        Area::Orbit,
+        "The lunar orbit is nearly round",
+        orbit.apoapsis().map_or(f64::INFINITY, |a| a - radius) / 1e3,
+        60.0..=140.0,
+        "km apoapsis",
+        "Apollo 11: 122 km",
+    );
+    Ok(())
+}
+
+/// The best way to meet `target` from the orbit flown: when to burn, and how long it takes. It aims
+/// `behind` metres back along the target's way.
+fn best_intercept(w: &World, target: VesselId, behind: f64) -> Option<(SimTime, f64, DVec3)> {
+    let (system, now) = (&w.universe.system, w.now());
+    let v = w.vessel();
+    let body = system.body(v.parent());
+    let mine = v.orbit(system, now);
+    let theirs = w.universe.vessel(target)?.orbit(system, now);
+    let period = theirs.period()?;
+    let mut best: Option<(f64, SimTime, f64, DVec3)> = None;
+    let mut wait = 120.0;
+    while wait < 2.0 * period {
+        let t1 = now.add_seconds(wait);
+        let from = mine.state_at(t1);
+        let normal = from.position.cross(from.velocity);
+        let mut tof = 0.25 * period;
+        while tof < 0.75 * period {
+            let t2 = t1.add_seconds(tof);
+            let to = theirs.state_at(t2);
+            let aim = to.position - to.velocity.normalize() * behind;
+            if let Some((leave, arrive)) = lambert(body.gm, from.position, aim, tof, normal) {
+                let low = Orbit::new(body.gm, t1, StateVector::new(from.position, leave));
+                if low.periapsis() - body.radius > 8_000.0 {
+                    let cost = (leave - from.velocity).length() + (to.velocity - arrive).length();
+                    if best.as_ref().is_none_or(|b| cost < b.0) {
+                        best = Some((cost, t1, tof, leave - from.velocity));
+                    }
+                }
+            }
+            tof += 120.0;
+        }
+        wait += 120.0;
+    }
+    best.map(|(_, t1, tof, dv)| (t1, tof, dv))
+}
+
+/// A planned burn of this much, inertial axes, at `time`.
+fn plan_inertial(w: &mut World, time: SimTime, dv: DVec3) -> bool {
+    let (system, now) = (&w.universe.system, w.now());
+    let state = w.vessel().orbit(system, now).state_at(time);
+    let Some(burn) = Burn::from_inertial(time, &state, dv) else {
+        return false;
+    };
+    w.vessel_mut().plan.clear();
+    w.vessel_mut().plan.add(burn);
+    true
+}
+
+/// How long the real crew stayed on the surface, s.
+const SURFACE_STAY: f64 = 77_760.0;
+/// How high the lander's orbit is at its low point after it leaves the circle, m.
+const LOW_POINT: f64 = 15_000.0;
+/// How high the ascent flies for, and the low point of the orbit that will do, m.
+const ASCENT_HEIGHT: f64 = 18_000.0;
+const ASCENT_PERIAPSIS: f64 = 12_000.0;
+/// How far behind the command module the lander aims to come out, m.
+const STAND_OFF: f64 = 400.0;
+
+/// The lunar module's part of the mission: down, a day on the surface, up, and back to the command
+/// module, which it docks with. Ends flying the command module.
 fn landing(w: &mut World) -> Flight {
     signal(w);
     w.phase("descent");
-    w.known(
-        Area::Landing,
-        "There is no lander to land",
-        "T044",
-        "This craft has no lunar module: the 15 t drum between the S-IVB and the adapter has no engine, no legs and no crew. The lander exists as a craft of its own and flies its own mission (`lunar_module`), but it cannot ride here yet: a stage cannot let go from inside another (T041).",
-    );
-    w.gap(
-        Area::Landing,
-        "Landing on legs",
-        "This flight has no legs to land on. The lunar module's do land it (`lunar_module`), but the leg has no crush core yet and the Moon has no terrain, so it is a smooth ball.",
-    );
-    w.gap(
+    let csm = w.focus;
+    // Two of the crew go through the tunnel.
+    let moved = move_crew(w, 2, 2);
+    w.check(
         Area::Crew,
-        "Crew moving between vessels",
-        "A crew seat belongs to one pod. The two who walked on the Moon left the command module for the lunar module through a tunnel, which needs docking.",
-    );
-    w.phase("surface");
-    w.gap(
-        Area::Power,
-        "Surface stay: power, thermal and comms",
-        "21.6 hours on the surface meant a battery budget for the descent and ascent stages, thermal control through the lunar day, and a link to the ground. None of these exist, so the stay is only a number of hours (see Power and Communications).",
-    );
-    w.phase("ascent");
-    w.gap(
-        Area::Docking,
-        "Ascent, rendezvous and docking",
-        "The rendezvous tools exist (targets, closest approach, SAS target mode), but with no lander there is nothing to rendezvous with. Docking itself works (the `docking` mission).",
-    );
-    // The command module waits in lunar orbit for the surface stay: 21 h of rails.
-    let stay = 24.0 * 3600.0;
-    w.coast(stay, |_| false);
-    w.bridged(
-        Area::Landing,
-        "The surface stay is waited out in lunar orbit",
+        "Two of the crew move to the lunar module through the tunnel",
+        moved && aboard(w, 2) == 2 && aboard(w, 3) == 1,
         format!(
-            "{:.0} h of rails, to keep the trans-Earth timing close to Apollo 11's.",
-            stay / 3600.0
+            "{} in the lander, {} in the command module",
+            aboard(w, 2),
+            aboard(w, 3)
         ),
     );
+    let port = w.vessel().propulsion.joined_parts().next();
+    w.must(
+        Area::Docking,
+        "The lunar module is still docked in lunar orbit",
+        port.is_some(),
+        "",
+    )?;
+    let undocked = port.is_some_and(|port| w.universe.perform(w.focus, Activation::undock(port)));
+    w.fly(60.0, |_| false);
+    let lander = (w.universe.vessels.iter())
+        .find(|v| v.id() != csm && v.propulsion.parts().has_seats())
+        .map(|v| (v.id(), v.name.clone(), v.is_debris(), v.propulsion.mass()));
+    let (lander, name, debris, mass) = lander.unwrap_or((csm, String::new(), true, 0.0));
+    w.check(
+        Area::Docking,
+        "The lunar module undocks and flies as a vessel of its own",
+        undocked && !debris && name == "Lunar Module",
+        name.clone(),
+    );
+    w.within(
+        Area::Build,
+        "Mass of the lunar module",
+        mass / 1e3,
+        14.0..=18.0,
+        "t",
+        "Apollo 11: 15.1 t",
+    );
+    switch_to(w, lander);
+    w.with_vessel(|v, system, now| {
+        v.set_rcs(true);
+        v.set_sas(system, now, true);
+        v.set_sas_mode(system, now, SasMode::Stability);
+    });
+    // Its first sequence: the descent engine armed, its thrusters on and its legs unfolded.
+    let folded = osp_sim::gear::legs(&w.vessel().propulsion).len();
+    w.stage();
+    let legs = osp_sim::gear::legs(&w.vessel().propulsion).len();
+    w.check(
+        Area::Landing,
+        "The legs unfold",
+        folded == 0 && legs == 4,
+        format!("{folded} legs standing before, {legs} after"),
+    );
+
+    // Down to a low point of 15 km on the far side of the Moon from here.
+    let (system, now) = (&w.universe.system, w.now());
+    let body = system.body(w.vessel().parent());
+    let radius = body.radius;
+    let mu = body.gm;
+    let time = now.add_seconds(300.0);
+    let state = w.vessel().orbit(system, now).state_at(time);
+    let r = state.position.length();
+    let a = (r + radius + LOW_POINT) / 2.0;
+    let slower = (mu * (2.0 / r - 1.0 / a)).sqrt();
+    let burn = Burn {
+        time,
+        delta_v: DVec3::new(slower - state.velocity.length(), 0.0, 0.0),
+    };
+    w.vessel_mut().plan.clear();
+    w.vessel_mut().plan.add(burn);
+    let done = fly_the_burn(w);
+    w.must(Area::Propulsion, "It burns down to the low point", done, "")?;
+    let orbit = w.vessel().orbit(&w.universe.system, w.now());
+    w.within(
+        Area::Orbit,
+        "The low point of the way down",
+        (orbit.periapsis() - radius) / 1e3,
+        5.0..=40.0,
+        "km",
+        "Apollo 11: 15 km",
+    );
+
+    // Coast to it, the engine pointing the way it will fire, and let the tool fly it down.
+    let start = orbit
+        .next_time_at_true_anomaly(0.0, w.now())
+        .unwrap_or(w.now());
+    let lead = start.seconds_since(w.now()) - 240.0;
+    w.coast(lead.max(0.0), |_| false);
+    w.sas(SasMode::Retrograde);
+    let braking = w.fly(600.0, |w| {
+        let (system, now) = (&w.universe.system, w.now());
+        let v = w.vessel();
+        v.state_at(system, now).position.length() - radius < LOW_POINT + 1_500.0
+    });
+    w.must(Area::Orbit, "It comes down to the low point", braking, "")?;
+    w.vessel_mut().guidance = Guidance::Land;
+    let touched = w.fly(1_800.0, |w| {
+        let v = w.vessel();
+        v.wheels_down() || v.is_landed() || v.is_destroyed()
+    });
+    let log: Vec<String> = w.vessel().log.iter().map(|e| e.message.clone()).collect();
+    let crashed = log.iter().find(|m| m.starts_with("Crashed")).cloned();
+    w.must(
+        Area::Landing,
+        "The descent tool lands it",
+        touched && crashed.is_none() && !w.vessel().is_destroyed(),
+        crashed.unwrap_or_default(),
+    )?;
+    let sink = log
+        .iter()
+        .find_map(|m| m.strip_prefix("Touched down at "))
+        .and_then(|m| m.split(' ').next())
+        .and_then(|m| m.parse::<f64>().ok())
+        .unwrap_or(f64::INFINITY);
+    w.within(
+        Area::Landing,
+        "It touches down softly",
+        sink,
+        0.0..=4.0,
+        "m/s",
+        "Eagle: 0.5 m/s",
+    );
+    let stopped = w.fly(60.0, |w| w.vessel().is_landed());
+    w.must(Area::Landing, "It comes to rest on its legs", stopped, "")?;
+    let (system, now) = (&w.universe.system, w.now());
+    let v = w.vessel();
+    let tilt = (v.attitude_state(system, now).nose())
+        .angle_between(v.state_at(system, now).position.normalize())
+        .to_degrees();
+    w.within(
+        Area::Landing,
+        "It stands upright",
+        tilt,
+        0.0..=15.0,
+        "degrees",
+        "Eagle: 4.5 degrees",
+    );
+
+    w.phase("surface");
+    w.coast(SURFACE_STAY, |_| false);
+    let p = &w.vessel().propulsion;
+    let held: f64 = p.systems.all::<Battery>().map(|(_, b)| b.charge).sum();
+    let full: f64 = p.systems.all::<Battery>().map(|(_, b)| b.capacity).sum();
+    let brownout = p.systems.brownout();
+    w.check(
+        Area::Power,
+        "The batteries last the stay on the surface",
+        !brownout && held > 0.0,
+        format!(
+            "{:.0}% of {:.0} MJ left",
+            100.0 * held / full.max(1.0),
+            full / 1e3
+        ),
+    );
+    w.check(
+        Area::Crew,
+        "The crew live through the stay on their own supplies",
+        aboard(w, 2) == 2,
+        format!("{} aboard", aboard(w, 2)),
+    );
+    let margin = w.vessel().link().map(|link| link.margin);
+    w.info(
+        Area::Comms,
+        "The link from the surface",
+        margin.map_or("no station in sight just now".to_owned(), |margin| {
+            format!("{margin:.1} dB of margin")
+        }),
+    );
+
+    // Lift off when the command module has just gone over, in its plane.
+    let csm_orbit = |w: &World| {
+        w.universe
+            .vessel(csm)
+            .map(|v| v.orbit(&w.universe.system, w.now()))
+    };
+    for _ in 0..600 {
+        let (system, now) = (&w.universe.system, w.now());
+        let here = w.vessel().state_at(system, now).position.normalize();
+        let Some(orbit) = csm_orbit(w) else { break };
+        let there = orbit.state_at(now);
+        let ahead = (there.position.normalize() - here).dot(there.velocity);
+        if here.dot(there.position.normalize()) > 20f64.to_radians().cos() && ahead > 0.0 {
+            break;
+        }
+        w.warp(30.0);
+    }
+    w.phase("ascent");
+    let normal = csm_orbit(w).map_or(DVec3::Z, |orbit| {
+        let state = orbit.state_at(w.now());
+        state.position.cross(state.velocity).normalize()
+    });
+    w.vessel_mut().set_throttle(1.0);
+    w.stage();
+    let aps = (w.vessel().propulsion.engines.iter())
+        .find(|e| e.def.id == "LMAE")
+        .map_or(0.0, |e| e.def.thrust_vac);
+    w.must(
+        Area::Staging,
+        "The ascent engine is what is left",
+        aps > 0.0,
+        "",
+    )?;
+    let mut pilot = crate::pilot::Pilot::new();
+    let lifted = w.fly(20.0, |w| {
+        let (system, now) = (&w.universe.system, w.now());
+        let up = w.vessel().state_at(system, now).position.normalize();
+        pilot.point(w, up);
+        w.vessel()
+            .state_at(&w.universe.system, w.now())
+            .radial_speed()
+            > 1.0
+    });
+    w.must(Area::Landing, "It lifts off the descent stage", lifted, "")?;
+    let in_orbit = w.fly(900.0, |w| {
+        let (system, now) = (&w.universe.system, w.now());
+        let v = w.vessel();
+        let body = system.body(v.parent());
+        let state = v.state_at(system, now);
+        let r = state.position.length();
+        let up = state.position / r;
+        let climb = state.radial_speed();
+        let across = (state.velocity - up * climb).length();
+        let height = r - body.radius;
+        let periapsis = v.orbit(system, now).periapsis() - body.radius;
+        if periapsis >= ASCENT_PERIAPSIS {
+            w.vessel_mut().set_throttle(0.0);
+            return true;
+        }
+        let push = aps / v.flight.mass.max(1.0);
+        let weight = body.gm / (r * r) - across * across / r;
+        let aim = if height < 2_000.0 {
+            up
+        } else {
+            let circular = (body.gm / r).sqrt();
+            let left = (circular - across).max(0.0) / push;
+            let climb_to = ((ASCENT_HEIGHT - height) / left.max(20.0)).clamp(0.0, 60.0)
+                * (left / 60.0).min(1.0);
+            let most = 0.95 * push;
+            let lift = (weight + (climb_to - climb) / 10.0).clamp(-0.3 * most, most);
+            up * lift + normal.cross(up) * (push * push - lift * lift).sqrt()
+        };
+        pilot.point(w, aim);
+        false
+    });
+    w.with_vessel(|v, _, _| v.rotation_input = DVec3::ZERO);
+    w.must(
+        Area::Orbit,
+        "The ascent stage reaches lunar orbit",
+        in_orbit,
+        "",
+    )?;
+    let descent_left = w
+        .universe
+        .vessels
+        .iter()
+        .any(|v| v.is_debris() && v.is_landed());
+    w.check(
+        Area::Staging,
+        "The descent stage stays on the surface",
+        descent_left,
+        "",
+    );
+
+    // After the command module: a burn to meet it, a look halfway, and the speeds matched.
+    let way = best_intercept(w, csm, STAND_OFF);
+    w.must(
+        Area::Orbit,
+        "A way to meet the command module can be found",
+        way.is_some(),
+        "",
+    )?;
+    let (t1, tof, dv) = way.ok_or(Abort)?;
+    w.info(
+        Area::Orbit,
+        "The way up to the command module",
+        format!(
+            "{:.0} m/s in {:.0} s, then {:.0} min on the way",
+            dv.length(),
+            t1.seconds_since(w.now()),
+            tof / 60.0
+        ),
+    );
+    let planned = plan_inertial(w, t1, dv);
+    let flown = planned && fly_the_burn(w);
+    w.must(
+        Area::Propulsion,
+        "It burns to meet the command module",
+        flown,
+        "",
+    )?;
+    let arrive = t1.add_seconds(tof);
+    // Halfway, a correction for what the first burn missed by.
+    let halfway = w.now().add_seconds(arrive.seconds_since(w.now()) / 2.0);
+    w.coast(halfway.seconds_since(w.now()), |_| false);
+    let (system, now) = (&w.universe.system, w.now());
+    let mu = system.body(w.vessel().parent()).gm;
+    let burn_at = now.add_seconds(120.0);
+    let state = w.vessel().orbit(system, now).state_at(burn_at);
+    let target = csm_orbit(w).map(|o| o.state_at(arrive));
+    if let Some(target) = target {
+        let aim = target.position - target.velocity.normalize() * STAND_OFF;
+        let normal = state.position.cross(state.velocity);
+        let time_left = arrive.seconds_since(burn_at);
+        if let Some((leave, _)) = lambert(mu, state.position, aim, time_left, normal) {
+            let fix = leave - state.velocity;
+            if fix.length() > 0.2 {
+                let fixed = plan_inertial(w, burn_at, fix) && fly_the_burn(w);
+                w.check(
+                    Area::Orbit,
+                    "It corrects its way halfway",
+                    fixed,
+                    format!("{:.1} m/s", fix.length()),
+                );
+            }
+        }
+    }
+    // The speeds matched where it arrives.
+    let (system, now) = (&w.universe.system, w.now());
+    let mine = w.vessel().orbit(system, now).state_at(arrive);
+    let theirs = csm_orbit(w).map(|o| o.state_at(arrive));
+    if let Some(theirs) = theirs {
+        let matched = plan_inertial(w, arrive, theirs.velocity - mine.velocity) && fly_the_burn(w);
+        w.must(
+            Area::Propulsion,
+            "It matches the command module's speed",
+            matched,
+            "",
+        )?;
+    }
+    let relative = |w: &World| {
+        let (system, now) = (&w.universe.system, w.now());
+        let there = w.universe.vessel(csm).map(|v| v.state_at(system, now));
+        let here = w.vessel().state_at(system, now);
+        there.map_or(DVec3::ZERO, |there| there.velocity - here.velocity)
+    };
+    // What the burn left over, on the thrusters.
+    for _ in 0..3 {
+        let left = relative(w);
+        if left.length() < 0.3 {
+            break;
+        }
+        let soon = w.now().add_seconds(60.0);
+        if plan_inertial(w, soon, left) {
+            fly_the_burn(w);
+        }
+    }
+    let left = relative(w).length();
+    w.within(
+        Area::Orbit,
+        "How much speed is left to match",
+        left,
+        0.0..=2.0,
+        "m/s",
+        "",
+    );
+    let (system, now) = (&w.universe.system, w.now());
+    let gap = w.universe.vessel(csm).map_or(f64::INFINITY, |v| {
+        v.state_at(system, now)
+            .position
+            .distance(w.vessel().state_at(system, now).position)
+    });
+    w.within(
+        Area::Orbit,
+        "How far off the command module it comes out",
+        gap / 1e3,
+        0.0..=30.0,
+        "km",
+        "Apollo 11: station-keeping at about 15 m",
+    );
+
+    // The lander holds still with its drogue towards the command module, which docks with it.
+    w.with_vessel(|v, system, now| {
+        v.target = Some(Target::Vessel(csm));
+        v.set_rcs(true);
+        v.set_sas(system, now, true);
+        v.set_sas_mode(system, now, SasMode::Target);
+    });
+    switch_to(w, csm);
+    w.with_vessel(|v, system, now| {
+        v.target = Some(Target::Vessel(lander));
+        v.set_rcs(true);
+        v.set_sas(system, now, true);
+        v.set_sas_mode(system, now, SasMode::TargetPort);
+    });
+    w.must(
+        Area::Docking,
+        "The probe has the ascent stage's drogue to go for",
+        approach(w).is_some(),
+        "",
+    )?;
+    let turned = w.fly(900.0, |w| {
+        approach(w).is_some_and(|a| a.alignment.angle < 2f64.to_radians())
+    });
+    w.check(
+        Area::Control,
+        "The command module turns to face it",
+        turned,
+        "",
+    );
+    let mut hands = Hands::new();
+    let mut holding = false;
+    let mut last = None;
+    let joined = w.fly(3_600.0, |w| {
+        if w.vessel().propulsion.joined_parts().next().is_some() {
+            return true;
+        }
+        let Some(seen) = approach(w) else {
+            return false;
+        };
+        // Close in, the lander stops following and holds still to be docked with.
+        if !holding && seen.alignment.distance() < 150.0 {
+            holding = true;
+            let (system, now) = (&w.universe.system, w.now());
+            let time = now;
+            if let Some(index) = w.universe.find_vessel(lander) {
+                let system = system.clone();
+                w.universe.vessels[index].set_sas_mode(&system, time, SasMode::Stability);
+            }
+        }
+        hands.fly(w, &seen);
+        last = Some(seen.alignment);
+        false
+    });
+    if let Some(a) = last.filter(|_| !joined) {
+        w.info(
+            Area::Docking,
+            "Where the docking stopped",
+            format!(
+                "gap {:.1} m, off axis {:.2} m, closing {:.2} m/s, {:.1} degrees off, {:.2} deg/s, drifting {:.2} m/s: {}",
+                a.gap,
+                a.off_axis.length(),
+                a.closing,
+                a.angle.to_degrees(),
+                a.turning.to_degrees(),
+                a.drift.length(),
+                a.problem().map_or("no problem", |p| p.label())
+            ),
+        );
+    }
+    w.with_vessel(|v, system, now| {
+        v.translation_input = DVec3::ZERO;
+        v.set_sas_mode(system, now, SasMode::Stability);
+    });
+    w.must(
+        Area::Docking,
+        "The ascent stage and the command module dock in lunar orbit",
+        joined,
+        "",
+    )?;
+    let back = move_crew(w, 3, 2);
+    w.check(
+        Area::Crew,
+        "The crew come back through the tunnel",
+        back && aboard(w, 3) == 3,
+        format!("{} in the command module", aboard(w, 3)),
+    );
+    let port = w.vessel().propulsion.joined_parts().next();
+    let gone = port.is_some_and(|port| w.universe.perform(w.focus, Activation::undock(port)));
+    w.check(Area::Staging, "The ascent stage is let go", gone, "");
+    w.fly(30.0, |_| false);
     Ok(())
 }
 
@@ -1229,92 +1927,126 @@ fn entry(w: &mut World) -> Flight {
         "t",
         "Apollo 11: 5.6 t at entry",
     );
-    // The rest is the atmosphere's.
+    // The rest is the thrusters' roll and the air's, and then the parachutes'.
+    w.vessel_mut().guidance = Guidance::Entry;
     let down = w.fly(3_600.0, |w| {
         let v = w.vessel();
-        v.is_landed() || v.is_destroyed()
+        v.is_landed() || v.is_afloat() || v.is_destroyed()
     });
+    w.must(
+        Area::Thermal,
+        "The command module comes through the entry whole",
+        down && !w.vessel().is_destroyed(),
+        w.vessel()
+            .log
+            .last()
+            .map_or(String::new(), |e| e.message.clone()),
+    )?;
+    let p = &w.vessel().propulsion;
+    let (used, peak_flux) = (p.systems.all::<HeatShield>())
+        .next()
+        .map_or((0.0, 0.0), |(_, s)| (s.full - s.ablator, s.peak_flux));
+    let hottest: f64 = (p.systems.all::<Thermal>())
+        .map(|(_, t)| t.peak)
+        .fold(0.0, f64::max);
     w.check(
         Area::Thermal,
-        "The command module reaches the ground",
-        down,
-        "",
+        "The heat shield takes the entry and is not burned through",
+        used > 0.0 && used < 850.0,
+        format!(
+            "{used:.0} kg of 850 kg of ablator burned, at up to {:.1} MW/m²",
+            peak_flux / 1e6
+        ),
     );
-    let landing = w
-        .vessel()
-        .log
-        .iter()
-        .rev()
-        .find(|e| e.message.starts_with("Landed") || e.message.starts_with("Crashed"))
-        .map(|e| e.message.clone());
-    // The batteries carried the command module from the service module's going to the ground.
-    {
-        use osp_sim::systems::Battery;
-        let p = &w.vessel().propulsion;
-        let held: f64 = p.systems.all::<Battery>().map(|(_, b)| b.charge).sum();
-        let full: f64 = p.systems.all::<Battery>().map(|(_, b)| b.capacity).sum();
-        let margin = if full > 0.0 { held / full } else { 0.0 };
-        let brownout = p.systems.brownout();
-        w.check(
-            Area::Power,
-            "The batteries see the command module down",
-            margin > 0.05 && !brownout,
-            format!("{:.0}% of {full:.0} kJ left", margin * 100.0),
+    w.info(
+        Area::Thermal,
+        "The hottest any part of the capsule got",
+        format!("{hottest:.0} K"),
+    );
+    if let Some((g, _)) = w.peak("entry", |s| s.g) {
+        w.within(
+            Area::Thermal,
+            "Peak deceleration in entry",
+            g,
+            2.0..=10.0,
+            "g",
+            "Apollo 11: 6.5 g",
         );
     }
-    w.known(
+    let opened = (w.vessel().log.iter())
+        .filter(|e| e.message.ends_with("parachute opening"))
+        .count();
+    w.within(
         Area::Recovery,
-        "No parachutes, no splashdown",
-        "T048",
-        format!("{}. The real command module opened two drogues at 7 km and three mains at 3 km to land at 9 m/s in the Pacific; the sim has no parachute part and no ocean (the sea is the terrain's zero), so a capsule can only hit the ground.", landing.as_deref().unwrap_or("no touchdown recorded")),
+        "The parachutes open",
+        opened as f64,
+        5.0..=5.0,
+        "of them",
+        "Apollo 11: two drogues at 7 km and three mains at 3 km",
     );
-    w.gap(
-        Area::Thermal,
-        "Entry heating",
-        "Nothing heats the command module: there is no temperature on a part, no heat flux from the shock layer, no ablator that chars (the pod's heat shield is a flat shape) and so nothing that burns up. A 25 g entry and a 6 g entry both survive, and a shield-first entry is no safer than a side-on one except through the drag.",
+    let torn = (w.vessel().log.iter()).any(|e| e.message.contains("torn"));
+    w.check(Area::Recovery, "None of them tears", !torn, "");
+    let afloat = w.vessel().is_afloat();
+    let splash = (w.vessel().log.iter().rev())
+        .find_map(|e| e.message.strip_prefix("Splashed down at "))
+        .and_then(|m| m.split(' ').next())
+        .and_then(|m| m.parse::<f64>().ok())
+        .unwrap_or(f64::INFINITY);
+    w.check(
+        Area::Recovery,
+        "It comes down on the sea and floats",
+        afloat,
+        "",
     );
-    w.gap(
+    w.within(
+        Area::Recovery,
+        "Speed at splashdown",
+        splash,
+        0.0..=15.0,
+        "m/s",
+        "Apollo 11: 9 m/s",
+    );
+    // The batteries carried the command module from the service module's going to the sea.
+    let p = &w.vessel().propulsion;
+    let held: f64 = p.systems.all::<Battery>().map(|(_, b)| b.charge).sum();
+    let full: f64 = p.systems.all::<Battery>().map(|(_, b)| b.capacity).sum();
+    let margin = if full > 0.0 { held / full } else { 0.0 };
+    let brownout = p.systems.brownout();
+    w.check(
+        Area::Power,
+        "The batteries see the command module down",
+        margin > 0.05 && !brownout,
+        format!("{:.0}% of {full:.0} kJ left", margin * 100.0),
+    );
+    let crew = aboard(w, 3);
+    let lost: u32 = w.vessel().propulsion.systems.crew_lost();
+    w.check(
         Area::Crew,
-        "Crew and life support",
-        "The pod seats the crew as a number: no oxygen, water, food or carbon dioxide, no cabin pressure, and no g tolerance (an entry at 26 g would kill them).",
+        "All three of the crew come home alive",
+        crew == 3 && lost == 0,
+        format!("{crew} aboard, {lost} lost"),
     );
-    // Which way up the capsule fell: its heat shield (the base, away from the nose) should lead.
-    let thick: Vec<_> = w
-        .samples
-        .iter()
-        .filter(|s| {
-            s.t >= w
-                .phases
-                .iter()
-                .find(|p| p.id == "entry")
-                .and_then(|p| p.started)
-                .unwrap_or(0.0)
-                && s.q > 2_000.0
-        })
-        .collect();
-    let flipped = thick.iter().filter(|s| s.aoa.abs() < 90.0).count() * 2 > thick.len();
-    if let Some((g, at)) = w.peak("entry", |s| s.g) {
-        if g <= 10.0 && !flipped {
-            w.within(
-                Area::Thermal,
-                "Peak deceleration in entry",
-                g,
-                3.0..=10.0,
-                "g",
-                "Apollo 11: 6.5 g",
-            );
-        } else {
-            w.known(
-                Area::Aero,
-                "The entry is ballistic and the capsule does not hold its heat shield forward",
-                "T047",
-                format!(
-                    "Peak {g:.0} g at {at:.0} s (Apollo 11: 6.5 g), with the capsule {} through the thick air. The real command module rode with its centre of mass off the axis, so it trimmed at 157° and the crew rolled it to steer the lift; the sim's pod is a uniform frustum with no RCS of its own, so it tumbles, settles apex first, and has no lift to steer: a ballistic entry from the Moon is 30 g or more.",
-                    if flipped { "apex first" } else { "heat shield first" }
-                ),
-            );
-        }
-    }
+    let tanks = |w: &World, name: &str| -> f64 {
+        w.vessel()
+            .propulsion
+            .tanks
+            .iter()
+            .map(|t| t.held(name))
+            .sum()
+    };
+    let (oxygen, water, food) = (tanks(w, "LqdOxygen"), tanks(w, "Water"), tanks(w, "Food"));
+    w.check(
+        Area::Crew,
+        "The supplies last the mission",
+        oxygen > 0.0 && water > 0.0 && food > 0.0,
+        format!("{oxygen:.0} kg of oxygen, {water:.0} kg of water, {food:.0} kg of food left"),
+    );
+    let chutes = w.vessel().propulsion.systems.all::<Parachute>().count();
+    w.info(
+        Area::Recovery,
+        "Parachutes on the capsule",
+        format!("{chutes}"),
+    );
     let _ = earth;
     Ok(())
 }

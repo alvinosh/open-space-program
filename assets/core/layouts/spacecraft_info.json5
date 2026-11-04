@@ -1,0 +1,51 @@
+// The spacecraft: its crew and what keeps them alive, its heat, its abort, and what its computer can
+// fly by itself on the way down. Each part's own window says more.
+{
+  id: "spacecraft_info",
+  visible: false,
+  group: "flight",
+  root: {
+    widget: "window",
+    icon: "icons/orbit.svg",
+    title: "Spacecraft - {vessel.name}",
+    style: { left: 300, top: 160, width: 320 },
+    children: [
+      {
+        widget: "column",
+        visible: "vessel.has_seats",
+        children: [
+          { widget: "label", class: "section", text: "Crew" },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Aboard" }, { widget: "label", text: "{vessel.crew_aboard}" }] },
+          { widget: "row", class: "kv", visible: "vessel.crew_lost", children: [{ widget: "label", class: "key", text: "Lost" }, { widget: "label", class: "warning", text: "{vessel.crew_lost}" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Oxygen" }, { widget: "label", text: "{vessel.oxygen|fixed:1} kg" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Water" }, { widget: "label", text: "{vessel.water|fixed:1} kg" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Food" }, { widget: "label", text: "{vessel.food|fixed:1} kg" }] },
+        ],
+      },
+      { widget: "label", class: "section", text: "Heat" },
+      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Hottest part" }, { widget: "label", text: "{vessel.temperature|fixed:0} K" }] },
+      { widget: "row", class: "kv", visible: "vessel.has_shield", children: [{ widget: "label", class: "key", text: "Ablator left" }, { widget: "label", text: "{vessel.ablator|fixed:0} kg" }] },
+      { widget: "row", class: "kv", visible: "vessel.has_shield", children: [{ widget: "label", class: "key", text: "Heat on the shield" }, { widget: "label", text: "{vessel.heat_flux|fixed:0} kW/m2" }] },
+      { widget: "row", class: "kv", visible: "vessel.has_parachutes", children: [{ widget: "label", class: "key", text: "Parachutes open" }, { widget: "label", text: "{vessel.parachutes_open}" }] },
+      { widget: "label", class: "section", text: "Computer: {vessel.guidance}" },
+      {
+        widget: "row",
+        style: { gap: 6 },
+        children: [
+          { widget: "button", text: "Land", action: "guidance.land", tooltip: "Fly the way down to the ground by itself" },
+          { widget: "button", text: "Hover", action: "guidance.hover", tooltip: "Hold this height and take out the speed across the ground" },
+          { widget: "button", text: "Sink 1 m/s", action: "guidance.hold:1", tooltip: "Come straight down at 1 m/s" },
+        ],
+      },
+      {
+        widget: "row",
+        style: { gap: 6, margin: [6, 0, 0, 0] },
+        children: [
+          { widget: "button", text: "Entry", action: "guidance.entry", tooltip: "Heat shield first, and roll the lift to hold about 4 g" },
+          { widget: "button", text: "Off", action: "guidance.off", visible: "vessel.guidance_on" },
+        ],
+      },
+      { widget: "button", class: "danger_button", style: { margin: [10, 0, 0, 0] }, text: "ABORT (Backspace)", action: "vessel.abort", visible: "vessel.can_abort" },
+    ],
+  },
+}

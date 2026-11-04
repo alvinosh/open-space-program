@@ -328,6 +328,105 @@ pub enum ComponentDef {
     Avionics(AvionicsUnitDef),
     Antenna(AntennaDef),
     SolidMotor(SolidMotorDef),
+    Parachute(ParachuteDef),
+    HeatShield(HeatShieldDef),
+    LifeSupport(LifeSupportDef),
+}
+
+/// A canopy, packed until it is armed and low enough.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParachuteDef {
+    /// m.
+    pub diameter: f64,
+    /// Drag coefficient.
+    #[serde(default = "default_canopy_drag")]
+    pub drag: f64,
+    /// It opens below this, m.
+    pub deploy_altitude: f64,
+    /// It lets go below this, for the next to take over, m; it stays on if left out.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub cut_altitude: f64,
+    /// It tears in more dynamic pressure than this, Pa.
+    #[serde(default = "default_canopy_pressure")]
+    pub max_pressure: f64,
+    /// How long it takes to fill, s.
+    #[serde(default = "default_opening_time")]
+    pub opening_time: f64,
+}
+
+fn default_canopy_drag() -> f64 {
+    0.8
+}
+
+fn default_canopy_pressure() -> f64 {
+    30_000.0
+}
+
+fn default_opening_time() -> f64 {
+    3.0
+}
+
+/// An ablator over the surfaces of the part that face one way.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HeatShieldDef {
+    /// kg.
+    pub ablator: f64,
+    /// The way it faces, in the part's frame.
+    #[serde(default = "default_shield_faces")]
+    pub faces: [f64; 3],
+    /// How far round from there it covers, degrees.
+    #[serde(default = "default_shield_angle")]
+    pub half_angle: f64,
+    /// What burning a kilogram takes away, J.
+    #[serde(default = "default_ablation")]
+    pub heat_of_ablation: f64,
+    /// How far across the air's push moves towards the side it comes from, per unit of the tangent
+    /// of the angle it comes at, m: a blunt face turns to meet the air, and with its centre of mass
+    /// off the axis it trims at an angle and so lifts.
+    #[serde(default = "default_trim_arm")]
+    pub trim_arm: f64,
+}
+
+fn default_trim_arm() -> f64 {
+    0.55
+}
+
+fn default_shield_faces() -> [f64; 3] {
+    [0.0, 0.0, -1.0]
+}
+
+fn default_shield_angle() -> f64 {
+    60.0
+}
+
+fn default_ablation() -> f64 {
+    3e7
+}
+
+/// What each person aboard the part uses a day, from the tanks it can reach, kg.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LifeSupportDef {
+    #[serde(default = "default_oxygen")]
+    pub oxygen: f64,
+    #[serde(default = "default_water")]
+    pub water: f64,
+    #[serde(default = "default_food")]
+    pub food: f64,
+}
+
+fn default_oxygen() -> f64 {
+    0.84
+}
+
+fn default_water() -> f64 {
+    3.0
+}
+
+fn default_food() -> f64 {
+    0.6
 }
 
 /// What talks to the ground and to other vessels, in S-band.
@@ -468,6 +567,9 @@ pub struct BatteryPackDef {
 #[serde(deny_unknown_fields)]
 pub struct CrewDef {
     pub seats: u32,
+    /// How many start aboard; all of them if left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aboard: Option<u32>,
 }
 
 /// Lets go of one of the part's nodes in flight: whatever is joined there leaves, and which
@@ -593,6 +695,9 @@ pub struct GearLegDef {
     /// It ends in a foot, which does not roll: `wheel_radius` is the pad's.
     #[serde(default, skip_serializing_if = "is_false")]
     pub foot: bool,
+    /// Where it points folded, in the craft's axes: it stands on nothing until it is deployed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stowed: Option<[f64; 3]>,
 }
 
 /// A part, built: measured, sized and weighed.
@@ -634,6 +739,8 @@ pub enum Component {
     Battery(Battery),
     Crew {
         seats: u32,
+        #[serde(default)]
+        aboard: Option<u32>,
     },
     Decoupler(DecouplerDef),
     DockingPort(DockingPortDef),
@@ -647,6 +754,9 @@ pub enum Component {
     ElectricLoad(ElectricLoadDef),
     Avionics(AvionicsUnitDef),
     Antenna(AntennaDef),
+    Parachute(ParachuteDef),
+    HeatShield(HeatShieldDef),
+    LifeSupport(LifeSupportDef),
 }
 
 /// A coat on a part's walls, as built.
@@ -816,7 +926,10 @@ impl PartDef {
                     if def.seats == 0 {
                         return Err(bad("crew needs a seat".into()));
                     }
-                    Component::Crew { seats: def.seats }
+                    Component::Crew {
+                        seats: def.seats,
+                        aboard: def.aboard,
+                    }
                 }
                 ComponentDef::Decoupler(def) => {
                     if !(def.impulse >= 0.0 && def.impulse.is_finite()) {
@@ -928,6 +1041,19 @@ impl PartDef {
                     hardware = hardware + Mass::point(def.mass, DVec3::ZERO);
                     Component::Engine(Box::new(engine))
                 }
+                ComponentDef::Parachute(def) => {
+                    if !(def.diameter > 0.0 && def.drag > 0.0 && def.max_pressure > 0.0) {
+                        return Err(bad("a parachute has a size, drag and a strength".into()));
+                    }
+                    Component::Parachute(def.clone())
+                }
+                ComponentDef::HeatShield(def) => {
+                    if !(def.ablator > 0.0 && def.heat_of_ablation > 0.0) {
+                        return Err(bad("a heat shield has some ablator to burn".into()));
+                    }
+                    Component::HeatShield(def.clone())
+                }
+                ComponentDef::LifeSupport(def) => Component::LifeSupport(def.clone()),
                 ComponentDef::Antenna(def) => {
                     if !(def.power > 0.0 && def.data_rate > 0.0 && def.diameter >= 0.0) {
                         return Err(bad(
@@ -1134,7 +1260,10 @@ impl PartDef {
         };
         let mut components = Vec::new();
         if def.crew > 0 {
-            components.push(ComponentDef::Crew(CrewDef { seats: def.crew }));
+            components.push(ComponentDef::Crew(CrewDef {
+                seats: def.crew,
+                aboard: None,
+            }));
         }
         if def.electric_charge > 0.0 {
             components.push(ComponentDef::Battery(BatteryPackDef {

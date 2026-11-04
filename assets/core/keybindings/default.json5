@@ -8,6 +8,7 @@
   id: "default",
   bindings: [
     { key: "Space", action: "vessel.stage", label: "Next sequence" },
+    { key: "Backspace", action: "vessel.abort", label: "Abort" },
     { key: "F8", action: "ui.toggle:staging", label: "Staging window" },
     { key: "ShiftLeft", action: "vessel.throttle_up", hold: true, label: "Throttle up" },
     { key: "ControlLeft", action: "vessel.throttle_down", hold: true, label: "Throttle down" },

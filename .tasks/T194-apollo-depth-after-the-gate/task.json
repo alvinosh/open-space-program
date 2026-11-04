@@ -1,0 +1,27 @@
+{
+  "id": "T194",
+  "title": "Saturn V: the depth the gate left out",
+  "kind": "chore",
+  "status": "todo",
+  "area": "environment",
+  "size": "L",
+  "parent": null,
+  "depends_on": [
+    "T180"
+  ],
+  "refs": [
+    "T043",
+    "T044",
+    "T045",
+    "T046",
+    "T047",
+    "T048",
+    "T049",
+    "T059"
+  ],
+  "created": "2026-11-04",
+  "updated": "2026-11-04",
+  "done": null,
+  "milestone": "M7",
+  "priority": 170
+}

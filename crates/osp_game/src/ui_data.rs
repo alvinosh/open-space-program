@@ -392,6 +392,65 @@ fn publish_flight(
 
     // Procedural tanks and fins: what each is made of and how hard it is working.
     data.set("vessel.destroyed", vessel.is_destroyed());
+    {
+        use osp_sim::{
+            guidance::Guidance,
+            systems::{Crew, HeatShield, Parachute, Thermal},
+        };
+        let systems = &vessel.propulsion.systems;
+        data.set("vessel.can_abort", vessel.propulsion.can_abort());
+        data.set("vessel.aborting", vessel.propulsion.aborting());
+        data.set(
+            "vessel.guidance",
+            match vessel.guidance {
+                Guidance::Off => "off",
+                Guidance::Land => "landing",
+                Guidance::HoldRate(_) => "holding a rate",
+                Guidance::Hover => "hovering",
+                Guidance::Entry => "entry",
+            },
+        );
+        data.set("vessel.guidance_on", vessel.guidance != Guidance::Off);
+        data.set("vessel.has_seats", systems.all::<Crew>().next().is_some());
+        data.set("vessel.crew_aboard", f64::from(systems.crew_aboard()));
+        data.set("vessel.crew_lost", f64::from(systems.crew_lost()));
+        // What the crew can reach, not what the rocket under them burns.
+        let cabin = systems
+            .all::<Crew>()
+            .map(|(part, _)| part)
+            .collect::<Vec<_>>();
+        let held = |name: &str| -> f64 {
+            (cabin.iter())
+                .map(|&part| vessel.propulsion.reachable(part, name))
+                .sum()
+        };
+        data.set("vessel.oxygen", held("LqdOxygen"));
+        data.set("vessel.water", held("Water"));
+        data.set("vessel.food", held("Food"));
+        let hottest = (systems.all::<Thermal>())
+            .map(|(_, thermal)| thermal.temperature)
+            .fold(0.0, f64::max);
+        data.set("vessel.temperature", hottest);
+        let shield = systems.all::<HeatShield>().next().map(|(_, shield)| shield);
+        data.set("vessel.has_shield", shield.is_some());
+        data.set(
+            "vessel.ablator",
+            shield.map_or(0.0, |shield| shield.ablator),
+        );
+        data.set(
+            "vessel.heat_flux",
+            shield.map_or(0.0, |shield| shield.flux / 1e3),
+        );
+        let open = (systems.all::<Parachute>())
+            .filter(|(_, chute)| chute.canopy().is_some())
+            .count();
+        data.set(
+            "vessel.has_parachutes",
+            systems.all::<Parachute>().next().is_some(),
+        );
+        data.set("vessel.parachutes_open", open as f64);
+        data.set("vessel.afloat", vessel.is_afloat());
+    }
     data.set("vessel.structure_load", vessel.flight.structure_load);
     let load_of = |stage: usize, part: Part| {
         vessel

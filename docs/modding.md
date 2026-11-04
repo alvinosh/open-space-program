@@ -147,6 +147,9 @@ engine, pod, RCS block or reaction wheel) or a `shape` with what it is made of a
 ```
 
 - `id`: unique within the craft, without dots; sequences name parts by it.
+- A decoupler lets go of the joint at its `node` and leaves with what hangs from it, so a ring that
+  should stay out of the way can have that node somewhere else on it: the Saturn V's adapter ring
+  sits at the panels' hinges, with its `csm` node 6.5 m up where the service module stands.
 - `on: "<part>.<connector>"`: the node or surface of the part it hangs from. `by` is its
   own node or surface held there (`bottom` by default). Where one end is a surface, `at`
   says where on it: `u` around and `v` along it (each 0 to 1), `side` (`front`, or `back`
@@ -164,7 +167,12 @@ the lowest container or tank standing upright on the axis of the part the joint 
 the container nearest the joint, or else the part the joint holds, whatever it is. Any other
 container is one more part of it. A stage hangs under the one holding it, on the same axis, or
 beside it anywhere round it (a radial booster), and may stand at an angle; several may hang
-from one, and those not next down the stack go as a stage beside it does. Engines burn once
+from one, and those not next down the stack go as a stage beside it does. A stage held on the
+axis above the base of the one holding it is a payload carried in it or on it, with whatever hangs
+from it: it is not under that stage and does not get in the way of its engines, and its own
+engines, RCS blocks and legs do nothing until it has let go. What is left to stage on the parts
+that leave goes with them, so a lander shed with the stage carrying it still has its own staging.
+Something shed with seats on it is a vessel and not debris, and holds its attitude. Engines burn once
 armed if no stage hangs under theirs. Each engine and RCS block draws from the tanks propellant
 can reach it from: through joints at nodes (not on surfaces), and across a decoupler only if
 its `crossfeed` is on; the tanks it reaches give in proportion to what they hold, so they drain
@@ -174,6 +182,14 @@ turn that lets go at its bottom, stands round its stage from its base and holds 
 of a fairing; anything else is plain structure that weighs and that the air sees. Two or more
 plain plates of solid metal evenly round a stage's base are its fin set, which can tear off;
 other plates are wings.
+
+Besides `parts` and `sequences`, a craft can say `rcs_shut`, the RCS blocks by part id whose valves stay
+shut until an `rcs` activation on their stage opens them (a spacecraft's thrusters while the booster's
+fly the stack), and `abort`, what `vessel.abort` does: steps of `{ after, fire }`, written as sequences
+are, `after` seconds from the abort. What has left by then is passed over, so one abort does for the
+whole flight. A part can say `mass_center`, where its mass sits in its own frame if not where its shape
+puts it, and a `gear` leg `stowed`, the way it points folded, in the craft's axes: it then stands on
+nothing until a `deploy_leg` action.
 
 A booster beside the core, held 12 m up the core's side by a small round decoupler:
 
@@ -237,6 +253,22 @@ component works with any shape that has what it needs:
 - `structure`: a `material` with the `thickness` of walls, the `solidity` of solids (the
   share that is material, 1 by default) and the `member_area` of trusses (m²); or a total
   `mass` spread the same way. Without either it weighs nothing.
+- `parachute`: `diameter` (m), `deploy_altitude` (m: once armed it opens below this), `cut_altitude`
+  (m: it lets go below this, for the next to take over), `drag` (0.8), `max_pressure` (Pa: it tears in
+  more, 30 kPa), `opening_time` (s, 3). Actions `arm`, `deploy` and `cut`, for sequences and the part's
+  window. It pulls along the air from the part it is on, and a cluster shares the load.
+- `heat_shield`: `ablator` (kg), `faces` (the way it faces in the part's frame, `[0, 0, -1]`),
+  `half_angle` (how far round from there it covers, degrees, 60), `heat_of_ablation` (J/kg, 3e7) and
+  `trim_arm` (m per unit of the tangent of the angle the air comes at, 0.55: how far its push moves to
+  the side the air comes from). What falls on those surfaces burns ablator; once it is gone, or on any
+  surface it does not cover, the part takes the heat. A capsule trims shield first, and with its centre
+  of mass off the axis it trims at an angle and has lift.
+- `life_support`: on a part with seats, what each person uses a day from the tanks it can reach, kg
+  (`oxygen` 0.84 of `LqdOxygen`, `water` 3, `food` 0.6). Without oxygen for 5 minutes they are lost;
+  short of the others they carry on for now.
+- `crew`: `seats`, and `aboard` if not all start in them. The action `board` moves one person to the
+  part's seats from others on the vessel, through a docked tunnel too. Too much acceleration for too
+  long loses them: nothing under 5 g does, and 15 g takes 30 s, as the inverse fourth power of g.
 - `storage`: `type` (a tank type), `contents` (mass ratios), and the `cell` it fills when
   the shape has more than one (a common bulkhead's `lower` and `upper`, two tanks on one
   part). In a plain cylinder with √2:1 domes or a sphere, what it holds settles as such a
@@ -1384,6 +1416,9 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `menu.saves[]`, `menu.has_saves`, `menu.save_name`, `menu.notice` | The saves, newest first: `file`, `name`, `saved` (how long ago), `time` (the game's date), `flying`, `vessels`, `problem` (why it cannot be loaded), `detail` (the line to show: the problem, or what is flying, the date and the vessels); whether there are any; the save the game in progress goes to; what just happened |
 | `menu.can_continue`, `menu.continue_line` | There is a save this game can read; the newest one's name and what it was flying |
 | `marker.name`, `marker.key`, `marker.distance`, `marker.is_vessel`, `marker.targeted`, `marker.target_vessel`, `marker.target_body`, `marker.centre_vessel`, `marker.centre_body` | What the `marker_menu` is open on: a box round a vessel or a body. `key` goes in the actions (`target.vessel`, `target.body`, `vessel.fly`, `manifest.follow`, `manifest.follow_body`), `distance` is from the vessel flown (to a body's surface), and the rest say which items to show |
+| `vessel.can_abort`, `vessel.aborting`, `vessel.guidance`, `vessel.guidance_on` | It has an abort and has not begun it; one is going on; what its computer is flying, and whether it is |
+| `vessel.has_seats`, `vessel.crew_aboard`, `vessel.crew_lost`, `vessel.oxygen`, `vessel.water`, `vessel.food` | Its crew, and what they can reach, kg |
+| `vessel.temperature`, `vessel.has_shield`, `vessel.ablator`, `vessel.heat_flux`, `vessel.has_parachutes`, `vessel.parachutes_open`, `vessel.afloat` | Its hottest part, K; its heat shield: ablator left, kg, and the heat on it, kW/m²; how many canopies are open; whether it floats on a sea |
 | `dialog.title`, `dialog.text`, `dialog.answers[]` | The question being asked: its answers have `index`, `label`, and `plain`, `primary` or `danger` for how the button looks |
 | `editor.heading`, `editor.has_vessel`, `editor.can_launch`, `editor.occupied`, `editor.clear_label`, `editor.list_open`, `editor.vessels[]`, `editor.place_name`, `editor.name`, `editor.height`, `editor.mass`, `editor.parts`, `editor.place`, `editor.pad`, `editor.runway`, `editor.orbit`, `editor.notice` | The craft on show in the editor (see the `editor` layout); where it will launch from (`pad`, `runway`, `orbit`); which site or orbit each of those is, empty if there is none; why a launch failed |
 | `graphics.preset`, `graphics.recommended`, `graphics.summary` | The preset the settings match (`low`, `medium`, `high`, `ultra` or `custom`); the one for this GPU; every setting on one line |
@@ -1438,6 +1473,8 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `menu.open:<screen>`, `menu.back` | Go to the screen, the layout `menu_<screen>`; go back one. From the pause menu that resumes; from the title screen it does nothing |
 | `game.resume`, `game.exit`, `game.quit`, `game.start_tutorial:<tutorial>` | Back to the flight; leave the game for the title screen; close the game; start a tutorial's scenario with its steps. None of them asks: a button that leaves a game uses `ask.leave` |
 | `ask.leave:<action>`, `ask.delete_save:<file>`, `ask.destroy:<vessel>`, `ask.clear` | Ask, in the `dialog` layout, before something is lost. `ask.leave` does `<action>`, which can have an argument of its own (`ask.leave:game.load:game_2`), asking first to save a game that its save does not hold; the others ask whether to do `game.delete_save`, `vessel.destroy` or `editor.clear` |
+| `vessel.abort` | Begin the craft's `abort`, if it has one |
+| `guidance.land`, `guidance.hover`, `guidance.hold:<m/s>`, `guidance.entry`, `guidance.off` | What its computer flies by itself: down to the ground from where it is on its engine, holding its height, sinking at a rate, or rolling its lift through an entry to hold about 4 g |
 | `dialog.answer:<index>`, `dialog.cancel` | Take an answer of the question being asked (`dialog.answers[]`); close it, as Esc and Back do |
 | `game.new` | Go to the editor to choose what to launch in a new game. Nothing changes until the launch; the game in progress goes on if the player goes back |
 | `game.save`, `game.save_as`, `game.load:<file>`, `game.continue`, `game.delete_save:<file>` | Save the game in progress to its save; to a new save, which it then goes to; carry on from a save; from the newest this game can read; delete one |

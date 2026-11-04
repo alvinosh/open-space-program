@@ -2,7 +2,7 @@
   "id": "T043",
   "title": "Procedural legs and foot contact",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "landing",
   "size": "L",
   "parent": "T008",
@@ -14,7 +14,7 @@
   ],
   "created": "2026-10-30",
   "updated": "2026-11-04",
-  "done": null,
+  "done": "2026-11-04",
   "milestone": "M2",
-  "priority": 46
+  "priority": 45
 }

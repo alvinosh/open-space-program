@@ -2,7 +2,7 @@
   "id": "T059",
   "title": "Launch escape system",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "propulsion",
   "size": "M",
   "parent": "T012",
@@ -14,8 +14,8 @@
     "docs/systems-plan.md (palette table, step 25)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
-  "done": null,
-  "milestone": "later",
-  "priority": 133
+  "updated": "2026-11-04",
+  "done": "2026-11-04",
+  "milestone": "M2",
+  "priority": 55
 }

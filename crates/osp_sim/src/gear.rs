@@ -152,12 +152,22 @@ impl Leg {
 
 /// Every gear leg of a vessel, in the order of its parts. A stage hanging beside the
 /// vessel's axis (a dolly under the belly) carries its legs out with it, and a leg that is
-/// let go with its part is gone.
+/// let go with its part is gone. Those of a payload being carried stand on nothing yet.
 pub fn legs(propulsion: &Propulsion) -> Vec<Leg> {
     let tree = propulsion.parts();
     let base = DVec3::Z * tree.base();
     let mut legs = Vec::new();
     for part in tree.parts() {
+        if propulsion.carried(part.stage) {
+            continue;
+        }
+        // Folded, it stands on nothing.
+        let stowed = (propulsion.systems.on(part.id).iter())
+            .filter_map(|s| s.any().downcast_ref::<crate::systems::Leg>())
+            .any(|leg| !leg.deployed);
+        if stowed {
+            continue;
+        }
         for kind in &part.kinds {
             if let PartKind::Gear(def) = kind {
                 legs.extend(
@@ -172,6 +182,38 @@ pub fn legs(propulsion: &Propulsion) -> Vec<Leg> {
         }
     }
     legs
+}
+
+/// Every leg on the vessel for drawing, deployed or not: with where it points while it is folded
+/// (stack axes), and `None` once it is deployed. The deployed ones come in the order of [`legs`].
+pub fn drawn_legs(propulsion: &Propulsion) -> Vec<(Leg, Option<DVec3>)> {
+    let tree = propulsion.parts();
+    let base = DVec3::Z * tree.base();
+    let mut out = Vec::new();
+    for part in tree.parts() {
+        let fold = (propulsion.systems.on(part.id).iter())
+            .filter_map(|s| s.any().downcast_ref::<crate::systems::Leg>())
+            .find(|leg| !leg.deployed)
+            .map(|leg| part.rotation * leg.stowed_direction());
+        for kind in &part.kinds {
+            if let PartKind::Gear(def) = kind {
+                out.extend(
+                    Leg::at(def, part.position - base, part.rotation)
+                        .into_iter()
+                        .map(|leg| {
+                            (
+                                Leg {
+                                    part: Some(part.id),
+                                    ..leg
+                                },
+                                fold,
+                            )
+                        }),
+                );
+            }
+        }
+    }
+    out
 }
 
 /// How far below the axis the vessel's lowest wheel reaches when it stands level on its

@@ -67,6 +67,8 @@ use crate::{
     structure::{FinSet, lift_slope},
 };
 
+/// A section this nearly flat across the axis is a blunt face, rad.
+const BLUNT_SLOPE: f64 = 1.2;
 /// A section is at most this share of the outline's length.
 const MAX_SECTION: f64 = 1.0 / 64.0;
 /// Turn of the outline away from the flow (rad, about 10°) at which the flow starts to
@@ -601,6 +603,8 @@ pub struct Shape {
     surfaces: Vec<Surface>,
     /// Landing gear hanging in the airflow: where (stack coordinates) and its drag area.
     gear: Vec<(DVec3, f64)>,
+    /// A heat shield's [`crate::component::HeatShieldDef::trim_arm`], m.
+    trim_arm: Option<f64>,
     /// Length of the body, and the diameter of a circle of its largest section, m.
     length: f64,
     diameter: f64,
@@ -713,6 +717,13 @@ impl Shape {
         shape.surfaces = with_downwash(surfaces);
         // A leg's drag is at its middle; it is shielded only if its wheel is inside the body
         // as well (a strut lying along the skin has its wheel out in the air).
+        shape.trim_arm = (propulsion.parts().parts().iter())
+            .filter(|part| !propulsion.carried(part.stage))
+            .flat_map(|part| part.built.iter().flat_map(|built| &built.components))
+            .find_map(|component| match component {
+                Component::HeatShield(def) => Some(def.trim_arm),
+                _ => None,
+            });
         shape.gear = gear::legs(propulsion)
             .iter()
             .filter(|leg| {
@@ -776,6 +787,7 @@ impl Shape {
             fins,
             surfaces: Vec::new(),
             gear: Vec::new(),
+            trim_arm: None,
             length,
             diameter,
         }
@@ -876,6 +888,17 @@ impl Shape {
             };
             let axial_q = 0.5 * rho * u.z * u.z;
             let axial = axial_q * (friction * s.wetted() + pressure * growth.abs());
+            // A blunt face turned to the air is pushed from the side the air comes from.
+            let blunt = self
+                .trim_arm
+                .filter(|_| !forward && growth > 0.0 && slope > BLUNT_SLOPE && u.z.abs() > 1e-6);
+            let point = match blunt {
+                Some(arm) => {
+                    let lean = (cross / u.z.abs()).clamp(DVec3::NEG_ONE * 1.5, DVec3::ONE * 1.5);
+                    point + lean * arm
+                }
+                None => point,
+            };
             add(point, DVec3::Z * -u.z.signum() * axial);
         }
 

@@ -312,3 +312,119 @@ fn a_joint_too_weak_for_what_it_carries_breaks() {
             .any(|l| l.part == osp_sim::structure::Part::Joint && l.fraction > 1.0)
     );
 }
+
+/// A Saturn V to abort from, and what it needs to fly.
+struct Stack {
+    system: SolarSystem,
+    vessel: Vessel,
+    time: SimTime,
+}
+
+fn on_the_pad() -> Stack {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let content = osp_mods::load(&root.join("assets/core"), Some(&root.join("mods")));
+    let registry = &content.registry;
+    let catalog = record::catalog(registry);
+    let mut diagnostics = Vec::new();
+    let system = SolarSystem::from_def(&SystemDef {
+        bodies: registry.all::<BodyDef>("bodies", &mut diagnostics),
+    })
+    .unwrap();
+    let sites = registry.all::<LaunchSiteDef>("launch_sites", &mut diagnostics);
+    let site = sites.iter().find(|s| s.id == "cape_canaveral").unwrap();
+    let def: CraftDef = registry.get("craft", "saturn_v").unwrap();
+    let time = SimTime::J2000;
+    let vessel = Vessel::on_launch_site(&def, &catalog, &system, site, time).unwrap();
+    Stack {
+        system,
+        vessel,
+        time,
+    }
+}
+
+impl Stack {
+    fn fly(&mut self, seconds: f64) {
+        let dt = Ticks::from_millis(20);
+        let mut events = Vec::new();
+        for _ in 0..(seconds * 50.0) as usize {
+            self.vessel
+                .step(&self.system, self.time, self.time + dt, &mut events);
+            self.time = self.time + dt;
+            self.vessel.step_abort(&self.system, self.time, 0.02);
+            events.clear();
+        }
+    }
+
+    fn height(&self) -> f64 {
+        let body = self.system.body(self.vessel.parent());
+        self.vessel
+            .state_at(&self.system, self.time)
+            .position
+            .length()
+            - body.radius
+    }
+}
+
+/// On the pad, the abort begun: the tower pulls the capsule clear and throws itself away, and it
+/// comes down under its parachutes with everyone alive.
+#[test]
+fn the_escape_tower_pulls_the_capsule_off_the_pad() {
+    let mut stack = on_the_pad();
+    let start = stack.height();
+    let shed = stack.vessel.abort(&stack.system, stack.time);
+    assert_eq!(shed.len(), 1, "everything from the service module down");
+    assert!(
+        stack
+            .vessel
+            .propulsion
+            .engines
+            .iter()
+            .all(|e| e.def.id != "F-1-1.52M")
+    );
+    assert!(stack.vessel.propulsion.aborting());
+    stack.fly(13.0);
+    let log = |v: &Vessel| v.log.iter().map(|e| e.message.clone()).collect::<Vec<_>>();
+    let up = stack.height() - start;
+    assert!(up > 500.0, "only {up:.0} m up: {:?}", log(&stack.vessel));
+    assert!(!stack.vessel.is_destroyed(), "{:?}", log(&stack.vessel));
+    stack.fly(2.0);
+    assert!(
+        stack.vessel.propulsion.engines.is_empty(),
+        "the tower has gone"
+    );
+    assert!(!stack.vessel.propulsion.aborting());
+    for _ in 0..40 {
+        stack.fly(10.0);
+        if stack.vessel.is_landed() || stack.vessel.is_destroyed() {
+            break;
+        }
+    }
+    assert!(stack.vessel.is_landed(), "{:?}", log(&stack.vessel));
+    assert!(!stack.vessel.is_destroyed(), "{:?}", log(&stack.vessel));
+    assert_eq!(
+        stack.vessel.propulsion.systems.crew_aboard(),
+        3,
+        "{:?}",
+        log(&stack.vessel)
+    );
+}
+
+/// A minute in, at about the worst of the air: the tower still gets the capsule away from the rocket.
+#[test]
+fn the_escape_tower_pulls_the_capsule_off_at_max_q() {
+    let mut stack = on_the_pad();
+    stack.vessel.set_throttle(1.0);
+    stack.vessel.set_sas(&stack.system, stack.time, true);
+    stack.vessel.activate_next_stage(&stack.system, stack.time);
+    stack.fly(70.0);
+    let q = stack.vessel.flight.dynamic_pressure;
+    assert!(q > 10_000.0, "only {q:.0} Pa");
+    let speed = |s: &Stack| s.vessel.state_at(&s.system, s.time).velocity;
+    let before = speed(&stack);
+    let shed = stack.vessel.abort(&stack.system, stack.time);
+    assert_eq!(shed.len(), 1);
+    stack.fly(3.0);
+    let gained = (speed(&stack) - before).length();
+    assert!(gained > 40.0, "only {gained:.0} m/s from the tower");
+    assert!(!stack.vessel.is_destroyed());
+}

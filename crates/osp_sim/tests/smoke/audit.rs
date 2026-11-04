@@ -82,7 +82,7 @@ pub fn inspect(w: &mut World) -> Audit {
                     audit.charge += b.charge;
                     runs.push(format!("battery: {:.0} kJ", b.charge));
                 }
-                Component::Crew { seats } => {
+                Component::Crew { seats, .. } => {
                     audit.crew += seats;
                     runs.push(format!("crew: {seats} seats"));
                 }
@@ -104,6 +104,9 @@ pub fn inspect(w: &mut World) -> Audit {
                 Component::SurfaceLayer(l) => {
                     runs.push(format!("layer: {:.0} kg of {}", l.mass, l.material))
                 }
+                Component::Parachute(c) => runs.push(format!("parachute: {:.0} m", c.diameter)),
+                Component::HeatShield(h) => runs.push(format!("heat shield: {:.0} kg", h.ablator)),
+                Component::LifeSupport(_) => runs.push("life support".to_owned()),
             }
         }
         let mass = part.built.mass.mass;

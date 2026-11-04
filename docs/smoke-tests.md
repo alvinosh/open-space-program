@@ -55,9 +55,8 @@ accurate enough (T027).
 
 Where the sim cannot do what the mission did, the script says so with `known`, `gap` or `bridged`,
 and goes on if it can. A `bridged` finding is the only place the script may do something no
-player could, and it must say what and why. The Saturn V throws its lunar module drum away with the
-adapter (T044), waits out the surface stay in lunar orbit, and goes home as a CSM alone, so it does
-not land and its capsule does not survive the end. A mission can pass every check and still stop
+player could, and it must say what and why. The Saturn V flies Apollo 11 whole now, with none: it
+docks with its lunar module, lands it, lifts off, docks again, and its crew come home on the sea. A mission can pass every check and still stop
 short like this: read its `gap`, `known` and `bridged` findings, not only the pass count. T180 is the
 gate for flying the whole of Apollo 11.
 

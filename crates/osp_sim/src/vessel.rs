@@ -25,6 +25,8 @@ use glam::{DMat3, DQuat, DVec3};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use std::collections::BTreeMap;
+
 use crate::{
     aero::{Flow, Loads, PartPanel, Shape, wing_panels},
     assembly::Pose,
@@ -37,6 +39,8 @@ use crate::{
     environment::{self, Environment},
     events::{EventKind, TrajectoryEvent, apply_event, next_event},
     gear::{self, Contact, Leg},
+    guidance::{DescentView, EntryView, Guidance, descent_push, entry_command},
+    heating::HeatHull,
     integrator::Encke,
     orbit::{Elements, Orbit, StateVector},
     parts::PartId,
@@ -47,7 +51,7 @@ use crate::{
     staging::Activation,
     structure::{self, Conditions, Part, PartLoad},
     system::SolarSystem,
-    systems::{Antenna, Crew},
+    systems::{Antenna, Crew, FlightNow, PartHeat},
     terrain,
     time::{SimTime, Ticks},
 };
@@ -63,6 +67,15 @@ const COAST_HYSTERESIS: f64 = 0.1;
 const GEAR_SUBSTEP: Ticks = Ticks::from_millis(2);
 /// Height above its gear's reach within which a vessel rolls (see `Vessel::roll`), m.
 const GEAR_MARGIN: f64 = 30.0;
+/// How fast a leg's foot comes down before its crush core gives, and before it breaks, m/s.
+const LEG_CRUSH_SPEED: f64 = 5.0;
+const LEG_BREAK_SPEED: f64 = 12.0;
+/// How fast it can hit the sea and float, m/s.
+const SAFE_SPLASH_SPEED: f64 = 20.0;
+/// Sea water, kg/m³.
+const SEA_WATER: f64 = 1025.0;
+/// Air's heating under this, W/m², is not worth working out which part takes it.
+const LEAST_HEATING: f64 = 2_000.0;
 /// Hitting the ground with anything but its wheels faster than this is a crash, m/s.
 const HULL_IMPACT_SPEED: f64 = 5.0;
 /// On the ground with no thrust and slower than these (m/s, rad/s), a vessel comes to rest.
@@ -252,6 +265,15 @@ pub struct Vessel {
     pub propulsion: Propulsion,
     mass: MassProperties,
     propellant_settled: bool,
+    /// What its computer is flying by itself.
+    #[serde(default)]
+    pub guidance: Guidance,
+    /// It has come down on water and floats there.
+    #[serde(default)]
+    afloat: bool,
+    /// How the air's heat falls on its parts.
+    #[serde(skip)]
+    heat_hull: HeatHull,
     /// Broke up: nothing works any more and it falls as wreckage.
     destroyed: bool,
     /// Came loose from another vessel (a spent stage, a fairing half).
@@ -342,6 +364,9 @@ impl Vessel {
             mass,
             propulsion,
             propellant_settled: false,
+            guidance: Guidance::Off,
+            afloat: false,
+            heat_hull: HeatHull::default(),
             destroyed: false,
             debris: false,
             structure: Vec::new(),
@@ -685,6 +710,11 @@ impl Vessel {
         !gear::legs(&self.propulsion).is_empty() || !wing_panels(&self.propulsion).is_empty()
     }
 
+    /// Whether it is floating on a sea.
+    pub fn is_afloat(&self) -> bool {
+        self.afloat
+    }
+
     /// When it left the ground, if it has.
     pub fn lifted_off(&self) -> Option<SimTime> {
         self.lifted_off
@@ -711,6 +741,7 @@ impl Vessel {
             || (self.rcs && self.translation_input != DVec3::ZERO)
             || self.executor.burning()
             || self.ullage_push
+            || self.propulsion.aborting()
     }
 
     /// Mass, centre of mass and inertia as of the last physics step.
@@ -1127,6 +1158,23 @@ impl Vessel {
         self.staged(staged, system, time)
     }
 
+    /// Begin the abort, if it has one: what its first step lets go of comes back as debris.
+    pub fn abort(&mut self, system: &SolarSystem, time: SimTime) -> Vec<Vessel> {
+        if self.destroyed || !self.propulsion.begin_abort() {
+            return Vec::new();
+        }
+        self.record(time, "ABORT".into());
+        self.step_abort(system, time, 0.0)
+    }
+
+    /// Move the abort on, and do what has come due.
+    pub fn step_abort(&mut self, system: &SolarSystem, time: SimTime, dt: f64) -> Vec<Vessel> {
+        match self.propulsion.step_abort(dt) {
+            Some(staged) => self.staged(staged, system, time),
+            None => Vec::new(),
+        }
+    }
+
     /// The actions the player can take on `part` now (see
     /// [`Propulsion::part_actions`]); none once the vessel is destroyed.
     pub fn part_actions(&self, part: PartId) -> Vec<Activation> {
@@ -1250,6 +1298,13 @@ impl Vessel {
             .is_none_or(|part| part.frame == Pose::IDENTITY);
         let mut undocked = released.undocked.take();
         let flew_as = undocked.as_mut().and_then(|joined| joined.vessel.take());
+        // The vessel that joined has lost what it was named after, as a lander let go of the stage
+        // that carried it: it goes by the part it joined by.
+        let renamed = undocked
+            .as_ref()
+            .filter(|joined| released.parts.get(joined.root).is_none())
+            .and_then(|joined| released.parts.get(joined.part))
+            .map(|part| part.name.clone());
         let propulsion = Propulsion::from_released(released);
         let mut debris = Vessel::assemble(
             name,
@@ -1281,7 +1336,8 @@ impl Vessel {
             }
         };
         debris.attitude.state.angular_velocity = spin;
-        debris.debris = true;
+        // Someone can fly what has seats, whichever side of the joint the vessel flown was on.
+        debris.debris = !debris.propulsion.parts().has_seats();
         debris.near_surface = self.near_surface;
         debris.nav_frame = self.nav_frame;
         debris.propellant_settled = self.propellant_settled;
@@ -1299,8 +1355,18 @@ impl Vessel {
                 hold: Hold::Free,
             };
         }
+        // Someone aboard holds it steady, so a bump does not leave it tumbling.
+        if !debris.debris {
+            debris.set_rcs(true);
+            debris.set_sas(system, time, true);
+        }
         match flew_as {
-            Some(vessel) => vessel.fly_again(debris, &self.name, time),
+            Some(mut vessel) => {
+                if let Some(name) = renamed {
+                    vessel.name = name;
+                }
+                vessel.fly_again(debris, &self.name, time)
+            }
             None => debris,
         }
     }
@@ -1519,6 +1585,7 @@ impl Vessel {
         let state = self.state_at(system, t0);
         let air = air_at(body, &state);
         let aim = self.fly_burn(system, t0, air.pressure, out);
+        let aim = aim.or_else(|| self.fly_descent(system, t0, &state, air.pressure));
         let mut messages = Vec::new();
         let settled = self.propellant_settled || self.on_the_ground();
         self.propulsion
@@ -1598,6 +1665,22 @@ impl Vessel {
             };
             self.rotation_command(start, authority, target, frame)
         };
+        // Through an entry its computer rolls it, and the air does the rest.
+        let command = if self.guidance == Guidance::Entry && controlled && !self.is_landed() {
+            let alpha = authority / self.mass.inertia.diagonal().max(DVec3::splat(1e-9));
+            let to_body = start.orientation.inverse();
+            entry_command(&EntryView {
+                toward: (to_body * air_velocity).normalize_or(DVec3::NEG_Z),
+                up: to_body * state.position.normalize(),
+                climb: air_velocity.dot(state.position.normalize()),
+                acceleration: self.flight.proper_acceleration,
+                turning: start.angular_velocity,
+                lift: DVec3::new(com.x, com.y, 0.0).try_normalize(),
+                authority: alpha,
+            })
+        } else {
+            command
+        };
         let (mut force, mut torque) = attitude::actuate(&mut self.propulsion, com, command);
         if rcs {
             let push = if self.ullage_push {
@@ -1622,10 +1705,23 @@ impl Vessel {
         } else {
             rcs::idle(&mut self.propulsion);
         }
+        let canopies = self.propulsion.canopies();
         let air_loads = |attitude: Attitude| {
-            shape.as_ref().map_or(Loads::default(), |shape| {
+            let mut loads = shape.as_ref().map_or(Loads::default(), |shape| {
                 shape.loads_about(&flow_at(attitude, command), com)
-            })
+            });
+            // A canopy pulls along the air where it hangs, and its lines swing the vessel under it.
+            let through = attitude.orientation.inverse() * air_velocity;
+            let speed = through.length();
+            for &(at, area) in &canopies {
+                let pull = -through * speed * 0.5 * air.density * area;
+                let arm = at - com;
+                loads.force += pull;
+                loads.torque += arm.cross(pull)
+                    - attitude.angular_velocity
+                        * (area * air.density * speed * arm.length_squared());
+            }
+            loads
         };
         let air_now = air_loads(start);
 
@@ -1716,6 +1812,17 @@ impl Vessel {
         };
         let nose = start.nose();
         self.propellant_settled = self.on_the_ground() || proper.dot(nose) > ULLAGE_ACCELERATION;
+        self.fly_systems(
+            body,
+            &state,
+            air.density,
+            air_speed,
+            airflow,
+            proper.length(),
+            t0,
+            dt,
+            out,
+        );
 
         let conditions = Conditions {
             // On the ground, the ground holds the stack up, until the engines lift more
@@ -1890,6 +1997,16 @@ impl Vessel {
         if touching && !self.wheels_down {
             let sink = (-ground_velocity.dot(up)).max(0.0);
             self.record(t1, format!("Touched down at {sink:.1} m/s"));
+            let feet = rolled.legs.iter().any(|leg| leg.foot);
+            if feet && sink > LEG_BREAK_SPEED {
+                self.break_up(t1, format!("The legs broke, coming down at {sink:.0} m/s"));
+                out.push(VesselEvent {
+                    time: t1,
+                    kind: VesselEventKind::Destroyed,
+                });
+            } else if feet && sink > LEG_CRUSH_SPEED {
+                self.record(t1, "The legs' crush cores took it".into());
+            }
             out.push(VesselEvent {
                 time: t1,
                 kind: VesselEventKind::Landed { speed: sink },
@@ -1927,6 +2044,118 @@ impl Vessel {
             && rate.length() < REST_RATE
         {
             self.motion = parked;
+        }
+    }
+
+    /// The way down under its computer's control: the throttle, and which way to point. It hands
+    /// back once it is on the ground.
+    fn fly_descent(
+        &mut self,
+        system: &SolarSystem,
+        time: SimTime,
+        state: &StateVector,
+        pressure: f64,
+    ) -> Option<DVec3> {
+        if matches!(self.guidance, Guidance::Off | Guidance::Entry) {
+            return None;
+        }
+        if self.wheels_down || self.is_landed() {
+            self.guidance = Guidance::Off;
+            self.propulsion.set_throttle(0.0);
+            self.record(time, "On the ground: the throttle is yours".into());
+            return None;
+        }
+        let capability = Capability::of(&self.propulsion, pressure)?;
+        let body = system.body(self.parent);
+        let r = state.position.length();
+        let up = state.position / r;
+        let fixed = body.orientation(time).inverse() * up;
+        let ground = state.velocity - body.surface_velocity(state.position);
+        let climb = ground.dot(up);
+        let across = ground - up * climb;
+        let com = self.mass.center_of_mass;
+        // How far its feet reach below its centre of mass, and so how high it really is.
+        let lowest = (gear::legs(&self.propulsion).iter())
+            .map(|leg| (leg.mount + leg.direction * leg.length).z)
+            .fold(0.0, f64::min);
+        let view = DescentView {
+            height: r - body.radius - body.terrain_height(fixed) - (com.z - lowest),
+            up,
+            across,
+            climb,
+            weight: body.gm / (r * r) - across.length_squared() / r,
+            push: capability.thrust / self.mass.mass.max(1.0),
+        };
+        let wanted = descent_push(self.guidance, &view)?;
+        // An engine is not lit unsettled, as that would waste an ignition.
+        let unsettled = capability.needs_ullage
+            && !self.propellant_settled
+            && !self.propulsion.any_engine_running();
+        self.ullage_push = unsettled;
+        let throttle = (wanted.length() / view.push).clamp(0.0, 1.0);
+        self.propulsion
+            .set_throttle(if unsettled { 0.0 } else { throttle });
+        // Pointing the way it wants to push needs a mode that takes a direction.
+        if self.sas.mode() == SasMode::Stability {
+            self.sas.set_mode(SasMode::RadialOut);
+        }
+        Some(wanted.normalize_or(up))
+    }
+
+    /// One tick of flight for the systems, with the heat falling on each part, and what comes of it.
+    #[allow(clippy::too_many_arguments)]
+    fn fly_systems(
+        &mut self,
+        body: &Body,
+        state: &StateVector,
+        density: f64,
+        air_speed: f64,
+        airflow: DVec3,
+        acceleration: f64,
+        time: SimTime,
+        dt: f64,
+        out: &mut Vec<VesselEvent>,
+    ) {
+        // The shape is only worked out when there is air to meet it.
+        let heating = if density > 0.0 && air_speed > 1.0 && !self.is_landed() {
+            let nose_radius = crate::plasma::nose_radius(self.propulsion.shape().reference_area());
+            crate::plasma::stagnation_heating(density, air_speed, nose_radius)
+        } else {
+            0.0
+        };
+        let flight = FlightNow {
+            altitude: state.position.length() - body.radius,
+            density,
+            dynamic_pressure: 0.5 * density * air_speed * air_speed,
+            acceleration,
+            stagnation_heating: heating,
+            on_the_ground: self.on_the_ground(),
+        };
+        let mut heat = BTreeMap::new();
+        if heating > LEAST_HEATING && air_speed > 1.0 {
+            let toward = airflow / air_speed;
+            let exposed = self.heat_hull.exposure(self.propulsion.parts(), toward);
+            for (&part, seen) in exposed {
+                heat.insert(
+                    part,
+                    PartHeat {
+                        bare: heating * seen.bare,
+                        shielded: heating * seen.shielded,
+                        shield_area: seen.shielded,
+                    },
+                );
+            }
+        }
+        let said = self.propulsion.systems.fly(&flight, &heat, dt);
+        for message in said {
+            self.record(time, message);
+        }
+        if !self.destroyed && self.propulsion.systems.overheated() {
+            self.break_up(time, format!("Burned up in the air of {}", body.name));
+            out.push(VesselEvent {
+                time,
+                kind: VesselEventKind::Destroyed,
+            });
         }
     }
 
@@ -2080,6 +2309,28 @@ impl Vessel {
         let ground_velocity = state.velocity - body.surface_velocity(state.position);
         if base.length() < surface && ground_velocity.dot(base) < 0.0 {
             let speed = ground_velocity.length();
+            // Where there is a sea and the ground is no higher than it, it comes down on water and
+            // floats, upright, as deep as its weight in water takes.
+            let sea = body.ocean.is_some() && body.terrain_height(fixed_dir) <= 0.0;
+            if sea && speed <= SAFE_SPLASH_SPEED {
+                self.record(end, format!("Splashed down at {speed:.1} m/s"));
+                out.push(VesselEvent {
+                    time: end,
+                    kind: VesselEventKind::Landed { speed },
+                });
+                let widest = (self.propulsion.sections.iter())
+                    .map(|s| s.diameter)
+                    .fold(1.0, f64::max);
+                let plan = std::f64::consts::PI * widest * widest / 4.0;
+                let draft = self.mass.mass / (SEA_WATER * plan);
+                let up = fixed_dir;
+                self.motion = Motion::Landed {
+                    base: fixed_dir * (body.radius - draft),
+                    attitude: DQuat::from_rotation_arc(DVec3::Z, up),
+                };
+                self.afloat = true;
+                return;
+            }
             let kind = if speed > SAFE_LANDING_SPEED {
                 // TODO: destroy parts based on impact tolerance.
                 self.record(end, format!("Crashed into {} at {speed:.0} m/s", body.name));
@@ -2160,10 +2411,12 @@ fn release_direction(released: &Released, rest: &Propulsion) -> DVec3 {
         return if apart.dot(axis) < 0.0 { -axis } else { axis };
     }
     match (top, holder) {
+        // On its holder's axis but not under it, it leaves upwards.
         (Some(top), Some(holder)) if top.beside => (top.bottom - holder.bottom)
             .truncate()
             .try_normalize()
-            .map_or(DVec3::NEG_Z, |out| out.extend(0.0)),
+            .map_or(DVec3::Z, |out| out.extend(0.0)),
+        (Some(top), Some(_)) if top.carried => DVec3::Z,
         _ => DVec3::NEG_Z,
     }
 }

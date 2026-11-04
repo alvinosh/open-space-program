@@ -557,3 +557,118 @@ fn a_node_that_holds_a_joint_cannot_join() {
         .is_err()
     );
 }
+
+/// Only a payload rides above its holder's base: a stage hanging under another, as nearly all do,
+/// does not count, in any craft in the game.
+#[test]
+fn only_the_lander_in_its_adapter_is_carried() {
+    for (id, p) in fleet() {
+        let carried: Vec<&str> = (p.sections.iter())
+            .filter(|s| s.carried)
+            .map(|s| s.name.as_str())
+            .collect();
+        let want: &[&str] = if id == "saturn_v" {
+            &["Lunar Module"]
+        } else {
+            &[]
+        };
+        assert_eq!(carried, want, "{id}");
+    }
+}
+
+/// A payload rides in the stack and does nothing until it has let go: the stages round it fire past
+/// it, it takes what it still has to do with it when the stage carrying it leaves, and once docked
+/// with it comes out on the nose of the vessel that came for it.
+#[test]
+fn the_lander_rides_in_its_adapter_until_it_is_let_go() {
+    let (mut stack, _) = apollo();
+    let lander = |p: &Propulsion| {
+        (p.sections.iter())
+            .find(|s| s.name == "Lunar Module")
+            .map(|s| s.id)
+            .expect("the lander")
+    };
+    let id = lander(&stack);
+    assert!(stack.carried(id) && !stack.flown(id));
+    let index = (stack.sections.iter()).position(|s| s.id == id).unwrap();
+    assert!(!stack.clear(index), "held in by the adapter");
+    assert!(osp_sim::gear::legs(&stack).is_empty(), "stands on nothing");
+    // Up to the S-IVB, which fires with the lander above it.
+    for _ in 0..6 {
+        stack.activate_next_sequence().unwrap();
+    }
+    stack.set_throttle(1.0);
+    let firing: Vec<&str> = (stack.engines.iter())
+        .filter(|e| stack.firing().contains(&e.part))
+        .map(|e| e.def.id.as_str())
+        .collect();
+    assert!(firing.iter().any(|e| e.contains("J-2")), "{firing:?}");
+    // Nothing that arms what is at the bottom of the stack arms it.
+    stack.arm_bottom();
+    assert!(
+        (stack.engines.iter())
+            .filter(|e| stack.carried(e.section))
+            .all(|e| !stack.firing().contains(&e.part)),
+    );
+    stack.set_throttle(0.0);
+
+    // The panels and the S-IVB leave, the S-IVB with the lander and all its staging.
+    let staged = stack.activate_next_sequence().unwrap();
+    assert_eq!(staged.released.len(), 5, "four panels and the S-IVB");
+    assert_eq!(stack.sequences.list().len(), 1, "the service module's own");
+    let carrier = Propulsion::from_released(staged.released.into_iter().last().unwrap());
+    assert_eq!(carrier.sequences.list().len(), 3);
+    assert!(carrier.carried(lander(&carrier)));
+    assert!(carrier.parts().has_seats());
+    assert!(!stack.engines.iter().any(|e| e.def.id.contains("LM")));
+
+    // Docked: nose to nose, still in the adapter.
+    let free = |p: &Propulsion| {
+        let port = (p.docking_ports().iter())
+            .find(|d| d.free)
+            .cloned()
+            .unwrap();
+        (port.part, port.node)
+    };
+    let (at, to) = (free(&stack), free(&carrier));
+    let mut both = stack.clone();
+    let port = both
+        .join(
+            carrier.clone(),
+            Port {
+                part: at.0,
+                node: &at.1,
+            },
+            Port {
+                part: to.0,
+                node: &to.1,
+            },
+            0.0,
+        )
+        .unwrap();
+    let id = lander(&both);
+    assert!(both.carried(id));
+
+    // Let go of what holds it: the S-IVB goes, and the lander is no longer carried.
+    let tree = both.parts();
+    let hold = (tree.parts().iter())
+        .filter(|p| !both.carried(p.stage))
+        .filter(|p| tree.parent(p.id).is_some_and(|h| both.carried(h.stage)))
+        .flat_map(|p| both.part_actions(p.id, false))
+        .find(|a| a.is_decoupler())
+        .expect("the hold can be let go of");
+    let staged = both.perform(hold, false).unwrap();
+    assert_eq!(staged.released.len(), 1);
+    let left = Propulsion::from_released(staged.released.into_iter().next().unwrap());
+    assert!(!left.parts().has_seats(), "the S-IVB, with nobody on it");
+    assert!(!both.carried(lander(&both)));
+    // And it comes off the nose as a lander with its two stages' staging still to do.
+    let staged = both.perform(Activation::undock(port), false).unwrap();
+    let flying = Propulsion::come_home(staged.released.into_iter().next().unwrap());
+    assert!(!flying.carried(lander(&flying)));
+    assert_eq!(flying.sequences.list().len(), 2);
+    assert!(osp_sim::gear::legs(&flying).is_empty(), "still folded");
+    let mut flying = flying;
+    flying.activate_next_sequence().unwrap();
+    assert_eq!(osp_sim::gear::legs(&flying).len(), 4);
+}

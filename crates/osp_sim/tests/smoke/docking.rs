@@ -75,7 +75,7 @@ const LOOK: f64 = 0.25;
 const TOO_FAST: f64 = 0.8;
 const CARELESS_FROM: f64 = 10.0;
 
-fn approach(w: &World) -> Option<PortApproach> {
+pub(crate) fn approach(w: &World) -> Option<PortApproach> {
     let index = w.universe.find_vessel(w.focus)?;
     w.universe.port_approach(index, w.now())
 }
@@ -92,21 +92,21 @@ fn key(want: f64, have: f64, slack: f64) -> f64 {
 }
 
 /// A pilot's hands on the translation keys: the docking window's numbers, in the pilot's axes.
-struct Hands {
+pub(crate) struct Hands {
     next_look: f64,
     /// Closing at this, whatever the gap.
     careless: Option<f64>,
 }
 
 impl Hands {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             next_look: 0.0,
             careless: None,
         }
     }
 
-    fn fly(&mut self, w: &mut World, seen: &PortApproach) {
+    pub(crate) fn fly(&mut self, w: &mut World, seen: &PortApproach) {
         if w.t() < self.next_look {
             return;
         }

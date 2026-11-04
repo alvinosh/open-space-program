@@ -178,6 +178,7 @@ impl PartTree {
         for (s, &held) in bodies.iter().enumerate() {
             let (bottom, diameter, height) = extent(&craft.parts[held]);
             let mut length = height;
+            let mut reach = height;
             for p in stage_parts(s) {
                 let at = relative(p).position.z - bottom;
                 // A pod standing on the stage's axis is its nose; one anywhere else is
@@ -192,12 +193,14 @@ impl PartTree {
                     && fairing[group[p]]
                 {
                     length = length.max(at + shell.sections[0].length);
+                    let whole: f64 = shell.sections.iter().map(|s| s.length).sum();
+                    reach = reach.max(at + whole);
                 }
             }
-            sizes.push((diameter, length));
+            sizes.push((diameter, length, reach.max(length)));
         }
         let mut fin_sets = Vec::new();
-        for (s, &(diameter, _)) in sizes.iter().enumerate() {
+        for (s, &(diameter, _, _)) in sizes.iter().enumerate() {
             let fins: Vec<usize> = stage_parts(s).filter(|&p| fin(&craft.parts[p])).collect();
             let radius = diameter / 2.0;
             let set = fin_set(craft, &fins, &relative, radius, catalog);
@@ -215,7 +218,7 @@ impl PartTree {
         let mut parts = Vec::with_capacity(count);
         for (p, part) in craft.parts.iter().enumerate() {
             let stage = stage_of[group[p]];
-            let (diameter, length) = sizes[stage];
+            let (diameter, length, reach) = sizes[stage];
             let local = relative(p);
             let named = |problem: String| bad(format!("`{}`: {problem}", part.id));
             // A shell that is its stage's body is not stacked on it.
@@ -248,7 +251,11 @@ impl PartTree {
                 id: PartId(p as u32),
                 name: part.name.clone(),
                 kinds,
-                body: (p == bodies[stage]).then_some(StageBody { diameter, length }),
+                body: (p == bodies[stage]).then_some(StageBody {
+                    diameter,
+                    length,
+                    reach,
+                }),
                 stage,
                 position: poses[p].position - lift,
                 rotation: poses[p].rotation,
@@ -325,7 +332,10 @@ fn components(
             | Component::Rtg(_)
             | Component::ElectricLoad(_)
             | Component::Avionics(_)
-            | Component::Antenna(_) => {}
+            | Component::Antenna(_)
+            | Component::Parachute(_)
+            | Component::HeatShield(_)
+            | Component::LifeSupport(_) => {}
             Component::Engine(engine) => kinds.push(PartKind::Engine(engine.clone())),
             Component::Rcs(block) => kinds.push(PartKind::Rcs(block.clone())),
             Component::ReactionWheel(wheel) => kinds.push(PartKind::ReactionWheel(wheel.clone())),

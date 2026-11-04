@@ -127,6 +127,14 @@ impl Plugin for SmokeTestPlugin {
                 CLEAR_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_EDITOR_VIEW").is_some() {
                 EDITOR_VIEW_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_SATURN_PAD").is_some() {
+                SATURN_PAD_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_CHUTES").is_some() {
+                CHUTES_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_SPLASH").is_some() {
+                SPLASH_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_TRANSPOSITION").is_some() {
+                TRANSPOSITION_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_BOXES").is_some() {
                 BOXES_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_LEAVING").is_some() {
@@ -275,6 +283,10 @@ enum Action {
     LookAtTarget,
     /// Turn the map so the camera is over the vessel flown, with nothing in the way of what is near.
     MapOverFlown,
+    /// Put the flight view on the sunny side of what it is looking at, this far off, m.
+    LookFromSun(f64),
+    /// Look from this far off, m, at this bearing and height above the horizon, degrees.
+    LookFrom(f64, f64, f64),
     /// Stop the capture with a failure unless the active vessel plans this many burns.
     ExpectBurns(usize),
     /// Stop the capture with a failure unless the active vessel's target is called this, "" for none.
@@ -334,7 +346,7 @@ const GLIDER_RUNWAY_SCRIPT: &[(f64, Action)] = &[
 ];
 
 /// How many sequences the Saturn V is built with.
-const SATURN_V_SEQUENCES: usize = 9;
+const SATURN_V_SEQUENCES: usize = 11;
 
 /// `OSP_CAPTURE_PLAY=1` (with `OSP_USER_DIR=<empty folder>`, for the saves): from the menu to flying
 /// and back. New game goes to an empty hangar, which has nothing to launch. A vessel is chosen there,
@@ -501,6 +513,53 @@ const CLEAR_SCRIPT: &[(f64, Action)] = &[
     (19.3, Action::ExpectScreen("title")),
     (19.4, Action::Capture("title_after_the_last.png")),
     (19.8, Action::Exit),
+];
+
+/// `OSP_SCENARIO=apollo11 OSP_CAPTURE_SATURN_PAD=1`: the whole stack on the pad with its tower, and
+/// the spacecraft's window.
+const SATURN_PAD_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (0.6, Action::Ui("ui.show:spacecraft_info")),
+    (0.7, Action::LookFromSun(130.0)),
+    (4.0, Action::Capture("saturn_pad.png")),
+    (4.5, Action::Exit),
+];
+
+/// `OSP_SCENARIO=apollo11_parachutes OSP_CAPTURE_CHUTES=1`: the drogues open, then the mains.
+const CHUTES_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (0.6, Action::LookFrom(70.0, 90.0, 5.0)),
+    (5.0, Action::Capture("chutes_drogues.png")),
+    (22.0, Action::LookFrom(130.0, 90.0, 3.0)),
+    (24.0, Action::Capture("chutes_mains.png")),
+    (24.5, Action::Exit),
+];
+
+/// `OSP_SCENARIO=apollo11_splashdown OSP_CAPTURE_SPLASH=1`: down on the water, and afloat.
+const SPLASH_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (0.6, Action::LookFrom(45.0, 90.0, 5.0)),
+    (6.0, Action::Capture("splash_coming.png")),
+    (20.0, Action::LookFrom(18.0, 90.0, 12.0)),
+    (22.0, Action::Capture("splash_afloat.png")),
+    (22.5, Action::Exit),
+];
+
+/// `OSP_SCENARIO=apollo11_transposition OSP_CAPTURE_TRANSPOSITION=1`: the adapter closed on the
+/// S-IVB, its panels opening as the CSM lets go, and the lunar module left standing in what remains.
+const TRANSPOSITION_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (0.6, Action::LookFromSun(70.0)),
+    // Its ullage motors, lit by the sequences that went before, burn out first.
+    (8.0, Action::Capture("transposition_stack.png")),
+    (8.1, Action::Section),
+    (8.3, Action::Ui("manifest.follow:5")),
+    (8.4, Action::LookFromSun(70.0)),
+    (10.0, Action::Capture("transposition_panels_opening.png")),
+    (14.0, Action::LookFromSun(28.0)),
+    (16.0, Action::Capture("transposition_lander.png")),
+    (16.1, Action::ExpectGame(2, "Saturn V")),
+    (16.5, Action::Exit),
 ];
 
 /// `OSP_SCENARIO=rendezvous OSP_CAPTURE_BOXES=1`: the other vessel's box, clicked with the pointer.
@@ -1149,13 +1208,17 @@ const STAGING_POINTER_SCRIPT: &[(f64, Action)] = &[
 
 /// The sequences of Apollo 11's Saturn V once the first has fired, and what the pointer script
 /// makes of them.
-const STAGED: &str = "enginesx4,decouplerx1,enginesx4 | enginesx5 | decouplerx1 | ";
-const SWAPPED: &str = "enginesx5 | enginesx4,decouplerx1,enginesx4 | decouplerx1 | ";
-const SPLIT: &str = "enginesx4,decouplerx1,enginesx4 | enginesx1 | enginesx4 | decouplerx1 | ";
-const ADDED: &str = " | enginesx4,decouplerx1,enginesx4 | enginesx5 | decouplerx1 | ";
-const REORDERED: &str = "enginesx4,enginesx4,decouplerx1 | enginesx5 | decouplerx1 | ";
+const STAGED: &str =
+    "enginesx4,decouplerx1,enginesx4 | enginesx5 | decouplerx1,enginesx1,decouplerx1 | ";
+const SWAPPED: &str =
+    "enginesx5 | enginesx4,decouplerx1,enginesx4 | decouplerx1,enginesx1,decouplerx1 | ";
+const SPLIT: &str = "enginesx4,decouplerx1,enginesx4 | enginesx1 | enginesx4 | decouplerx1,enginesx1,decouplerx1 | ";
+const ADDED: &str =
+    " | enginesx4,decouplerx1,enginesx4 | enginesx5 | decouplerx1,enginesx1,decouplerx1 | ";
+const REORDERED: &str =
+    "enginesx4,enginesx4,decouplerx1 | enginesx5 | decouplerx1,enginesx1,decouplerx1 | ";
 // The S-IC's retro motors went with it.
-const BY_HAND: &str = "enginesx4 | enginesx5 | decouplerx1 | ";
+const BY_HAND: &str = "enginesx4 | enginesx5 | decouplerx1,enginesx1,decouplerx1 | ";
 
 /// In LEO (`OSP_CAPTURE_DEBRIS=1`): warp into daylight, jettison the fairing and watch the
 /// halves swing open, release the payload from the upper stage, then the Universe Manifest
@@ -1591,6 +1654,24 @@ fn run_script(
                 over.dot(east).atan2(over.dot(north)),
                 over.dot(DVec3::Z).asin(),
             );
+        }
+        Action::LookFrom(off, bearing, height) => {
+            rig.look_from(bearing.to_radians(), height.to_radians());
+            rig.frame((off - 8.0) / 1.2);
+        }
+        Action::LookFromSun(off) => {
+            let vessel = rig.viewed_vessel(&sim);
+            let system = &sim.universe.system;
+            let at = vessel.state_at(system, frame.time).position;
+            let here = frame.relative(vessel.parent(), at);
+            let sun = system.find("Sun").expect("a Sun");
+            let back = (frame.body_offset(sun) - here).normalize();
+            let up = at.normalize();
+            let east = system.body(vessel.parent()).pole().cross(up).normalize();
+            let north = up.cross(east);
+            let (yaw, pitch) = (back.dot(east).atan2(back.dot(north)), back.dot(up).asin());
+            rig.look_from(yaw, pitch);
+            rig.frame((off - 8.0) / 1.2);
         }
         Action::ExpectBurns(wanted) => {
             let burns = sim.active_vessel().plan.burns().len();

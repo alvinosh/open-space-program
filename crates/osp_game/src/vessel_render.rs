@@ -71,6 +71,7 @@ impl Plugin for VesselRenderPlugin {
                     update_trails,
                     update_control_surfaces,
                     update_gear,
+                    update_canopies,
                     update_rcs_plumes,
                 )
                     .chain()
@@ -85,6 +86,15 @@ pub(crate) struct VesselVisual {
     /// The parts it was built from (`None`: not built yet). A change (a stage falls away,
     /// fins tear off, the fairing goes) rebuilds it.
     built: Option<Vec<u32>>,
+}
+
+/// A parachute's canopy, or its lines.
+#[derive(Component)]
+struct CanopyVisual {
+    vessel: VesselId,
+    part: PartId,
+    /// Which of its lines, or the canopy itself.
+    line: Option<u32>,
 }
 
 /// Pivot of an engine (the part `engine`), at its mount.
@@ -164,6 +174,8 @@ struct RcsPlume {
 
 #[derive(Resource)]
 struct VesselMaterials {
+    /// A parachute's canopy.
+    canopy: Handle<VesselMaterial>,
     /// A gear leg's strut and wheel.
     strut: Handle<VesselMaterial>,
     wheel: Handle<VesselMaterial>,
@@ -185,6 +197,15 @@ fn spawn_vessel_visuals(
     };
     commands.insert_resource(Looks::default());
     commands.insert_resource(VesselMaterials {
+        canopy: add(
+            Finish::Paint,
+            StandardMaterial {
+                base_color: Color::WHITE,
+                perceptual_roughness: 0.85,
+                cull_mode: None,
+                ..default()
+            },
+        ),
         strut: add(
             Finish::Metal,
             StandardMaterial {
@@ -516,7 +537,34 @@ fn rebuild_on_change(
                 }
             }
             let strut = meshes.add(Cylinder::new(1.0, 1.0));
-            for (k, leg) in osp_sim::gear::legs(propulsion).iter().enumerate() {
+            // A canopy for each parachute, and its lines: drawn when it opens.
+            for (part, _) in propulsion.systems.all::<osp_sim::systems::Parachute>() {
+                parent.spawn((
+                    CanopyVisual {
+                        vessel,
+                        part,
+                        line: None,
+                    },
+                    Mesh3d(meshes.add(canopy_mesh())),
+                    MeshMaterial3d(materials.canopy.clone()),
+                    Transform::default(),
+                    Visibility::Hidden,
+                ));
+                for line in 0..CANOPY_LINES {
+                    parent.spawn((
+                        CanopyVisual {
+                            vessel,
+                            part,
+                            line: Some(line),
+                        },
+                        Mesh3d(strut.clone()),
+                        MeshMaterial3d(materials.strut.clone()),
+                        Transform::default(),
+                        Visibility::Hidden,
+                    ));
+                }
+            }
+            for (k, (leg, _)) in osp_sim::gear::drawn_legs(propulsion).iter().enumerate() {
                 let r = leg.wheel_radius as f32;
                 let shows = leg.part.map(|part| ShowsPart { vessel, part });
                 let mut visual = parent.spawn((
@@ -539,7 +587,13 @@ fn rebuild_on_change(
                         wheel: true,
                     },
                     // A foot is a shallow pad, a wheel a tyre.
-                    Mesh3d(meshes.add(Cylinder::new(r, if leg.foot { 0.2 } else { 0.7 } * r).mesh().resolution(24))),
+                    Mesh3d(
+                        meshes.add(
+                            Cylinder::new(r, if leg.foot { 0.2 } else { 0.7 } * r)
+                                .mesh()
+                                .resolution(24),
+                        ),
+                    ),
                     MeshMaterial3d(materials.wheel.clone()),
                     Transform::default(),
                 ));
@@ -912,8 +966,8 @@ fn update_gear(sim: Res<Sim>, mut parts: Query<(&GearVisual, &mut Transform)>) {
         let Some(vessel) = sim.universe.vessel(visual.vessel) else {
             continue;
         };
-        let legs = osp_sim::gear::legs(&vessel.propulsion);
-        let Some(leg) = legs.get(visual.leg) else {
+        let legs = osp_sim::gear::drawn_legs(&vessel.propulsion);
+        let Some((leg, folded)) = legs.get(visual.leg) else {
             continue;
         };
         let give = vessel
@@ -922,8 +976,19 @@ fn update_gear(sim: Res<Sim>, mut parts: Query<(&GearVisual, &mut Transform)>) {
             .copied()
             .unwrap_or(0.0)
             .min(leg.stroke);
-        let (mount, axle) = (to_render(leg.mount), to_render(leg.axle(give)));
-        let along = to_render(leg.direction);
+        let (mount, axle, along) = match folded {
+            // Folded up against the vessel, with nothing to give against.
+            Some(way) => (
+                to_render(leg.mount),
+                to_render(leg.mount + *way * leg.length),
+                to_render(*way),
+            ),
+            None => (
+                to_render(leg.mount),
+                to_render(leg.axle(give)),
+                to_render(leg.direction),
+            ),
+        };
         *transform = if visual.wheel && leg.foot {
             // Flat under the vessel, at the bottom of the reach the contact gives it.
             Transform::from_translation(axle + Vec3::NEG_Y * 0.9 * leg.wheel_radius as f32)
@@ -947,6 +1012,108 @@ fn update_gear(sim: Res<Sim>, mut parts: Query<(&GearVisual, &mut Transform)>) {
                 .with_rotation(Quat::from_rotation_arc(Vec3::Y, along))
                 .with_scale(Vec3::new(width, mount.distance(axle), width))
         };
+    }
+}
+
+/// How many of a canopy's lines are drawn.
+const CANOPY_LINES: u32 = 8;
+
+/// A canopy one metre across with its skirt at the origin, domed up +Y, in orange and white gores.
+fn canopy_mesh() -> Mesh {
+    const GORES: u32 = 24;
+    const RINGS: u32 = 8;
+    let (mut positions, mut normals, mut colors, mut uvs) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut indices = Vec::new();
+    // Each gore its own vertices, so its colour stops at its edge.
+    for gore in 0..GORES {
+        let color = if gore % 2 == 0 {
+            [0.95, 0.42, 0.12, 1.0]
+        } else {
+            [0.95, 0.93, 0.88, 1.0]
+        };
+        let start = positions.len() as u32;
+        for ring in 0..=RINGS {
+            let down = ring as f32 / RINGS as f32 * std::f32::consts::FRAC_PI_2;
+            for side in 0..2 {
+                let around = (gore + side) as f32 / GORES as f32 * std::f32::consts::TAU;
+                let (x, z) = (down.sin() * around.cos(), down.sin() * around.sin());
+                let y = down.cos();
+                positions.push([0.5 * x, 0.32 * y, 0.5 * z]);
+                normals.push(Vec3::new(x, y, z).normalize_or(Vec3::Y).to_array());
+                colors.push(color);
+                uvs.push([0.0, 0.0]);
+            }
+        }
+        for ring in 0..RINGS {
+            let at = start + ring * 2;
+            indices.extend([at, at + 2, at + 1, at + 1, at + 2, at + 3]);
+        }
+    }
+    Mesh::new(
+        bevy::mesh::PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_indices(bevy::mesh::Indices::U32(indices))
+}
+
+/// Hang each open canopy in the wake, over the part it is tied to, and its lines down from it.
+fn update_canopies(
+    sim: Res<Sim>,
+    mut canopies: Query<(&CanopyVisual, &mut Transform, &mut Visibility)>,
+) {
+    for (visual, mut transform, mut visibility) in &mut canopies {
+        let Some(vessel) = sim.universe.vessel(visual.vessel) else {
+            continue;
+        };
+        let propulsion = &vessel.propulsion;
+        let open = (propulsion.systems.all::<osp_sim::systems::Parachute>())
+            .find(|(part, _)| *part == visual.part)
+            .and_then(|(_, chute)| chute.canopy());
+        let (Some(size), Some(part)) = (open, propulsion.parts().get(visual.part)) else {
+            visibility.set_if_neq(Visibility::Hidden);
+            continue;
+        };
+        let system = &sim.universe.system;
+        let state = vessel.state_at(system, sim.render_time);
+        let body = system.body(vessel.parent());
+        let air = state.velocity - body.surface_velocity(state.position);
+        let turned = vessel.attitude_at(system, sim.render_time);
+        // The way the wake runs, in the vessel's own axes.
+        let wake = (turned.inverse() * -air).normalize_or(DVec3::Z);
+        let base = DVec3::Z * propulsion.parts().base();
+        let at = part.position - base;
+        // Spread round the wake, so that a cluster does not sit in one place.
+        let (across, other) = wake.any_orthonormal_pair();
+        let turn = (part.id.0 % 3) as f64 * std::f64::consts::TAU / 3.0;
+        let spread = (across * turn.cos() + other * turn.sin()) * (0.62 * size);
+        let far = at + wake * (1.5 * size) + spread;
+        let up = (far - at).normalize_or(wake);
+        *transform = if let Some(line) = visual.line {
+            // From the part up to a point round the canopy's skirt.
+            let (a, b) = up.any_orthonormal_pair();
+            let round = line as f64 * std::f64::consts::TAU / CANOPY_LINES as f64;
+            let rim = far + (a * round.cos() + b * round.sin()) * (0.5 * size);
+            let (from, to) = (to_render(at), to_render(rim));
+            Transform::from_translation((from + to) / 2.0)
+                .with_rotation(Quat::from_rotation_arc(
+                    Vec3::Y,
+                    (to - from).normalize_or(Vec3::Y),
+                ))
+                .with_scale(Vec3::new(0.012, from.distance(to), 0.012))
+        } else {
+            Transform::from_translation(to_render(far))
+                .with_rotation(Quat::from_rotation_arc(
+                    Vec3::Y,
+                    to_render(up).normalize_or(Vec3::Y),
+                ))
+                .with_scale(Vec3::splat(size as f32))
+        };
+        visibility.set_if_neq(Visibility::Inherited);
     }
 }
 
