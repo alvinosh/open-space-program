@@ -1,0 +1,23 @@
+// The first screen, with no game in progress. Each screen of the menu is a layout `menu_<id>` in
+// the group `menu`: `menu.open:<id>` goes to it, `menu.back` or Esc goes back, so a new screen is a
+// new file and a row that opens it. Mods add rows to `#title_items.children`.
+{
+  id: "menu_title",
+  group: "menu",
+  visible: false,
+  root: {
+    id: "title_items",
+    widget: "screen",
+    title: "Open Space Program",
+    display: true,
+    back: false,
+    children: [
+      { widget: "menu_row", text: "New game", action: "game.new" },
+      { widget: "menu_row", text: "Load game", action: "menu.open:load" },
+      { widget: "menu_row", text: "Tutorials", action: "menu.open:tutorials", visible: "menu.tutorials" },
+      { widget: "menu_divider" },
+      { widget: "menu_row", text: "Settings", action: "menu.open:settings" },
+      { widget: "menu_row", text: "Quit", action: "game.quit" },
+    ],
+  },
+}

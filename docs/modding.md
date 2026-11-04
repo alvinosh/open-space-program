@@ -968,7 +968,7 @@ does it at launch):
   it something a step can point at.
 - **The hint** shows once the player has been on the step `hint_after` seconds of game time. Steps go
   in the order listed; a player can skip a step, give the tutorial up (`tutorial.next`,
-  `tutorial.skip`), or start it again from the menu.
+  `tutorial.skip`), or start it again from the pause menu.
 - Nothing pauses the simulation. A step that names a body, launch site, vessel, goal or SAS mode
   that is not there stops the tutorial starting, with the reason.
 
@@ -1180,6 +1180,11 @@ class in `class`, then the inline `style`. Theme records (`themes` collection) d
 classes; all of them merge in load order, so a mod can restyle anything with a patch like
 `{ op: "set", collection: "themes", target: "default", path: "classes.panel.background", value: "#102030" }`.
 
+A theme's `colors` are named colours, and a style says `"$accent"` wherever a colour goes, so one
+patch recolours everything that uses it:
+`{ op: "set", collection: "themes", target: "default", path: "colors.accent", value: "#ff8040" }`.
+A name no theme defines shows magenta and is reported at load.
+
 | Property | Values |
 | --- | --- |
 | `direction` | `row`, `column`, `row_reverse`, `column_reverse` |
@@ -1192,7 +1197,7 @@ classes; all of them merge in load order, so a mod can restyle anything with a p
 | `grow` `shrink` `wrap` `clip` | flex grow/shrink, wrapping, clip overflow |
 | `scroll` | clip overflow and scroll it vertically with the mouse wheel |
 | `radius` | corner radius, px |
-| `background` `hover_background` `border_color` `color` | `"#rgb"`, `"#rrggbb"`, `"#rrggbbaa"`, `[r, g, b]`, `[r, g, b, a]` |
+| `background` `hover_background` `border_color` `color` | `"#rgb"`, `"#rrggbb"`, `"#rrggbbaa"`, `[r, g, b]`, `[r, g, b, a]`, `"$name"` from the theme's `colors` |
 | `active_background` `active_border_color` `active_color` | colours while the node's `active` condition holds |
 | `font_size` | px |
 | `font` | font family, or a CSS-style list (`"Barlow, sans-serif"`); the files come from the theme's `fonts` |
@@ -1235,8 +1240,7 @@ The flight UI is a set of modules, each its own layout in the `flight` group:
 | `part_info` | Part window (right-click a part): an instanced popup, a section per part type | `#summary`, `#engine`, `#tank`, `#resources`, `#rcs`, `#wheel`, `#pod`, `#fins`, `#wing`, `#gear`, `#shape`, `#structure` |
 | `log` | Flight log | `#log` |
 
-Outside the flight group: `main_menu` (scenarios, and the Graphics page with node id
-`#graphics`) and `perf`, the performance overlay (F10, node ids `#perf`, `#systems`,
+Outside the flight group: the menu's screens (group `menu`, see [Menu screens](#menu-screens)) and `perf`, the performance overlay (F10, node ids `#perf`, `#systems`,
 `#passes`).
 
 To add a window to the launcher, insert a `launcher_button` into `#toolbar.children` with an
@@ -1244,6 +1248,47 @@ To add a window to the launcher, insert a `launcher_button` into `#toolbar.child
 give it the button's `active` too so it lights up) and a `tooltip` (see
 `mods/example_mod/patches/ui.json5`). Window rows are `kv` rows: an optional `row_icon`
 image (the base game's are in `icons/telemetry/`), a `key` label and a value.
+
+### Menu screens
+
+Each screen of the menu is a layout `menu_<id>` in the group `menu`, in `layouts/menu/`, not `visible`.
+`menu.open:<id>` shows it on top of the one showing and `menu.back` (or Esc) goes back, so a new screen
+is a new file and a row that opens it. Mods add rows to `#title_items.children`, the first screen, or
+`#pause_items.children`, Esc with a game in progress:
+
+```json5
+{ op: "insert", collection: "layouts", target: "menu_pause", path: "#pause_items.children", value: { widget: "menu_row", text: "Telescope", action: "menu.open:telescope" } }
+```
+
+They are written with a few components, so they all come out the same. A layout names one as
+its `widget`, and it is built from plain nodes when the layouts load, after patches, so a patch
+changes what the layout wrote. A mod's screen uses them too and gets the game's look for nothing.
+
+| Widget | Properties | What it is |
+| --- | --- | --- |
+| `screen` | `title`, `title_if` (a condition for showing the heading), `subtitle`, `display: true` (the big title), `back: false`, `shade: false` (the panel alone, so the scene beside it takes the pointer), `children` | The left panel: Back (`menu.back`), the heading, and a body that scrolls |
+| `menu_row` | `text`, `action`, `meta` (a value at the right, with `meta_class` a class for it), `detail` (a line under it, with `detail_if` a condition for showing it and `detail_class` a class for it), `active`, `visible` | A full-width row to click, which is how you go anywhere |
+| `menu_divider` | | A line between groups of rows |
+| `setting_row` | `label`, `children` | One line of a settings page: a label and what sets it |
+| `setting_choice` | `label`, `key`, `action`, `options` | A `setting_row` with a choice. Each option fires `<action>:<value>` and is lit while `<key> == <value>`. An option is a string (shown with a capital), a number, or `{ value, label }` |
+
+The rest are classes: `btn` for a button, with `btn_primary` (at most one per screen) or `btn_danger`
+added to it, `tab` for a tab, and `menu_text`, `menu_section` for text.
+
+```json5
+{
+  widget: "screen",
+  title: "Telescope",
+  children: [
+    { widget: "menu_row", text: "Point at the Moon", meta: "384,000 km", action: "telescope.point:moon" },
+    { widget: "menu_divider" },
+    { widget: "setting_choice", label: "Zoom", key: "telescope.zoom", action: "telescope.zoom", options: [{ value: 1, label: "1x" }, { value: 10, label: "10x" }] },
+  ],
+}
+```
+
+The base game's menus keep to four type sizes (28, 20, 15, 12), no pictures, nothing with a box of its
+own inside the panel, and only these controls. A test holds the layouts in the `menu` group to that.
 
 ### Keybindings
 
@@ -1335,10 +1380,10 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `mods.count`, `mods.errors`, `mods.warnings` | |
 | `mods.list[]` | `id`, `name`, `version`, `authors`, `description` |
 | `mods.problems[]` | `error` (bool), `text` |
-| `menu.tutorials[]`, `menu.playing`, `menu.page` | Main menu: the tutorials: `id`, `name`, `description`, `steps`; a game is being flown; the page showing (`play`, `tutorials`, `graphics`, `sound`, `controls`, `interface`) |
-| `menu.play`, `menu.new_game`, `menu.vessels[]`, `menu.craft[]` | The Play page: its step (empty, `load`, `vessels`, `craft`); new game was picked and has not started; the vessels in the game to fly (`id`, `name`, `where`, `flying`), debris left out; every craft to pick a new vessel from (`id`, `name`, `parts`), by name |
-| `menu.saves[]`, `menu.has_saves`, `menu.save_name`, `menu.notice` | The saves, newest first: `file`, `name`, `saved` (how long ago), `time` (the game's date), `flying`, `vessels`, `problem` (why it cannot be loaded), `deleting` (asked once); whether there are any; the save the game in progress goes to; what just happened |
-| `editor.name`, `editor.height`, `editor.mass`, `editor.parts`, `editor.place`, `editor.pad`, `editor.runway`, `editor.orbit`, `editor.notice` | The craft on show in the editor (see the `editor` layout); where it will launch from (`pad`, `runway`, `orbit`); which site or orbit each of those is, empty if there is none; why a launch failed |
+| `menu.screen`, `menu.playing`, `menu.tutorials[]` | The screen showing; a game is in progress; the tutorials: `id`, `name`, `description`, `steps` |
+| `menu.new_game`, `menu.vessels[]`, `menu.vessel_line`, `menu.game_line` | New game was picked and has not started; the vessels in the game to fly (`id`, `name`, `where`, `flying`, `state`, `destroying`: asked once), debris left out; how many, in words; the line under Paused |
+| `menu.saves[]`, `menu.has_saves`, `menu.save_name`, `menu.notice` | The saves, newest first: `file`, `name`, `saved` (how long ago), `time` (the game's date), `flying`, `vessels`, `problem` (why it cannot be loaded), `detail` (the line to show: the problem, or what is flying, the date and the vessels), `deleting` (asked once); whether there are any; the save the game in progress goes to; what just happened |
+| `editor.heading`, `editor.has_vessel`, `editor.can_launch`, `editor.occupied`, `editor.clearing`, `editor.clear_label`, `editor.clear_question`, `editor.list_open`, `editor.vessels[]`, `editor.place_name`, `editor.name`, `editor.height`, `editor.mass`, `editor.parts`, `editor.place`, `editor.pad`, `editor.runway`, `editor.orbit`, `editor.notice` | The craft on show in the editor (see the `editor` layout); where it will launch from (`pad`, `runway`, `orbit`); which site or orbit each of those is, empty if there is none; why a launch failed |
 | `graphics.preset`, `graphics.recommended`, `graphics.summary` | The preset the settings match (`low`, `medium`, `high`, `ultra` or `custom`); the one for this GPU; every setting on one line |
 | `graphics.render_scale`, `graphics.antialiasing`, `graphics.shadows`, `graphics.terrain`, `graphics.trees`, `graphics.effects`, `graphics.bloom`, `graphics.vsync`, `graphics.fps_limit` | Each setting as text: percent; `off`, `fxaa`, `msaa`; a level (`off`, `low`, `medium`, `high`, `ultra`); `on` / `off`; frames per second (`0` for none) |
 | `perf.fps`, `perf.frame_ms`, `perf.worst_ms` | Over the last half second: frame rate, mean and worst frame time (ms) |
@@ -1387,13 +1432,14 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `ui.pin:<layout>` | Pin or unpin a popup, so a click outside does not close it |
 | `ui.toggle_group:<group>`, `ui.show_group:<group>`, `ui.hide_group:<group>` | Every layout in a group |
 | `game.reload` | Reload all mods and rebuild the UI |
-| `game.menu`, `game.resume`, `game.start_tutorial:<tutorial>`, `game.quit` | Main menu; a tutorial starts its scenario with its steps. In the editor `game.menu` goes back to the list of craft |
-| `menu.page:<play|tutorials|graphics|sound|controls|interface>` | Switch the main menu's page |
-| `menu.play:<load|vessels|craft>`, `menu.play` | Go to that step of the Play page; back to its start, which drops a new game that has not started |
-| `game.new` | Start choosing what to launch in a new game. Nothing changes until the launch; the game in progress goes on if the player goes back |
+| `game.menu` | Esc: closes an open popup, or opens the menu, or goes back as `menu.back` does. In the editor it goes back to the menu it came from |
+| `menu.open:<screen>`, `menu.back` | Go to the screen, the layout `menu_<screen>`; go back one. From the pause menu that resumes; from the title screen it does nothing |
+| `game.resume`, `game.exit`, `game.quit`, `game.start_tutorial:<tutorial>` | Back to the flight; leave the game for the title screen; close the game; start a tutorial's scenario with its steps |
+| `game.new` | Go to the editor to choose what to launch in a new game. Nothing changes until the launch; the game in progress goes on if the player goes back |
 | `game.fly:<vessel>` | Fly that vessel in the game in progress |
 | `game.save`, `game.save_as`, `game.load:<file>`, `game.delete_save:<file>` | Save the game in progress to its save; to a new save, which it then goes to; carry on from a save; delete one (the first time only asks, for `item.deleting`) |
-| `editor.open:<craft>`, `editor.back`, `editor.place:<pad|runway|orbit>`, `editor.launch` | Show a craft in the editor; go back to the list of craft; pick where it launches from; launch it, with the sequences it was left with, which also saves the game |
+| `editor.list`, `editor.clear`, `vessel.destroy:<vessel>` | Show or hide the editor's list of vessels (`editor.list_open`), which choosing one hides; destroy what stands on the pad or runway picked, the second time; destroy a vessel, the second time, flying another if it was the one being flown and going to the empty hangar if it was the last |
+| `editor.open`, `editor.show:<craft>`, `editor.back`, `editor.place:<pad|runway|orbit>`, `editor.launch` | Open the editor with the hangar empty; put a craft on show in place of what is there; go back to the menu; pick where it launches from; launch it, with the sequences it was left with, which also saves the game. With nothing on show `editor.launch` only says to choose a vessel |
 | `tutorial.next`, `tutorial.skip` | Move past the current step (Continue, or skip it); give the tutorial up |
 | `graphics.preset:<low|medium|high|ultra>`, `graphics.detect` | Apply a preset; apply the one recommended for this GPU (both keep vsync and the frame cap) |
 | `graphics.set:<setting>:<value>` | Change one setting (`render_scale:75`, `antialiasing:fxaa`, `shadows:off`, `vsync:on`, ...); saved at once |

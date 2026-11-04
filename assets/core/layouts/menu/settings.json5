@@ -1,0 +1,95 @@
+// Settings, by tab (`ui.tab:settings:<tab>`, the choice in `ui.tab.settings`). Each line is a
+// `setting_choice`, which fires `<action>:<value>` and is lit while `<key> == <value>`; see "Menu
+// screens" in docs/modding.md.
+//
+// Graphics: a preset (`graphics.preset:<low|medium|high|ultra>`), the one recommended for the GPU
+// (`graphics.detect`), or each setting (`graphics.set:<key>:<value>`, current values in
+// `graphics.<key>`). Sound: how loud each part is (`audio.set:<key>:<percent>`). Controls: rebind
+// keys (`keys.listen:<id>`, `keys.reset`, the list in `keys.rows`). Interface: the rest
+// (`interface.set:<key>:<value>`).
+{
+  id: "menu_settings",
+  group: "menu",
+  visible: false,
+  root: {
+    widget: "screen",
+    title: "Settings",
+    children: [
+      {
+        id: "settings_tabs",
+        widget: "row",
+        class: "menu_tabs",
+        children: [
+          { widget: "button", class: "tab", text: "Graphics", action: "ui.tab:settings:graphics", active: "ui.tab.settings == graphics" },
+          { widget: "button", class: "tab", text: "Sound", action: "ui.tab:settings:sound", active: "ui.tab.settings == sound" },
+          { widget: "button", class: "tab", text: "Controls", action: "ui.tab:settings:controls", active: "ui.tab.settings == controls" },
+          { widget: "button", class: "tab", text: "Interface", action: "ui.tab:settings:interface", active: "ui.tab.settings == interface" },
+        ],
+      },
+    {
+      id: "graphics",
+      widget: "column",
+      visible: "ui.tab.settings == graphics",
+      children: [
+        { widget: "label", class: "menu_subtitle", text: "GPU: {perf.gpu}" },
+        { widget: "setting_choice", label: "Preset", key: "graphics.preset", action: "graphics.preset", options: ["low", "medium", "high", "ultra"] },
+        { widget: "setting_row", label: "Recommended: {graphics.recommended|upper}", children: [{ widget: "button", class: "btn", text: "Use recommended", action: "graphics.detect" }] },
+        { widget: "label", class: "menu_section", text: "Rendering" },
+        { widget: "setting_choice", label: "Render scale", key: "graphics.render_scale", action: "graphics.set:render_scale", options: [{ value: 50, label: "50%" }, { value: 67, label: "67%" }, { value: 75, label: "75%" }, { value: 85, label: "85%" }, { value: 100, label: "100%" }] },
+        { widget: "setting_choice", label: "Anti-aliasing", key: "graphics.antialiasing", action: "graphics.set:antialiasing", options: ["off", { value: "fxaa", label: "FXAA" }, { value: "msaa", label: "MSAA 4x" }, { value: "taa", label: "TAA" }] },
+        { widget: "setting_choice", label: "Shadows", key: "graphics.shadows", action: "graphics.set:shadows", options: ["off", "low", "medium", "high", "ultra"] },
+        { widget: "setting_choice", label: "Ambient occlusion", key: "graphics.ambient_occlusion", action: "graphics.set:ambient_occlusion", options: ["off", "low", "medium", "high", "ultra"] },
+        { widget: "setting_choice", label: "Bloom", key: "graphics.bloom", action: "graphics.set:bloom", options: ["off", "on"] },
+        { widget: "setting_choice", label: "Sky, haze and plumes", key: "graphics.effects", action: "graphics.set:effects", options: ["low", "medium", "high", "ultra"] },
+        { widget: "setting_choice", label: "Clouds", key: "graphics.clouds", action: "graphics.set:clouds", options: ["off", "low", "medium", "high", "ultra"] },
+        { widget: "label", class: "menu_section", text: "World" },
+        { widget: "setting_choice", label: "Terrain detail", key: "graphics.terrain", action: "graphics.set:terrain", options: ["low", "medium", "high", "ultra"] },
+        { widget: "setting_choice", label: "Trees", key: "graphics.trees", action: "graphics.set:trees", options: ["off", "low", "medium", "high", "ultra"] },
+        { widget: "label", class: "menu_section", text: "Display" },
+        { widget: "setting_choice", label: "VSync", key: "graphics.vsync", action: "graphics.set:vsync", options: ["off", "on"] },
+        { widget: "setting_choice", label: "Frame rate cap", key: "graphics.fps_limit", action: "graphics.set:fps_limit", options: [{ value: 0, label: "None" }, 30, 60, 120] },
+        { widget: "setting_row", label: "{perf.fps|int} fps, limited by {perf.bound}", children: [{ widget: "button", class: "btn", text: "Details (F10)", action: "ui.toggle:perf", active: "ui.shown.perf" }] },
+        { widget: "label", class: "menu_subtitle", text: "Render scale and anti-aliasing matter most when the GPU limits the frame rate. Changes apply at once and are saved." },
+      ],
+    },
+    {
+      id: "sound",
+      widget: "column",
+      visible: "ui.tab.settings == sound",
+      children: [
+        { widget: "setting_choice", label: "Volume", key: "audio.master", action: "audio.set:master", options: [{ value: 0, label: "0%" }, { value: 25, label: "25%" }, { value: 50, label: "50%" }, { value: 75, label: "75%" }, { value: 100, label: "100%" }] },
+        { widget: "setting_choice", label: "Engines", key: "audio.engines", action: "audio.set:engines", options: [{ value: 0, label: "0%" }, { value: 25, label: "25%" }, { value: 50, label: "50%" }, { value: 75, label: "75%" }, { value: 100, label: "100%" }] },
+        { widget: "setting_choice", label: "Wind", key: "audio.wind", action: "audio.set:wind", options: [{ value: 0, label: "0%" }, { value: 25, label: "25%" }, { value: 50, label: "50%" }, { value: 75, label: "75%" }, { value: 100, label: "100%" }] },
+        { widget: "setting_choice", label: "Effects", key: "audio.effects", action: "audio.set:effects", options: [{ value: 0, label: "0%" }, { value: 25, label: "25%" }, { value: 50, label: "50%" }, { value: 75, label: "75%" }, { value: 100, label: "100%" }] },
+      ],
+    },
+    {
+      id: "controls",
+      widget: "column",
+      visible: "ui.tab.settings == controls",
+      children: [
+        { widget: "setting_row", label: "Click a key, then press the one you want", children: [{ widget: "button", class: "btn", text: "Reset all", action: "keys.reset" }] },
+        {
+        id: "keys",
+        widget: "column",
+        repeat: "keys.rows",
+        children: [
+          { widget: "menu_row", text: "{item.label}", meta: "{item.key}", meta_class: "menu_row_value", detail: "also {item.clash}", detail_if: "item.clash", detail_class: "menu_warning", action: "keys.listen:{item.id}", active: "item.listening" },
+        ],
+      },
+      ],
+    },
+    {
+      id: "interface",
+      widget: "column",
+      visible: "ui.tab.settings == interface",
+      children: [
+        { widget: "setting_choice", label: "Scale", key: "interface.scale", action: "interface.set:scale", options: [{ value: 75, label: "75%" }, { value: 90, label: "90%" }, { value: 100, label: "100%" }, { value: 110, label: "110%" }, { value: 125, label: "125%" }, { value: 150, label: "150%" }] },
+        { widget: "setting_choice", label: "Alerts", key: "interface.alerts", action: "interface.set:alerts", options: ["off", "on"] },
+        { widget: "setting_choice", label: "Alert tone", key: "interface.alert_tone", action: "interface.set:alert_tone", options: ["off", "on"] },
+        { widget: "setting_choice", label: "Warp stops at signal changes", key: "interface.warp_stops_at_signal", action: "interface.set:warp_stops_at_signal", options: ["off", "on"] },
+      ],
+    },
+    ],
+  },
+}

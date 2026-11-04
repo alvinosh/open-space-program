@@ -91,6 +91,7 @@ fn publish(data: &mut UiData, tutorial: &Tutorial, docs: &UiDocuments) {
         "tutorial.finished",
         tutorial.state() == TutorialState::Finished,
     );
+    data.set("tutorial.id", def.id.as_str());
     data.set("tutorial.name", name.as_str());
     data.set("tutorial.count", def.steps.len());
     data.set("tutorial.step", (tutorial.index() + 1).min(def.steps.len()));

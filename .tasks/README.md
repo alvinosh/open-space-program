@@ -75,7 +75,7 @@ dependency graph decides where a milestone cannot start earlier.
 | Milestone | What it delivers |
 | --- | --- |
 | `M0` | Decisions and licences, in days: contact solver, scripting, real Solar System only, how the project earns, licence files. |
-| `M1` | Flying feels good: the in-progress work, the visible bugs, and sound (there is no audio at all). |
+| `M1` | Flying feels good: the in-progress work, the visible bugs, sound, and menus that make sense (T185, put ahead of the Apollo work on 2026-11-04). |
 | `M2` | Ship parts and systems, before the editor: the build core (physics on any part, open components, sizers, surface layers, environment), decouplers and separation motors, batteries, solar arrays, fuel cells, avionics, antennas, ground stations, link policy. Craft files can hold the new parts before a player can place them. |
 | `M3` | Build and save: the editor chain to its gate (T025), save and load, the start menu. |
 | `M4` | Flight planning, then the first scenarios and their tutorials: first launch, rendezvous, the Mars orbiter probe, the build tutorial. Missions and the tutorial layer (T165, T166) are done. |

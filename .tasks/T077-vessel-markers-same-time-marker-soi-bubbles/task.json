@@ -1,6 +1,6 @@
 {
   "id": "T077",
-  "title": "Vessel markers, same-time marker, SOI bubbles",
+  "title": "Same-time marker, SOI bubbles",
   "kind": "feature",
   "status": "todo",
   "area": "orbit",
@@ -8,10 +8,11 @@
   "parent": "T061",
   "depends_on": [],
   "refs": [
-    "Early feature checklist (since removed), Phase 1"
+    "Early feature checklist (since removed), Phase 1",
+    "T191"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
+  "updated": "2026-11-04",
   "done": null,
   "milestone": "M4",
   "priority": 70

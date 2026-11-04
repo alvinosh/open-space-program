@@ -20,7 +20,7 @@ use osp_ui::{LayoutVisibility, UiAction};
 use crate::{
     FrameSet,
     camera::CameraRig,
-    menu::{Menu, Play},
+    menu::Menu,
     sim::{Sim, SimRestarted, TimeWarp},
 };
 
@@ -264,8 +264,7 @@ fn save_actions(
                         rig.frame(sim.active_vessel().propulsion.length());
                         restarted.write(SimRestarted);
                         menu.playing = true;
-                        menu.new_game = false;
-                        menu.play = Play::Start;
+                        menu.back_to_root();
                         menu.show(false, &mut sim, &mut ui);
                     }
                     Err(e) => {

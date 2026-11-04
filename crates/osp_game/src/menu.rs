@@ -1,24 +1,24 @@
-//! The main menu: play, go back to the flight in progress, or quit.
+//! The menu: the screens over the game, one at a time on the left of the window.
 //!
-//! Without `OSP_SCENARIO` the game opens on it, over the default scenario standing still;
-//! Esc (`game.menu`) brings it back in flight. While it is open time stands still, the
-//! flight UI is hidden and the pilot's controls do nothing.
+//! Without `OSP_SCENARIO` the game opens on it, over the default scenario standing still; Esc
+//! (`game.menu`) brings it back in flight. While it is open time stands still, the flight UI is
+//! hidden and the pilot's controls do nothing.
 //!
-//! The Play page goes by steps (`menu.play:<step>`, see [`Play`]). A new game (`game.new`) or the
-//! one in progress offers its vessels to fly (`game.fly:<id>`), and a new one to pick from the
-//! craft (`editor.open:<id>`, see `editor`), which is how anything gets into the game; a new game
-//! has no vessels, and nothing is lost until the first launch from it. Load game lists the saves
-//! (see `saves`).
+//! A screen is a layout `menu_<id>` in the group `menu` (see `layouts/menu/`). The root is `title`
+//! with no game in progress and `pause` with one. `menu.open:<id>` goes to a screen on top of the
+//! one showing, and `menu.back` or Esc goes back: from `pause` that resumes, from `title` it does
+//! nothing. So a new screen is a new file and a row that opens it.
 //!
-//! Its Tutorials page lists the guided runs (`game.start_tutorial:<id>`), and its Graphics page
-//! (`menu.page:graphics`) sets the graphics (see `settings`).
+//! `game.new` goes to the editor (see `editor`) to choose what to launch: nothing is lost until the
+//! first launch from there, and going back drops it. `game.exit` leaves the game for the title
+//! screen. Saves are in `saves`.
 
 use bevy::prelude::*;
 use osp_sim::{
     tutorial::TutorialDef,
     vessel::{Situation, Vessel, VesselId},
 };
-use osp_ui::{LayoutVisibility, UiAction, UiData, UiRecord, record};
+use osp_ui::{LayoutVisibility, UiAction, UiData, UiDocuments, UiRecord, record};
 
 use crate::{
     FrameSet,
@@ -26,9 +26,14 @@ use crate::{
     content::GameContent,
     editor::Editor,
     saves::{Saves, ago, now},
-    sim::{Sim, SimRestarted, TimeWarp},
+    sim::{DEFAULT_SCENARIO, Sim, SimRestarted, TimeWarp},
     ui_data::format_date,
 };
+
+/// The group of the menu's layouts.
+const GROUP: &str = "menu";
+/// The Settings screen's tabs start here (`ui.tab.settings`).
+const FIRST_SETTINGS_TAB: &str = "graphics";
 
 pub struct MenuPlugin;
 
@@ -41,16 +46,18 @@ impl Plugin for MenuPlugin {
         app.insert_resource(Menu {
             open: false,
             playing: !open,
-            page: "play".into(),
-            play: Play::Start,
+            stack: Vec::new(),
             new_game: false,
             notice: String::new(),
+            destroying: None,
         })
         .add_systems(
             Startup,
             move |mut menu: ResMut<Menu>,
                   mut sim: ResMut<Sim>,
-                  mut ui: ResMut<LayoutVisibility>| {
+                  mut ui: ResMut<LayoutVisibility>,
+                  mut data: ResMut<UiData>| {
+                data.set("ui.tab.settings", FIRST_SETTINGS_TAB);
                 if open {
                     menu.show(true, &mut sim, &mut ui);
                 }
@@ -59,81 +66,187 @@ impl Plugin for MenuPlugin {
         .add_systems(
             Update,
             (
-                publish_tutorials,
-                publish_play,
+                publish_menu,
                 menu_actions.in_set(FrameSet::Input),
+                show_screen.after(menu_actions),
             ),
         );
-    }
-}
-
-/// Where the Play page has got to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Play {
-    /// New game or load game, and with a game in progress its vessels and saving it.
-    #[default]
-    Start,
-    /// The saves to load.
-    Load,
-    /// The vessels in the game to fly, or a new one.
-    Vessels,
-    /// The craft to pick a new vessel from.
-    Craft,
-}
-
-impl Play {
-    fn parse(text: &str) -> Option<Self> {
-        match text {
-            "" => Some(Self::Start),
-            "load" => Some(Self::Load),
-            "vessels" => Some(Self::Vessels),
-            "craft" => Some(Self::Craft),
-            _ => None,
-        }
-    }
-
-    fn id(self) -> &'static str {
-        match self {
-            Self::Start => "",
-            Self::Load => "load",
-            Self::Vessels => "vessels",
-            Self::Craft => "craft",
-        }
     }
 }
 
 #[derive(Resource)]
 pub struct Menu {
     pub open: bool,
-    /// A scenario is being flown, so the menu can go back to it.
+    /// A game is in progress, so the menu can go back to it.
     pub playing: bool,
-    /// The page showing: `play`, `tutorials`, `graphics` and so on.
-    page: String,
-    /// How far the Play page has got.
-    pub play: Play,
-    /// New game was picked: the next launch starts it, in place of the game in progress.
+    /// The screens on top of the root, the last one showing.
+    stack: Vec<String>,
+    /// New game was picked: the next launch from the editor starts it, in place of the game in
+    /// progress.
     pub new_game: bool,
-    /// What just went wrong, for the Play page.
+    /// What just went wrong, for the screen showing.
     pub notice: String,
+    /// The vessel asked about destroying: the next go at it destroys it.
+    pub destroying: Option<VesselId>,
+}
+
+/// The layout of a screen.
+fn layout_of(screen: &str) -> String {
+    format!("{GROUP}_{screen}")
 }
 
 impl Menu {
     /// Open or close the menu: pause or run the simulation, and swap the menu for the
-    /// flight UI.
+    /// flight UI. The screens stay as they are, for the editor to come back to.
     pub fn show(&mut self, open: bool, sim: &mut Sim, ui: &mut LayoutVisibility) {
         self.open = open;
         sim.paused = open;
-        ui.layouts.insert("main_menu".into(), open);
         if open {
             ui.hidden_groups.insert("flight".into());
         } else {
             ui.hidden_groups.remove("flight");
         }
     }
+
+    /// The screen showing while the menu is open.
+    pub fn screen(&self) -> &str {
+        self.stack.last().map_or(self.root(), String::as_str)
+    }
+
+    fn root(&self) -> &'static str {
+        if self.playing { "pause" } else { "title" }
+    }
+
+    fn push(&mut self, screen: &str) {
+        self.stack.push(screen.to_owned());
+        self.notice.clear();
+        self.destroying = None;
+    }
+
+    /// Back to the root, with nothing left of what the screens on it were doing.
+    pub fn back_to_root(&mut self) {
+        self.stack.clear();
+        self.new_game = false;
+        self.notice.clear();
+        self.destroying = None;
+    }
+
+    /// One screen back. False when there is none to go back to.
+    fn pop(&mut self) -> bool {
+        self.notice.clear();
+        self.destroying = None;
+        self.stack.pop().is_some()
+    }
 }
 
-/// `menu.tutorials` (id, name, description, steps), `menu.playing` and `menu.page`.
-fn publish_tutorials(content: Res<GameContent>, menu: Res<Menu>, mut data: ResMut<UiData>) {
+/// Only the screen on top shows, and none while the menu is closed.
+fn show_screen(menu: Res<Menu>, docs: Res<UiDocuments>, mut ui: ResMut<LayoutVisibility>) {
+    if !menu.is_changed() && !docs.is_changed() {
+        return;
+    }
+    let showing = menu.open.then(|| layout_of(menu.screen()));
+    for layout in docs
+        .layouts
+        .iter()
+        .filter(|l| l.group.as_deref() == Some(GROUP))
+    {
+        let show = showing.as_ref() == Some(&layout.id);
+        if ui.shown(&layout.id) != show {
+            ui.layouts.insert(layout.id.clone(), show);
+        }
+    }
+}
+
+/// What a vessel in the list says about where it is.
+fn whereabouts(vessel: &Vessel, sim: &Sim) -> String {
+    let system = &sim.universe.system;
+    let body = &system.body(vessel.parent()).name;
+    match vessel.situation(system, sim.render_time) {
+        Situation::Landed => format!("Landed on {body}"),
+        Situation::Flying => format!("Flying over {body}"),
+        Situation::SubOrbital => format!("Sub-orbital over {body}"),
+        Situation::Orbiting => format!("Orbiting {body}"),
+        Situation::Escaping => format!("Leaving {body}"),
+    }
+}
+
+/// `menu.vessels` (id, name, where, flying, state, destroying): what there is to fly in the game in
+/// progress.
+fn vessel_list(sim: &Sim, menu: &Menu) -> Vec<UiRecord> {
+    if !menu.playing {
+        return Vec::new();
+    }
+    (sim.universe.vessels.iter())
+        .filter(|vessel| !vessel.is_debris())
+        .map(|vessel| {
+            let flying = vessel.id() == sim.active_id();
+            record([
+                ("id", vessel.id().0.into()),
+                ("name", vessel.name.as_str().into()),
+                ("where", whereabouts(vessel, sim).into()),
+                ("flying", flying.into()),
+                ("state", if flying { "Flying now" } else { "" }.into()),
+                ("destroying", (menu.destroying == Some(vessel.id())).into()),
+            ])
+        })
+        .collect()
+}
+
+/// A save's line in the list: what is flying, when in the game, and how many vessels.
+fn save_detail(flying: &str, time: &str, vessels: usize) -> String {
+    let vessels = match vessels {
+        1 => "1 vessel".to_owned(),
+        count => format!("{count} vessels"),
+    };
+    let parts = [flying, time, vessels.as_str()];
+    let shown: Vec<_> = parts.into_iter().filter(|part| !part.is_empty()).collect();
+    shown.join(", ")
+}
+
+/// `menu.saves` (file, name, saved, time, flying, vessels, problem, deleting, detail), newest first.
+fn save_list(saves: &Saves) -> Vec<UiRecord> {
+    let now = now();
+    (saves.list.iter())
+        .map(|entry| {
+            let header = entry.header.as_ref();
+            let name = header.map_or(entry.file.as_str(), |h| h.name.as_str());
+            let saved = header.map_or(String::new(), |h| ago(h.saved_at, now));
+            let time = header.map_or(String::new(), |h| format_date(h.time));
+            let flying = header.map_or("", |h| h.flying.as_str());
+            let vessels = header.map_or(0, |h| h.vessels);
+            let problem = entry.problem.as_deref().unwrap_or("");
+            let detail = match problem {
+                "" => save_detail(flying, &time, vessels),
+                problem => problem.to_owned(),
+            };
+            record([
+                ("file", entry.file.as_str().into()),
+                ("name", name.into()),
+                ("saved", saved.into()),
+                ("time", time.into()),
+                ("flying", flying.into()),
+                ("vessels", vessels.into()),
+                ("problem", problem.into()),
+                ("detail", detail.into()),
+                (
+                    "deleting",
+                    (saves.deleting.as_ref() == Some(&entry.file)).into(),
+                ),
+            ])
+        })
+        .collect()
+}
+
+/// `menu.screen`, `menu.playing`, `menu.new_game`, `menu.tutorials`, `menu.vessels`,
+/// `menu.vessel_line`, `menu.saves`, `menu.has_saves`, `menu.save_name`,
+/// `menu.game_line` and `menu.notice`. See `docs/modding.md`.
+fn publish_menu(
+    content: Res<GameContent>,
+    menu: Res<Menu>,
+    saves: Res<Saves>,
+    sim: Res<Sim>,
+    mut data: ResMut<UiData>,
+) {
     if content.is_changed() {
         let tutorials: Vec<_> = (content
             .0
@@ -153,121 +266,66 @@ fn publish_tutorials(content: Res<GameContent>, menu: Res<Menu>, mut data: ResMu
         data.set("menu.tutorials", tutorials);
     }
     if menu.is_changed() {
+        data.set("menu.screen", menu.screen());
         data.set("menu.playing", menu.playing);
-        data.set("menu.page", menu.page.as_str());
-    }
-}
-
-/// What a vessel in the list says about where it is.
-fn whereabouts(vessel: &Vessel, sim: &Sim) -> String {
-    let system = &sim.universe.system;
-    let body = &system.body(vessel.parent()).name;
-    match vessel.situation(system, sim.render_time) {
-        Situation::Landed => format!("Landed on {body}"),
-        Situation::Flying => format!("Flying over {body}"),
-        Situation::SubOrbital => format!("Sub-orbital over {body}"),
-        Situation::Orbiting => format!("Orbiting {body}"),
-        Situation::Escaping => format!("Leaving {body}"),
-    }
-}
-
-/// `menu.vessels` (id, name, where, flying): what there is to fly in the game in progress, or
-/// nothing for a new one.
-fn vessel_list(sim: &Sim, menu: &Menu) -> Vec<UiRecord> {
-    if menu.new_game || !menu.playing {
-        return Vec::new();
-    }
-    (sim.universe.vessels.iter())
-        .filter(|vessel| !vessel.is_debris())
-        .map(|vessel| {
-            record([
-                ("id", vessel.id().0.into()),
-                ("name", vessel.name.as_str().into()),
-                ("where", whereabouts(vessel, sim).into()),
-                ("flying", (vessel.id() == sim.active_id()).into()),
-            ])
-        })
-        .collect()
-}
-
-/// `menu.craft` (id, name, parts), by name: every craft there is to fly.
-fn craft_list(content: &GameContent) -> Vec<UiRecord> {
-    let mut craft: Vec<_> = (content.0.registry.records("craft"))
-        .map(|r| {
-            let name = (r.value.get("name").and_then(|n| n.as_str()))
-                .filter(|name| !name.is_empty())
-                .unwrap_or(&r.id);
-            let parts = r.value.get("parts").and_then(|p| p.as_array());
-            (name.to_owned(), r.id.clone(), parts.map_or(0, Vec::len))
-        })
-        .collect();
-    craft.sort();
-    craft
-        .into_iter()
-        .map(|(name, id, parts)| {
-            record([
-                ("id", id.into()),
-                ("name", name.into()),
-                ("parts", parts.into()),
-            ])
-        })
-        .collect()
-}
-
-/// `menu.saves` (file, name, saved, time, flying, vessels, problem, deleting), newest first.
-fn save_list(saves: &Saves) -> Vec<UiRecord> {
-    let now = now();
-    (saves.list.iter())
-        .map(|entry| {
-            let header = entry.header.as_ref();
-            let name = header.map_or(entry.file.as_str(), |h| h.name.as_str());
-            let saved = header.map_or(String::new(), |h| ago(h.saved_at, now));
-            let time = header.map_or(String::new(), |h| format_date(h.time));
-            let flying = header.map_or("", |h| h.flying.as_str());
-            record([
-                ("file", entry.file.as_str().into()),
-                ("name", name.into()),
-                ("saved", saved.into()),
-                ("time", time.into()),
-                ("flying", flying.into()),
-                ("vessels", header.map_or(0, |h| h.vessels).into()),
-                ("problem", entry.problem.as_deref().unwrap_or("").into()),
-                (
-                    "deleting",
-                    (saves.deleting.as_ref() == Some(&entry.file)).into(),
-                ),
-            ])
-        })
-        .collect()
-}
-
-/// `menu.play`, `menu.new_game`, `menu.vessels`, `menu.craft`, `menu.saves`, `menu.has_saves`,
-/// `menu.save_name` and `menu.notice`. See `docs/modding.md`.
-fn publish_play(
-    content: Res<GameContent>,
-    menu: Res<Menu>,
-    saves: Res<Saves>,
-    sim: Res<Sim>,
-    mut data: ResMut<UiData>,
-) {
-    if menu.is_changed() {
-        data.set("menu.play", menu.play.id());
         data.set("menu.new_game", menu.new_game);
-        data.set("menu.vessels", vessel_list(&sim, &menu));
-    }
-    if content.is_changed() {
-        data.set("menu.craft", craft_list(&content));
+        let vessels = vessel_list(&sim, &menu);
+        let line = match vessels.len() {
+            1 => "1 vessel".to_owned(),
+            count => format!("{count} vessels"),
+        };
+        data.set("menu.vessel_line", line);
+        data.set("menu.vessels", vessels);
     }
     if menu.is_changed() || saves.is_changed() {
         data.set("menu.saves", save_list(&saves));
         data.set("menu.has_saves", !saves.list.is_empty());
         data.set("menu.save_name", saves.current_name().unwrap_or(""));
+        let flying = &sim.active_vessel().name;
+        let line = match saves.current_name() {
+            Some(save) => format!("{save}, flying {flying}"),
+            None => format!("Flying {flying}"),
+        };
+        data.set("menu.game_line", line);
         let notice = if menu.notice.is_empty() {
             saves.notice.as_str()
         } else {
             menu.notice.as_str()
         };
         data.set("menu.notice", notice);
+    }
+}
+
+/// Leave the game for the title screen, with the default scenario standing still behind it. If that
+/// cannot start nothing changes, and the menu says why.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn go_to_title(
+    menu: &mut Menu,
+    sim: &mut Sim,
+    warp: &mut TimeWarp,
+    rig: &mut CameraRig,
+    ui: &mut LayoutVisibility,
+    saves: &mut Saves,
+    content: &GameContent,
+    restarted: &mut MessageWriter<SimRestarted>,
+) {
+    match crate::content::restart(&content.0, &mut sim.universe, DEFAULT_SCENARIO) {
+        Ok(()) => {
+            sim.restarted();
+            *warp = TimeWarp::default();
+            rig.map_view = false;
+            rig.follow = None;
+            restarted.write(SimRestarted);
+            saves.forget_current();
+            saves.notice.clear();
+            menu.playing = false;
+            menu.back_to_root();
+            menu.show(true, sim, ui);
+        }
+        Err(e) => {
+            error!("cannot leave the game: {e}");
+            menu.notice = format!("Cannot leave the game: {e}");
+        }
     }
 }
 
@@ -279,6 +337,7 @@ pub(crate) fn menu_actions(
     mut warp: ResMut<TimeWarp>,
     mut rig: ResMut<CameraRig>,
     content: Res<GameContent>,
+    docs: Res<UiDocuments>,
     mut ui: ResMut<LayoutVisibility>,
     mut saves: ResMut<Saves>,
     editor: Res<Editor>,
@@ -287,41 +346,45 @@ pub(crate) fn menu_actions(
 ) {
     for action in actions.read() {
         match action.name() {
-            // The editor sees to Esc while it is open.
-            "game.menu" if editor.is_open() => {}
-            "game.menu" | "game.resume" if menu.open && menu.playing => {
-                menu.new_game = false;
-                menu.play = Play::Start;
-                menu.notice.clear();
+            // The editor sees to Esc and Back while it is open.
+            "game.menu" | "menu.back" if editor.is_open() => {}
+            // Esc closes what is open over the view before it opens the menu.
+            "game.menu" if !menu.open && ui.dismiss_popups(&docs) => {}
+            "game.menu" if !menu.open => {
+                menu.back_to_root();
+                saves.notice.clear();
+                menu.show(true, &mut sim, &mut ui);
+            }
+            // Esc and the Back button are the same thing.
+            "game.menu" | "menu.back" => {
+                saves.notice.clear();
+                if !menu.pop() && menu.playing {
+                    menu.show(false, &mut sim, &mut ui);
+                }
+            }
+            "game.resume" if menu.open && menu.playing => {
+                menu.back_to_root();
                 saves.notice.clear();
                 menu.show(false, &mut sim, &mut ui);
             }
-            "game.menu" if !menu.open => menu.show(true, &mut sim, &mut ui),
-            "menu.page" => {
-                if let Some(page) = action.arg() {
-                    menu.page = page.to_owned();
-                }
-            }
-            "menu.play" => {
-                let Some(step) = Play::parse(action.arg().unwrap_or_default()) else {
-                    warn!("no step `{}` on the Play page", action.0);
+            "menu.open" => {
+                let Some(screen) = action.arg() else { continue };
+                let layout = layout_of(screen);
+                if !docs.layouts.iter().any(|l| l.id == layout) {
+                    warn!("no menu screen `{screen}`: no layout `{layout}`");
                     continue;
-                };
-                menu.play = step;
-                menu.notice.clear();
-                saves.notice.clear();
-                match step {
-                    // Going back past the vessels drops a new game that has not started.
-                    Play::Start => menu.new_game = false,
-                    Play::Load => saves.refresh(),
-                    Play::Vessels | Play::Craft => {}
                 }
-            }
-            "game.new" => {
-                menu.new_game = true;
-                menu.play = Play::Vessels;
-                menu.notice.clear();
                 saves.notice.clear();
+                if screen == "load" {
+                    saves.refresh();
+                }
+                menu.push(screen);
+            }
+            // The editor opens on it too.
+            "game.new" if !editor.is_open() => {
+                saves.notice.clear();
+                menu.notice.clear();
+                menu.new_game = true;
             }
             "game.fly" if menu.playing => {
                 let id = action.arg().and_then(|id| id.parse().ok()).map(VesselId);
@@ -333,8 +396,15 @@ pub(crate) fn menu_actions(
                 rig.map_view = false;
                 rig.follow = None;
                 rig.frame(sim.active_vessel().propulsion.length());
-                menu.play = Play::Start;
+                menu.back_to_root();
                 menu.show(false, &mut sim, &mut ui);
+            }
+            "game.exit" if menu.playing => {
+                let (sim, warp, rig, ui) = (&mut *sim, &mut *warp, &mut *rig, &mut *ui);
+                let restarted = &mut restarted;
+                go_to_title(
+                    &mut menu, sim, warp, rig, ui, &mut saves, &content, restarted,
+                );
             }
             "game.start_tutorial" => {
                 let Some(id) = action.arg() else { continue };
@@ -346,8 +416,7 @@ pub(crate) fn menu_actions(
                         rig.map_view = false;
                         restarted.write(SimRestarted);
                         saves.forget_current();
-                        menu.new_game = false;
-                        menu.play = Play::Start;
+                        menu.back_to_root();
                         menu.playing = true;
                         menu.show(false, &mut sim, &mut ui);
                     }
@@ -366,11 +435,56 @@ pub(crate) fn menu_actions(
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_steps_of_the_play_page_read_back_as_they_are_written() {
-        for step in [Play::Start, Play::Load, Play::Vessels, Play::Craft] {
-            assert_eq!(Play::parse(step.id()), Some(step));
+    fn menu(playing: bool) -> Menu {
+        Menu {
+            open: true,
+            playing,
+            stack: Vec::new(),
+            new_game: false,
+            notice: String::new(),
+            destroying: None,
         }
-        assert_eq!(Play::parse("nowhere"), None);
+    }
+
+    #[test]
+    fn the_root_is_the_pause_menu_with_a_game_and_the_title_without() {
+        assert_eq!(menu(true).screen(), "pause");
+        assert_eq!(menu(false).screen(), "title");
+        assert_eq!(layout_of("pause"), "menu_pause");
+    }
+
+    #[test]
+    fn going_back_walks_down_the_screens_and_then_says_there_are_no_more() {
+        let mut menu = menu(true);
+        menu.push("settings");
+        menu.push("keys");
+        assert_eq!(menu.screen(), "keys");
+        assert!(menu.pop());
+        assert_eq!(menu.screen(), "settings");
+        assert!(menu.pop());
+        assert_eq!(menu.screen(), "pause");
+        assert!(!menu.pop());
+        assert_eq!(menu.screen(), "pause");
+    }
+
+    #[test]
+    fn going_to_the_root_forgets_the_screens_and_what_was_said() {
+        let mut menu = menu(true);
+        menu.push("load");
+        menu.new_game = true;
+        menu.notice = "Cannot load it".into();
+        menu.back_to_root();
+        assert_eq!(menu.screen(), "pause");
+        assert!(!menu.new_game);
+        assert!(menu.notice.is_empty());
+    }
+
+    #[test]
+    fn a_save_says_what_it_knows() {
+        assert_eq!(
+            save_detail("Saturn V", "2000-01-01 18:00:12", 2),
+            "Saturn V, 2000-01-01 18:00:12, 2 vessels"
+        );
+        assert_eq!(save_detail("", "2000-01-01", 1), "2000-01-01, 1 vessel");
     }
 }

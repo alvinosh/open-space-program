@@ -36,11 +36,14 @@
 //! same, without the pin.
 
 use bevy::prelude::*;
-use osp_mods::{Diagnostic, Registry};
+use osp_mods::{Diagnostic, Registry, Severity};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::style::{StyleDef, ThemeDef};
+use crate::{
+    components::expand,
+    style::{StyleDef, ThemeDef},
+};
 
 pub const LAYOUTS: &str = "layouts";
 pub const THEMES: &str = "themes";
@@ -315,8 +318,21 @@ impl UiDocuments {
         for t in registry.all::<ThemeDef>(THEMES, diagnostics) {
             theme.merge(&t);
         }
+        for unknown in theme.unknown_colors() {
+            let message = format!("theme: no colour named in {unknown}");
+            diagnostics.push(Diagnostic::new(Severity::Warning, None, None, message));
+        }
+        let mut layouts = registry.all::<LayoutDef>(LAYOUTS, diagnostics);
+        for layout in &mut layouts {
+            let mut problems = Vec::new();
+            layout.root = expand(std::mem::take(&mut layout.root), &mut problems);
+            for problem in problems {
+                let message = format!("layout `{}`: {problem}", layout.id);
+                diagnostics.push(Diagnostic::new(Severity::Warning, None, None, message));
+            }
+        }
         Self {
-            layouts: registry.all::<LayoutDef>(LAYOUTS, diagnostics),
+            layouts,
             theme,
             bindings: registry
                 .all::<KeyBindingsDef>(KEYBINDINGS, diagnostics)

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use bevy::{
     camera::{ImageRenderTarget, NormalizedRenderTarget},
     ecs::system::SystemParam,
-    math::DVec3,
+    math::{DVec2, DVec3},
     picking::{
         backend::prelude::PointerId,
         pointer::{Location, PointerAction, PointerButton, PointerInput},
@@ -33,8 +33,10 @@ use crate::{
     FrameSet,
     camera::{CameraRig, MainCamera, ViewOutput},
     controls::InputLocked,
+    editor::Editor,
     frame::{RenderFrame, to_render},
     map_labels::{body_spheres, hidden},
+    menu::Menu,
     orbit_lines::{Prediction, ScriptedPointer, project},
     sim::{Sim, TimeWarp},
 };
@@ -117,6 +119,12 @@ impl Plugin for SmokeTestPlugin {
                 PLAY_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_TUTORIAL").is_some() {
                 TUTORIAL_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_CLEAR").is_some() {
+                CLEAR_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_EDITOR_VIEW").is_some() {
+                EDITOR_VIEW_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_MENUS").is_some() {
+                MENUS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MENU_TUTORIAL").is_some() {
                 MENU_TUTORIAL_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MISSION").is_some() {
@@ -248,6 +256,16 @@ enum Action {
     ExpectGame(usize, &'static str),
     /// Stop the capture with a failure unless the active vessel's sequences number this many.
     ExpectSequenceCount(usize),
+    /// Stop the capture with a failure unless the menu is open on this screen, or closed for "".
+    ExpectScreen(&'static str),
+    /// Turn the editor's view by this many pixels of mouse movement, and zoom by these lines of
+    /// the wheel.
+    EditorLook(f32, f32, f32),
+    /// Stop the capture with a failure unless the editor's list of vessels is out or away.
+    ExpectList(bool),
+    /// Stop the capture with a failure unless the editor is open with this craft on show, "" for
+    /// an empty hangar, or closed for `None`.
+    ExpectEditor(Option<&'static str>),
     Exit,
 }
 
@@ -289,77 +307,261 @@ const GLIDER_RUNWAY_SCRIPT: &[(f64, Action)] = &[
 /// How many sequences the Saturn V is built with.
 const SATURN_V_SEQUENCES: usize = 9;
 
-/// `OSP_CAPTURE_PLAY=1` (with `OSP_USER_DIR=<empty folder>`, for the saves): the whole way through
-/// the Play page. A new game has nothing to fly but a new vessel; it is shown in the editor, its
-/// staging changed, and launched from the pad with that staging, which saves the game. A second
-/// vessel goes in from the editor to orbit, the first is flown again, and the save brings back
-/// the game as it was with one vessel in it.
+/// `OSP_CAPTURE_PLAY=1` (with `OSP_USER_DIR=<empty folder>`, for the saves): from the menu to flying
+/// and back. New game goes to an empty hangar, which has nothing to launch. A vessel is chosen there,
+/// its staging changed, another looked at instead; Back leaves the game as it was. Then one launches
+/// from the pad with its staging, which saves the game. A second vessel goes in from the editor to
+/// orbit, the first is flown again, and the save brings back the game as it was with one vessel in
+/// it.
 const PLAY_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.menu")),
     (1.6, Action::Capture("play_start.png")),
+    (1.65, Action::ExpectScreen("pause")),
     (1.7, Action::Ui("game.new")),
-    (2.3, Action::Capture("play_new_game.png")),
-    (2.4, Action::Ui("menu.play:craft")),
-    (3.0, Action::Capture("play_craft.png")),
-    (3.1, Action::Ui("editor.open:saturn_v")),
+    (2.5, Action::Capture("editor_empty.png")),
+    (2.55, Action::ExpectEditor(Some(""))),
+    (2.56, Action::ExpectScreen("")),
+    (2.58, Action::ExpectList(true)),
+    (2.6, Action::Ui("editor.launch")),
+    (2.8, Action::ExpectEditor(Some(""))),
+    (2.9, Action::Capture("editor_nothing_to_launch.png")),
+    (3.1, Action::Ui("editor.show:saturn_v")),
     (7.0, Action::Capture("editor_saturn_v.png")),
+    (7.05, Action::ExpectEditor(Some("saturn_v"))),
+    // Choosing puts the list away. It comes back, and goes, with its button.
+    (7.06, Action::ExpectList(false)),
     (7.1, Action::Unlock),
     (7.2, Action::Ui("staging.add")),
     (7.8, Action::Capture("editor_staging.png")),
     (7.9, Action::ExpectSequenceCount(SATURN_V_SEQUENCES + 1)),
-    // Back to the list and in again: nothing has happened to the game.
-    (8.0, Action::Ui("editor.back")),
-    (8.6, Action::Capture("editor_back.png")),
-    (8.7, Action::ExpectGame(1, "Pathfinder")),
-    (8.8, Action::Ui("editor.open:saturn_v")),
-    (9.5, Action::Ui("staging.add")),
-    (9.7, Action::Ui("editor.place:pad")),
-    (10.0, Action::Ui("editor.launch")),
-    (14.0, Action::Capture("launched_pad.png")),
-    (14.1, Action::ExpectGame(1, "Saturn V")),
-    (14.2, Action::ExpectSequenceCount(SATURN_V_SEQUENCES + 1)),
-    (14.3, Action::Ui("game.menu")),
-    (14.4, Action::Ui("menu.play:load")),
-    (15.0, Action::Capture("play_load.png")),
-    (15.1, Action::Ui("menu.play:vessels")),
-    (15.7, Action::Capture("play_vessels.png")),
-    (15.8, Action::Ui("menu.play:craft")),
-    (15.9, Action::Ui("editor.open:glider")),
-    (19.0, Action::Capture("editor_glider.png")),
-    (19.1, Action::Ui("editor.place:orbit")),
-    (19.2, Action::Ui("editor.launch")),
-    (23.0, Action::Capture("launched_orbit.png")),
-    (23.1, Action::ExpectGame(2, "Kestrel")),
-    (23.2, Action::Ui("game.menu")),
-    (23.3, Action::Ui("menu.play:vessels")),
-    (24.0, Action::Capture("play_two_vessels.png")),
-    // The scenario behind the menu was 0, and the craft on show took numbers too.
-    (24.1, Action::Ui("game.fly:3")),
-    (28.0, Action::Capture("flying_first_again.png")),
-    (28.1, Action::ExpectGame(2, "Saturn V")),
-    (28.2, Action::Ui("game.menu")),
-    (28.3, Action::Ui("game.save_as")),
-    (28.5, Action::Ui("menu.play:load")),
-    (29.0, Action::Capture("play_load_two.png")),
-    (29.1, Action::Ui("game.load:game_1")),
-    (33.0, Action::Capture("loaded.png")),
-    (33.1, Action::ExpectGame(2, "Kestrel")),
-    (33.5, Action::Exit),
+    (7.92, Action::Ui("editor.list")),
+    (7.96, Action::Capture("editor_list_open.png")),
+    (7.98, Action::ExpectList(true)),
+    // Another one instead, then back: nothing has happened to the game.
+    (8.0, Action::Ui("editor.show:glider")),
+    (10.0, Action::Capture("editor_glider.png")),
+    (10.05, Action::ExpectEditor(Some("glider"))),
+    (10.06, Action::ExpectList(false)),
+    (10.1, Action::Ui("menu.back")),
+    (10.6, Action::Capture("editor_back.png")),
+    (10.65, Action::ExpectScreen("pause")),
+    (10.66, Action::ExpectEditor(None)),
+    (10.7, Action::ExpectGame(1, "Pathfinder")),
+    (10.8, Action::Ui("game.new")),
+    (10.9, Action::Ui("editor.show:saturn_v")),
+    (12.5, Action::Ui("staging.add")),
+    (12.7, Action::Ui("editor.place:pad")),
+    (13.0, Action::Ui("editor.launch")),
+    (17.0, Action::Capture("launched_pad.png")),
+    (17.1, Action::ExpectGame(1, "Saturn V")),
+    (17.2, Action::ExpectSequenceCount(SATURN_V_SEQUENCES + 1)),
+    (17.3, Action::Ui("game.menu")),
+    (17.4, Action::Ui("menu.open:load")),
+    (18.0, Action::Capture("play_load.png")),
+    (18.1, Action::Ui("menu.back")),
+    (18.2, Action::Ui("editor.open")),
+    (19.0, Action::ExpectEditor(Some(""))),
+    (19.1, Action::Ui("editor.show:glider")),
+    (22.0, Action::Capture("editor_glider_second.png")),
+    (22.1, Action::Ui("editor.place:orbit")),
+    (22.2, Action::Ui("editor.launch")),
+    (26.0, Action::Capture("launched_orbit.png")),
+    (26.1, Action::ExpectGame(2, "Kestrel")),
+    (26.2, Action::Ui("game.menu")),
+    (26.3, Action::Ui("menu.open:vessels")),
+    (27.0, Action::Capture("play_two_vessels.png")),
+    // Every look in the hangar took a number: the scenario was 0, the first launch number 6.
+    (27.1, Action::Ui("game.fly:6")),
+    (31.0, Action::Capture("flying_first_again.png")),
+    (31.1, Action::ExpectGame(2, "Saturn V")),
+    (31.2, Action::Ui("game.menu")),
+    (31.3, Action::Ui("game.save_as")),
+    (31.5, Action::Ui("menu.open:load")),
+    (32.0, Action::Capture("play_load_two.png")),
+    (32.1, Action::Ui("game.load:game_1")),
+    (36.0, Action::Capture("loaded.png")),
+    (36.1, Action::ExpectGame(2, "Kestrel")),
+    (36.5, Action::Exit),
 ];
 
-/// `OSP_CAPTURE_MENU=1`: open the main menu, launch the rocket plane from the runway through the
-/// Play page, take off and climb out.
+/// `OSP_CAPTURE_EDITOR_VIEW=1`: as far out as the wheel goes in the editor, at the first view and
+/// from above, for a small craft and a tall one: what is on show stays in sight, in the hangar.
+const EDITOR_VIEW_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.show:sounder")),
+    (3.0, Action::Capture("sounder_start.png")),
+    (3.1, Action::EditorLook(0.0, 0.0, -100.0)),
+    (3.6, Action::Capture("sounder_far.png")),
+    (3.7, Action::EditorLook(0.0, 150.0, -100.0)),
+    (4.2, Action::Capture("sounder_far_above.png")),
+    (4.3, Action::EditorLook(0.0, -600.0, -100.0)),
+    (4.8, Action::Capture("sounder_far_below.png")),
+    (4.9, Action::Ui("editor.show:saturn_v")),
+    (7.5, Action::EditorLook(0.0, 0.0, -100.0)),
+    (8.0, Action::Capture("saturn_far.png")),
+    (8.1, Action::EditorLook(0.0, 150.0, -100.0)),
+    (8.6, Action::Capture("saturn_far_above.png")),
+    (8.7, Action::EditorLook(0.0, 500.0, -100.0)),
+    (9.2, Action::Capture("saturn_far_top.png")),
+    (9.5, Action::Exit),
+];
+
+/// `OSP_CAPTURE_CLEAR=1`: the pad is taken, so a launch is refused until it is cleared; then the
+/// Vessels screen destroying one that is not being flown, then the one that is, and then the last,
+/// which leaves the hangar and from there the title screen.
+const CLEAR_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::Ui("editor.open")),
+    (1.6, Action::Ui("editor.show:sounder")),
+    (3.0, Action::Ui("editor.launch")),
+    (3.3, Action::ExpectEditor(Some("sounder"))),
+    (3.4, Action::Capture("pad_occupied.png")),
+    (3.5, Action::Ui("editor.clear")),
+    (3.9, Action::Capture("pad_clear_asked.png")),
+    (4.0, Action::ExpectEditor(Some("sounder"))),
+    (4.1, Action::Ui("editor.clear")),
+    (4.6, Action::Capture("pad_cleared.png")),
+    (4.7, Action::Ui("editor.launch")),
+    (6.5, Action::Capture("launched_after_clearing.png")),
+    (6.6, Action::ExpectEditor(None)),
+    (6.7, Action::ExpectGame(1, "Sounder")),
+    // A plane from the runway and a satellite in orbit: the pad stays taken by the Sounder.
+    (6.8, Action::Ui("game.menu")),
+    (6.9, Action::Ui("editor.open")),
+    (7.0, Action::Ui("editor.show:glider")),
+    (8.5, Action::Ui("editor.place:runway")),
+    (8.7, Action::Ui("editor.launch")),
+    (10.0, Action::ExpectGame(2, "Kestrel")),
+    (10.1, Action::Ui("game.menu")),
+    (10.2, Action::Ui("editor.open")),
+    (10.3, Action::Ui("editor.show:satellite")),
+    (11.5, Action::Ui("editor.place:runway")),
+    (11.8, Action::Capture("runway_occupied.png")),
+    (11.9, Action::Ui("editor.launch")),
+    (12.1, Action::ExpectEditor(Some("satellite"))),
+    (12.2, Action::Ui("editor.place:orbit")),
+    (12.4, Action::Ui("editor.launch")),
+    (14.0, Action::ExpectGame(3, "Satellite")),
+    (14.1, Action::Ui("game.menu")),
+    (14.2, Action::Ui("menu.open:vessels")),
+    (14.7, Action::Capture("vessels_three.png")),
+    // The numbers: the scenario 0; hangar, shown, launched 1, 2, 3; 4, 5, 6; 7, 8, 9.
+    (14.8, Action::Ui("vessel.destroy:3")),
+    (15.2, Action::Capture("vessel_destroy_asked.png")),
+    (15.3, Action::ExpectGame(3, "Satellite")),
+    (15.4, Action::Ui("vessel.destroy:3")),
+    (15.8, Action::Capture("vessel_destroyed.png")),
+    (15.9, Action::ExpectGame(2, "Satellite")),
+    (16.0, Action::ExpectScreen("vessels")),
+    // The one being flown: another is flown instead.
+    (16.1, Action::Ui("vessel.destroy:9")),
+    (16.3, Action::Ui("vessel.destroy:9")),
+    (16.8, Action::ExpectGame(1, "Kestrel")),
+    // The last: only the hangar is left, and back from there the title screen.
+    (16.9, Action::Ui("vessel.destroy:6")),
+    (17.1, Action::Ui("vessel.destroy:6")),
+    (18.0, Action::Capture("nothing_left.png")),
+    (18.1, Action::ExpectEditor(Some(""))),
+    (18.2, Action::Ui("menu.back")),
+    (19.2, Action::ExpectEditor(None)),
+    (19.3, Action::ExpectScreen("title")),
+    (19.4, Action::Capture("title_after_the_last.png")),
+    (19.8, Action::Exit),
+];
+
+/// `OSP_CAPTURE_MENUS=1`: every screen of the menu, walked with Esc and Back in turn so a difference
+/// between them stops the run, and leaving for the title screen.
+const MENUS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.5, Action::Capture("menu_pause.png")),
+    (1.55, Action::ExpectScreen("pause")),
+    (1.6, Action::Ui("editor.open")),
+    (2.1, Action::Capture("menu_editor.png")),
+    (2.15, Action::ExpectEditor(Some(""))),
+    (2.2, Action::Ui("game.menu")),
+    (2.3, Action::ExpectScreen("pause")),
+    (2.35, Action::ExpectEditor(None)),
+    (2.4, Action::Ui("menu.open:vessels")),
+    (2.9, Action::Capture("menu_vessels.png")),
+    (2.95, Action::ExpectScreen("vessels")),
+    (3.0, Action::Ui("menu.back")),
+    (3.1, Action::ExpectScreen("pause")),
+    (3.2, Action::Ui("menu.open:load")),
+    (3.7, Action::Capture("menu_load.png")),
+    (3.8, Action::Ui("game.menu")),
+    (3.9, Action::ExpectScreen("pause")),
+    (4.0, Action::Ui("menu.open:settings")),
+    (4.5, Action::Capture("menu_graphics.png")),
+    (4.6, Action::Ui("ui.tab:settings:sound")),
+    (5.1, Action::Capture("menu_sound.png")),
+    (5.2, Action::Ui("ui.tab:settings:controls")),
+    (5.7, Action::Capture("menu_controls.png")),
+    (5.8, Action::Ui("ui.tab:settings:interface")),
+    (6.3, Action::Capture("menu_interface.png")),
+    (6.4, Action::Ui("ui.tab:settings:graphics")),
+    (6.5, Action::ExpectScreen("settings")),
+    (6.6, Action::Ui("menu.back")),
+    (6.7, Action::ExpectScreen("pause")),
+    // Back from the root resumes, Esc opens it again on the root and Resume leaves it.
+    (6.8, Action::Ui("menu.back")),
+    (6.9, Action::ExpectScreen("")),
+    (7.0, Action::Ui("game.menu")),
+    (7.1, Action::ExpectScreen("pause")),
+    (7.2, Action::Ui("game.menu")),
+    (7.3, Action::ExpectScreen("")),
+    (7.4, Action::Ui("game.menu")),
+    (7.5, Action::Ui("menu.open:load")),
+    (7.6, Action::Ui("game.resume")),
+    (7.7, Action::ExpectScreen("")),
+    // A screen left open is not where the menu opens next.
+    (7.8, Action::Ui("game.menu")),
+    (7.9, Action::ExpectScreen("pause")),
+    (8.0, Action::Ui("game.save")),
+    (8.6, Action::Capture("menu_saved.png")),
+    (8.7, Action::Ui("game.exit")),
+    (9.7, Action::Capture("menu_title.png")),
+    (9.75, Action::ExpectScreen("title")),
+    // Neither goes anywhere from the title screen.
+    (9.8, Action::Ui("game.menu")),
+    (9.9, Action::ExpectScreen("title")),
+    (10.0, Action::Ui("menu.back")),
+    (10.1, Action::ExpectScreen("title")),
+    (10.2, Action::Ui("menu.open:tutorials")),
+    (10.7, Action::Capture("menu_tutorials.png")),
+    (10.8, Action::Ui("game.menu")),
+    (10.9, Action::ExpectScreen("title")),
+    (11.0, Action::Ui("game.new")),
+    (11.1, Action::ExpectEditor(Some(""))),
+    (11.2, Action::Ui("menu.back")),
+    (11.3, Action::ExpectScreen("title")),
+    (11.35, Action::ExpectEditor(None)),
+    // From the title screen to flying, by way of the editor.
+    (11.4, Action::Ui("game.new")),
+    (11.5, Action::Ui("editor.show:sounder")),
+    (12.5, Action::Capture("menu_editor_list.png")),
+    (12.6, Action::Ui("editor.launch")),
+    (13.2, Action::ExpectEditor(None)),
+    (13.3, Action::ExpectScreen("")),
+    (13.5, Action::Exit),
+];
+
+/// `OSP_CAPTURE_MENU=1`: open the menu, launch the rocket plane from the runway through the editor,
+/// take off and climb out.
 /// `OSP_CAPTURE_SETTINGS=1`: the menu's pages of settings, then the flight view and the map at a
 /// bigger interface, the map's labels still on what they name.
 const SETTINGS_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.menu")),
-    (1.2, Action::Ui("menu.page:sound")),
+    (1.1, Action::Ui("menu.open:settings")),
+    (1.2, Action::Ui("ui.tab:settings:sound")),
     (1.8, Action::Capture("settings_sound.png")),
-    (1.9, Action::Ui("menu.page:controls")),
+    (1.9, Action::Ui("ui.tab:settings:controls")),
     (2.5, Action::Capture("settings_controls.png")),
-    (2.6, Action::Ui("menu.page:interface")),
+    (2.6, Action::Ui("ui.tab:settings:interface")),
     (3.2, Action::Capture("settings_interface.png")),
     (3.3, Action::Ui("interface.set:scale:125")),
     (3.4, Action::Ui("game.resume")),
@@ -374,7 +576,7 @@ const MENU_SCRIPT: &[(f64, Action)] = &[
     (1.0, Action::Ui("game.menu")),
     (1.6, Action::Capture("menu.png")),
     (1.7, Action::Ui("game.new")),
-    (1.8, Action::Ui("editor.open:comet")),
+    (1.8, Action::Ui("editor.show:comet")),
     (2.4, Action::Ui("editor.place:runway")),
     (2.5, Action::Capture("menu_runway.png")),
     (2.9, Action::Ui("editor.launch")),
@@ -387,11 +589,12 @@ const MENU_SCRIPT: &[(f64, Action)] = &[
     (31.5, Action::Exit),
 ];
 
-/// `OSP_CAPTURE_MENU_TUTORIAL=1`: the main menu's Tutorials page, and a tutorial started from it.
+/// `OSP_CAPTURE_MENU_TUTORIAL=1`: the title screen's Tutorials, and a tutorial started from them.
 const MENU_TUTORIAL_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.menu")),
-    (1.2, Action::Ui("menu.page:tutorials")),
+    (1.1, Action::Ui("game.exit")),
+    (1.2, Action::Ui("menu.open:tutorials")),
     (2.0, Action::Capture("menu_tutorials.png")),
     (4.5, Action::Ui("game.start_tutorial:controls")),
     (7.0, Action::Capture("tutorial_from_menu.png")),
@@ -403,7 +606,7 @@ const MENU_TUTORIAL_SCRIPT: &[(f64, Action)] = &[
 const GRAPHICS_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.menu")),
-    (1.1, Action::Ui("menu.page:graphics")),
+    (1.1, Action::Ui("menu.open:settings")),
     (1.2, Action::Ui("ui.show:perf")),
     (4.0, Action::Capture("graphics.png")),
     (4.2, Action::Ui("graphics.preset:low")),
@@ -951,6 +1154,8 @@ fn run_script(
     mut buttons: ResMut<ButtonInput<MouseButton>>,
     mut ui_pointer: UiPointer,
     mut locked: ResMut<InputLocked>,
+    menu: Res<Menu>,
+    mut editor: ResMut<Editor>,
 ) {
     let Some(&(at, action)) = script.actions.get(script.step) else {
         return;
@@ -1002,6 +1207,29 @@ fn run_script(
             let name = &sim.active_vessel().name;
             if found != count || name != flying {
                 error!("smoke test: {found} vessels, flying {name}: wanted {count}, {flying}");
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectScreen(wanted) => {
+            let showing = if menu.open { menu.screen() } else { "" };
+            if showing != wanted {
+                error!("smoke test: the menu shows `{showing}`, wanted `{wanted}`");
+                exit.write(AppExit::error());
+            }
+        }
+        Action::EditorLook(x, y, zoom) => {
+            editor.look(DVec2::new(x as f64, y as f64), zoom as f64);
+        }
+        Action::ExpectList(wanted) => {
+            if editor.list_open() != wanted {
+                error!("smoke test: the list of vessels should be open: {wanted}");
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectEditor(wanted) => {
+            let found = editor.craft();
+            if found != wanted {
+                error!("smoke test: the editor has {found:?}, wanted {wanted:?}");
                 exit.write(AppExit::error());
             }
         }

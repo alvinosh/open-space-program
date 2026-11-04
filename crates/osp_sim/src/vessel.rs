@@ -493,17 +493,36 @@ impl Vessel {
         system: &SolarSystem,
         time: SimTime,
     ) -> Result<Self, VesselError> {
-        let parent = system.root();
-        let body = system.body(parent);
-        let speed = (body.gm / DISPLAY_DISTANCE).sqrt();
-        let state = StateVector::new(DVec3::Z * DISPLAY_DISTANCE, DVec3::X * speed);
-        let motion = Motion::Coasting(Orbit::new(body.gm, time, state));
+        let (parent, motion) = Self::display_spot(system, time);
         let mut vessel = Self::new(craft, catalog, parent, motion, DQuat::IDENTITY, time)?;
         if gear::legs(&vessel.propulsion).iter().any(|leg| !leg.foot) {
             vessel.attitude.state.orientation =
                 DQuat::from_mat3(&DMat3::from_cols(DVec3::NEG_Y, DVec3::NEG_Z, DVec3::X));
         }
         Ok(vessel)
+    }
+
+    /// Nothing, in the place a craft is shown: a vessel with no parts, for a hangar with nothing
+    /// chosen yet. No craft can be this empty.
+    pub fn empty_display(system: &SolarSystem, time: SimTime) -> Self {
+        let (parent, motion) = Self::display_spot(system, time);
+        Self::assemble(
+            String::new(),
+            Propulsion::empty(),
+            parent,
+            motion,
+            DQuat::IDENTITY,
+            time,
+        )
+    }
+
+    /// Far over the star's pole, out of everything's way.
+    fn display_spot(system: &SolarSystem, time: SimTime) -> (BodyId, Motion) {
+        let parent = system.root();
+        let body = system.body(parent);
+        let speed = (body.gm / DISPLAY_DISTANCE).sqrt();
+        let state = StateVector::new(DVec3::Z * DISPLAY_DISTANCE, DVec3::X * speed);
+        (parent, Motion::Coasting(Orbit::new(body.gm, time, state)))
     }
 
     /// Flying through the air, as if just dropped from a carrier aircraft: nose along the

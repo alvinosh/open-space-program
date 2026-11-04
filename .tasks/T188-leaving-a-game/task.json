@@ -1,0 +1,22 @@
+{
+  "id": "T188",
+  "title": "Leaving a game: one dialog, exit to main menu, Continue",
+  "kind": "feature",
+  "status": "todo",
+  "area": "ui",
+  "size": "S",
+  "parent": "T185",
+  "depends_on": [
+    "T187"
+  ],
+  "refs": [
+    "T185",
+    "crates/osp_game/src/saves.rs",
+    "crates/osp_game/src/content.rs"
+  ],
+  "created": "2026-11-04",
+  "updated": "2026-11-04",
+  "done": null,
+  "milestone": "M1",
+  "priority": 39
+}

@@ -1,8 +1,9 @@
 // What the player did, when the mission is passed or failed (opens by itself; the game goes
-// on behind it). Keep flying closes it, the menu picks another scenario.
+// on behind it). Keep flying closes it. It is flight UI: the menu and the editor hide it.
 {
   id: "mission_results",
   visible: false,
+  group: "flight",
   root: {
     widget: "window",
     icon: "icons/target.svg",

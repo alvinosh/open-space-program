@@ -1,6 +1,8 @@
-# T077: Vessel markers, same-time marker, SOI bubbles
+# T077: Same-time marker, SOI bubbles
 
-Vessel markers in the map view (bodies have them). A same-time marker on the target's orbit, and SOI bubbles at closest approach.
+A same-time marker on the target's orbit, and SOI bubbles at closest approach.
+
+Vessel markers moved to T191.
 
 ## Done when
 

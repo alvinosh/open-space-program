@@ -1,0 +1,16 @@
+// Guided runs (`menu.tutorials`), with the steps over the flight: `game.start_tutorial:<id>`. On the
+// first screen only: starting one replaces the game in progress.
+{
+  id: "menu_tutorials",
+  group: "menu",
+  visible: false,
+  root: {
+    widget: "screen",
+    title: "Tutorials",
+    subtitle: "Learn by flying: each one tells you what to do and waits for you to do it.",
+    repeat: "menu.tutorials",
+    children: [
+      { widget: "menu_row", text: "{item.name}", meta: "{item.steps|int} steps", detail: "{item.description}", action: "game.start_tutorial:{item.id}" },
+    ],
+  },
+}

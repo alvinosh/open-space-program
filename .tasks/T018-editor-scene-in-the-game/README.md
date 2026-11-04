@@ -22,6 +22,7 @@
 
 ## Still open
 
+- New game and Fly a new vessel open the editor, and the vessel is chosen there: T190. There is no Build entry of its own unless the builder needs one.
 - Everything to do with placing parts, the orthographic views, the toolbar button, the greybox mode. The hangar is a plain hall with a floor and could look better.
 
 ## Where it comes from

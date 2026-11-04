@@ -1,0 +1,29 @@
+// The saves (`menu.saves`), newest first: `game.load:<file>`, `game.delete_save:<file>` asks and then
+// deletes.
+{
+  id: "menu_load",
+  group: "menu",
+  visible: false,
+  root: {
+    widget: "screen",
+    title: "Load game",
+    children: [
+      { widget: "label", class: "menu_text", text: "No saved games yet: a game is saved from its first launch on.", visible: "!menu.has_saves" },
+      {
+        widget: "column",
+        repeat: "menu.saves",
+        children: [
+          {
+            widget: "row",
+            class: "menu_row_action",
+            children: [
+              { widget: "menu_row", style: { grow: 1 }, text: "{item.name}", meta: "{item.saved}", detail: "{item.detail}", action: "game.load:{item.file}" },
+              { widget: "button", class: "btn btn_danger", text: "Delete", action: "game.delete_save:{item.file}", visible: "!item.deleting" },
+              { widget: "button", class: "btn btn_danger", text: "Sure?", action: "game.delete_save:{item.file}", visible: "item.deleting" },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

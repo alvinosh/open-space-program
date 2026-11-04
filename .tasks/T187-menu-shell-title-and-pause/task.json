@@ -1,0 +1,23 @@
+{
+  "id": "T187",
+  "title": "Menu shell: screen stack, Back and Esc, Title and Pause",
+  "kind": "feature",
+  "status": "done",
+  "area": "ui",
+  "size": "M",
+  "parent": "T185",
+  "depends_on": [
+    "T186"
+  ],
+  "refs": [
+    "T185",
+    "crates/osp_game/src/menu.rs",
+    "crates/osp_game/src/smoke_test.rs",
+    "docs/modding.md"
+  ],
+  "created": "2026-11-04",
+  "updated": "2026-11-04",
+  "done": "2026-11-04",
+  "milestone": "M1",
+  "priority": 38
+}

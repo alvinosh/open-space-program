@@ -19,32 +19,55 @@
 {
   id: "default",
   fonts: ["fonts/Barlow-Medium.ttf", "fonts/Barlow-SemiBold.ttf"],
+  // Named colours: a style says "$accent" wherever a colour goes, and a mod recolours everything
+  // that uses one by patching `colors.accent`.
+  colors: {
+    accent: "#38e0c4",
+    text: "#e4edf4",
+    text_strong: "#ffffff",
+    text_dim: "#8fa3b4",
+    control: "#1a2a3a",
+    control_hover: "#23374a",
+    selected: "#0e3a35",
+    primary: "#1d6f62",
+    primary_hover: "#26897a",
+    danger: "#ff9a9a",
+    danger_hover: "#4a2428",
+    // The menu's left panel and its edge; the groove a choice sits in; a line between groups. The
+    // panel looks about 10% see-through: blending is in linear light, where a dark colour lets far
+    // more through than its alpha says, so it takes 97% opaque to look 90%.
+    rail: "#101c29f8",
+    rail_edge: "#2a3b4d",
+    track: "#0a131c",
+    hairline: [1, 1, 1, 0.07],
+    clear: [0, 0, 0, 0],
+  },
   classes: {
     // --- widget defaults ---
     text: { font: "Barlow", font_weight: 500 },
     column: { gap: 2 },
     row: { gap: 8, align_items: "center" },
     spacer: { grow: 1 },
-    label: { color: "#e4edf4", font_size: 13 },
+    label: { color: "$text", font_size: 13 },
     button: {
       padding: [3, 9],
-      background: "#1a2a3a",
-      hover_background: "#23374a",
-      active_background: "#0e3a35",
+      background: "$control",
+      hover_background: "$control_hover",
+      active_background: "$selected",
       border: 1,
       border_color: "#24364a",
       active_border_color: [0.22, 0.88, 0.77, 0.7],
-      active_color: "#ffffff",
+      active_color: "$text_strong",
       radius: 4,
-      color: "#e4edf4",
+      color: "$text",
       font_size: 12,
       font_weight: 600,
       align_items: "center",
       justify_content: "center",
     },
     bar: { height: 5, min_width: 60, grow: 1, background: "#223244", radius: 3, clip: true },
-    bar_fill: { background: "#38e0c4" },
-    image: { color: "#e4edf4" },
+    bar_fill: { background: "$accent" },
+    image: { color: "$text" },
     panel: {
       padding: [7, 10],
       gap: 2,
@@ -73,7 +96,7 @@
       border_color: [1, 1, 1, 0.06],
       radius: 0,
     },
-    window_icon: { width: 14, height: 14, color: "#38e0c4" },
+    window_icon: { width: 14, height: 14, color: "$accent" },
     window_title_text: { color: "#dce8f2", font_size: 12, font_weight: 600, letter_spacing: 1.3, uppercase: true },
     window_content: { padding: [6, 10, 8, 10], gap: 0 },
     window_close: {
@@ -94,93 +117,156 @@
       border: 1,
       border_color: [0, 0, 0, 0],
       background: [0, 0, 0, 0],
-      hover_background: "#23374a",
-      active_background: "#0e3a35",
+      hover_background: "$control_hover",
+      active_background: "$selected",
       active_border_color: [0.22, 0.88, 0.77, 0.7],
       radius: 4,
     },
-    window_pin_icon: { width: 12, height: 12, color: [1, 1, 1, 0.5], active_color: "#38e0c4" },
+    window_pin_icon: { width: 12, height: 12, color: [1, 1, 1, 0.5], active_color: "$accent" },
 
-    // --- main menu (see layouts/main_menu.json5) ---
-    menu_backdrop: {
+    // --- menu screens and controls (see crates/osp_ui/src/components.rs) ---
+    // One surface, the rail, and nothing inside it has a box at rest; four type sizes (28, 20, 15,
+    // 12); and these controls only: `back`, `menu_row`, `btn`, `choice_item`, `tab`. Text starts 48
+    // px from the window's edge: a row's own padding takes it there, so its highlight can reach
+    // past the text without being clipped by the scrolling body. A test holds menus to this.
+    menu_shade: {
       position: "absolute",
       left: 0,
       top: 0,
       width: "100%",
       height: "100%",
-      align_items: "center",
-      justify_content: "center",
-      background: [0.01, 0.02, 0.03, 0.6],
+      align_items: "start",
+      background: [0.01, 0.02, 0.03, 0.2],
       z_index: 50,
     },
-    menu: {
-      width: 640,
-      max_height: "86vh",
-      padding: [24, 26],
-      gap: 10,
-      gradient: ["#172839f5", "#0b1520f2"],
-      radius: 10,
-      border: 1,
-      border_gradient: ["#a6d0f066", "#6f98c014"],
-      shadow: { color: [0, 0, 0, 0.6], y: 10, blur: 40 },
+    menu_rail: {
+      width: 560,
+      height: "100%",
+      padding: [48, 28, 32, 36],
+      background: "$rail",
+      border: [0, 1, 0, 0],
+      border_color: "$rail_edge",
     },
-    menu_title: { font_size: 28, font_weight: 600, letter_spacing: 2.5, uppercase: true, color: "#f2f7fa" },
-    menu_tab: { padding: [6, 10], letter_spacing: 0.8, uppercase: true, font_size: 12 },
-    menu_page: { gap: 6, shrink: 1, min_height: 0 },
-    menu_list: { gap: 6, scroll: true, shrink: 1, min_height: 0, padding: [0, 12, 0, 0] },
-    // A choice in a row of them (graphics settings); the selected one is `active`.
-    menu_option: { min_width: 52, padding: [3, 6], font_size: 12 },
-    menu_item: {
-      direction: "column",
-      align_items: "start",
-      padding: [9, 13],
-      gap: 2,
-      background: "#16253399",
-      hover_background: "#1a3a40",
-      border: 1,
-      border_color: "#24364a",
-      radius: 6,
-    },
-    menu_item_name: { font_size: 16, font_weight: 600, color: "#ffffff" },
-    // A place to start on the scenarios page: icon, name and line, how many scenarios.
-    menu_place: { direction: "row", align_items: "center", gap: 14, padding: [12, 14] },
-    menu_place_icon: { width: 30, height: 30, color: "#38e0c4" },
-    menu_place_text: { gap: 2, grow: 1 },
-    menu_count: { color: "#8fa3b4", font_size: 14 },
-    // A spacecraft there: its name and where exactly it starts, then the scenario's name.
-    menu_item_head: { align_self: "stretch" },
-    menu_item_start: { color: "#8fa3b4", font_size: 12 },
-    menu_item_setup: { color: "#cfdbe5", font_size: 13 },
-
-    // --- the editor (see layouts/editor.json5) ---
-    editor: {
-      position: "absolute",
-      top: 12,
-      right: 12,
-      width: 280,
-      padding: [14, 16],
-      gap: 6,
-      gradient: ["#172839f5", "#0b1520f2"],
-      radius: 10,
-      border: 1,
-      border_gradient: ["#a6d0f066", "#6f98c014"],
-    },
-    editor_name: { font_size: 20, font_weight: 600, color: "#ffffff" },
-    editor_place: { align_self: "stretch", padding: [7, 10], gap: 10, active_background: "#1a3a40", active_border_color: "#38e0c4" },
-    editor_place_icon: { width: 22, height: 22, color: "#38e0c4" },
-    editor_place_name: { font_size: 14, font_weight: 600, color: "#ffffff" },
-    editor_launch: {
-      align_self: "stretch",
-      justify_content: "center",
-      padding: [10, 10],
+    menu_body: { margin: [24, 0, 0, 0], padding: [0, 8, 0, 0], gap: 0, grow: 1, shrink: 1, min_height: 0, scroll: true },
+    menu_display: { margin: [0, 12], font_size: 28, font_weight: 600, letter_spacing: 2.5, uppercase: true, color: "$text_strong" },
+    menu_heading: { margin: [0, 12], font_size: 20, font_weight: 600, color: "$text_strong" },
+    menu_subtitle: { margin: [4, 12, 0, 12], font_size: 12, color: "$text_dim" },
+    menu_section: { margin: [16, 12, 4, 12], font_size: 12, font_weight: 600, letter_spacing: 1.2, uppercase: true, color: "$text_dim" },
+    menu_text: { margin: [0, 12], font_size: 15, color: "$text" },
+    menu_divider: { height: 1, margin: [8, 12], background: "$hairline" },
+    menu_notice: { margin: [16, 12, 0, 12], font_size: 15, color: "$text" },
+    menu_warning: { font_size: 12, color: "#ffc24a" },
+    menu_tabs: { gap: 0, margin: [0, 12, 8, 12] },
+    back: {
+      align_self: "start",
+      margin: [0, 0, 16, 2],
+      padding: [6, 10],
+      background: "$clear",
+      hover_background: "$control_hover",
+      border: 0,
+      radius: 4,
       font_size: 15,
       font_weight: 600,
-      letter_spacing: 1.2,
-      uppercase: true,
-      background: "#1d6f62",
-      hover_background: "#26897a",
-      border_color: "#38e0c4",
+      color: "$text_strong",
     },
+    menu_row: {
+      direction: "column",
+      align_items: "stretch",
+      justify_content: "center",
+      gap: 2,
+      min_height: 44,
+      padding: [6, 12],
+      background: "$clear",
+      hover_background: "$control_hover",
+      active_background: "$selected",
+      border: 0,
+      radius: 4,
+    },
+    menu_row_head: { gap: 8 },
+    // A row with a button of its own beside it, the button's edge in line with the rows' text.
+    menu_row_action: { gap: 8, margin: [0, 12, 0, 0] },
+    menu_row_text: { font_size: 15, color: "$text" },
+    menu_row_meta: { font_size: 12, color: "$text_dim" },
+    // A value that is what the row is for, like a key on the Controls tab.
+    menu_row_value: { font_size: 15, font_weight: 600, color: "$text_strong" },
+    menu_row_detail: { font_size: 12, color: "$text_dim" },
+    btn: {
+      height: 36,
+      padding: [0, 16],
+      background: "$control",
+      hover_background: "$control_hover",
+      border: 0,
+      radius: 4,
+      font_size: 15,
+      font_weight: 600,
+      color: "$text",
+    },
+    btn_primary: { background: "$primary", hover_background: "$primary_hover", color: "$text_strong" },
+    btn_danger: { color: "$danger", hover_background: "$danger_hover" },
+    btn_off: { color: "$text_dim", hover_background: "$control" },
+    btn_wide: { margin: [0, 12] },
+    // As wide as each other, so choices line up down a page and their segments stay even.
+    choice: { width: 300, shrink: 0, gap: 2, padding: 2, radius: 6, background: "$track" },
+    choice_item: {
+      width: 0,
+      grow: 1,
+      height: 28,
+      padding: [0, 4],
+      background: "$clear",
+      hover_background: "$control_hover",
+      active_background: "$selected",
+      border: 0,
+      radius: 4,
+      font_size: 15,
+      font_weight: 500,
+      color: "$text_dim",
+      active_color: "$text_strong",
+    },
+    tab: {
+      margin: [0, 16, 0, 0],
+      padding: [8, 2],
+      background: "$clear",
+      hover_background: "$clear",
+      active_background: "$clear",
+      border: [0, 0, 2, 0],
+      border_color: "$clear",
+      active_border_color: "$accent",
+      radius: 0,
+      font_size: 15,
+      font_weight: 600,
+      color: "$text_dim",
+      active_color: "$text_strong",
+    },
+    setting_row: { min_height: 40, padding: [0, 12], gap: 12 },
+    setting_label: { min_width: 120, grow: 1, font_size: 15, color: "$text" },
+
+    // --- the editor (see layouts/editor.json5) ---
+    // Made of the menu's parts: the list on a narrower rail, the launch on a panel like it on the
+    // other side, and the hangar between them, which takes the pointer.
+    editor_root: { position: "absolute", left: 0, top: 0, width: "100%", height: "100%", direction: "row", z_index: 40 },
+    editor_rail: { width: 340, padding: [97, 16, 32, 36] },
+    // Always there, over the rail while that is out and on the hangar when it is not.
+    editor_bar: { position: "absolute", left: 36, top: 45, gap: 8 },
+    editor_back: { align_self: "center", margin: [0, 0, 0, 2] },
+    // Beside the rail, or at the window's edge with the rail away.
+    editor_staging: { align_self: "end", margin: [0, 0, 12, 12] },
+    editor_panel: {
+      position: "absolute",
+      right: 0,
+      top: 0,
+      width: 300,
+      height: "100%",
+      padding: [48, 12, 32, 12],
+      background: "$rail",
+      border: [0, 0, 0, 1],
+      border_color: "$rail_edge",
+    },
+    editor_stat: { min_height: 32 },
+    editor_occupied: { margin: [12, 12, 0, 12], gap: 8 },
+    editor_clear: { align_self: "stretch" },
+    editor_notice: { margin: [0, 12, 8, 12] },
+    editor_hint: { margin: [0, 12, 12, 12] },
+    choice_wide: { width: "auto", margin: [4, 12] },
 
     // --- docks (see layouts/docks.json5) ---
     // Every `dock` node stacks what is docked into it; `dock_root` places a dock column on
@@ -217,7 +303,7 @@
       border_color: [0, 0, 0, 0],
       hover_background: "#1f3142",
     },
-    launcher_icon: { width: 19, height: 19, color: "#c9d6e1", active_color: "#38e0c4" },
+    launcher_icon: { width: 19, height: 19, color: "#c9d6e1", active_color: "$accent" },
     launcher_divider: { height: 1, margin: [4, 6], background: [1, 1, 1, 0.1] },
     // Shown beside a node with a `tooltip` while the pointer is over it.
     tooltip: {
@@ -227,11 +313,11 @@
       border: 1,
       border_color: [0.65, 0.82, 0.94, 0.25],
       shadow: { color: [0, 0, 0, 0.5], y: 3, blur: 10 },
-      color: "#e4edf4",
+      color: "$text",
       font_size: 12,
     },
-    readout: { color: "#ffffff", font_size: 26, font_weight: 600 },
-    alt_readout: { color: "#ffffff", font_size: 24, font_weight: 600, letter_spacing: 0.5 },
+    readout: { color: "$text_strong", font_size: 26, font_weight: 600 },
+    alt_readout: { color: "$text_strong", font_size: 24, font_weight: 600, letter_spacing: 0.5 },
     caption: { color: "#7f94a6", font_size: 10.5, font_weight: 600, letter_spacing: 1, uppercase: true },
     // A pill: fully rounded ends.
     pill: {
@@ -243,7 +329,7 @@
       shadow: { color: [0, 0, 0, 0.45], y: 4, blur: 16 },
     },
     // A coloured status dot (altimeter: the situation).
-    status_dot: { width: 7, height: 7, radius: 4, background: "#38e0c4" },
+    status_dot: { width: 7, height: 7, radius: 4, background: "$accent" },
 
     // --- time warp (layouts/time.json5) ---
     time_button: {
@@ -253,14 +339,14 @@
       radius: 99,
       border: 0,
       background: [0, 0, 0, 0],
-      hover_background: "#23374a",
-      active_background: "#0e3a35",
+      hover_background: "$control_hover",
+      active_background: "$selected",
     },
-    time_icon: { width: 13, height: 13, color: "#c9d6e1", active_color: "#38e0c4" },
+    time_icon: { width: 13, height: 13, color: "#c9d6e1", active_color: "$accent" },
     // One chevron per warp level, lit up to the current one; on-rails levels in amber.
-    warp_chevron: { width: 7, height: 14, color: "#2a3b4d", active_color: "#38e0c4" },
+    warp_chevron: { width: 7, height: 14, color: "#2a3b4d", active_color: "$accent" },
     warp_rails: { active_color: "#ffb340" },
-    warp_rate: { min_width: 50, font_size: 15, font_weight: 600, color: "#ffffff" },
+    warp_rate: { min_width: 50, font_size: 15, font_weight: 600, color: "$text_strong" },
     divider: { width: 1, height: 26, background: [1, 1, 1, 0.1] },
 
     // --- navball (layouts/navball.json5) ---
@@ -271,7 +357,7 @@
     // Arc gauges round the ball: a ring's `border` is its thickness, `border_color` the
     // empty track, `color` the fill.
     gauge_thrust: { position: "absolute", left: 33, top: 19, width: 206, height: 206, border: 8, border_color: [1, 1, 1, 0.07], color: "#ffb340" },
-    gauge_throttle: { position: "absolute", left: 42, top: 28, width: 188, height: 188, border: 2, border_color: [1, 1, 1, 0.05], color: "#38e0c4" },
+    gauge_throttle: { position: "absolute", left: 42, top: 28, width: 188, height: 188, border: 2, border_color: [1, 1, 1, 0.05], color: "$accent" },
     gauge_atmosphere: { position: "absolute", left: 33, top: 19, width: 206, height: 206, border: 8, border_color: [1, 1, 1, 0.07], color: "#5ab4ff" },
     speed_display: {
       position: "absolute",
@@ -287,8 +373,8 @@
       border: 0,
       radius: 11,
     },
-    speed_frame: { color: "#38e0c4", font_size: 10, font_weight: 600, letter_spacing: 1.2, uppercase: true },
-    speed_value: { color: "#ffffff", font_size: 15, font_weight: 600 },
+    speed_frame: { color: "$accent", font_size: 10, font_weight: 600, letter_spacing: 1.2, uppercase: true },
+    speed_value: { color: "$text_strong", font_size: 15, font_weight: 600 },
     // SAS and RCS switches on the ring's upper corners, teal while on.
     nav_toggle: {
       position: "absolute",
@@ -298,13 +384,13 @@
       padding: 0,
       radius: 99,
       background: "#0b141e",
-      hover_background: "#1a2a3a",
+      hover_background: "$control",
       active_background: "#12392f",
       border: 1,
       border_color: [1, 1, 1, 0.14],
-      active_border_color: "#38e0c4",
+      active_border_color: "$accent",
       color: [1, 1, 1, 0.55],
-      active_color: "#38e0c4",
+      active_color: "$accent",
       font_size: 10,
       font_weight: 600,
     },
@@ -313,7 +399,7 @@
     plate: { position: "absolute", left: 36, top: 220, width: 200, height: 31, direction: "row", gap: 0, align_items: "center" },
     plate_cell: { width: "33.3%", direction: "row", gap: 4, justify_content: "center", align_items: "baseline" },
     plate_key: { color: "#7f94a6", font_size: 9.5, font_weight: 600, letter_spacing: 0.8 },
-    plate_value: { color: "#ffffff", font_size: 13, font_weight: 600 },
+    plate_value: { color: "$text_strong", font_size: 13, font_weight: 600 },
     // The SAS mode buttons right against the housing's ring, with the navball's own markers on
     // them. Four rows level with the ball; the target's row comes in below them.
     sas_strip: {
@@ -330,18 +416,18 @@
       radius: 6,
       background: "#172634",
       border_color: [0, 0, 0, 0],
-      hover_background: "#23374a",
-      active_background: "#0e3a35",
+      hover_background: "$control_hover",
+      active_background: "$selected",
     },
-    sas_icon: { width: 20, height: 20, color: "#ffffff" },
+    sas_icon: { width: 20, height: 20, color: "$text_strong" },
     // A mode with nothing to steer by: dimmed, and nothing happens under the pointer.
     sas_button_off: { background: "#111c27", hover_background: "#111c27" },
     sas_icon_off: { color: [1, 1, 1, 0.25] },
     // Small +/- and step buttons (flight plan).
     step_button: { min_width: 26, padding: [1, 6], font_size: 12 },
     // Buttons that take something out of the game, and recovery (Universe Manifest).
-    danger_button: { color: "#ff9a9a", hover_background: "#4a2428" },
-    recover_button: { color: "#6ff0d6", hover_background: "#0e3a35" },
+    danger_button: { color: "$danger", hover_background: "$danger_hover" },
+    recover_button: { color: "#6ff0d6", hover_background: "$selected" },
     // A manifest row's name; debris is dimmer.
     manifest_name: { min_width: 180, active_color: [1, 1, 1, 0.55] },
     value: { min_width: 86, font_size: 13 },
@@ -351,7 +437,7 @@
     // The Resources window (layouts/resources.json5): a row per propellant and stage, bars in
     // the stage's colour, the bottom stage's names lit.
     res_row: { gap: 7, padding: [2, 3], radius: 4, hover_background: "#ffffff06" },
-    res_name: { min_width: 70, shrink: 0, color: "#8fa3b4", active_color: "#ffffff", font_size: 12.5 },
+    res_name: { min_width: 70, shrink: 0, color: "$text_dim", active_color: "$text_strong", font_size: 12.5 },
     res_amount: { min_width: 72, shrink: 0, font_size: 12.5 },
     res_bar: { min_width: 30 },
     res_tag: { min_width: 22, shrink: 0 },
@@ -359,7 +445,7 @@
     // No panel round the stack: every row is a box of its own, as wide as it needs.
     seq_stack: { align_self: "start", align_items: "start", gap: 0 },
     seq_key: { color: "#7f94a6", font_size: 10, font_weight: 600, letter_spacing: 0.8, uppercase: true },
-    seq_stat: { color: "#e4edf4", font_size: 12.5, font_weight: 600 },
+    seq_stat: { color: "$text", font_size: 12.5, font_weight: 600 },
     // Plain glyph buttons: no background until hovered.
     seq_glyph: {
       padding: [0, 4],
@@ -367,7 +453,7 @@
       hover_background: "#ffffff1a",
       border: 0,
       radius: 3,
-      color: "#8fa3b4",
+      color: "$text_dim",
       font_size: 13,
       font_weight: 600,
     },
@@ -380,11 +466,11 @@
       border: 0,
       radius: 2,
     },
-    seq_arrow_icon: { width: 10, height: 10, color: "#8fa3b4" },
-    seq_glyph_icon: { width: 13, height: 13, color: "#8fa3b4" },
+    seq_arrow_icon: { width: 10, height: 10, color: "$text_dim" },
+    seq_glyph_icon: { width: 13, height: 13, color: "$text_dim" },
     // The strip between two rows, a drop place that lights up under a dragged row or tile. It
     // takes the row's width, which the stack it sits in would not give it.
-    seq_gap: { align_self: "stretch", height: 5, radius: 2, background: "#00000000", hover_background: "#38e0c4" },
+    seq_gap: { align_self: "stretch", height: 5, radius: 2, background: "#00000000", hover_background: "$accent" },
     seq_row: {
       padding: [3, 4],
       gap: 5,
@@ -396,9 +482,9 @@
       border_color: "#203142",
       hover_background: "#1f3b4a",
       active_background: "#0e3a35f2",
-      active_border_color: "#38e0c4",
+      active_border_color: "$accent",
     },
-    seq_number: { min_width: 10, font_size: 12, font_weight: 600, color: [1, 1, 1, 0.45], active_color: "#38e0c4" },
+    seq_number: { min_width: 10, font_size: 12, font_weight: 600, color: [1, 1, 1, 0.45], active_color: "$accent" },
     seq_tiles: { align_items: "start", gap: 4 },
     seq_line: { gap: 4 },
     seq_item: {
@@ -422,7 +508,7 @@
       border_color: [1, 1, 1, 0.15],
       font_size: 9.5,
       font_weight: 600,
-      color: "#ffffff",
+      color: "$text_strong",
     },
     seq_fuel: { position: "absolute", left: 4, bottom: 2, width: 16, min_width: 16, height: 2, grow: 0 },
     // Under the stack: the engines already lit.
@@ -438,9 +524,9 @@
       border: 0,
       background: "#00000000",
       hover_background: "#1f3142",
-      active_background: "#0e3a35",
+      active_background: "$selected",
       color: "#7f94a6",
-      active_color: "#38e0c4",
+      active_color: "$accent",
       font_size: 10,
       font_weight: 600,
       letter_spacing: 0.6,
@@ -454,7 +540,7 @@
       border: 1,
       border_color: [0, 0, 0, 0],
       active_background: "#0e3a35d9",
-      active_border_color: "#38e0c4",
+      active_border_color: "$accent",
     },
     // The part window (layouts/part_info.json5): an engine's status in amber while it burns,
     // short bars beside the values, the catalogue text at the bottom.
@@ -475,13 +561,13 @@
       border_gradient: ["#a6d0f055", "#6f98c014"],
       shadow: { color: [0, 0, 0, 0.5], y: 4, blur: 16 },
     },
-    context_title: { color: "#8fa3b4", font_size: 11, font_weight: 600, letter_spacing: 0.5, padding: [3, 8, 5, 8] },
+    context_title: { color: "$text_dim", font_size: 11, font_weight: 600, letter_spacing: 0.5, padding: [3, 8, 5, 8] },
     context_item: {
       justify_content: "start",
       padding: [5, 8],
       background: [0, 0, 0, 0],
       border_color: [0, 0, 0, 0],
-      hover_background: "#23374a",
+      hover_background: "$control_hover",
       radius: 4,
       font_size: 12.5,
       font_weight: 500,
@@ -500,22 +586,22 @@
       shadow: { color: [0, 0, 0, 0.45], y: 4, blur: 16 },
     },
     node_time: { color: "#cfdbe5", font_size: 12.5 },
-    node_dv: { color: "#ffffff", font_size: 22, font_weight: 600 },
+    node_dv: { color: "$text_strong", font_size: 22, font_weight: 600 },
     node_axes: { gap: 12, margin: [0, 0, 4, 0] },
     node_axis: { gap: 3 },
-    node_axis_icon: { width: 15, height: 15, color: "#ffffff" },
+    node_axis_icon: { width: 15, height: 15, color: "$text_strong" },
     node_actions: { gap: 4, margin: [6, 0, 0, 0] },
 
     // --- named classes ---
-    title: { color: "#ffffff", font_size: 17, font_weight: 600 },
-    section: { color: "#38e0c4", font_size: 10.5, font_weight: 600, letter_spacing: 1.2, uppercase: true, margin: [8, 0, 2, 0] },
-    dim: { color: "#8fa3b4", font_size: 12.5 },
+    title: { color: "$text_strong", font_size: 17, font_weight: 600 },
+    section: { color: "$accent", font_size: 10.5, font_weight: 600, letter_spacing: 1.2, uppercase: true, margin: [8, 0, 2, 0] },
+    dim: { color: "$text_dim", font_size: 12.5 },
     // A key/value row in a window: a hairline under each.
     kv: { padding: [2, 0], border: [0, 0, 1, 0], border_color: [1, 1, 1, 0.05] },
     // A row's leading icon.
     row_icon: { width: 14, height: 14, color: "#6f8496" },
     // Key of a key/value row: it takes the free width, so values line up on the right.
-    key: { color: "#8fa3b4", min_width: 64, grow: 1 },
+    key: { color: "$text_dim", min_width: 64, grow: 1 },
     narrow: { min_width: 104, shrink: 0 },
     nowrap: { shrink: 0 },
     warning: { color: "#ffc24a" },
@@ -529,13 +615,13 @@
       shadow: { color: [0, 0, 0, 0.4], y: 3, blur: 12 },
     },
     error: { color: "#ff6b6b" },
-    marker: { color: "#38e0c4", min_width: 10 },
+    marker: { color: "$accent", min_width: 10 },
     // The mission's goals: a ring, filled with a tick once met, and the text lit teal.
-    goal_mark: { width: 14, height: 14, color: "#6f8496", active_color: "#38e0c4" },
-    goal_text: { color: "#e4edf4", active_color: "#38e0c4", grow: 1 },
+    goal_mark: { width: 14, height: 14, color: "#6f8496", active_color: "$accent" },
+    goal_text: { color: "$text", active_color: "$accent", grow: 1 },
     // The tutorial's step and its hint.
     // Wrapped to the window (290 wide), or a long step would stretch the dock.
-    tutorial_text: { color: "#ffffff", font_size: 14, max_width: 264 },
+    tutorial_text: { color: "$text_strong", font_size: 14, max_width: 264 },
     tutorial_hint: { color: "#ffc24a", font_size: 12.5, max_width: 264 },
     alert_chip: {
       color: "#ffe2dc",
@@ -547,6 +633,6 @@
       font_size: 12.5,
       font_weight: 600,
     },
-    goal_notice: { color: "#38e0c4", border_color: [0.22, 0.88, 0.77, 0.5] },
+    goal_notice: { color: "$accent", border_color: [0.22, 0.88, 0.77, 0.5] },
   },
 }

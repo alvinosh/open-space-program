@@ -1,83 +1,107 @@
-// The editor (see `osp_game::editor`): a craft on show in the hangar, to look over before it
-// flies. Nothing can be placed yet. The staging window stays up beside it and works as it does in
-// flight (staging.json5); the sequences it is left with go with the launch.
+// The editor (see `osp_game::editor`): where a vessel is chosen, looked over and launched. New game
+// (`game.new`) and Fly a new vessel (`editor.open`) come here with the hangar empty. Nothing can be
+// placed yet. The list is `editor.vessels`, by mod: `name`, then in `craft` each one's `id`, `name`,
+// `parts` and `selected`; `editor.show:<id>` puts one on show and puts the list away, and
+// `editor.list` shows and hides it (`editor.list_open`). The staging window docks at the left once
+// a vessel is on show, beside the list while that is out, and works as it does in flight
+// (staging.json5); the sequences it is left with go with the launch.
 //
 // `editor.place:<pad|runway|orbit>` picks where it goes from (`editor.place` is the one picked,
-// `editor.pad`, `editor.runway` and `editor.orbit` say which site or orbit that is, and are empty
-// when there is none), `editor.launch` launches it, `editor.back` (or Esc) goes back to the list
-// of craft. `editor.name`, `editor.height`, `editor.mass` and `editor.parts` describe it, and
+// `editor.place_name` says which site or orbit that is, and `editor.pad`, `editor.runway` and
+// `editor.orbit` are empty when there is none), `editor.launch` launches it, and Back or Esc goes
+// back to the menu. `editor.can_launch` says whether it can go: not with nothing on show, nor from
+// a pad or runway with a vessel on it. `editor.occupied` says what is there and `editor.clear`
+// removes it, once `editor.clearing` has asked (`editor.clear_label`, `editor.clear_question`). `editor.heading` says what the player came for, `editor.has_vessel` whether
+// one is on show, `editor.name`, `editor.height`, `editor.mass` and `editor.parts` describe it, and
 // `editor.notice` says why a launch failed.
 {
   id: "editor",
   visible: false,
   root: {
-    widget: "panel",
-    class: "editor",
+    widget: "dock",
+    class: "editor_root",
     children: [
-      { widget: "label", class: "section", text: "Editor" },
-      { widget: "label", class: "editor_name", text: "{editor.name}" },
-      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Height" }, { widget: "label", text: "{editor.height|distance}" }] },
-      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Mass" }, { widget: "label", text: "{editor.mass|mass}" }] },
-      { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Parts" }, { widget: "label", text: "{editor.parts|int}" }] },
-      { widget: "label", class: "section", text: "Launch from" },
       {
-        widget: "button",
-        class: "menu_item menu_place editor_place",
-        action: "editor.place:pad",
-        active: "editor.place == pad",
-        visible: "editor.pad",
+        widget: "screen",
+        class: "editor_rail",
+        shade: false,
+        back: false,
+        title: "{editor.heading}",
+        title_if: "!editor.has_vessel",
+        visible: "editor.list_open",
+        repeat: "editor.vessels",
         children: [
-          { widget: "image", class: "editor_place_icon", image: "icons/launch_pad.svg" },
+          { widget: "label", class: "menu_section", text: "{item.name}" },
           {
             widget: "column",
-            class: "menu_place_text",
+            repeat: "item.craft",
             children: [
-              { widget: "label", class: "editor_place_name", text: "Launch pad" },
-              { widget: "label", class: "dim", text: "{editor.pad}" },
+              { widget: "menu_row", text: "{item.name}", meta: "{item.parts|int} parts", active: "item.selected", action: "editor.show:{item.id}" },
             ],
           },
         ],
       },
+      { id: "editor_staging", widget: "dock", class: "editor_staging" },
       {
-        widget: "button",
-        class: "menu_item menu_place editor_place",
-        action: "editor.place:runway",
-        active: "editor.place == runway",
-        visible: "editor.runway",
+        id: "editor_bar",
+        widget: "row",
+        class: "editor_bar",
         children: [
-          { widget: "image", class: "editor_place_icon", image: "icons/runway.svg" },
-          {
-            widget: "column",
-            class: "menu_place_text",
-            children: [
-              { widget: "label", class: "editor_place_name", text: "Runway" },
-              { widget: "label", class: "dim", text: "{editor.runway}" },
-            ],
-          },
+          { widget: "button", class: "back editor_back", text: "‹ Back", action: "menu.back" },
+          { widget: "button", class: "btn", text: "Vessels", action: "editor.list", active: "editor.list_open" },
         ],
       },
       {
-        widget: "button",
-        class: "menu_item menu_place editor_place",
-        action: "editor.place:orbit",
-        active: "editor.place == orbit",
-        visible: "editor.orbit",
+        widget: "column",
+        class: "editor_panel",
         children: [
-          { widget: "image", class: "editor_place_icon", image: "icons/orbit.svg" },
           {
             widget: "column",
-            class: "menu_place_text",
+            visible: "!editor.has_vessel",
             children: [
-              { widget: "label", class: "editor_place_name", text: "Orbit" },
-              { widget: "label", class: "dim", text: "{editor.orbit}" },
+              { widget: "label", class: "menu_heading", text: "No vessel chosen" },
+              { widget: "label", class: "menu_subtitle", text: "Choose one from the Vessels list to see it here." },
             ],
           },
+          {
+            widget: "column",
+            visible: "editor.has_vessel",
+            children: [
+              { widget: "label", class: "menu_heading", text: "{editor.name}" },
+              { widget: "menu_divider" },
+              { widget: "setting_row", class: "editor_stat", label: "Height", children: [{ widget: "label", class: "menu_row_value", text: "{editor.height|distance}" }] },
+              { widget: "setting_row", class: "editor_stat", label: "Mass", children: [{ widget: "label", class: "menu_row_value", text: "{editor.mass|mass}" }] },
+              { widget: "setting_row", class: "editor_stat", label: "Parts", children: [{ widget: "label", class: "menu_row_value", text: "{editor.parts|int}" }] },
+              { widget: "label", class: "menu_section", text: "Launch from" },
+              {
+                widget: "row",
+                class: "choice choice_wide",
+                children: [
+                  { widget: "button", class: "choice_item", text: "Pad", action: "editor.place:pad", active: "editor.place == pad", visible: "editor.pad" },
+                  { widget: "button", class: "choice_item", text: "Runway", action: "editor.place:runway", active: "editor.place == runway", visible: "editor.runway" },
+                  { widget: "button", class: "choice_item", text: "Orbit", action: "editor.place:orbit", active: "editor.place == orbit", visible: "editor.orbit" },
+                ],
+              },
+              { widget: "label", class: "menu_subtitle", text: "{editor.place_name}" },
+              {
+                widget: "column",
+                class: "editor_occupied",
+                visible: "editor.occupied",
+                children: [
+                  { widget: "label", class: "menu_warning", text: "{editor.occupied}" },
+                  { widget: "button", class: "btn btn_danger editor_clear", text: "{editor.clear_label}", action: "editor.clear", visible: "!editor.clearing" },
+                  { widget: "button", class: "btn btn_danger editor_clear", text: "{editor.clear_question}", action: "editor.clear", visible: "editor.clearing" },
+                ],
+              },
+            ],
+          },
+          { widget: "spacer" },
+          { widget: "label", class: "menu_warning editor_notice", text: "{editor.notice}", visible: "editor.notice" },
+          { widget: "label", class: "menu_subtitle editor_hint", text: "Drag to look around, middle drag or WASD, Q and E to move, wheel to zoom." },
+          { widget: "button", class: "btn btn_primary btn_wide", text: "Launch", action: "editor.launch", visible: "editor.can_launch" },
+          { widget: "button", class: "btn btn_off btn_wide", text: "Launch", action: "editor.launch", visible: "!editor.can_launch" },
         ],
       },
-      { widget: "label", class: "warning", text: "{editor.notice}", visible: "editor.notice" },
-      { widget: "button", class: "editor_launch", text: "Launch", action: "editor.launch" },
-      { widget: "button", text: "Back", action: "editor.back" },
-      { widget: "label", class: "dim", text: "Drag to look around, middle drag or WASD, Q and E to move, wheel to zoom. Drag rows in the staging window to change them." },
     ],
   },
 }

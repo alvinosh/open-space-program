@@ -30,7 +30,7 @@ pub const WARP_RATES: [f64; 10] = [
 ];
 pub const MAX_PHYSICS_WARP: f64 = 4.0;
 /// What `cargo run` shows behind the main menu without `OSP_SCENARIO`.
-const DEFAULT_SCENARIO: &str = "moon_plane";
+pub const DEFAULT_SCENARIO: &str = "moon_plane";
 /// Longest real frame time we simulate; avoids huge catch-up after a hitch.
 const MAX_FRAME_TIME: f64 = 0.1;
 /// Physics ticks per frame before the simulation is allowed to fall behind real time.

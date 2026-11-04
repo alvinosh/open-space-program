@@ -718,6 +718,11 @@ enum TriggerWhen {
 }
 
 impl Propulsion {
+    /// No parts at all, which no craft can be: for a vessel that only holds a place.
+    pub(crate) fn empty() -> Self {
+        Self::new(PartTree::default())
+    }
+
     pub fn from_craft(def: &CraftDef, catalog: &PartCatalog) -> Result<Self, CraftError> {
         let craft = Craft::build(def, catalog)?;
         let parts = PartTree::from_craft(&craft, catalog)?;

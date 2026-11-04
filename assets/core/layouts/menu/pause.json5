@@ -1,0 +1,30 @@
+// Esc with a game in progress. Going back from here resumes. The vessels come first, then the game.
+// In a tutorial only what makes sense in one shows. Mods add rows to `#pause_items.children`.
+{
+  id: "menu_pause",
+  group: "menu",
+  visible: false,
+  root: {
+    id: "pause_items",
+    widget: "screen",
+    title: "Paused",
+    subtitle: "{menu.game_line}",
+    back: false,
+    children: [
+      { widget: "menu_row", text: "Resume", action: "game.resume" },
+      { widget: "menu_row", text: "Restart tutorial", action: "game.start_tutorial:{tutorial.id}", visible: "tutorial.active" },
+      { widget: "menu_divider" },
+      { widget: "menu_row", text: "Vessels", meta: "{menu.vessel_line}", action: "menu.open:vessels", visible: "!tutorial.active" },
+      { widget: "menu_row", text: "Fly a new vessel", action: "editor.open", visible: "!tutorial.active" },
+      { widget: "menu_divider", visible: "!tutorial.active" },
+      { widget: "menu_row", text: "Save game", action: "game.save", visible: "!tutorial.active" },
+      { widget: "menu_row", text: "Save as a new game", action: "game.save_as", visible: "!tutorial.active" },
+      { widget: "menu_row", text: "Load game", action: "menu.open:load", visible: "!tutorial.active" },
+      { widget: "menu_row", text: "New game", action: "game.new", visible: "!tutorial.active" },
+      { widget: "menu_divider", visible: "!tutorial.active" },
+      { widget: "menu_row", text: "Settings", action: "menu.open:settings" },
+      { widget: "menu_row", text: "Exit to main menu", action: "game.exit" },
+      { widget: "menu_row", text: "Quit", action: "game.quit" },
+    ],
+  },
+}

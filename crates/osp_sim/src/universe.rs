@@ -237,6 +237,37 @@ impl Universe {
         }
     }
 
+    /// The vessels standing on the part of `site` a launch needs clear: its runway for `runway`,
+    /// otherwise its pad. Without the part it needs nothing stands on it.
+    pub fn on_launch_ground(&self, site: &LaunchSiteDef, runway: bool) -> Vec<VesselId> {
+        let size = if runway {
+            site.runway.as_ref().map(|runway| runway.size)
+        } else {
+            let pad = site.pad.as_ref().map(|pad| pad.size);
+            Some(pad.unwrap_or([BARE_SITE_SIZE; 2]))
+        };
+        let (Some(size), Some(parent)) = (size, self.system.find(&site.body)) else {
+            return Vec::new();
+        };
+        let body = self.system.body(parent);
+        let from_body = body.orientation(self.time).inverse();
+        let (center, right, forward) = terrain::site_axes(site);
+        let on_it = |vessel: &&Vessel| {
+            let at = from_body * vessel.state_at(&self.system, self.time).position;
+            let up = at.normalize_or_zero();
+            let height = at.length() - body.radius - body.terrain_height(up);
+            let along = (up - center) * body.radius;
+            height < SITE_CLEARANCE
+                && along.dot(forward).abs() <= size[0] / 2.0 + SITE_MARGIN
+                && along.dot(right).abs() <= size[1] / 2.0 + SITE_MARGIN
+        };
+        (self.vessels.iter())
+            .filter(|vessel| vessel.parent() == parent)
+            .filter(on_it)
+            .map(Vessel::id)
+            .collect()
+    }
+
     /// Take every piece of debris out of the game except the focus; returns how many went.
     pub fn clear_debris(&mut self) -> usize {
         let debris: Vec<_> = self
@@ -1208,6 +1239,14 @@ impl Universe {
     }
 }
 
+/// How high above a pad or runway a vessel stands in the way of a launch from it, m: as high as the
+/// middle of the tallest rockets standing on it, and well below anything that has taken off.
+const SITE_CLEARANCE: f64 = 150.0;
+/// How far past the edge of a pad or runway it is in the way, m: half a big rocket's fins or wings.
+const SITE_MARGIN: f64 = 20.0;
+/// What a launch site without a pad needs clear, m.
+const BARE_SITE_SIZE: f64 = 60.0;
+
 #[cfg(test)]
 mod tests {
     use glam::DVec3;
@@ -1219,7 +1258,7 @@ mod tests {
         system::tests::rss,
         vessel::{
             Motion, VesselEventKind,
-            tests::{catalog, leo_vessel, pad_vessel, pathfinder},
+            tests::{catalog, launch_sites, leo_vessel, pad_vessel, pathfinder},
         },
     };
 
@@ -1281,6 +1320,62 @@ mod tests {
                 .is_err()
         );
         assert_eq!(universe.vessels[0].name, "Comet");
+    }
+
+    #[test]
+    fn a_vessel_on_the_pad_is_in_the_way_of_a_launch_from_it_and_of_nothing_else() {
+        let system = rss();
+        let (pad, t) = pad_vessel(&system);
+        let id = pad.id();
+        let mut universe = Universe::new(system, vec![pad], t);
+        let sites = launch_sites();
+        let cape = sites.iter().find(|s| s.pad.is_some()).unwrap();
+        assert_eq!(universe.on_launch_ground(cape, false), [id]);
+        // That site has no runway to be on, and another site is somewhere else.
+        assert!(universe.on_launch_ground(cape, true).is_empty());
+        let strip = sites.iter().find(|s| s.runway.is_some()).unwrap();
+        assert!(universe.on_launch_ground(strip, true).is_empty());
+        // It still stands there as the Earth turns.
+        universe.time = t.add_seconds(30_000.0);
+        assert_eq!(universe.on_launch_ground(cape, false), [id]);
+        // Nothing on it, nothing in the way.
+        universe.remove_vessel(id);
+        assert!(universe.on_launch_ground(cape, false).is_empty());
+    }
+
+    #[test]
+    fn a_vessel_anywhere_on_the_runway_is_in_the_way_of_a_launch_from_it() {
+        let system = rss();
+        let sites = launch_sites();
+        let strip = sites.iter().find(|s| s.runway.is_some()).unwrap();
+        let earth = system.find(&strip.body).unwrap();
+        let t = SimTime::from_seconds(21_600.0);
+        let (radius, turned) = {
+            let body = system.body(earth);
+            (body.radius, body.orientation(t))
+        };
+        let ground = |forward_m: f64, right_m: f64, height: f64| {
+            let up = terrain::site_point(strip, radius, right_m, forward_m);
+            let body = system.body(earth);
+            let at = up * (radius + body.terrain_height(up) + height);
+            StateVector::new(turned * at, DVec3::X * 100.0)
+        };
+        let vessel_at = |state: StateVector| vessel_with(&system, earth, state, t);
+        let cases = [
+            ("at its near end", ground(-2_200.0, 0.0, 3.0), true),
+            ("half way along", ground(0.0, 0.0, 3.0), true),
+            ("on its edge", ground(1_000.0, 40.0, 3.0), true),
+            ("in the grass beside it", ground(0.0, 120.0, 3.0), false),
+            ("past its end", ground(2_400.0, 0.0, 3.0), false),
+            ("flying over it", ground(0.0, 0.0, 800.0), false),
+        ];
+        let mut universe = Universe::new(system.clone(), Vec::new(), t);
+        for (what, state, wanted) in cases {
+            let id = universe.add_vessel(vessel_at(state));
+            let found = universe.on_launch_ground(strip, true).contains(&id);
+            assert_eq!(found, wanted, "{what}");
+            universe.remove_vessel(id);
+        }
     }
 
     /// The Pathfinder on the pad, staged three times with the throttle shut: the booster

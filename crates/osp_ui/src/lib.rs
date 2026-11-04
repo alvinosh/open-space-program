@@ -24,6 +24,7 @@
 //! layouts open a copy per key (a window per part), and popups close on a click outside
 //! them unless pinned.
 
+pub mod components;
 pub mod data;
 pub mod format;
 pub mod layout;

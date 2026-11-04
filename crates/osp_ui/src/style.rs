@@ -78,7 +78,8 @@ impl Edges {
     }
 }
 
-/// A colour: `"#rgb"`, `"#rrggbb"`, `"#rrggbbaa"`, or `[r, g, b]` / `[r, g, b, a]` in 0..1 sRGB.
+/// A colour: `"#rgb"`, `"#rrggbb"`, `"#rrggbbaa"`, `[r, g, b]` / `[r, g, b, a]` in 0..1 sRGB, or
+/// `"$name"`, one of the theme's `colors`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ColorDef {
@@ -87,6 +88,14 @@ pub enum ColorDef {
 }
 
 impl ColorDef {
+    /// The theme colour this one names, if it does.
+    fn name(&self) -> Option<&str> {
+        match self {
+            ColorDef::Hex(text) => text.strip_prefix('$'),
+            ColorDef::Rgba(_) => None,
+        }
+    }
+
     pub fn to_color(&self) -> Color {
         match self {
             ColorDef::Hex(hex) => Srgba::hex(hex.trim_start_matches('#'))
@@ -232,6 +241,24 @@ pub fn vertical_gradient(stops: &[ColorDef]) -> Gradient {
 }
 
 impl StyleDef {
+    /// Every colour the style sets.
+    fn colors_mut(&mut self) -> impl Iterator<Item = &mut ColorDef> {
+        let single = [
+            &mut self.background,
+            &mut self.hover_background,
+            &mut self.border_color,
+            &mut self.color,
+            &mut self.active_background,
+            &mut self.active_border_color,
+            &mut self.active_color,
+        ];
+        let lists = [&mut self.gradient, &mut self.border_gradient];
+        let shadow = self.shadow.as_mut().map(|shadow| &mut shadow.color);
+        (single.into_iter().flatten())
+            .chain(lists.into_iter().flatten().flatten())
+            .chain(shadow)
+    }
+
     /// Write the layout properties into a Bevy `Node`.
     pub fn apply(&self, node: &mut Node) {
         if let Some(d) = &self.direction {
@@ -357,21 +384,50 @@ pub struct ThemeDef {
     /// family (`font`).
     #[serde(default)]
     pub fonts: Vec<String>,
+    /// Named colours: a style says `"$accent"` wherever a colour goes, so one patch recolours
+    /// everything that uses it.
+    #[serde(default)]
+    pub colors: BTreeMap<String, ColorDef>,
     #[serde(default)]
     pub classes: BTreeMap<String, StyleDef>,
 }
 
 impl ThemeDef {
-    /// Merge another theme's classes over this one (class by class, property by property).
+    /// Merge another theme's colours and classes over this one (class by class, property by
+    /// property).
     pub fn merge(&mut self, other: &ThemeDef) {
         for font in &other.fonts {
             if !self.fonts.contains(font) {
                 self.fonts.push(font.clone());
             }
         }
+        self.colors
+            .extend(other.colors.iter().map(|(k, v)| (k.clone(), v.clone())));
         for (name, style) in &other.classes {
             self.classes.entry(name.clone()).or_default().merge(style);
         }
+    }
+
+    /// `$names` in `style` replaced by the colours they name. One nobody defined stays, and
+    /// shows magenta (see [`ColorDef::to_color`]) and in [`Self::unknown_colors`].
+    fn name_colors(&self, style: &mut StyleDef) {
+        for color in style.colors_mut() {
+            if let Some(value) = color.name().and_then(|name| self.colors.get(name)) {
+                *color = value.clone();
+            }
+        }
+    }
+
+    /// The `$names` the classes use that no theme defines, as `class: name`.
+    pub fn unknown_colors(&self) -> Vec<String> {
+        let mut classes = self.classes.clone();
+        (classes.iter_mut())
+            .flat_map(|(class, style)| style.colors_mut().map(move |c| (class.clone(), c.clone())))
+            .filter_map(|(class, color)| {
+                let name = color.name()?;
+                (!self.colors.contains_key(name)).then(|| format!("{class}: ${name}"))
+            })
+            .collect()
     }
 
     /// Style of a text node: the `text` class under the node's own style, so one place
@@ -379,6 +435,7 @@ impl ThemeDef {
     pub fn text_style(&self, style: &StyleDef) -> StyleDef {
         let mut text = self.classes.get("text").cloned().unwrap_or_default();
         text.merge(style);
+        self.name_colors(&mut text);
         text
     }
 
@@ -391,6 +448,7 @@ impl ThemeDef {
             }
         }
         style.merge(inline);
+        self.name_colors(&mut style);
         style
     }
 }
@@ -436,5 +494,61 @@ mod tests {
         let s = theme.resolve("label", "big", &inline);
         assert_eq!(s.font_size, Some(20.0));
         assert_eq!(s.color, Some(ColorDef::Hex("#000".into())));
+    }
+
+    fn themed(accent: &str) -> ThemeDef {
+        serde_json::from_value(serde_json::json!({
+            "id": "t",
+            "colors": { "accent": accent },
+            "classes": {
+                "text": { "color": "$accent" },
+                "lit": {
+                    "background": "$accent",
+                    "gradient": ["#000", "$accent"],
+                    "shadow": { "color": "$accent" },
+                },
+            },
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn named_colours_resolve_in_classes_inline_and_text() {
+        let accent = Some(ColorDef::Hex("#123456".into()));
+        let theme = themed("#123456");
+        let inline = StyleDef {
+            border_color: Some(ColorDef::Hex("$accent".into())),
+            ..default()
+        };
+        let style = theme.resolve("column", "lit", &inline);
+        assert_eq!(style.background, accent);
+        assert_eq!(style.border_color, accent);
+        assert_eq!(style.gradient.unwrap()[1], ColorDef::Hex("#123456".into()));
+        assert_eq!(style.shadow.unwrap().color, ColorDef::Hex("#123456".into()));
+        assert_eq!(theme.text_style(&StyleDef::default()).color, accent);
+        assert!(theme.unknown_colors().is_empty());
+    }
+
+    #[test]
+    fn a_later_theme_recolours_what_names_the_colour() {
+        let mut theme = themed("#123456");
+        theme.merge(&themed("#abcdef"));
+        let style = theme.resolve("column", "lit", &StyleDef::default());
+        assert_eq!(style.background, Some(ColorDef::Hex("#abcdef".into())));
+    }
+
+    #[test]
+    fn a_colour_nobody_defined_is_reported_and_shows_magenta() {
+        let mut theme = themed("#123456");
+        theme.colors.clear();
+        let mut unknown = theme.unknown_colors();
+        unknown.sort();
+        unknown.dedup();
+        assert_eq!(unknown, ["lit: $accent", "text: $accent"]);
+        let style = theme.resolve("column", "lit", &StyleDef::default());
+        assert_eq!(
+            style.background.unwrap().to_color(),
+            Color::srgb(1.0, 0.0, 1.0)
+        );
     }
 }

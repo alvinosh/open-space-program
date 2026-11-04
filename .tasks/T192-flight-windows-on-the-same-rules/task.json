@@ -1,0 +1,23 @@
+{
+  "id": "T192",
+  "title": "Flight windows and toolbar on the same rules",
+  "kind": "chore",
+  "status": "backlog",
+  "area": "ui",
+  "size": "M",
+  "parent": "T185",
+  "depends_on": [
+    "T189",
+    "T190"
+  ],
+  "refs": [
+    "T185",
+    "assets/core/layouts/toolbar.json5",
+    "assets/core/themes/default.json5"
+  ],
+  "created": "2026-11-04",
+  "updated": "2026-11-04",
+  "done": null,
+  "milestone": "M7",
+  "priority": 169
+}

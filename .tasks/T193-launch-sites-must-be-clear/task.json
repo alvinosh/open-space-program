@@ -1,0 +1,22 @@
+{
+  "id": "T193",
+  "title": "A launch needs a clear pad or runway; vessels can be destroyed from the menu",
+  "kind": "feature",
+  "status": "done",
+  "area": "ui",
+  "size": "S",
+  "parent": "T185",
+  "depends_on": [
+    "T190"
+  ],
+  "refs": [
+    "T185",
+    "crates/osp_sim/src/universe.rs",
+    "crates/osp_game/src/editor.rs",
+    "assets/core/layouts/menu/vessels.json5"
+  ],
+  "created": "2026-11-04",
+  "updated": "2026-11-04",
+  "done": "2026-11-04",
+  "milestone": "M1"
+}

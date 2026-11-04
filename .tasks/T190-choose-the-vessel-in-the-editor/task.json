@@ -1,0 +1,24 @@
+{
+  "id": "T190",
+  "title": "Choose the vessel in the editor",
+  "kind": "feature",
+  "status": "done",
+  "area": "ui",
+  "size": "M",
+  "parent": "T185",
+  "depends_on": [
+    "T187"
+  ],
+  "refs": [
+    "T185",
+    "T018",
+    "T019",
+    "crates/osp_game/src/editor.rs",
+    "assets/core/layouts/editor.json5"
+  ],
+  "created": "2026-11-04",
+  "updated": "2026-11-04",
+  "done": "2026-11-04",
+  "milestone": "M1",
+  "priority": 41
+}

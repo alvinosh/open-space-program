@@ -1,16 +1,25 @@
-//! The editor: where a craft is looked at before it flies. For now it only shows it. The player can
-//! walk round it and change its staging with the same window as in flight, then launch it from
-//! the pad, the runway or orbit (`editor.launch`); placing parts is still to come.
+//! The editor: where a vessel is chosen and looked over before it flies. New game (`game.new`) and
+//! Fly a new vessel (`editor.open`) come here with the hangar empty. The player picks a craft from
+//! the list (`editor.show:<id>`), which then gets out of the way and comes back with `editor.list`.
+//! They walk round it, pick another if they like, change its staging with the same window as in
+//! flight, then launch it from the pad, the runway or orbit (`editor.launch`). A pad or runway with
+//! a vessel on it takes no launch until that is cleared (`editor.clear`, asked once). Back or Esc
+//! goes back to the menu with the game as it was. Placing parts is still to come.
 //!
-//! The craft on show is a real vessel (`Vessel::on_display`), the one the player flies for now, so
+//! A game always has a vessel in it. With the last one destroyed, here or from the menu's Vessels
+//! screen (`vessel.destroy:<id>`, asked once), the hangar is what is left: going back from it leaves
+//! the game for the title screen, as there is nothing to go back to.
+//!
+//! What is on show is a real vessel (`Vessel::on_display`), the one the player flies for now, so
 //! the vessel renderer draws it and the staging window edits it as they do in flight. It stands far
 //! over the star's pole, with time stopped, inside a hangar drawn around it that hides everything
-//! else in the game, and goes when the editor closes. What launches is a new vessel built from
-//! the same craft, with the sequences the player left it with.
+//! else in the game, and goes when the editor closes. An empty hangar has a vessel with no parts in
+//! it, so the camera, the lights and the rest of the game always have one to go by. What launches
+//! is a new vessel built from the same craft, with the sequences the player left it with.
 //!
 //! The camera here is its own: the flight camera lets go while the editor is open
 //! ([`CameraRig::held`]). Right or left drag looks around, middle drag or WASD, Q and E moves,
-//! the wheel zooms, all of it inside the hangar.
+//! the wheel zooms, all of it inside the hangar's dome.
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -23,12 +32,13 @@ use bevy::{
     prelude::*,
     render::render_resource::{Extent3d, TextureFormat},
 };
+use osp_mods::ModManifest;
 use osp_sim::{
     data::{CraftDef, LaunchSiteDef, LaunchSiteStartDef, OrbitStartDef, StartDef},
     time::SimTime,
     vessel::{Vessel, VesselId},
 };
-use osp_ui::{LayoutVisibility, PointerOverUi, UiAction, UiData};
+use osp_ui::{LayoutVisibility, PointerOverUi, UiAction, UiData, UiDocuments, UiRecord, record};
 
 use crate::{
     FrameSet,
@@ -36,7 +46,7 @@ use crate::{
     content::{GameContent, catalog},
     controls::InputLocked,
     frame::{RenderFrame, Sunlight, to_render},
-    menu::{Menu, Play, menu_actions},
+    menu::{Menu, go_to_title, menu_actions},
     saves::Saves,
     sim::{Sim, SimRestarted, TimeWarp},
 };
@@ -44,8 +54,14 @@ use crate::{
 /// The layout with the launch button.
 const LAYOUT: &str = "editor";
 /// What stays on the screen of what flight shows, as the editor hides the rest: the staging
-/// window, its menu, a part's window (to split a part off) and the dock that holds them.
-const KEPT_LAYOUTS: [&str; 4] = ["dock_left", "staging", "staging_menu", "part_info"];
+/// window, its menu and a part's window (to split a part off).
+const KEPT_LAYOUTS: [&str; 3] = ["staging", "staging_menu", "part_info"];
+/// The staging window, the dock it goes in here, and a part's window.
+const STAGING: &str = "staging";
+const STAGING_DOCK: &str = "editor_staging";
+const PART_WINDOW: &str = "part_info";
+/// How far the view starts from the middle of an empty hangar, m.
+const EMPTY_VIEW: f64 = 45.0;
 /// A new game's clock: around midday at the Cape, like the stock scenarios. Seconds since J2000.
 const NEW_GAME_TIME: f64 = 21_600.0;
 /// What a craft weighs by when there is no launch site to ask, m/s².
@@ -78,9 +94,13 @@ const MAX_PITCH: f64 = 1.5;
 const NEAREST: f64 = 2.0;
 /// The camera stays this high above the floor, m.
 const OVER_FLOOR: f64 = 0.5;
-/// How far towards the walls and the roof it goes, as shares of the way there.
+/// The hall is a dome: how far out in it the camera goes and what it looks at can be, as shares of
+/// the way from the middle of the floor to the dome.
 const WALL_REACH: f64 = 0.92;
-const ROOF_REACH: f64 = 0.9;
+const FOCUS_REACH: f64 = 0.85;
+/// Which way the view first looks from at what is on show, rad.
+const START_YAW: f64 = std::f64::consts::PI * 1.25;
+const START_PITCH: f64 = 0.12;
 
 pub struct EditorPlugin;
 
@@ -169,12 +189,18 @@ fn start_of(
     }
 }
 
-/// The craft on show.
+/// The editor while it is open, and what is on show.
 struct Showing {
-    craft: CraftDef,
+    /// The craft on show; none in an empty hangar.
+    craft: Option<CraftDef>,
+    /// The vessel standing in the hangar, with no parts in it when there is no craft.
     vessel: VesselId,
-    /// The vessel that was being flown.
-    flown: VesselId,
+    /// The vessel to go back to flying; none once there is nothing left to fly.
+    flown: Option<VesselId>,
+    /// The player was asked about clearing the pad or runway picked.
+    clearing: bool,
+    /// The vessel to go back to is not the one the player left: the camera finds it afresh.
+    flown_changed: bool,
     /// The box round the craft as it stands, from the base of its stack, sim axes.
     low: DVec3,
     high: DVec3,
@@ -192,6 +218,10 @@ struct Showing {
     pan: DVec3,
     /// The left button went down off the UI, so it drags the view.
     dragging: bool,
+    /// Whether the staging window was open, to leave it so.
+    staging_was_open: bool,
+    /// The list of vessels is showing.
+    list_open: bool,
 }
 
 impl Showing {
@@ -234,11 +264,44 @@ impl Showing {
         DVec3::new(self.yaw.cos(), self.yaw.sin(), 0.0)
     }
 
-    /// Move the view as the player asks, keeping it in the hangar.
+    /// Which way the view is from what it looks at.
+    fn around(&self) -> DVec3 {
+        self.away() * self.pitch.cos() + DVec3::Z * self.pitch.sin()
+    }
+
+    /// What the view looks at, from the middle of the floor.
+    fn focus(&self) -> DVec3 {
+        (self.low + self.high) / 2.0 + self.pan - self.floor()
+    }
+
+    /// `at`, from the middle of the floor, in the hall's proportions: the dome is the unit sphere.
+    fn in_dome(&self, at: DVec3) -> DVec3 {
+        DVec3::new(
+            at.x / self.radius(),
+            at.y / self.radius(),
+            at.z / self.height(),
+        )
+    }
+
+    /// How far the view can stand from what it looks at, the way it looks from now, and still be
+    /// inside the dome: beyond it, all there is to see is the outside of the wall.
+    fn reach(&self) -> f64 {
+        let from = self.in_dome(self.focus());
+        let way = self.in_dome(self.around());
+        let (a, half_b) = (way.length_squared(), from.dot(way));
+        let c = from.length_squared() - WALL_REACH * WALL_REACH;
+        let root = half_b * half_b - a * c;
+        if root <= 0.0 {
+            return NEAREST;
+        }
+        ((root.sqrt() - half_b) / a).max(NEAREST)
+    }
+
+    /// Move the view as the player asks, keeping it in the hangar. `distance` is how far they asked
+    /// for: turning towards the roof brings the view in, and turning back takes it out again.
     fn steer(&mut self, input: &ViewInput) {
         self.yaw += input.turn.x * 0.005;
         self.pitch = (self.pitch + input.turn.y * 0.005).clamp(-MAX_PITCH, MAX_PITCH);
-        self.distance *= 0.88f64.powf(input.zoom);
 
         let away = self.away();
         let right = DVec3::new(-away.y, away.x, 0.0);
@@ -248,23 +311,27 @@ impl Showing {
         let step = self.distance.max(10.0) * 0.6 * input.dt;
         self.pan += (-away * input.walk.x + right * input.walk.y + DVec3::Z * input.walk.z) * step;
 
-        let radius = self.radius();
-        let middle = (self.low + self.high) / 2.0;
-        let floor = self.floor();
-        let reach = (radius * 0.6).max(self.size());
-        let pan = self.pan.truncate().clamp_length_max(reach);
-        let height = (middle.z + self.pan.z)
-            .clamp(floor.z + OVER_FLOOR, floor.z + self.height() * ROOF_REACH);
-        self.pan = pan.extend(height - middle.z);
-        let walls = radius * WALL_REACH - pan.length();
-        self.distance = self.distance.clamp(NEAREST, walls.max(NEAREST));
+        // What it looks at stays over the floor and well inside the dome.
+        let (radius, height) = (self.radius(), self.height());
+        let focus = self.focus();
+        let up = focus.z.clamp(OVER_FLOOR, height * FOCUS_REACH);
+        let share = up / height;
+        let across = radius * (FOCUS_REACH * FOCUS_REACH - share * share).max(0.0).sqrt();
+        let focus = focus.truncate().clamp_length_max(across).extend(up);
+        self.pan = focus + self.floor() - (self.low + self.high) / 2.0;
+
+        if input.zoom != 0.0 {
+            // From where it is, however far it was asked to be.
+            let reach = self.reach();
+            let zoomed = self.distance.min(reach) * 0.88f64.powf(input.zoom);
+            self.distance = zoomed.clamp(NEAREST, reach);
+        }
     }
 
     /// Where the camera is and what it looks at, sim axes, given where the base of the stack is.
     fn view(&self, base: DVec3) -> (DVec3, DVec3) {
         let focus = base + (self.low + self.high) / 2.0 + self.pan;
-        let around = self.away() * self.pitch.cos() + DVec3::Z * self.pitch.sin();
-        let mut eye = focus + around * self.distance;
+        let mut eye = focus + self.around() * self.distance.min(self.reach());
         eye.z = eye.z.max(base.z + self.floor().z + OVER_FLOOR);
         (eye, focus)
     }
@@ -284,11 +351,83 @@ impl Editor {
     pub fn gravity(&self) -> Option<f64> {
         self.0.as_ref().map(|showing| showing.gravity)
     }
+
+    /// Turn and zoom the view as the mouse would, for a scripted capture.
+    pub fn look(&mut self, turn: DVec2, zoom: f64) {
+        if let Some(showing) = self.0.as_mut() {
+            showing.steer(&ViewInput {
+                turn,
+                zoom,
+                ..default()
+            });
+        }
+    }
+
+    /// Whether the list of vessels is showing.
+    pub fn list_open(&self) -> bool {
+        self.0.as_ref().is_some_and(|showing| showing.list_open)
+    }
+
+    /// The id of the craft on show while the editor is open, empty for an empty hangar.
+    pub fn craft(&self) -> Option<&str> {
+        let showing = self.0.as_ref()?;
+        Some(showing.craft.as_ref().map_or("", |craft| craft.id.as_str()))
+    }
+}
+
+/// `editor.vessels` (name, and in `craft` each one's id, name, parts and selected): every craft
+/// there is to fly, a group per mod in load order, by name in each.
+fn vessel_groups(content: &GameContent, shown: Option<&str>) -> Vec<UiRecord> {
+    let registry = &content.0.registry;
+    (content.0.mods.iter())
+        .filter_map(|source| {
+            let mut craft: Vec<_> = (registry.records("craft"))
+                .filter(|r| r.source == source.manifest.id)
+                .map(|r| {
+                    let name = (r.value.get("name").and_then(|n| n.as_str()))
+                        .filter(|name| !name.is_empty())
+                        .unwrap_or(&r.id);
+                    let parts = r.value.get("parts").and_then(|p| p.as_array());
+                    (name.to_owned(), r.id.clone(), parts.map_or(0, Vec::len))
+                })
+                .collect();
+            if craft.is_empty() {
+                return None;
+            }
+            craft.sort();
+            let craft: Vec<_> = craft
+                .into_iter()
+                .map(|(name, id, parts)| {
+                    let selected = shown == Some(id.as_str());
+                    record([
+                        ("id", id.into()),
+                        ("name", name.into()),
+                        ("parts", parts.into()),
+                        ("selected", selected.into()),
+                    ])
+                })
+                .collect();
+            Some(record([
+                ("name", group_name(&source.manifest).into()),
+                ("craft", craft.into()),
+            ]))
+        })
+        .collect()
+}
+
+/// What a mod's craft are headed with: its name, up to any colon.
+fn group_name(manifest: &ModManifest) -> &str {
+    let name = if manifest.name.is_empty() {
+        &manifest.id
+    } else {
+        &manifest.name
+    };
+    name.split(':').next().unwrap_or(name)
 }
 
 /// Gravity and the air's pressure on the ground at the site launches go from by default, m/s² and
 /// Pa: what the craft's figures are for.
-fn launch_ground(sim: &Sim, all: &[LaunchSiteDef]) -> (f64, f64) {
+fn ground_at_launch(sim: &Sim, all: &[LaunchSiteDef]) -> (f64, f64) {
     let (pad, runway) = sites(all);
     let system = &sim.universe.system;
     let body = pad.or(runway).and_then(|site| system.find(&site.body));
@@ -336,6 +475,49 @@ fn extent(sim: &mut Sim, index: usize) -> (DVec3, DVec3) {
         high = high.max(at);
     }
     (low, high)
+}
+
+/// The site a launch from `place` goes from, and whether it needs that site's runway. An orbit
+/// stands on nothing.
+fn launch_ground(place: Place, all: &[LaunchSiteDef]) -> Option<(&LaunchSiteDef, bool)> {
+    let (pad, runway) = sites(all);
+    match place {
+        Place::Pad => pad.map(|site| (site, false)),
+        Place::Runway => runway.map(|site| (site, true)),
+        Place::Orbit => None,
+    }
+}
+
+/// What stands where a launch from `place` would. A new game has nothing standing anywhere: what
+/// is there now goes when it starts.
+fn in_the_way(place: Place, all: &[LaunchSiteDef], sim: &Sim, new_game: bool) -> Vec<VesselId> {
+    if new_game {
+        return Vec::new();
+    }
+    launch_ground(place, all).map_or(Vec::new(), |(site, runway)| {
+        sim.universe.on_launch_ground(site, runway)
+    })
+}
+
+/// What the player reads about what is in the way: the name, and how many more with it. The names
+/// of vessels come before those of debris.
+fn named(ids: &[VesselId], sim: &Sim) -> String {
+    let vessels = ids.iter().filter_map(|&id| sim.universe.vessel(id));
+    let mut vessels: Vec<&Vessel> = vessels.collect();
+    vessels.sort_by_key(|vessel| vessel.is_debris());
+    match vessels.as_slice() {
+        [] => String::new(),
+        [only] => only.name.clone(),
+        [first, rest @ ..] => format!("{} and {} more", first.name, rest.len()),
+    }
+}
+
+/// A vessel to fly other than these and what is on show: debris is not one.
+fn next_to_fly(sim: &Sim, except: &[VesselId]) -> Option<VesselId> {
+    (sim.universe.vessels.iter())
+        .filter(|vessel| !vessel.is_debris() && !except.contains(&vessel.id()))
+        .map(Vessel::id)
+        .next()
 }
 
 /// The floor and walls of the hall around the craft on show.
@@ -520,11 +702,105 @@ fn editor_actions(
     mut images: ResMut<Assets<Image>>,
     mut restarted: MessageWriter<SimRestarted>,
     content: Res<GameContent>,
+    docs: Res<UiDocuments>,
 ) {
     for action in actions.read() {
         match action.name() {
-            "editor.open" if editor.0.is_none() => {
+            // Asked once, then destroyed. The last one leaves only the hangar for a new one.
+            "vessel.destroy" if editor.0.is_none() => {
+                let id = action.arg().and_then(|id| id.parse().ok()).map(VesselId);
+                let Some(id) = id.filter(|&id| sim.universe.vessel(id).is_some()) else {
+                    warn!("no vessel to destroy in `{}`", action.0);
+                    continue;
+                };
+                if menu.destroying != Some(id) {
+                    menu.destroying = Some(id);
+                    continue;
+                }
+                let name = sim
+                    .universe
+                    .vessel(id)
+                    .map_or(String::new(), |v| v.name.clone());
+                let next = next_to_fly(&sim, &[id]);
+                menu.destroying = None;
+                info!("destroyed `{name}`");
+                if next.is_some() {
+                    if id == sim.active_id() {
+                        sim.fly(next.unwrap_or(id));
+                        rig.follow = None;
+                        rig.frame(sim.active_vessel().propulsion.length());
+                    }
+                    sim.universe.remove_vessel(id);
+                    menu.notice = format!("Destroyed {name}");
+                    continue;
+                }
+                sim.universe.remove_vessel(id);
+                let registry = &content.0.registry;
+                let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
+                open_hangar(
+                    &mut commands,
+                    &mut editor,
+                    &mut menu,
+                    &mut sim,
+                    &mut rig,
+                    &mut ui,
+                    &mut ambient,
+                    (&mut meshes, &mut materials, &mut images),
+                    &all,
+                    None,
+                );
+            }
+            "game.new" | "editor.open" if editor.0.is_none() => {
+                let registry = &content.0.registry;
+                let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
+                let flown = Some(sim.active_id());
+                open_hangar(
+                    &mut commands,
+                    &mut editor,
+                    &mut menu,
+                    &mut sim,
+                    &mut rig,
+                    &mut ui,
+                    &mut ambient,
+                    (&mut meshes, &mut materials, &mut images),
+                    &all,
+                    flown,
+                );
+            }
+            // Asked once, then whatever stands where the launch would go is destroyed.
+            "editor.clear" => {
+                let Some(showing) = editor.0.as_mut() else {
+                    continue;
+                };
+                if !showing.clearing {
+                    showing.clearing = true;
+                    continue;
+                }
+                showing.clearing = false;
+                let registry = &content.0.registry;
+                let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
+                let ids = in_the_way(showing.place, &all, &sim, menu.new_game);
+                info!("cleared `{}`", named(&ids, &sim));
+                for &id in &ids {
+                    sim.universe.remove_vessel(id);
+                }
+                if showing.flown.is_some_and(|flown| ids.contains(&flown)) {
+                    showing.flown = next_to_fly(&sim, &[showing.vessel]);
+                    showing.flown_changed = true;
+                }
+                showing.notice.clear();
+            }
+            // Put another craft on show in place of what is there.
+            "editor.show" => {
+                let Some(showing) = editor.0.as_mut() else {
+                    continue;
+                };
                 let Some(id) = action.arg() else { continue };
+                showing.clearing = false;
+                if showing.craft.as_ref().is_some_and(|craft| craft.id == id) {
+                    showing.list_open = false;
+                    continue;
+                }
                 let registry = &content.0.registry;
                 let craft = registry.get::<CraftDef>("craft", id);
                 let catalog = catalog(registry, &mut Vec::new());
@@ -538,80 +814,96 @@ fn editor_actions(
                     Ok(built) => built,
                     Err(e) => {
                         error!("cannot show `{id}`: {e}");
-                        menu.notice = format!("Cannot show it: {e}");
+                        showing.notice = format!("Cannot show it: {e}");
                         continue;
                     }
                 };
-                let flown = sim.active_id();
-                let shown = sim.universe.add_vessel(vessel);
-                sim.universe.focus = Some(shown);
-                let index = sim.active_index();
-                let (low, high) = extent(&mut sim, index);
-                let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
-                let (gravity, pressure) = launch_ground(&sim, &all);
+                let pressure = (sim.universe.vessel(showing.vessel))
+                    .map_or(0.0, |left| left.flight.static_pressure);
+                sim.universe.remove_vessel(showing.vessel);
+                showing.vessel = sim.universe.add_vessel(vessel);
+                sim.universe.focus = Some(showing.vessel);
                 sim.active_vessel_mut().flight.static_pressure = pressure;
-                let mut showing = Showing {
-                    craft,
-                    vessel: shown,
-                    flown,
-                    low,
-                    high,
-                    hangar: Entity::PLACEHOLDER,
-                    ambient: ambient.brightness,
-                    gravity,
-                    place: Place::Pad,
-                    notice: String::new(),
-                    yaw: std::f64::consts::PI * 1.25,
-                    pitch: 0.12,
-                    distance: 0.0,
-                    pan: DVec3::ZERO,
-                    dragging: false,
-                };
+                let index = sim.active_index();
+                (showing.low, showing.high) = extent(&mut sim, index);
+                let (radius, height) = (showing.radius(), showing.height());
+                showing.craft = Some(craft);
+                showing.notice.clear();
+                // Every craft is first seen the same way, with the list out of its way.
+                showing.list_open = false;
+                showing.yaw = START_YAW;
+                showing.pitch = START_PITCH;
+                showing.pan = DVec3::ZERO;
                 showing.distance = showing.size() * 1.15 + 6.0;
+                // The hall fits what is in it.
+                commands.entity(showing.hangar).despawn();
                 showing.hangar = spawn_hangar(
                     &mut commands,
                     &mut meshes,
                     &mut materials,
                     &mut images,
-                    showing.radius() as f32,
-                    showing.height() as f32,
+                    radius as f32,
+                    height as f32,
                 );
-                editor.0 = Some(showing);
-                ambient.brightness = HANGAR_AMBIENT;
-                rig.held = true;
-                rig.map_view = false;
-                rig.follow = None;
-                menu.show(false, &mut sim, &mut ui);
-                sim.paused = true;
-                ui.hidden_groups.insert("flight".into());
-                ui.kept.extend(KEPT_LAYOUTS.map(str::to_owned));
-                ui.layouts.insert(LAYOUT.into(), true);
-                ui.layouts.insert("staging".into(), true);
+                close_part_windows(&mut ui);
+                ui.layouts.insert(STAGING.into(), true);
+            }
+            "editor.list" => {
+                if let Some(showing) = editor.0.as_mut() {
+                    showing.list_open = !showing.list_open;
+                }
             }
             "editor.place" => {
                 let place = action.arg().and_then(Place::parse);
                 if let (Some(showing), Some(place)) = (&mut editor.0, place) {
                     showing.place = place;
                     showing.notice.clear();
+                    showing.clearing = false;
                 }
             }
-            // Esc in the editor goes back to the list of craft, as the Back button does.
-            "editor.back" | "game.menu" => {
+            // Esc closes a popup first. Otherwise it and Back go to the menu they came from.
+            "game.menu" if editor.0.is_some() && ui.dismiss_popups(&docs) => {}
+            "editor.back" | "menu.back" | "game.menu" => {
                 let Some(showing) = editor.0.take() else {
                     continue;
                 };
-                sim.universe.focus = Some(showing.flown);
-                sim.universe.remove_vessel(showing.vessel);
                 close(&showing, &mut commands, &mut rig, &mut ui, &mut ambient);
-                menu.play = Play::Craft;
+                menu.new_game = false;
+                let Some(flown) = showing.flown else {
+                    // Nothing left to fly, so nothing to go back to.
+                    go_to_title(
+                        &mut menu,
+                        &mut sim,
+                        &mut warp,
+                        &mut rig,
+                        &mut ui,
+                        &mut saves,
+                        &content,
+                        &mut restarted,
+                    );
+                    continue;
+                };
+                sim.universe.focus = Some(flown);
+                sim.universe.remove_vessel(showing.vessel);
+                if showing.flown_changed {
+                    rig.frame(sim.active_vessel().propulsion.length());
+                }
                 menu.show(true, &mut sim, &mut ui);
             }
             "editor.launch" => {
                 let Some(showing) = editor.0.as_mut() else {
                     continue;
                 };
+                let Some(craft) = showing.craft.clone() else {
+                    showing.notice = "Choose a vessel first".into();
+                    continue;
+                };
                 let registry = &content.0.registry;
                 let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
+                if !in_the_way(showing.place, &all, &sim, menu.new_game).is_empty() {
+                    showing.notice = "Clear it before launching".into();
+                    continue;
+                }
                 let new_game = menu.new_game.then(|| SimTime::from_seconds(NEW_GAME_TIME));
                 let time = new_game.unwrap_or(sim.universe.time());
                 let sun = |body: &str, inclination: f64| {
@@ -626,12 +918,11 @@ fn editor_actions(
                 let sequences = vessel.map(|v| v.propulsion.sequences.clone());
                 let catalog = catalog(registry, &mut Vec::new());
                 let universe = &mut sim.universe;
-                let launched =
-                    universe.launch(&all, &catalog, &showing.craft, &start, sequences, new_game);
+                let launched = universe.launch(&all, &catalog, &craft, &start, sequences, new_game);
                 let id = match launched {
                     Ok(id) => id,
                     Err(e) => {
-                        error!("cannot launch `{}`: {e}", showing.craft.id);
+                        error!("cannot launch `{}`: {e}", craft.id);
                         showing.notice = format!("Cannot launch: {e}");
                         continue;
                     }
@@ -642,11 +933,7 @@ fn editor_actions(
                     continue;
                 };
                 close(&showing, &mut commands, &mut rig, &mut ui, &mut ambient);
-                info!(
-                    "launched `{}` from {}",
-                    showing.craft.id,
-                    showing.place.id()
-                );
+                info!("launched `{}` from {}", craft.id, showing.place.id());
                 rig.frame(showing.size());
                 sim.restarted();
                 *warp = TimeWarp::default();
@@ -654,9 +941,8 @@ fn editor_actions(
                 if menu.new_game {
                     saves.forget_current();
                 }
-                menu.new_game = false;
+                menu.back_to_root();
                 menu.playing = true;
-                menu.play = Play::Start;
                 menu.show(false, &mut sim, &mut ui);
                 // The game is in the list of saves from its first launch on.
                 saves.save(&sim);
@@ -664,6 +950,76 @@ fn editor_actions(
             _ => {}
         }
     }
+}
+
+/// Open the editor with the hangar empty, going back to `flown`.
+#[allow(clippy::too_many_arguments)]
+fn open_hangar(
+    commands: &mut Commands,
+    editor: &mut Editor,
+    menu: &mut Menu,
+    sim: &mut Sim,
+    rig: &mut CameraRig,
+    ui: &mut LayoutVisibility,
+    ambient: &mut GlobalAmbientLight,
+    (meshes, materials, images): (
+        &mut Assets<Mesh>,
+        &mut Assets<StandardMaterial>,
+        &mut Assets<Image>,
+    ),
+    all: &[LaunchSiteDef],
+    flown: Option<VesselId>,
+) {
+    let (gravity, pressure) = ground_at_launch(sim, all);
+    let time = sim.universe.time();
+    let empty = Vessel::empty_display(&sim.universe.system, time);
+    let vessel = sim.universe.add_vessel(empty);
+    sim.universe.focus = Some(vessel);
+    sim.active_vessel_mut().flight.static_pressure = pressure;
+    let index = sim.active_index();
+    let (low, high) = extent(sim, index);
+    let mut showing = Showing {
+        craft: None,
+        vessel,
+        flown,
+        clearing: false,
+        flown_changed: false,
+        low,
+        high,
+        hangar: Entity::PLACEHOLDER,
+        ambient: ambient.brightness,
+        gravity,
+        place: Place::Pad,
+        notice: String::new(),
+        yaw: START_YAW,
+        pitch: START_PITCH,
+        distance: EMPTY_VIEW,
+        pan: DVec3::ZERO,
+        dragging: false,
+        staging_was_open: ui.shown(STAGING),
+        list_open: true,
+    };
+    showing.hangar = spawn_hangar(
+        commands,
+        meshes,
+        materials,
+        images,
+        showing.radius() as f32,
+        showing.height() as f32,
+    );
+    ambient.brightness = HANGAR_AMBIENT;
+    rig.held = true;
+    rig.map_view = false;
+    rig.follow = None;
+    menu.notice.clear();
+    menu.show(false, sim, ui);
+    sim.paused = true;
+    ui.hidden_groups.insert("flight".into());
+    ui.kept.extend(KEPT_LAYOUTS.map(str::to_owned));
+    ui.layouts.insert(LAYOUT.into(), true);
+    ui.layouts.insert(STAGING.into(), false);
+    ui.docks.insert(STAGING.into(), STAGING_DOCK.into());
+    editor.0 = Some(showing);
 }
 
 /// What the editor changed for the time it was open goes back.
@@ -677,8 +1033,19 @@ fn close(
     commands.entity(showing.hangar).despawn();
     ambient.brightness = showing.ambient;
     rig.held = false;
+    close_part_windows(ui);
     ui.kept.clear();
+    ui.docks.remove(STAGING);
+    ui.layouts.insert(STAGING.into(), showing.staging_was_open);
     ui.layouts.insert(LAYOUT.into(), false);
+}
+
+/// The windows of parts of what was on show.
+fn close_part_windows(ui: &mut LayoutVisibility) {
+    let open: Vec<String> = ui.instances(PART_WINDOW).map(str::to_owned).collect();
+    for key in open {
+        ui.layouts.insert(format!("{PART_WINDOW}:{key}"), false);
+    }
 }
 
 /// Look around the craft and move about, as the flight camera does around a vessel.
@@ -779,20 +1146,41 @@ fn light_hangar(
 /// `editor.*`, see `docs/modding.md`.
 fn publish_editor(
     editor: Res<Editor>,
+    menu: Res<Menu>,
     sim: Res<Sim>,
     content: Res<GameContent>,
-    mut published: Local<Option<(VesselId, Place, String)>>,
+    mut published: Local<Option<(VesselId, Place, String, bool, bool, bool, usize)>>,
     mut data: ResMut<UiData>,
 ) {
     let Some(showing) = &editor.0 else {
         *published = None;
         return;
     };
-    let now = (showing.vessel, showing.place, showing.notice.clone());
-    if published.as_ref() == Some(&now) {
+    let now = (
+        showing.vessel,
+        showing.place,
+        showing.notice.clone(),
+        menu.new_game,
+        showing.list_open,
+        showing.clearing,
+        sim.universe.vessels.len(),
+    );
+    if published.as_ref() == Some(&now) && !content.is_changed() {
         return;
     }
     *published = Some(now);
+    let heading = if menu.new_game {
+        "New game"
+    } else {
+        "Fly a new vessel"
+    };
+    data.set("editor.heading", heading);
+    data.set("editor.has_vessel", showing.craft.is_some());
+    data.set("editor.list_open", showing.list_open);
+    data.set(
+        "editor.vessels",
+        vessel_groups(&content, showing.craft.as_ref().map(|c| c.id.as_str())),
+    );
     if let Some(vessel) = sim.universe.vessel(showing.vessel) {
         let propulsion = &vessel.propulsion;
         data.set("editor.name", vessel.name.as_str());
@@ -813,10 +1201,33 @@ fn publish_editor(
         runway.map_or("", LaunchSiteDef::display_name),
     );
     let body = pad.or(runway).map_or("", |site| site.body.as_str());
+    let orbit = format!("{:.0} km around {body}", ORBIT_ALTITUDE / 1e3);
+    let place_name = match showing.place {
+        Place::Pad => pad.map_or("", LaunchSiteDef::display_name),
+        Place::Runway => runway.map_or("", LaunchSiteDef::display_name),
+        Place::Orbit => orbit.as_str(),
+    };
+    data.set("editor.place_name", place_name);
+    data.set("editor.orbit", orbit.as_str());
+    let blocking = in_the_way(showing.place, &all, &sim, menu.new_game);
+    let names = named(&blocking, &sim);
+    let occupied = if blocking.is_empty() {
+        String::new()
+    } else {
+        format!("Occupied by {names}")
+    };
+    data.set("editor.occupied", occupied);
     data.set(
-        "editor.orbit",
-        format!("{:.0} km around {body}", ORBIT_ALTITUDE / 1e3),
+        "editor.can_launch",
+        showing.craft.is_some() && blocking.is_empty(),
     );
+    data.set("editor.clearing", showing.clearing);
+    data.set("editor.clear_question", format!("Destroy {names}?"));
+    let what = match showing.place {
+        Place::Runway => "Clear runway",
+        Place::Pad | Place::Orbit => "Clear pad",
+    };
+    data.set("editor.clear_label", what);
 }
 
 #[cfg(test)]
@@ -858,6 +1269,16 @@ mod tests {
         assert!(start_of(Place::Runway, &[site("a", true, false)], sun).is_none());
         // Without a pad, an orbit goes round the body of the runway.
         assert!(start_of(Place::Orbit, &[site("strip", false, true)], sun).is_some());
+    }
+
+    #[test]
+    fn a_launch_stands_on_the_pad_or_the_runway_and_an_orbit_on_nothing() {
+        let all = [site("strip", false, true), site("a", true, false)];
+        let on = |place| launch_ground(place, &all).map(|(s, runway)| (s.id.as_str(), runway));
+        assert_eq!(on(Place::Pad), Some(("a", false)));
+        assert_eq!(on(Place::Runway), Some(("strip", true)));
+        assert_eq!(on(Place::Orbit), None);
+        assert!(launch_ground(Place::Runway, &[site("a", true, false)]).is_none());
     }
 
     #[test]
@@ -914,15 +1335,17 @@ mod tests {
     /// A craft 100 m tall on show.
     fn showing() -> Showing {
         Showing {
-            craft: CraftDef {
+            craft: Some(CraftDef {
                 id: "test".into(),
                 name: String::new(),
                 parts: Vec::new(),
                 sequences: None,
                 triggers: Vec::new(),
-            },
+            }),
             vessel: VesselId(0),
-            flown: VesselId(0),
+            flown: Some(VesselId(0)),
+            clearing: false,
+            flown_changed: false,
             low: DVec3::new(-5.0, -5.0, -2.0),
             high: DVec3::new(5.0, 5.0, 98.0),
             hangar: Entity::PLACEHOLDER,
@@ -935,7 +1358,174 @@ mod tests {
             distance: 120.0,
             pan: DVec3::ZERO,
             dragging: false,
+            staging_was_open: true,
+            list_open: false,
         }
+    }
+
+    /// How far out in the dome the camera stands, 1 at the dome, and what is on show from there.
+    fn out_in_dome(view: &Showing) -> f64 {
+        let (eye, _) = view.view(DVec3::ZERO);
+        view.in_dome(eye - view.floor()).length()
+    }
+
+    #[test]
+    fn zoomed_right_out_the_view_stays_under_the_dome_whichever_way_it_looks() {
+        // A small craft in the smallest hall, where the roof is lowest for its width, and a tall one.
+        let small = Showing {
+            low: DVec3::new(-1.0, -1.0, 0.0),
+            high: DVec3::new(1.0, 1.0, 15.0),
+            ..showing()
+        };
+        for craft in [small, showing()] {
+            let mut view = craft;
+            for step in 0..=60 {
+                view.pitch = -MAX_PITCH + 2.0 * MAX_PITCH * f64::from(step) / 60.0;
+                for yaw in 0..12 {
+                    view.yaw = f64::from(yaw) * 0.5;
+                    view.steer(&ViewInput {
+                        zoom: -500.0,
+                        ..default()
+                    });
+                    let out = out_in_dome(&view);
+                    assert!(
+                        out <= WALL_REACH + 1e-6,
+                        "through the dome at {out}, pitch {}",
+                        view.pitch
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn however_far_it_is_dragged_what_it_looks_at_stays_inside_and_the_view_inside_with_it() {
+        let mut view = showing();
+        for drag in [DVec2::splat(1e6), DVec2::splat(-1e6), DVec2::new(1e6, -1e6)] {
+            view.steer(&ViewInput {
+                drag,
+                zoom: -500.0,
+                ..default()
+            });
+            let focus = view.in_dome(view.focus()).length();
+            assert!(focus <= FOCUS_REACH + 1e-6, "looking at {focus}");
+            assert!(out_in_dome(&view) <= WALL_REACH + 1e-6);
+            assert!(
+                view.focus().z >= OVER_FLOOR - 1e-6,
+                "looking under the floor"
+            );
+        }
+    }
+
+    #[test]
+    fn turning_towards_the_roof_brings_the_view_in_and_turning_back_takes_it_out_again() {
+        let mut view = showing();
+        view.steer(&ViewInput {
+            zoom: -500.0,
+            ..default()
+        });
+        let far = view.view(DVec3::ZERO);
+        let far = far.0.distance(far.1);
+        view.steer(&ViewInput {
+            turn: DVec2::new(0.0, 250.0),
+            ..default()
+        });
+        let above = view.view(DVec3::ZERO);
+        assert!(above.0.distance(above.1) < far * 0.9, "should have come in");
+        view.steer(&ViewInput {
+            turn: DVec2::new(0.0, -250.0),
+            ..default()
+        });
+        let back = view.view(DVec3::ZERO);
+        assert!(
+            (back.0.distance(back.1) - far).abs() < 1e-6,
+            "should be back out"
+        );
+    }
+
+    #[test]
+    fn zooming_in_answers_at_once_however_far_out_it_was_asked_to_be() {
+        let mut view = showing();
+        view.steer(&ViewInput {
+            zoom: -500.0,
+            ..default()
+        });
+        let far = view.distance;
+        assert!(
+            far <= view.reach() + 1e-6,
+            "zooming out must stop at the dome"
+        );
+        view.steer(&ViewInput {
+            zoom: 1.0,
+            ..default()
+        });
+        assert!(view.distance < far);
+    }
+
+    #[test]
+    fn an_empty_hangar_stands_a_vessel_with_nothing_in_it() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let content = osp_mods::load(&root.join("assets/core"), None);
+        let registry = &content.registry;
+        let mut diagnostics = Vec::new();
+        let system = osp_sim::system::SolarSystem::from_def(&osp_sim::data::SystemDef {
+            bodies: registry.all("bodies", &mut diagnostics),
+        })
+        .unwrap();
+        let vessel = Vessel::empty_display(&system, SimTime::from_seconds(0.0));
+        assert!(vessel.propulsion.parts().parts().is_empty());
+        assert_eq!(vessel.propulsion.length(), 0.0);
+        assert!(vessel.propulsion.mass().abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_list_of_vessels_goes_by_mod_and_marks_the_one_on_show() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let content = GameContent(osp_mods::load(
+            &root.join("assets/core"),
+            Some(&root.join("mods")),
+        ));
+        let groups = vessel_groups(&content, Some("glider"));
+        let mut data = UiData::default();
+        data.set("groups", groups);
+        let text = |key: &str| format!("{:?}", data.get(key));
+        assert!(
+            text("groups[0].name").contains("Core"),
+            "{}",
+            text("groups[0].name")
+        );
+        let first = data.list_len("groups[0].craft");
+        let total: usize = (0..data.list_len("groups"))
+            .map(|g| data.list_len(&format!("groups[{g}].craft")))
+            .sum();
+        assert!(first > 0 && total > first, "{first} of {total}");
+        let mut lit = 0;
+        for g in 0..data.list_len("groups") {
+            for c in 0..data.list_len(&format!("groups[{g}].craft")) {
+                if data.condition(&format!("groups[{g}].craft[{c}].selected")) {
+                    lit += 1;
+                    assert!(
+                        data.condition(&format!("groups[{g}].craft[{c}].id == glider")),
+                        "the wrong one is lit"
+                    );
+                }
+            }
+        }
+        assert_eq!(lit, 1);
+    }
+
+    #[test]
+    fn a_mod_is_headed_by_its_name_up_to_any_colon() {
+        let manifest = |id: &str, name: &str| {
+            serde_json::from_value::<ModManifest>(serde_json::json!({ "id": id, "name": name }))
+                .unwrap()
+        };
+        assert_eq!(
+            group_name(&manifest("r", "Realism: parts and history")),
+            "Realism"
+        );
+        assert_eq!(group_name(&manifest("c", "Core")), "Core");
+        assert_eq!(group_name(&manifest("plain", "")), "plain");
     }
 
     #[test]
@@ -1038,6 +1628,7 @@ mod tests {
                 "under the floor: {input:?}"
             );
             assert!(focus.z <= floor + height, "through the roof: {input:?}");
+            assert!(out_in_dome(&view) <= 1.0, "through the dome: {input:?}");
             let out = eye.truncate().distance(view.floor().truncate());
             assert!(
                 out <= radius,

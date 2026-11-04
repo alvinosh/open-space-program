@@ -72,6 +72,8 @@ pub struct LayoutVisibility {
     pub pinned: HashSet<String>,
     /// Layouts, copies of them included, that stay up while their group is hidden.
     pub kept: HashSet<String>,
+    /// Layouts in another dock than their own for now: the layout's id and the dock's.
+    pub docks: HashMap<String, String>,
 }
 
 impl LayoutVisibility {
@@ -91,6 +93,23 @@ impl LayoutVisibility {
     pub fn toggle(&mut self, id: &str) {
         let open = !self.shown(id);
         self.layouts.insert(id.to_owned(), open);
+    }
+
+    /// Close the popups that are open and not pinned, copies of instanced ones included, and say
+    /// whether there were any.
+    pub fn dismiss_popups(&mut self, documents: &UiDocuments) -> bool {
+        let is_popup = |id: &str| {
+            let template = id.split(':').next().unwrap_or(id);
+            (documents.layouts.iter()).any(|l| l.popup && l.id == template)
+        };
+        let open: Vec<String> = (self.layouts.iter())
+            .filter(|(id, open)| **open && !self.pinned.contains(*id) && is_popup(id))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &open {
+            self.layouts.insert(id.clone(), false);
+        }
+        !open.is_empty()
     }
 
     /// The keys of the open copies of instanced layout `layout`.
@@ -137,6 +156,8 @@ pub struct Dock(pub String);
 #[derive(Component, Debug)]
 pub struct DockMember {
     pub dock: String,
+    /// The dock the layout names, for when nothing has it in another.
+    home: String,
     pub order: i32,
     pub state: DockState,
     /// The layout's own width; in the dock it is a minimum, so the column lines up.
@@ -655,6 +676,7 @@ fn spawn_layout(
     if let Some(dock) = &layout.dock {
         e.insert(DockMember {
             dock: dock.clone(),
+            home: dock.clone(),
             order: layout.dock_order,
             state: DockState::Pending,
             width: style.width.as_ref().map_or(Val::Auto, Length::to_val),
@@ -817,6 +839,7 @@ pub fn close_popups(
 /// Stack layouts waiting for their dock into it.
 pub fn attach_docked(
     mut commands: Commands,
+    shown: Res<LayoutVisibility>,
     docks: Query<(Entity, &Dock)>,
     mut members: Query<(
         Entity,
@@ -827,6 +850,13 @@ pub fn attach_docked(
     )>,
 ) {
     for (entity, root, mut member, mut node, mut z) in &mut members {
+        let wanted = shown.docks.get(&root.id).unwrap_or(&member.home).clone();
+        if member.dock != wanted {
+            member.dock = wanted;
+            if member.state != DockState::Floating {
+                member.state = DockState::Pending;
+            }
+        }
         if member.state != DockState::Pending {
             continue;
         }
@@ -1632,6 +1662,42 @@ pub fn publish_inspector(shown: Res<LayoutVisibility>, mut data: ResMut<UiData>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dismissing_closes_open_unpinned_popups_and_says_whether_there_were_any() {
+        let layout = |id: &str, popup: bool| LayoutDef {
+            id: id.to_owned(),
+            visible: false,
+            group: None,
+            dock: None,
+            dock_order: 0,
+            instanced: false,
+            popup,
+            root: NodeDef::default(),
+        };
+        let documents = UiDocuments {
+            layouts: vec![
+                layout("map_menu", true),
+                layout("part_info", true),
+                layout("orbit_info", false),
+            ],
+            ..default()
+        };
+        let mut shown = LayoutVisibility::default();
+        shown.layouts.insert("orbit_info".into(), true);
+        assert!(!shown.dismiss_popups(&documents), "a window is no popup");
+        assert!(shown.shown("orbit_info"));
+
+        shown.layouts.insert("map_menu".into(), true);
+        shown.layouts.insert("part_info:3-1".into(), true);
+        shown.layouts.insert("part_info:3-2".into(), true);
+        shown.pinned.insert("part_info:3-2".into());
+        assert!(shown.dismiss_popups(&documents));
+        assert!(!shown.shown("map_menu"));
+        assert!(!shown.shown("part_info:3-1"));
+        assert!(shown.shown("part_info:3-2"), "pinned stays");
+        assert!(!shown.dismiss_popups(&documents), "only the pinned one left");
+    }
 
     #[test]
     fn a_kept_layout_stays_up_while_its_group_is_hidden() {

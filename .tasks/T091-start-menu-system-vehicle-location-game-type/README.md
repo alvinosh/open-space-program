@@ -8,7 +8,7 @@ Choose the system, vehicle, location and game type (sandbox, testing); spawn lan
 
 ## Done so far
 
-- The Play page: new game or load game, then a vessel in the game or a new one, then the craft, the editor, and launch from the pad, the runway or orbit.
+- New game or load game from the menu; a new vessel is chosen in the editor (T190) and launched from the pad, the runway or orbit.
 - It always uses the first site with a pad or runway and a 200 km orbit round the pad's body, at the pad's latitude, starting in daylight. Sandbox is the only game type.
 
 ## Still open
