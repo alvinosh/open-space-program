@@ -15,4 +15,5 @@ __pycache__/
 !/website/fonts/OFL.txt
 !/assets/core/fonts/OFL.txt
 *.glb
+!mods/realism/models/parts/*.glb
 scripts

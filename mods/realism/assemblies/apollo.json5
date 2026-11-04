@@ -67,6 +67,7 @@
         name: "Service Module",
         on: "service_module_decoupler.bottom",
         by: "top",
+        model: { path: "models/parts/service_module.glb" },
         shape: {
           compound: [
             {
@@ -174,7 +175,7 @@
           { name: "h2_2", position: [1.15, 0.45, 1.7], direction: [0, 0, 1], size: 0.7 },
           { name: "o2_1", position: [1.15, -0.4, 2.6], direction: [0, 0, 1], size: 0.7 },
           { name: "o2_2", position: [1.15, 0.4, 2.6], direction: [0, 0, 1], size: 0.7 },
-          { name: "high_gain", position: [0, -1.96, 0.3], direction: [0, -1, 0], size: 0.8 },
+          { name: "high_gain", position: [0, -1.6, -0.05], direction: [0, 0, 1], size: 0.8 },
           {
             name: "fuel_cell_1",
             position: [1.127631, -0.410424, 0.4],
@@ -300,8 +301,11 @@
         id: "high_gain_antenna",
         name: "High gain antenna",
         on: "service_module.high_gain",
+        model: { path: "models/parts/high_gain_antenna.glb" },
         // Four 0.8 m S-band dishes, about 20 W, 51.2 kbit/s of telemetry and voice.
         procedural: { antenna: { diameter: 1.6, power: 20, data_rate: 51200 } },
+        // Folded under the service module, inside the adapter, until the CSM has left it.
+        components: [{ swing: { axis: [1, 0, 0], angle: -90, seconds: 6 } }],
       },
       {
         id: "fuel_cell_1",

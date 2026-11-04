@@ -329,8 +329,19 @@ pub enum ComponentDef {
     Antenna(AntennaDef),
     SolidMotor(SolidMotorDef),
     Parachute(ParachuteDef),
+    Swing(SwingDef),
     HeatShield(HeatShieldDef),
     LifeSupport(LifeSupportDef),
+}
+
+/// A part that folds out once when told to: `unfold`. It turns `angle` degrees about `axis`, in
+/// its own frame and through its origin, in `seconds`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SwingDef {
+    pub axis: [f64; 3],
+    pub angle: f64,
+    pub seconds: f64,
 }
 
 /// A canopy, packed until it is armed and low enough.
@@ -755,6 +766,7 @@ pub enum Component {
     Avionics(AvionicsUnitDef),
     Antenna(AntennaDef),
     Parachute(ParachuteDef),
+    Swing(SwingDef),
     HeatShield(HeatShieldDef),
     LifeSupport(LifeSupportDef),
 }
@@ -1041,6 +1053,7 @@ impl PartDef {
                     hardware = hardware + Mass::point(def.mass, DVec3::ZERO);
                     Component::Engine(Box::new(engine))
                 }
+                ComponentDef::Swing(def) => Component::Swing(def.clone()),
                 ComponentDef::Parachute(def) => {
                     if !(def.diameter > 0.0 && def.drag > 0.0 && def.max_pressure > 0.0) {
                         return Err(bad("a parachute has a size, drag and a strength".into()));

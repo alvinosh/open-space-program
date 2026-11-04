@@ -21,6 +21,7 @@ check of the result. Other scenes are left alone.
 | `c1.py` | `models/pods/c1.glb` |
 | `c4.py` | `models/pods/c4.glb` |
 | `cold_gas_quad.py` | `models/rcs/cold_gas_quad.glb` |
+| `saturn_v_parts.py` | `mods/realism/models/parts/`: service module, high gain antenna, escape tower, LM descent stage and foot pad, separation motor, instrument unit, S-IVB APS |
 
 `osp_common.py` has the shared helpers (lathe/sweep primitives, nozzle contours, materials, export,
 checks, preview renders). `k1_common.py` is the K-1 powerhead shared by both K-1 engines,

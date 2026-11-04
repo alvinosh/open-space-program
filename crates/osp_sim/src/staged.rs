@@ -170,6 +170,7 @@ pub fn convert(
                             common_bulkhead: None,
                             aft_skirt: 0.0,
                             forward_skirt: 0.0,
+                            thrust_plate: false,
                         }),
                         TankShape::Sphere => ShapeDef::Sphere(SphereDef {
                             diameter: 2.0 * tank.radius,
@@ -1233,6 +1234,8 @@ fn blank(id: String) -> CraftPartDef {
         template: None,
         shape: None,
         procedural: None,
+        model: None,
+        unseen: false,
         structure: StructureDef::default(),
         components: Vec::new(),
         nodes: Vec::new(),

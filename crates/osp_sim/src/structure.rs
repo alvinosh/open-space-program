@@ -118,6 +118,7 @@ impl Tank {
                     common_bulkhead: None,
                     aft_skirt: 0.0,
                     forward_skirt: 0.0,
+                    thrust_plate: false,
                 }),
                 def.length,
             ),

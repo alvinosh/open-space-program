@@ -131,17 +131,16 @@ engine, pod, RCS block or reaction wheel) or a `shape` with what it is made of a
       shape: { ring: { diameter: 1.8, height: 0.072, thickness: 0.036 } },
       structure: { mass: 20 },
       components: [{ decoupler: { node: "top" } }] },
-    // The booster hangs under the ring, and they leave together.
+    // The booster hangs under the ring, and they leave together. It is a tank: its skirts carry the
+    // load round its domes and its plate holds the engine. A tank with nothing in it is a plain
+    // structural cylinder.
     { id: "booster", on: "ring.bottom", by: "top",
-      shape: { shell: { bottom_diameter: 1.8, sections: [{ length: 12 }], cap_bottom: true } },
-      structure: { mass: 600 },
-      components: [{ container: {} }],
-      nodes: [{ name: "engine", position: [0, 0, 0], direction: [0, 0, -1] },
-              { name: "tank", position: [0, 0, 0], direction: [0, 0, 1] }] },
-    { id: "engine", on: "booster.engine", by: "top", template: "K-1 Booster" },
-    { id: "tank", on: "booster.tank", shape: { cylinder_tank: { diameter: 1.8, length: 10 } },
+      shape: { cylinder_tank: { diameter: 1.8, length: 10, aft_skirt: 0.64, forward_skirt: 0.64,
+                                thrust_plate: true } },
       components: [{ storage: { type: "Stiffened Al 2219",
-                                contents: { Kerosene: 1, LqdOxygen: 2.36 } } }] },
+                                contents: { Kerosene: 1, LqdOxygen: 2.36 } } }],
+      nodes: [{ name: "engine", position: [0, 0, 0], direction: [0, 0, -1] }] },
+    { id: "engine", on: "booster.engine", by: "top", template: "K-1 Booster" },
   ],
 }
 ```
@@ -157,6 +156,9 @@ engine, pod, RCS block or reaction wheel) or a `shape` with what it is made of a
   along (degrees).
 - `nodes`: nodes of its own besides its shape's, in its frame, where other parts are held.
 - `paint`: how it looks; see [Paint](#paint).
+- `model: { path, scale }`: a glTF model drawn in place of its `shape` or its sized `procedural`
+  design, which stay what it holds and weighs and what the air sees. On a landing leg it is the foot.
+- `unseen: true`: not drawn, for something inside another part.
 
 How parts were placed (one by one, with symmetry, as a cluster) leaves no trace: two
 craft with the same parts in the same places are the same craft. Any part can stand anywhere,
@@ -253,6 +255,8 @@ component works with any shape that has what it needs:
 - `structure`: a `material` with the `thickness` of walls, the `solidity` of solids (the
   share that is material, 1 by default) and the `member_area` of trusses (m²); or a total
   `mass` spread the same way. Without either it weighs nothing.
+- `swing`: `axis`, `angle` (degrees), `seconds`: a part drawn as built until its `unfold` action,
+  then turned about its origin, like an antenna boom folded for launch. Only its drawing moves.
 - `parachute`: `diameter` (m), `deploy_altitude` (m: once armed it opens below this), `cut_altitude`
   (m: it lets go below this, for the next to take over), `drag` (0.8), `max_pressure` (Pa: it tears in
   more, 30 kPa), `opening_time` (s, 3). Actions `arm`, `deploy` and `cut`, for sequences and the part's

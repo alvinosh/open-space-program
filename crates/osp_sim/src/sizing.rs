@@ -675,6 +675,7 @@ impl SeparationMotorRequirement {
                 common_bulkhead: None,
                 aft_skirt: 0.0,
                 forward_skirt: 0.0,
+                thrust_plate: false,
             }),
             structure: StructureDef::default(),
             components: vec![

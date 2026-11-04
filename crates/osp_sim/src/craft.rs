@@ -22,7 +22,7 @@ use crate::{
         AssemblyDef, CraftDef, CraftPartDef, EngineDef, PartCatalog, PodDef, RcsDef,
         ReactionWheelDef, ShellProfile, SurfaceAtDef,
     },
-    geometry::preset::{NodeDef, ShapeDef, ShellSection},
+    geometry::preset::{ModelDef, NodeDef, PlacedShapeDef, ShapeDef, ShellSection},
     propulsion::CraftError,
 };
 
@@ -315,6 +315,30 @@ pub fn fit_fairing(enclosed: &[[DVec3; 3]], radius: f64) -> Option<Vec<ShellSect
     ])
 }
 
+/// `shape` as `part` is drawn: hidden, or with its model in its place, the shape still being what
+/// the part holds and weighs and, under a model, what the air sees.
+fn drawn(shape: ShapeDef, part: &CraftPartDef) -> ShapeDef {
+    if !part.unseen && part.model.is_none() {
+        return shape;
+    }
+    let placed = |shape, unseen| PlacedShapeDef {
+        name: String::new(),
+        shape,
+        position: [0.0; 3],
+        rotation: [0.0; 3],
+        unseen,
+    };
+    let mut shapes = vec![placed(shape.clone(), true)];
+    if let Some(model) = &part.model {
+        let model = ModelDef {
+            proxy: Some(Box::new(shape)),
+            ..model.clone()
+        };
+        shapes.push(placed(ShapeDef::Model(model), part.unseen));
+    }
+    ShapeDef::Compound(shapes)
+}
+
 /// `part` built from its template or its shape.
 fn build_part(part: &CraftPartDef, catalog: &PartCatalog) -> Result<CraftPart, CraftError> {
     let bad = |problem: &str| CraftError::BadPart {
@@ -333,7 +357,7 @@ fn build_part(part: &CraftPartDef, catalog: &PartCatalog) -> Result<CraftPart, C
             })?;
         let mut def = PartDef {
             name: part.name.clone().unwrap_or_else(|| part.id.clone()),
-            shape: design.shape,
+            shape: drawn(design.shape, part),
             structure: design.structure,
             components: design.components,
             nodes: part.nodes.clone(),
@@ -367,7 +391,7 @@ fn build_part(part: &CraftPartDef, catalog: &PartCatalog) -> Result<CraftPart, C
             None,
             PartDef {
                 name: String::new(),
-                shape: shape.clone(),
+                shape: drawn(shape.clone(), part),
                 structure: part.structure.clone(),
                 components: Vec::new(),
                 nodes: Vec::new(),

@@ -227,9 +227,8 @@ fn publish_parts(
 
 /// The `is_<type>` field a part doing `kind` shows that section of its window by, and what the
 /// window calls it.
-fn kind_label(kind: &PartKind, body: bool) -> (&'static str, &'static str) {
+fn kind_label(kind: &PartKind) -> (&'static str, &'static str) {
     match kind {
-        PartKind::Structure { .. } if body => ("hull", "Stage hull"),
         PartKind::Structure { .. } => ("structure", "Structure"),
         PartKind::Decoupler { .. } => ("decoupler", "Decoupler"),
         PartKind::Tank(_) => ("tank", "Tank"),
@@ -273,9 +272,7 @@ fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
     let tree = vessel.propulsion.parts();
     let stages = &vessel.propulsion.sections;
     let stage = stages.iter().find(|s| s.id == part.stage);
-    let labels: Vec<_> = (part.kinds.iter())
-        .map(|kind| kind_label(kind, part.body.is_some()))
-        .collect();
+    let labels: Vec<_> = (part.kinds.iter()).map(kind_label).collect();
     let type_ = labels.first().map_or("structure", |(type_, _)| type_);
     let label = (labels.iter().map(|(_, label)| *label))
         .collect::<Vec<_>>()
@@ -321,6 +318,7 @@ fn publish_part(data: &mut UiData, prefix: &str, vessel: &Vessel, part: &Part) {
     set("can_split", shared.into());
     set("split", format!("{}:{}", vessel.id().0, part.id.0).into());
 
+    set("has_size", part.body.is_some().into());
     if let Some(body) = part.body {
         set("diameter", body.diameter.into());
         set("length", body.length.into());

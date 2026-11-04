@@ -334,6 +334,7 @@ fn components(
             | Component::Avionics(_)
             | Component::Antenna(_)
             | Component::Parachute(_)
+            | Component::Swing(_)
             | Component::HeatShield(_)
             | Component::LifeSupport(_) => {}
             Component::Engine(engine) => kinds.push(PartKind::Engine(engine.clone())),

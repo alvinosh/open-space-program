@@ -66,6 +66,9 @@ pub struct CylinderTankDef {
     pub aft_skirt: f64,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub forward_skirt: f64,
+    /// A flat plate closing the aft skirt, for engines to stand on.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub thrust_plate: bool,
 }
 
 /// A frustum closed by domes, or by a point where a diameter is 0.
@@ -1041,6 +1044,13 @@ fn cylinder_tank(d: &CylinderTankDef) -> Result<Revolved, String> {
             "aft_skirt",
             Curve::new(vec![side(aft - d.aft_skirt, aft)])?,
         ));
+        if d.thrust_plate {
+            let base = aft - d.aft_skirt;
+            walls.push(wall(
+                "thrust_plate",
+                Curve::new(vec![line(p(0.0, base), p(r, base))])?,
+            ));
+        }
     }
     walls.push(wall(
         "aft_dome",

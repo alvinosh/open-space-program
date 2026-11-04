@@ -13,7 +13,10 @@ use crate::{
     atmosphere::Atmosphere,
     clouds::CloudsDef,
     component::{ComponentDef, PaintDef, StructureDef},
-    geometry::{ShapeDef, preset::NodeDef},
+    geometry::{
+        ShapeDef,
+        preset::{ModelDef, NodeDef},
+    },
     mission::GoalDef,
     ocean::OceanDef,
     scattering::ScatteringDef,
@@ -775,6 +778,13 @@ pub struct CraftPartDef {
     /// ([`crate::sizing`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub procedural: Option<ProceduralDef>,
+    /// Drawn instead of its shape or sized design, which stays what it holds and weighs, and
+    /// what the air sees.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelDef>,
+    /// Inside another part and not drawn.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub unseen: bool,
     #[serde(default, skip_serializing_if = "is_default")]
     pub structure: StructureDef,
     /// What it does, besides what its template does.

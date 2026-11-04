@@ -88,6 +88,7 @@
       name: "Descent Stage",
       on: "stage_separation.bottom",
       by: "top",
+      model: { path: "models/parts/lm_descent_stage.glb" },
       shape: { prism: { sides: 8, diameter: 4.6, length: 1.7 } },
       // Its structure, wiring and batteries' cases, less its engine, tanks and legs.
       structure: { thickness: 0, mass: 1100 },
@@ -142,6 +143,7 @@
       id: "leg_1",
       name: "Landing leg",
       on: "descent_stage.leg_1",
+      model: { path: "models/parts/lm_foot_pad.glb" },
       shape: {
         compound: [
           {
@@ -159,6 +161,7 @@
       id: "leg_2",
       name: "Landing leg",
       on: "descent_stage.leg_2",
+      model: { path: "models/parts/lm_foot_pad.glb" },
       shape: {
         compound: [
           {
@@ -176,6 +179,7 @@
       id: "leg_3",
       name: "Landing leg",
       on: "descent_stage.leg_3",
+      model: { path: "models/parts/lm_foot_pad.glb" },
       shape: {
         compound: [
           {
@@ -193,6 +197,7 @@
       id: "leg_4",
       name: "Landing leg",
       on: "descent_stage.leg_4",
+      model: { path: "models/parts/lm_foot_pad.glb" },
       shape: {
         compound: [
           {

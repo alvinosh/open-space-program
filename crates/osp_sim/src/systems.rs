@@ -15,6 +15,7 @@ mod crew;
 mod electric;
 mod leg;
 mod parachute;
+mod swing;
 mod thermal;
 
 use std::{any::Any, collections::BTreeMap, fmt::Debug};
@@ -27,6 +28,7 @@ pub use self::{
     electric::{Antenna, Avionics, FuelCell, Load, Rtg, SolarArray},
     leg::{DEPLOY_LEG, Leg},
     parachute::{ARM, CUT, ChuteState, DEPLOY, Parachute},
+    swing::{Swing, UNFOLD},
     thermal::{HeatShield, Thermal},
 };
 use crate::{
@@ -314,6 +316,12 @@ pub const KINDS: &[Kind] = &[
         actions: &[leg::DEPLOY_LEG],
         name: "leg",
         load: load::<Leg>,
+    },
+    Kind {
+        of: swing::of,
+        actions: &[swing::UNFOLD],
+        name: "swing",
+        load: load::<Swing>,
     },
     Kind {
         of: thermal::heat_shield,

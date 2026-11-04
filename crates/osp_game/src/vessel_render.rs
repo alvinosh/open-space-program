@@ -16,6 +16,7 @@ use osp_sim::{
     data::{ControlSurfaceDef, EngineDef, TurbineExhaust},
     parts::{PartId, PartKind},
     propulsion::{Engine, Propulsion, Section},
+    systems::Swing,
     time::SimTime,
     vessel::VesselId,
 };
@@ -71,6 +72,7 @@ impl Plugin for VesselRenderPlugin {
                     update_trails,
                     update_control_surfaces,
                     update_gear,
+                    update_swing,
                     update_canopies,
                     update_rcs_plumes,
                 )
@@ -112,6 +114,14 @@ struct ControlSurfaceVisual {
     part: PartId,
     panel: usize,
     axis: Vec3,
+}
+
+/// A part that unfolds, turned each frame from where it was built (`update_swing`).
+#[derive(Component)]
+struct SwingVisual {
+    vessel: VesselId,
+    part: PartId,
+    base: Transform,
 }
 
 /// A gear leg's strut or wheel, placed each frame where the strut's give puts it.
@@ -485,6 +495,15 @@ fn rebuild_on_change(
                         _ => {
                             if !std::mem::replace(&mut drawn, true) {
                                 let mut visual = parent.spawn((pose, Visibility::default(), shows));
+                                if (propulsion.systems.on(part.id).iter())
+                                    .any(|s| s.any().is::<Swing>())
+                                {
+                                    visual.insert(SwingVisual {
+                                        vessel,
+                                        part: part.id,
+                                        base: pose,
+                                    });
+                                }
                                 visual.with_children(|visual| {
                                     pen.draw(visual, built, None);
                                     // A part shaped by a model of its own, not a template's.
@@ -580,23 +599,33 @@ fn rebuild_on_change(
                 if let Some(shows) = shows {
                     visual.insert(shows);
                 }
-                let mut visual = parent.spawn((
-                    GearVisual {
-                        vessel,
-                        leg: k,
-                        wheel: true,
-                    },
-                    // A foot is a shallow pad, a wheel a tyre.
-                    Mesh3d(
-                        meshes.add(
-                            Cylinder::new(r, if leg.foot { 0.2 } else { 0.7 } * r)
-                                .mesh()
-                                .resolution(24),
+                let gear = GearVisual {
+                    vessel,
+                    leg: k,
+                    wheel: true,
+                };
+                // A leg's own model is its foot.
+                let foot = (leg.part)
+                    .and_then(|id| tree.parts().iter().find(|p| p.id == id))
+                    .and_then(|part| part.built.as_ref())
+                    .and_then(|built| built.geometry.models().next())
+                    .and_then(|(shape, _, _)| model(&Some(shape.path.clone())));
+                let mut visual = match foot {
+                    Some(scene) => parent.spawn((gear, scene, PartModel, Transform::default())),
+                    None => parent.spawn((
+                        gear,
+                        // A foot is a shallow pad, a wheel a tyre.
+                        Mesh3d(
+                            meshes.add(
+                                Cylinder::new(r, if leg.foot { 0.2 } else { 0.7 } * r)
+                                    .mesh()
+                                    .resolution(24),
+                            ),
                         ),
-                    ),
-                    MeshMaterial3d(materials.wheel.clone()),
-                    Transform::default(),
-                ));
+                        MeshMaterial3d(materials.wheel.clone()),
+                        Transform::default(),
+                    )),
+                };
                 if let Some(shows) = shows {
                     visual.insert(shows);
                 }
@@ -1012,6 +1041,18 @@ fn update_gear(sim: Res<Sim>, mut parts: Query<(&GearVisual, &mut Transform)>) {
                 .with_rotation(Quat::from_rotation_arc(Vec3::Y, along))
                 .with_scale(Vec3::new(width, mount.distance(axle), width))
         };
+    }
+}
+
+/// Turn a part that unfolds as far as it has got.
+fn update_swing(sim: Res<Sim>, mut parts: Query<(&SwingVisual, &mut Transform)>) {
+    for (visual, mut transform) in &mut parts {
+        let swing = (sim.universe.vessel(visual.vessel))
+            .map(|vessel| vessel.propulsion.systems.on(visual.part))
+            .and_then(|systems| systems.iter().find_map(|s| s.any().downcast_ref::<Swing>()));
+        if let Some(swing) = swing {
+            *transform = visual.base * Transform::from_rotation(rotation_to_render(swing.turn()));
+        }
     }
 }
 

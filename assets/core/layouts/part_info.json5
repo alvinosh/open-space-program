@@ -3,7 +3,7 @@
 // unless it is pinned (`popup`). `self.` is the part's data (`part_info.<vessel>-<part>.`),
 // and `self.is_<type>` says which sections apply, one for each thing the part does (a tank
 // with thrusters shows both): engine, tank, rcs, wheel, pod, fins, wing, gear, shell, fairing,
-// hull or decoupler; `self.type` is the first of them. `self.actions[]` are what can be done to
+// structure or decoupler; `self.type` is the first of them. `self.actions[]` are what can be done to
 // the part by hand now (`label`, `do`: the `part.do` argument); a stage only does them in order.
 // `self.systems[]` are the figures of whatever else the part does (`label`, `value`), with no
 // section of its own for any of them. `self.sequence` is the number of the sequence that fires
@@ -174,7 +174,7 @@
         children: [
           { widget: "row", class: "kv", visible: "self.is_shell", children: [{ widget: "label", class: "key", text: "Profile" }, { widget: "label", text: "{self.profile}, {self.length|fixed:2} m long" }] },
           { widget: "row", class: "kv", visible: "self.is_shell", children: [{ widget: "label", class: "key", text: "Diameter" }, { widget: "label", text: "{self.bottom_diameter|fixed:2} m to {self.top_diameter|fixed:2} m" }] },
-          { widget: "row", class: "kv", visible: "self.is_hull", children: [{ widget: "label", class: "key", text: "Size" }, { widget: "label", text: "{self.diameter|fixed:2} m wide, {self.length|fixed:2} m long" }] },
+          { widget: "row", class: "kv", visible: "self.has_size", children: [{ widget: "label", class: "key", text: "Size" }, { widget: "label", text: "{self.diameter|fixed:2} m wide, {self.length|fixed:2} m long" }] },
           { widget: "row", class: "kv", visible: "self.is_fairing", children: [{ widget: "label", class: "key", text: "Size" }, { widget: "label", text: "{self.diameter|fixed:2} m wide, {self.length|fixed:2} m long" }] },
           { widget: "row", class: "kv", visible: "self.is_decoupler", children: [{ widget: "label", class: "key", text: "Size" }, { widget: "label", text: "{self.diameter|fixed:2} m wide, {self.length|fixed:2} m long" }] },
         ],

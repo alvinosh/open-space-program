@@ -91,6 +91,7 @@ pub fn inspect(w: &mut World) -> Audit {
                 Component::LiftingSurface(_) => runs.push("lifting surface".into()),
                 Component::Container(_) => runs.push("container".into()),
                 Component::Gear(_) => runs.push("landing gear".into()),
+                Component::Swing(_) => runs.push("unfolds".into()),
                 Component::FuelCell(f) => runs.push(format!("fuel cell: {:.0} W", f.power)),
                 Component::SolarArray(a) => runs.push(format!("solar array: {:.0} m²", a.area)),
                 Component::Rtg(r) => runs.push(format!("RTG: {:.0} W", r.power)),
