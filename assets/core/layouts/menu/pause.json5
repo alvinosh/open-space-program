@@ -1,5 +1,6 @@
 // Esc with a game in progress. Going back from here resumes. The vessels come first, then the game.
-// In a tutorial only what makes sense in one shows. Mods add rows to `#pause_items.children`.
+// In a tutorial only what makes sense in one shows. Mods add rows to `#pause_items.children`. What
+// leaves the game goes through `ask.leave`, which asks to save first if that would lose anything.
 {
   id: "menu_pause",
   group: "menu",
@@ -20,11 +21,11 @@
       { widget: "menu_row", text: "Save game", action: "game.save", visible: "!tutorial.active" },
       { widget: "menu_row", text: "Save as a new game", action: "game.save_as", visible: "!tutorial.active" },
       { widget: "menu_row", text: "Load game", action: "menu.open:load", visible: "!tutorial.active" },
-      { widget: "menu_row", text: "New game", action: "game.new", visible: "!tutorial.active" },
+      { widget: "menu_row", text: "New game", action: "ask.leave:game.new", visible: "!tutorial.active" },
       { widget: "menu_divider", visible: "!tutorial.active" },
       { widget: "menu_row", text: "Settings", action: "menu.open:settings" },
-      { widget: "menu_row", text: "Exit to main menu", action: "game.exit" },
-      { widget: "menu_row", text: "Quit", action: "game.quit" },
+      { widget: "menu_row", text: "Exit to main menu", action: "ask.leave:game.exit" },
+      { widget: "menu_row", text: "Quit", action: "ask.leave:game.quit" },
     ],
   },
 }

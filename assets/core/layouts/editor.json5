@@ -89,8 +89,7 @@
                 visible: "editor.occupied",
                 children: [
                   { widget: "label", class: "menu_warning", text: "{editor.occupied}" },
-                  { widget: "button", class: "btn btn_danger editor_clear", text: "{editor.clear_label}", action: "editor.clear", visible: "!editor.clearing" },
-                  { widget: "button", class: "btn btn_danger editor_clear", text: "{editor.clear_question}", action: "editor.clear", visible: "editor.clearing" },
+                  { widget: "button", class: "btn btn_danger editor_clear", text: "{editor.clear_label}", action: "ask.clear" },
                 ],
               },
             ],

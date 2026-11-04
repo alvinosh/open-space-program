@@ -11,12 +11,12 @@
 //!
 //! `game.new` goes to the editor (see `editor`) to choose what to launch: nothing is lost until the
 //! first launch from there, and going back drops it. `game.exit` leaves the game for the title
-//! screen. Saves are in `saves`.
+//! screen. Saves are in `saves`, and asking before anything is lost in `dialog`.
 
 use bevy::prelude::*;
 use osp_sim::{
     tutorial::TutorialDef,
-    vessel::{Situation, Vessel, VesselId},
+    vessel::{Situation, Vessel},
 };
 use osp_ui::{LayoutVisibility, UiAction, UiData, UiDocuments, UiRecord, record};
 
@@ -24,6 +24,7 @@ use crate::{
     FrameSet,
     camera::CameraRig,
     content::GameContent,
+    dialog::Dialog,
     editor::Editor,
     saves::{Saves, ago, now},
     sim::{DEFAULT_SCENARIO, Sim, SimRestarted, TimeWarp},
@@ -49,7 +50,6 @@ impl Plugin for MenuPlugin {
             stack: Vec::new(),
             new_game: false,
             notice: String::new(),
-            destroying: None,
         })
         .add_systems(
             Startup,
@@ -86,8 +86,6 @@ pub struct Menu {
     pub new_game: bool,
     /// What just went wrong, for the screen showing.
     pub notice: String,
-    /// The vessel asked about destroying: the next go at it destroys it.
-    pub destroying: Option<VesselId>,
 }
 
 /// The layout of a screen.
@@ -120,7 +118,6 @@ impl Menu {
     fn push(&mut self, screen: &str) {
         self.stack.push(screen.to_owned());
         self.notice.clear();
-        self.destroying = None;
     }
 
     /// Back to the root, with nothing left of what the screens on it were doing.
@@ -128,13 +125,11 @@ impl Menu {
         self.stack.clear();
         self.new_game = false;
         self.notice.clear();
-        self.destroying = None;
     }
 
     /// One screen back. False when there is none to go back to.
     fn pop(&mut self) -> bool {
         self.notice.clear();
-        self.destroying = None;
         self.stack.pop().is_some()
     }
 }
@@ -170,8 +165,7 @@ fn whereabouts(vessel: &Vessel, sim: &Sim) -> String {
     }
 }
 
-/// `menu.vessels` (id, name, where, flying, state, destroying): what there is to fly in the game in
-/// progress.
+/// `menu.vessels` (id, name, where, flying, state): what there is to fly in the game in progress.
 fn vessel_list(sim: &Sim, menu: &Menu) -> Vec<UiRecord> {
     if !menu.playing {
         return Vec::new();
@@ -186,7 +180,6 @@ fn vessel_list(sim: &Sim, menu: &Menu) -> Vec<UiRecord> {
                 ("where", whereabouts(vessel, sim).into()),
                 ("flying", flying.into()),
                 ("state", if flying { "Flying now" } else { "" }.into()),
-                ("destroying", (menu.destroying == Some(vessel.id())).into()),
             ])
         })
         .collect()
@@ -203,7 +196,7 @@ fn save_detail(flying: &str, time: &str, vessels: usize) -> String {
     shown.join(", ")
 }
 
-/// `menu.saves` (file, name, saved, time, flying, vessels, problem, deleting, detail), newest first.
+/// `menu.saves` (file, name, saved, time, flying, vessels, problem, detail), newest first.
 fn save_list(saves: &Saves) -> Vec<UiRecord> {
     let now = now();
     (saves.list.iter())
@@ -228,18 +221,14 @@ fn save_list(saves: &Saves) -> Vec<UiRecord> {
                 ("vessels", vessels.into()),
                 ("problem", problem.into()),
                 ("detail", detail.into()),
-                (
-                    "deleting",
-                    (saves.deleting.as_ref() == Some(&entry.file)).into(),
-                ),
             ])
         })
         .collect()
 }
 
 /// `menu.screen`, `menu.playing`, `menu.new_game`, `menu.tutorials`, `menu.vessels`,
-/// `menu.vessel_line`, `menu.saves`, `menu.has_saves`, `menu.save_name`,
-/// `menu.game_line` and `menu.notice`. See `docs/modding.md`.
+/// `menu.vessel_line`, `menu.saves`, `menu.has_saves`, `menu.can_continue`, `menu.continue_line`,
+/// `menu.save_name`, `menu.game_line` and `menu.notice`. See `docs/modding.md`.
 fn publish_menu(
     content: Res<GameContent>,
     menu: Res<Menu>,
@@ -280,6 +269,13 @@ fn publish_menu(
     if menu.is_changed() || saves.is_changed() {
         data.set("menu.saves", save_list(&saves));
         data.set("menu.has_saves", !saves.list.is_empty());
+        data.set("menu.can_continue", saves.newest().is_some());
+        let header = saves.newest().and_then(|entry| entry.header.as_ref());
+        let line = header.map_or(String::new(), |h| match h.flying.as_str() {
+            "" => h.name.clone(),
+            flying => format!("{}, {flying}", h.name),
+        });
+        data.set("menu.continue_line", line);
         data.set("menu.save_name", saves.current_name().unwrap_or(""));
         let flying = &sim.active_vessel().name;
         let line = match saves.current_name() {
@@ -341,11 +337,14 @@ pub(crate) fn menu_actions(
     mut ui: ResMut<LayoutVisibility>,
     mut saves: ResMut<Saves>,
     editor: Res<Editor>,
+    dialog: Res<Dialog>,
     mut restarted: MessageWriter<SimRestarted>,
     mut exit: MessageWriter<AppExit>,
 ) {
     for action in actions.read() {
         match action.name() {
+            // Esc and Back close the question being asked, and nothing more.
+            "game.menu" | "menu.back" if dialog.is_open() => {}
             // The editor sees to Esc and Back while it is open.
             "game.menu" | "menu.back" if editor.is_open() => {}
             // Esc closes what is open over the view before it opens the menu.
@@ -386,16 +385,8 @@ pub(crate) fn menu_actions(
                 menu.notice.clear();
                 menu.new_game = true;
             }
-            "game.fly" if menu.playing => {
-                let id = action.arg().and_then(|id| id.parse().ok()).map(VesselId);
-                let Some(id) = id.filter(|&id| sim.universe.vessel(id).is_some()) else {
-                    warn!("no vessel to fly in `{}`", action.0);
-                    continue;
-                };
-                sim.fly(id);
-                rig.map_view = false;
-                rig.follow = None;
-                rig.frame(sim.active_vessel().propulsion.length());
+            // `targeting` does the flying.
+            "vessel.fly" if menu.open => {
                 menu.back_to_root();
                 menu.show(false, &mut sim, &mut ui);
             }
@@ -442,7 +433,6 @@ mod tests {
             stack: Vec::new(),
             new_game: false,
             notice: String::new(),
-            destroying: None,
         }
     }
 

@@ -4,8 +4,7 @@ Open Space Program is data-driven: the base game is itself a mod (`assets/core`)
 everything it contains (planets, engines, tanks, craft, scenarios, the UI, the theme,
 keybindings) can be added to, replaced or patched by other mods without touching code.
 
-Mods are data-only for now. A scripting layer will plug into the same records and actions
-later.
+Mods are data-only. There is no scripting language and none is planned for now.
 
 - [Quick start](#quick-start)
 - [Mod structure](#mod-structure)
@@ -1382,8 +1381,11 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `mods.problems[]` | `error` (bool), `text` |
 | `menu.screen`, `menu.playing`, `menu.tutorials[]` | The screen showing; a game is in progress; the tutorials: `id`, `name`, `description`, `steps` |
 | `menu.new_game`, `menu.vessels[]`, `menu.vessel_line`, `menu.game_line` | New game was picked and has not started; the vessels in the game to fly (`id`, `name`, `where`, `flying`, `state`, `destroying`: asked once), debris left out; how many, in words; the line under Paused |
-| `menu.saves[]`, `menu.has_saves`, `menu.save_name`, `menu.notice` | The saves, newest first: `file`, `name`, `saved` (how long ago), `time` (the game's date), `flying`, `vessels`, `problem` (why it cannot be loaded), `detail` (the line to show: the problem, or what is flying, the date and the vessels), `deleting` (asked once); whether there are any; the save the game in progress goes to; what just happened |
-| `editor.heading`, `editor.has_vessel`, `editor.can_launch`, `editor.occupied`, `editor.clearing`, `editor.clear_label`, `editor.clear_question`, `editor.list_open`, `editor.vessels[]`, `editor.place_name`, `editor.name`, `editor.height`, `editor.mass`, `editor.parts`, `editor.place`, `editor.pad`, `editor.runway`, `editor.orbit`, `editor.notice` | The craft on show in the editor (see the `editor` layout); where it will launch from (`pad`, `runway`, `orbit`); which site or orbit each of those is, empty if there is none; why a launch failed |
+| `menu.saves[]`, `menu.has_saves`, `menu.save_name`, `menu.notice` | The saves, newest first: `file`, `name`, `saved` (how long ago), `time` (the game's date), `flying`, `vessels`, `problem` (why it cannot be loaded), `detail` (the line to show: the problem, or what is flying, the date and the vessels); whether there are any; the save the game in progress goes to; what just happened |
+| `menu.can_continue`, `menu.continue_line` | There is a save this game can read; the newest one's name and what it was flying |
+| `marker.name`, `marker.key`, `marker.distance`, `marker.is_vessel`, `marker.targeted`, `marker.target_vessel`, `marker.target_body`, `marker.centre_vessel`, `marker.centre_body` | What the `marker_menu` is open on: a box round a vessel or a body. `key` goes in the actions (`target.vessel`, `target.body`, `vessel.fly`, `manifest.follow`, `manifest.follow_body`), `distance` is from the vessel flown (to a body's surface), and the rest say which items to show |
+| `dialog.title`, `dialog.text`, `dialog.answers[]` | The question being asked: its answers have `index`, `label`, and `plain`, `primary` or `danger` for how the button looks |
+| `editor.heading`, `editor.has_vessel`, `editor.can_launch`, `editor.occupied`, `editor.clear_label`, `editor.list_open`, `editor.vessels[]`, `editor.place_name`, `editor.name`, `editor.height`, `editor.mass`, `editor.parts`, `editor.place`, `editor.pad`, `editor.runway`, `editor.orbit`, `editor.notice` | The craft on show in the editor (see the `editor` layout); where it will launch from (`pad`, `runway`, `orbit`); which site or orbit each of those is, empty if there is none; why a launch failed |
 | `graphics.preset`, `graphics.recommended`, `graphics.summary` | The preset the settings match (`low`, `medium`, `high`, `ultra` or `custom`); the one for this GPU; every setting on one line |
 | `graphics.render_scale`, `graphics.antialiasing`, `graphics.shadows`, `graphics.terrain`, `graphics.trees`, `graphics.effects`, `graphics.bloom`, `graphics.vsync`, `graphics.fps_limit` | Each setting as text: percent; `off`, `fxaa`, `msaa`; a level (`off`, `low`, `medium`, `high`, `ultra`); `on` / `off`; frames per second (`0` for none) |
 | `perf.fps`, `perf.frame_ms`, `perf.worst_ms` | Over the last half second: frame rate, mean and worst frame time (ms) |
@@ -1434,11 +1436,12 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `game.reload` | Reload all mods and rebuild the UI |
 | `game.menu` | Esc: closes an open popup, or opens the menu, or goes back as `menu.back` does. In the editor it goes back to the menu it came from |
 | `menu.open:<screen>`, `menu.back` | Go to the screen, the layout `menu_<screen>`; go back one. From the pause menu that resumes; from the title screen it does nothing |
-| `game.resume`, `game.exit`, `game.quit`, `game.start_tutorial:<tutorial>` | Back to the flight; leave the game for the title screen; close the game; start a tutorial's scenario with its steps |
+| `game.resume`, `game.exit`, `game.quit`, `game.start_tutorial:<tutorial>` | Back to the flight; leave the game for the title screen; close the game; start a tutorial's scenario with its steps. None of them asks: a button that leaves a game uses `ask.leave` |
+| `ask.leave:<action>`, `ask.delete_save:<file>`, `ask.destroy:<vessel>`, `ask.clear` | Ask, in the `dialog` layout, before something is lost. `ask.leave` does `<action>`, which can have an argument of its own (`ask.leave:game.load:game_2`), asking first to save a game that its save does not hold; the others ask whether to do `game.delete_save`, `vessel.destroy` or `editor.clear` |
+| `dialog.answer:<index>`, `dialog.cancel` | Take an answer of the question being asked (`dialog.answers[]`); close it, as Esc and Back do |
 | `game.new` | Go to the editor to choose what to launch in a new game. Nothing changes until the launch; the game in progress goes on if the player goes back |
-| `game.fly:<vessel>` | Fly that vessel in the game in progress |
-| `game.save`, `game.save_as`, `game.load:<file>`, `game.delete_save:<file>` | Save the game in progress to its save; to a new save, which it then goes to; carry on from a save; delete one (the first time only asks, for `item.deleting`) |
-| `editor.list`, `editor.clear`, `vessel.destroy:<vessel>` | Show or hide the editor's list of vessels (`editor.list_open`), which choosing one hides; destroy what stands on the pad or runway picked, the second time; destroy a vessel, the second time, flying another if it was the one being flown and going to the empty hangar if it was the last |
+| `game.save`, `game.save_as`, `game.load:<file>`, `game.continue`, `game.delete_save:<file>` | Save the game in progress to its save; to a new save, which it then goes to; carry on from a save; from the newest this game can read; delete one |
+| `editor.list`, `editor.clear`, `vessel.destroy:<vessel>` | Show or hide the editor's list of vessels (`editor.list_open`), which choosing one hides; destroy what stands on the pad or runway picked; destroy a vessel, flying another if it was the one being flown and going to the empty hangar if it was the last |
 | `editor.open`, `editor.show:<craft>`, `editor.back`, `editor.place:<pad|runway|orbit>`, `editor.launch` | Open the editor with the hangar empty; put a craft on show in place of what is there; go back to the menu; pick where it launches from; launch it, with the sequences it was left with, which also saves the game. With nothing on show `editor.launch` only says to choose a vessel |
 | `tutorial.next`, `tutorial.skip` | Move past the current step (Continue, or skip it); give the tutorial up |
 | `graphics.preset:<low|medium|high|ultra>`, `graphics.detect` | Apply a preset; apply the one recommended for this GPU (both keep vsync and the frame cap) |

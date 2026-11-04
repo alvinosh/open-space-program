@@ -565,7 +565,7 @@ mod tests {
     fn every_menu_screen_in_the_game_follows_the_rules() {
         let documents = core();
         let menus = (documents.layouts.iter())
-            .filter(|l| l.group.as_deref() == Some("menu") || l.id == "editor");
+            .filter(|l| l.group.as_deref() == Some("menu") || l.id == "editor" || l.id == "dialog");
         for layout in menus {
             let problems = broken_rules(layout, &documents.theme);
             assert!(problems.is_empty(), "{problems:#?}");

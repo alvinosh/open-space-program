@@ -1,5 +1,5 @@
-// The saves (`menu.saves`), newest first: `game.load:<file>`, `game.delete_save:<file>` asks and then
-// deletes.
+// The saves (`menu.saves`), newest first. Clicking one carries on from it, asking first to save a game
+// in progress (`ask.leave`); deleting one asks (`ask.delete_save`).
 {
   id: "menu_load",
   group: "menu",
@@ -17,9 +17,8 @@
             widget: "row",
             class: "menu_row_action",
             children: [
-              { widget: "menu_row", style: { grow: 1 }, text: "{item.name}", meta: "{item.saved}", detail: "{item.detail}", action: "game.load:{item.file}" },
-              { widget: "button", class: "btn btn_danger", text: "Delete", action: "game.delete_save:{item.file}", visible: "!item.deleting" },
-              { widget: "button", class: "btn btn_danger", text: "Sure?", action: "game.delete_save:{item.file}", visible: "item.deleting" },
+              { widget: "menu_row", style: { grow: 1 }, text: "{item.name}", meta: "{item.saved}", detail: "{item.detail}", action: "ask.leave:game.load:{item.file}" },
+              { widget: "button", class: "btn btn_danger", text: "Delete", action: "ask.delete_save:{item.file}" },
             ],
           },
         ],

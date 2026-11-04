@@ -228,14 +228,17 @@ pub struct ViewPointer<'w, 's> {
 impl ViewPointer<'_, '_> {
     /// Where the mouse is (logical pixels), unless it is over a UI node or input is locked.
     pub fn position(&self) -> Option<Vec2> {
-        if self.scripted.0.is_some() {
-            return self.scripted.0;
-        }
         let over_ui = self
             .hover_map
             .values()
             .any(|hits| hits.keys().any(|e| self.ui_nodes.contains(*e)));
-        if over_ui || self.locked.0 {
+        if over_ui {
+            return None;
+        }
+        if self.scripted.0.is_some() {
+            return self.scripted.0;
+        }
+        if self.locked.0 {
             return None;
         }
         self.window.cursor_position()
@@ -448,7 +451,8 @@ fn draw_orbits(
         .detail(vessel.name.clone()),
     );
 
-    // Every other vessel, its orbit through it; debris unnamed until hovered.
+    // Every other vessel's orbit through it. Those with a box (see `markers`) need no mark here;
+    // debris keeps its dim dot.
     let target = vessel.target;
     for (i, other) in sim.universe.vessels.iter().enumerate() {
         if i == sim.active_index() {
@@ -464,12 +468,9 @@ fn draw_orbits(
         };
         let parent = other.parent();
         let at = other.state_at(system, frame.time).position;
-        let marker = Marker::dot(frame.to_render(parent, at), color).detail(other.name.clone());
-        labels.add(if other.is_debris() && !targeted {
-            marker
-        } else {
-            marker.tag(other.name.clone())
-        });
+        if other.is_debris() && !targeted {
+            labels.add(Marker::dot(frame.to_render(parent, at), color));
+        }
         if !other.is_landed() {
             let orbit = other.orbit(system, frame.time);
             let radius = system.body(parent).soi.min(1e13);

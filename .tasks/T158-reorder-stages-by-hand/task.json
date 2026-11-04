@@ -2,7 +2,7 @@
   "id": "T158",
   "title": "Reordering stages by hand works and shows where it lands",
   "kind": "bug",
-  "status": "in_progress",
+  "status": "done",
   "area": "ui",
   "size": "M",
   "parent": "T152",
@@ -15,8 +15,8 @@
     "assets/core/layouts/staging.json5"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-02",
-  "done": null,
+  "updated": "2026-11-04",
+  "done": "2026-11-04",
   "milestone": "M1",
   "priority": 15
 }

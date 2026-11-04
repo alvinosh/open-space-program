@@ -1,7 +1,7 @@
 //! Saved games on disk, and the actions on them: `game.save` writes the game in progress to its
-//! save, `game.save_as` to a new one, `game.load:<file>` carries on from one, and
-//! `game.delete_save:<file>` asks once and deletes one on the second go. A save starts with what
-//! the list shows, so the list only reads that much of each (see `osp_sim::save`).
+//! save, `game.save_as` to a new one, `game.load:<file>` carries on from one, `game.continue` from
+//! the newest, and `game.delete_save:<file>` deletes one (`dialog` is what asks first). A save starts
+//! with what the list shows, so the list only reads that much of each (see `osp_sim::save`).
 //!
 //! Saves live in `saves/` in `OSP_USER_DIR`, or beside the settings file. Scripted captures
 //! (`OSP_CAPTURE`) only touch them with `OSP_USER_DIR` set, so they stay reproducible and
@@ -65,8 +65,8 @@ pub struct Saves {
     pub list: Vec<SaveEntry>,
     /// The save the game in progress goes to: its file and name.
     current: Option<(String, String)>,
-    /// The save that a second go at deleting deletes.
-    pub deleting: Option<String>,
+    /// What that save holds (`save::fingerprint`), to tell if the game has moved on from it.
+    saved: Option<u64>,
     /// What just happened, for the menu.
     pub notice: String,
 }
@@ -77,7 +77,7 @@ impl Saves {
             dir,
             list: Vec::new(),
             current: None,
-            deleting: None,
+            saved: None,
             notice: String::new(),
         };
         saves.refresh();
@@ -87,12 +87,29 @@ impl Saves {
     /// Look at what is in the folder.
     pub fn refresh(&mut self) {
         self.list = self.dir.as_deref().map(read_list).unwrap_or_default();
-        self.deleting = None;
     }
 
     /// The game in progress is a new one, with no save yet.
     pub fn forget_current(&mut self) {
         self.current = None;
+        self.saved = None;
+    }
+
+    /// The save holds the game exactly as it is now.
+    pub fn up_to_date(&self, sim: &Sim) -> bool {
+        self.saved.is_some() && save::fingerprint(&sim.universe).ok() == self.saved
+    }
+
+    /// The newest save this game can read.
+    pub fn newest(&self) -> Option<&SaveEntry> {
+        self.list.iter().find(|entry| entry.problem.is_none())
+    }
+
+    /// What the save `file` is called in the list.
+    pub fn name_of<'a>(&'a self, file: &'a str) -> &'a str {
+        (self.list.iter().find(|entry| entry.file == file))
+            .and_then(|entry| entry.header.as_ref())
+            .map_or(file, |header| header.name.as_str())
     }
 
     /// The name the game in progress is saved under, if it has been.
@@ -100,8 +117,9 @@ impl Saves {
         self.current.as_ref().map(|(_, name)| name.as_str())
     }
 
-    /// Write the game in progress to its save, starting one if it has none, and say so.
-    pub fn save(&mut self, sim: &Sim) {
+    /// Write the game in progress to its save, starting one if it has none, and say so. False if
+    /// it could not be written.
+    pub fn save(&mut self, sim: &Sim) -> bool {
         let (file, name) = match self.current.clone() {
             Some(current) => current,
             None => next_save(&self.list),
@@ -111,11 +129,14 @@ impl Saves {
                 info!("saved `{name}`");
                 self.notice = format!("Saved as {name}");
                 self.current = Some((file, name));
+                self.saved = save::fingerprint(&sim.universe).ok();
                 self.refresh();
+                true
             }
             Err(e) => {
                 error!("cannot save `{name}`: {e}");
                 self.notice = format!("Cannot save: {e}");
+                false
             }
         }
     }
@@ -123,7 +144,7 @@ impl Saves {
     /// Write it to a new save, which becomes the one it goes to.
     fn save_as_new(&mut self, sim: &Sim) {
         self.refresh();
-        self.current = None;
+        self.forget_current();
         self.save(sim);
     }
 
@@ -148,6 +169,7 @@ impl Saves {
         let header = save::read_header(&bytes)?;
         sim.universe.restore(save::read(&bytes)?)?;
         self.current = Some((file.to_owned(), header.name));
+        self.saved = save::fingerprint(&sim.universe).ok();
         Ok(())
     }
 
@@ -161,7 +183,7 @@ impl Saves {
             .as_ref()
             .is_some_and(|(current, _)| current == file)
         {
-            self.current = None;
+            self.forget_current();
         }
         Ok(())
     }
@@ -249,10 +271,17 @@ fn save_actions(
 ) {
     for action in actions.read() {
         match action.name() {
-            "game.save" if menu.playing => saves.save(&sim),
+            "game.save" if menu.playing => {
+                saves.save(&sim);
+            }
             "game.save_as" if menu.playing => saves.save_as_new(&sim),
-            "game.load" => {
-                let Some(file) = action.arg() else { continue };
+            "game.load" | "game.continue" => {
+                let file = match action.name() {
+                    "game.load" => action.arg().map(str::to_owned),
+                    _ => saves.newest().map(|entry| entry.file.clone()),
+                };
+                let Some(file) = file else { continue };
+                let file = file.as_str();
                 match saves.load(file, &mut sim) {
                     Ok(()) => {
                         info!("loaded `{file}`");
@@ -275,15 +304,11 @@ fn save_actions(
             }
             "game.delete_save" => {
                 let Some(file) = action.arg() else { continue };
-                if saves.deleting.as_deref() == Some(file) {
-                    if let Err(e) = saves.delete(file) {
-                        error!("cannot delete `{file}`: {e}");
-                        saves.notice = format!("Cannot delete it: {e}");
-                    }
-                    saves.refresh();
-                } else {
-                    saves.deleting = Some(file.to_owned());
+                if let Err(e) = saves.delete(file) {
+                    error!("cannot delete `{file}`: {e}");
+                    saves.notice = format!("Cannot delete it: {e}");
                 }
+                saves.refresh();
             }
             _ => {}
         }
@@ -368,6 +393,18 @@ mod tests {
         );
         assert_eq!(of("broken").problem.as_deref(), Some("Not a save"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn continuing_takes_the_newest_this_game_can_read() {
+        let mut saves = Saves::new(None);
+        assert!(saves.newest().is_none());
+        let mut broken = entry("broken", "Broken");
+        broken.problem = Some("Not a save".to_owned());
+        saves.list = vec![broken, entry("game_2", "Game 2"), entry("game_1", "Game 1")];
+        assert_eq!(saves.newest().map(|e| e.file.as_str()), Some("game_2"));
+        assert_eq!(saves.name_of("game_1"), "Game 1");
+        assert_eq!(saves.name_of("gone"), "gone");
     }
 
     #[test]

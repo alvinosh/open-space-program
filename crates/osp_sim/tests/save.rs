@@ -316,3 +316,24 @@ fn an_orbit_can_start_in_daylight_whatever_the_time() {
         assert!(up > 0.6, "at {hours} h the sun is {up} of the way up");
     }
 }
+
+/// What says whether leaving would lose anything: the same game gives the same number, read back
+/// from a save too, and any change to it gives another, with the clock standing still as well.
+#[test]
+fn the_fingerprint_changes_with_the_game_and_only_with_it() {
+    let content = content();
+    let mut universe = scenario(&content, "leo");
+    let before = save::fingerprint(&universe).unwrap();
+    assert_eq!(save::fingerprint(&universe).unwrap(), before);
+
+    let saved = bytes(&universe);
+    universe.restore(save::read(&saved).unwrap()).unwrap();
+    let restored = save::fingerprint(&universe).unwrap();
+    assert_eq!(save::fingerprint(&universe).unwrap(), restored);
+
+    let time = universe.time();
+    let id = universe.vessels[0].id();
+    universe.remove_vessel(id);
+    assert_eq!(universe.time(), time);
+    assert_ne!(save::fingerprint(&universe).unwrap(), restored);
+}

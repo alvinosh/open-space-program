@@ -12,6 +12,7 @@
 
 use std::{
     collections::BTreeSet,
+    hash::{DefaultHasher, Hash, Hasher},
     sync::{LazyLock, Mutex},
 };
 
@@ -62,6 +63,16 @@ pub fn write(header: &Header, universe: &Universe) -> Result<Vec<u8>, String> {
     let body = rmp_serde::to_vec_named(&universe.snapshot()).map_err(|e| e.to_string())?;
     bytes.extend(body);
     Ok(bytes)
+}
+
+/// What a save of `universe` would hold, as one number: two that are equal hold the same game, to
+/// tell whether leaving now would lose anything. Comparing the clock would not do, since a vessel can
+/// be destroyed with the game paused.
+pub fn fingerprint(universe: &Universe) -> Result<u64, String> {
+    let body = rmp_serde::to_vec_named(&universe.snapshot()).map_err(|e| e.to_string())?;
+    let mut hasher = DefaultHasher::new();
+    body.hash(&mut hasher);
+    Ok(hasher.finish())
 }
 
 /// What a save says it is, from its first line (all of a save may be given, or just the start).

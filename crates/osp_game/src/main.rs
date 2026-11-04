@@ -7,11 +7,11 @@
 
 mod alerts;
 mod atmosphere;
-mod body_markers;
 mod camera;
 mod cloud_puffs;
 mod clouds;
 mod content;
+mod dialog;
 mod controls;
 mod editor;
 mod exhaust_trail;
@@ -20,6 +20,7 @@ mod frame;
 mod launch_site;
 mod manifest;
 mod map_labels;
+mod markers;
 mod menu;
 mod meshgen;
 mod mission;
@@ -173,6 +174,7 @@ fn main() -> AppExit {
             (
                 menu::MenuPlugin,
                 saves::SavesPlugin,
+                dialog::DialogPlugin,
                 editor::EditorPlugin,
                 windows::WindowsPlugin,
                 mission::MissionPlugin,
@@ -184,7 +186,7 @@ fn main() -> AppExit {
             orbit_lines::OrbitLinesPlugin,
             flight_plan::FlightPlanPlugin,
             map_labels::MapLabelsPlugin,
-            body_markers::BodyMarkersPlugin,
+            markers::MarkersPlugin,
             targeting::TargetingPlugin,
             docking_view::DockingViewPlugin,
             manifest::ManifestPlugin,

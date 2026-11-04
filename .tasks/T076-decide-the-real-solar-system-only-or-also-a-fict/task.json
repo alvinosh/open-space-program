@@ -2,7 +2,7 @@
   "id": "T076",
   "title": "Decide: the real Solar System only, or also a fictional one",
   "kind": "decision",
-  "status": "todo",
+  "status": "done",
   "area": "content",
   "size": "S",
   "parent": "T072",
@@ -11,8 +11,8 @@
     "Early feature checklist (since removed), Decisions to make"
   ],
   "created": "2026-10-30",
-  "updated": "2026-10-30",
-  "done": null,
+  "updated": "2026-11-04",
+  "done": "2026-11-04",
   "milestone": "M0",
   "priority": 3
 }

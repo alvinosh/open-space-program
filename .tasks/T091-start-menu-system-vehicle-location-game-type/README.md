@@ -13,7 +13,7 @@ Choose the system, vehicle, location and game type (sandbox, testing); spawn lan
 
 ## Still open
 
-- Choosing the system (T076 decides whether there is more than one), the game type, the launch site, the orbit, and landed or in orbit anywhere.
+- The game type, the launch site, the orbit, and landed or in orbit anywhere. There is no system to choose: T076 keeps to the real one for now, and T109 adds its presets later.
 
 ## Where it comes from
 

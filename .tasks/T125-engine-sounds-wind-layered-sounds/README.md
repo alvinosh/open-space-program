@@ -17,9 +17,10 @@ Engine sounds driven by throttle and distance, clusters; wind; layered sounds.
 - The wiring was checked by running the game with temporary logging (taken out again): the recordings load in under a second, levels follow the flight, staging gives one tail and no thump, and a vessel in orbit reports 0 Pa, which silences everything but the alert tone. That run did not get an engine lit in orbit, and the scripted ascent only reached about 38 km, so a burn in vacuum is covered by the tests (real engines at 0 Pa, the synthesiser without air) and not by a live burn.
 - Volumes for all of it, the engines, the wind and the effects are on the menu's Sound page (T128).
 
-## Still open
+The user closed this task on 2026-11-04. `cargo test -p osp_game render_sound_samples -- --ignored` writes scenes and a whole flight to `target/sound` to listen to.
 
-- Nobody has judged it by ear, which is what closes this. `cargo test -p osp_game render_sound_samples -- --ignored` writes scenes and a whole flight to `target/sound` to listen to.
+## Left out
+
 - The takes are Freesound's 24 kHz previews. The 48 kHz originals have the same timeline and drop in (`assets/core/sounds/CREDITS.md`).
 - No delay for the distance, no panning, and one roar per listener rather than one per engine.
 

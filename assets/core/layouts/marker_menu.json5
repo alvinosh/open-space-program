@@ -1,0 +1,22 @@
+// What a box round a vessel or a body offers (see `crates/osp_game/src/markers.rs`). A click on a
+// vessel's box or a right-click on a body's opens it beside the pointer, with `marker.*` saying what
+// it is on. It closes on a click anywhere else or once an item is chosen.
+{
+  id: "marker_menu",
+  visible: false,
+  popup: true,
+  group: "flight",
+  root: {
+    widget: "column",
+    class: "context_menu",
+    children: [
+      { widget: "label", class: "context_title", text: "{marker.name}  ·  {marker.distance|distance}" },
+      { widget: "button", class: "context_item", text: "Set as target", action: "target.vessel:{marker.key}", visible: "marker.target_vessel" },
+      { widget: "button", class: "context_item", text: "Set as target", action: "target.body:{marker.key}", visible: "marker.target_body" },
+      { widget: "button", class: "context_item", text: "Clear target", action: "target.clear", visible: "marker.targeted" },
+      { widget: "button", class: "context_item", text: "Switch to vessel", action: "vessel.fly:{marker.key}", visible: "marker.is_vessel" },
+      { widget: "button", class: "context_item", text: "Centre view", action: "manifest.follow:{marker.key}", visible: "marker.centre_vessel" },
+      { widget: "button", class: "context_item", text: "Centre view", action: "manifest.follow_body:{marker.key}", visible: "marker.centre_body" },
+    ],
+  },
+}

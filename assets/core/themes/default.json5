@@ -157,6 +157,29 @@
     menu_notice: { margin: [16, 12, 0, 12], font_size: 15, color: "$text" },
     menu_warning: { font_size: 12, color: "#ffc24a" },
     menu_tabs: { gap: 0, margin: [0, 12, 8, 12] },
+    // One question over everything (`layouts/dialog.json5`). The shade takes the pointer, so nothing
+    // behind it can be clicked until the question is answered.
+    dialog_shade: {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: "100%",
+      height: "100%",
+      align_items: "center",
+      justify_content: "center",
+      background: [0.01, 0.02, 0.03, 0.55],
+      z_index: 900,
+    },
+    dialog_box: {
+      width: 520,
+      padding: [24, 12, 16, 12],
+      gap: 12,
+      background: "$rail",
+      border: 1,
+      border_color: "$rail_edge",
+      radius: 4,
+    },
+    dialog_answers: { margin: [8, 12, 0, 12], gap: 8, justify_content: "end" },
     back: {
       align_self: "start",
       margin: [0, 0, 16, 2],

@@ -45,6 +45,7 @@ use crate::{
     camera::{CameraRig, MainCamera, update_camera},
     content::{GameContent, catalog},
     controls::InputLocked,
+    dialog::{Dialog, Question},
     frame::{RenderFrame, Sunlight, to_render},
     menu::{Menu, go_to_title, menu_actions},
     saves::Saves,
@@ -197,8 +198,6 @@ struct Showing {
     vessel: VesselId,
     /// The vessel to go back to flying; none once there is nothing left to fly.
     flown: Option<VesselId>,
-    /// The player was asked about clearing the pad or runway picked.
-    clearing: bool,
     /// The vessel to go back to is not the one the player left: the camera finds it afresh.
     flown_changed: bool,
     /// The box round the craft as it stands, from the base of its stack, sim axes.
@@ -686,7 +685,7 @@ fn walls_mesh(radius: f32, height: f32) -> Mesh {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn editor_actions(
+pub(crate) fn editor_actions(
     mut commands: Commands,
     mut actions: MessageReader<UiAction>,
     mut editor: ResMut<Editor>,
@@ -697,32 +696,32 @@ fn editor_actions(
     mut ui: ResMut<LayoutVisibility>,
     mut ambient: ResMut<GlobalAmbientLight>,
     mut saves: ResMut<Saves>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut images: ResMut<Assets<Image>>,
+    (mut meshes, mut materials, mut images): (
+        ResMut<Assets<Mesh>>,
+        ResMut<Assets<StandardMaterial>>,
+        ResMut<Assets<Image>>,
+    ),
     mut restarted: MessageWriter<SimRestarted>,
     content: Res<GameContent>,
     docs: Res<UiDocuments>,
+    mut dialog: ResMut<Dialog>,
 ) {
     for action in actions.read() {
         match action.name() {
-            // Asked once, then destroyed. The last one leaves only the hangar for a new one.
+            // Esc and Back close the question being asked, and nothing more.
+            "game.menu" | "menu.back" | "editor.back" if dialog.is_open() => {}
+            // The last one leaves only the hangar for a new one.
             "vessel.destroy" if editor.0.is_none() => {
                 let id = action.arg().and_then(|id| id.parse().ok()).map(VesselId);
                 let Some(id) = id.filter(|&id| sim.universe.vessel(id).is_some()) else {
                     warn!("no vessel to destroy in `{}`", action.0);
                     continue;
                 };
-                if menu.destroying != Some(id) {
-                    menu.destroying = Some(id);
-                    continue;
-                }
                 let name = sim
                     .universe
                     .vessel(id)
                     .map_or(String::new(), |v| v.name.clone());
                 let next = next_to_fly(&sim, &[id]);
-                menu.destroying = None;
                 info!("destroyed `{name}`");
                 if next.is_some() {
                     if id == sim.active_id() {
@@ -767,16 +766,27 @@ fn editor_actions(
                     flown,
                 );
             }
-            // Asked once, then whatever stands where the launch would go is destroyed.
+            "ask.clear" => {
+                let Some(showing) = editor.0.as_ref() else {
+                    continue;
+                };
+                let registry = &content.0.registry;
+                let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
+                let ids = in_the_way(showing.place, &all, &sim, menu.new_game);
+                if !ids.is_empty() {
+                    dialog.ask(Question::destructive(
+                        format!("Destroy {}?", named(&ids, &sim)),
+                        "A destroyed vessel cannot be brought back.",
+                        "Destroy",
+                        "editor.clear".to_owned(),
+                    ));
+                }
+            }
+            // Whatever stands where the launch would go is destroyed.
             "editor.clear" => {
                 let Some(showing) = editor.0.as_mut() else {
                     continue;
                 };
-                if !showing.clearing {
-                    showing.clearing = true;
-                    continue;
-                }
-                showing.clearing = false;
                 let registry = &content.0.registry;
                 let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
                 let ids = in_the_way(showing.place, &all, &sim, menu.new_game);
@@ -796,7 +806,6 @@ fn editor_actions(
                     continue;
                 };
                 let Some(id) = action.arg() else { continue };
-                showing.clearing = false;
                 if showing.craft.as_ref().is_some_and(|craft| craft.id == id) {
                     showing.list_open = false;
                     continue;
@@ -858,7 +867,6 @@ fn editor_actions(
                 if let (Some(showing), Some(place)) = (&mut editor.0, place) {
                     showing.place = place;
                     showing.notice.clear();
-                    showing.clearing = false;
                 }
             }
             // Esc closes a popup first. Otherwise it and Back go to the menu they came from.
@@ -982,7 +990,6 @@ fn open_hangar(
         craft: None,
         vessel,
         flown,
-        clearing: false,
         flown_changed: false,
         low,
         high,
@@ -1149,7 +1156,7 @@ fn publish_editor(
     menu: Res<Menu>,
     sim: Res<Sim>,
     content: Res<GameContent>,
-    mut published: Local<Option<(VesselId, Place, String, bool, bool, bool, usize)>>,
+    mut published: Local<Option<(VesselId, Place, String, bool, bool, usize)>>,
     mut data: ResMut<UiData>,
 ) {
     let Some(showing) = &editor.0 else {
@@ -1162,7 +1169,6 @@ fn publish_editor(
         showing.notice.clone(),
         menu.new_game,
         showing.list_open,
-        showing.clearing,
         sim.universe.vessels.len(),
     );
     if published.as_ref() == Some(&now) && !content.is_changed() {
@@ -1221,8 +1227,6 @@ fn publish_editor(
         "editor.can_launch",
         showing.craft.is_some() && blocking.is_empty(),
     );
-    data.set("editor.clearing", showing.clearing);
-    data.set("editor.clear_question", format!("Destroy {names}?"));
     let what = match showing.place {
         Place::Runway => "Clear runway",
         Place::Pad | Place::Orbit => "Clear pad",
@@ -1344,7 +1348,6 @@ mod tests {
             }),
             vessel: VesselId(0),
             flown: Some(VesselId(0)),
-            clearing: false,
             flown_changed: false,
             low: DVec3::new(-5.0, -5.0, -2.0),
             high: DVec3::new(5.0, 5.0, 98.0),

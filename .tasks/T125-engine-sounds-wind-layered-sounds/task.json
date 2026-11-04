@@ -2,7 +2,7 @@
   "id": "T125",
   "title": "Engine sounds, wind, layered sounds",
   "kind": "feature",
-  "status": "in_progress",
+  "status": "done",
   "area": "audio",
   "size": "M",
   "parent": "T068",
@@ -11,8 +11,8 @@
     "Early feature checklist (since removed), Phase 9"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-03",
-  "done": null,
+  "updated": "2026-11-04",
+  "done": "2026-11-04",
   "milestone": "M1",
   "priority": 17
 }

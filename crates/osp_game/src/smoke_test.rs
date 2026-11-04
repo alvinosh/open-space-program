@@ -23,7 +23,8 @@ use bevy::{
 };
 
 use osp_sim::{
-    attitude::SasMode, prediction::PatchEnd, propulsion::Propulsion, staging::Activation,
+    attitude::SasMode, prediction::PatchEnd, propulsion::Propulsion, rendezvous::Target,
+    staging::Activation,
 };
 use osp_ui::{
     ActionSource, ContextAction, DragPayload, DropAction, Formatters, Template, UiAction, UiData,
@@ -33,11 +34,14 @@ use crate::{
     FrameSet,
     camera::{CameraRig, MainCamera, ViewOutput},
     controls::InputLocked,
+    dialog::Dialog,
     editor::Editor,
     frame::{RenderFrame, to_render},
     map_labels::{body_spheres, hidden},
+    markers::MarkerBox,
     menu::Menu,
     orbit_lines::{Prediction, ScriptedPointer, project},
+    saves::Saves,
     sim::{Sim, TimeWarp},
 };
 
@@ -123,6 +127,10 @@ impl Plugin for SmokeTestPlugin {
                 CLEAR_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_EDITOR_VIEW").is_some() {
                 EDITOR_VIEW_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_BOXES").is_some() {
+                BOXES_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_LEAVING").is_some() {
+                LEAVING_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MENUS").is_some() {
                 MENUS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MENU_TUTORIAL").is_some() {
@@ -258,6 +266,27 @@ enum Action {
     ExpectSequenceCount(usize),
     /// Stop the capture with a failure unless the menu is open on this screen, or closed for "".
     ExpectScreen(&'static str),
+    /// Move the pointer the UI sees onto the box round what is called this. In the map the view's
+    /// scripted pointer goes there too, so what a click on the map would do gets its chance.
+    UiPointAtMarker(&'static str),
+    /// Take the view's scripted pointer away.
+    ClearPointer,
+    /// Turn the flight view so the vessel flown is between the camera and its target.
+    LookAtTarget,
+    /// Turn the map so the camera is over the vessel flown, with nothing in the way of what is near.
+    MapOverFlown,
+    /// Stop the capture with a failure unless the active vessel plans this many burns.
+    ExpectBurns(usize),
+    /// Stop the capture with a failure unless the active vessel's target is called this, "" for none.
+    ExpectTarget(&'static str),
+    /// Stop the capture with a failure unless what is called this has a box on screen, or has none.
+    ExpectMarker(&'static str, bool),
+    /// Stop the capture with a failure unless the view is the map, or is not.
+    ExpectMapView(bool),
+    /// Stop the capture with a failure unless this question is being asked, or none for "".
+    ExpectDialog(&'static str),
+    /// Stop the capture with a failure unless there are this many saves.
+    ExpectSaves(usize),
     /// Turn the editor's view by this many pixels of mouse movement, and zoom by these lines of
     /// the wheel.
     EditorLook(f32, f32, f32),
@@ -372,7 +401,7 @@ const PLAY_SCRIPT: &[(f64, Action)] = &[
     (26.3, Action::Ui("menu.open:vessels")),
     (27.0, Action::Capture("play_two_vessels.png")),
     // Every look in the hangar took a number: the scenario was 0, the first launch number 6.
-    (27.1, Action::Ui("game.fly:6")),
+    (27.1, Action::Ui("vessel.fly:6")),
     (31.0, Action::Capture("flying_first_again.png")),
     (31.1, Action::ExpectGame(2, "Saturn V")),
     (31.2, Action::Ui("game.menu")),
@@ -419,10 +448,11 @@ const CLEAR_SCRIPT: &[(f64, Action)] = &[
     (3.0, Action::Ui("editor.launch")),
     (3.3, Action::ExpectEditor(Some("sounder"))),
     (3.4, Action::Capture("pad_occupied.png")),
-    (3.5, Action::Ui("editor.clear")),
+    (3.5, Action::Ui("ask.clear")),
     (3.9, Action::Capture("pad_clear_asked.png")),
     (4.0, Action::ExpectEditor(Some("sounder"))),
-    (4.1, Action::Ui("editor.clear")),
+    (4.05, Action::ExpectDialog("Destroy Pathfinder?")),
+    (4.1, Action::Ui("dialog.answer:0")),
     (4.6, Action::Capture("pad_cleared.png")),
     (4.7, Action::Ui("editor.launch")),
     (6.5, Action::Capture("launched_after_clearing.png")),
@@ -449,20 +479,21 @@ const CLEAR_SCRIPT: &[(f64, Action)] = &[
     (14.2, Action::Ui("menu.open:vessels")),
     (14.7, Action::Capture("vessels_three.png")),
     // The numbers: the scenario 0; hangar, shown, launched 1, 2, 3; 4, 5, 6; 7, 8, 9.
-    (14.8, Action::Ui("vessel.destroy:3")),
+    (14.8, Action::Ui("ask.destroy:3")),
     (15.2, Action::Capture("vessel_destroy_asked.png")),
     (15.3, Action::ExpectGame(3, "Satellite")),
-    (15.4, Action::Ui("vessel.destroy:3")),
+    (15.35, Action::ExpectDialog("Destroy Sounder?")),
+    (15.4, Action::Ui("dialog.answer:0")),
     (15.8, Action::Capture("vessel_destroyed.png")),
     (15.9, Action::ExpectGame(2, "Satellite")),
     (16.0, Action::ExpectScreen("vessels")),
     // The one being flown: another is flown instead.
-    (16.1, Action::Ui("vessel.destroy:9")),
-    (16.3, Action::Ui("vessel.destroy:9")),
+    (16.1, Action::Ui("ask.destroy:9")),
+    (16.3, Action::Ui("dialog.answer:0")),
     (16.8, Action::ExpectGame(1, "Kestrel")),
     // The last: only the hangar is left, and back from there the title screen.
-    (16.9, Action::Ui("vessel.destroy:6")),
-    (17.1, Action::Ui("vessel.destroy:6")),
+    (16.9, Action::Ui("ask.destroy:6")),
+    (17.1, Action::Ui("dialog.answer:0")),
     (18.0, Action::Capture("nothing_left.png")),
     (18.1, Action::ExpectEditor(Some(""))),
     (18.2, Action::Ui("menu.back")),
@@ -470,6 +501,170 @@ const CLEAR_SCRIPT: &[(f64, Action)] = &[
     (19.3, Action::ExpectScreen("title")),
     (19.4, Action::Capture("title_after_the_last.png")),
     (19.8, Action::Exit),
+];
+
+/// `OSP_SCENARIO=rendezvous OSP_CAPTURE_BOXES=1`: the other vessel's box, clicked with the pointer.
+/// In the map it sets the target, without dropping a burn on the trajectory running beside it. In
+/// the flight view the box is there because it is the target, however far, and clears it; then it is
+/// too far for a box. Back in the map a right-click switches to it, staying in the map. Then a
+/// planet's box, by a right-click.
+const BOXES_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(true)),
+    (0.6, Action::MapDistance(3.0)),
+    (0.7, Action::MapOverFlown),
+    // The scenario starts with it targeted.
+    (0.8, Action::Ui("target.clear")),
+    (2.5, Action::Capture("boxes_map.png")),
+    (2.6, Action::ExpectMarker("Station", true)),
+    (2.7, Action::UiPointAtMarker("Station")),
+    (2.9, Action::Press(MouseButton::Left)),
+    (2.9, Action::UiPress(PointerButton::Primary)),
+    (3.0, Action::Release(MouseButton::Left)),
+    (3.0, Action::UiRelease(PointerButton::Primary)),
+    (3.5, Action::Capture("boxes_map_menu.png")),
+    (3.6, Action::ExpectBurns(0)),
+    (3.65, Action::ClearPointer),
+    (3.7, Action::UiPointAt("target.vessel:")),
+    (3.9, Action::UiPress(PointerButton::Primary)),
+    (4.0, Action::UiRelease(PointerButton::Primary)),
+    (4.3, Action::ExpectTarget("Station")),
+    (4.4, Action::MapView(false)),
+    (4.5, Action::LookAtTarget),
+    (6.0, Action::Capture("boxes_flight_target.png")),
+    (6.1, Action::ExpectMarker("Station", true)),
+    (6.2, Action::UiPointAtMarker("Station")),
+    (6.4, Action::UiPress(PointerButton::Primary)),
+    (6.5, Action::UiRelease(PointerButton::Primary)),
+    (7.0, Action::Capture("boxes_flight_menu.png")),
+    (7.1, Action::UiPointAt("target.clear")),
+    (7.3, Action::UiPress(PointerButton::Primary)),
+    (7.4, Action::UiRelease(PointerButton::Primary)),
+    (7.7, Action::ExpectTarget("")),
+    (7.8, Action::ExpectMarker("Station", false)),
+    (8.0, Action::Capture("boxes_flight_far.png")),
+    (8.1, Action::MapView(true)),
+    (8.2, Action::MapOverFlown),
+    (9.5, Action::UiPointAtMarker("Station")),
+    (9.7, Action::UiPress(PointerButton::Secondary)),
+    (9.8, Action::UiRelease(PointerButton::Secondary)),
+    (9.85, Action::ClearPointer),
+    (10.3, Action::Capture("boxes_map_right_click.png")),
+    (10.4, Action::UiPointAt("vessel.fly:")),
+    (10.6, Action::UiPress(PointerButton::Primary)),
+    (10.7, Action::UiRelease(PointerButton::Primary)),
+    (11.0, Action::ExpectGame(2, "Station")),
+    (11.1, Action::ExpectMapView(true)),
+    (11.2, Action::ExpectMarker("Station", false)),
+    (11.3, Action::ExpectBurns(0)),
+    (12.0, Action::Capture("boxes_switched.png")),
+    // A planet's box: a right-click gives the menu, which targets it.
+    (12.1, Action::MapDistance(150.0)),
+    (14.0, Action::ExpectMarker("Moon", true)),
+    (14.1, Action::UiPointAtMarker("Moon")),
+    (14.2, Action::ClearPointer),
+    (14.3, Action::UiPress(PointerButton::Secondary)),
+    (14.4, Action::UiRelease(PointerButton::Secondary)),
+    (14.9, Action::Capture("boxes_moon_menu.png")),
+    (15.0, Action::UiPointAt("target.body:Moon")),
+    (15.2, Action::UiPress(PointerButton::Primary)),
+    (15.3, Action::UiRelease(PointerButton::Primary)),
+    (15.6, Action::ExpectTarget("Moon")),
+    (16.0, Action::Exit),
+];
+
+/// `OSP_CAPTURE_LEAVING=1` (with `OSP_USER_DIR=<empty folder>`, for the saves): every way out of a
+/// game. Esc and Cancel keep it going, Save and continue writes the save, Continue brings it back,
+/// Don't save leaves the save alone, and with nothing new to lose nothing is asked. Then what else
+/// asks through the same dialog, and a new game from the title screen.
+const LEAVING_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::ExpectSaves(0)),
+    // Never saved. Esc closes the question and does nothing else.
+    (1.2, Action::Ui("ask.leave:game.exit")),
+    (1.6, Action::Capture("leave_asked.png")),
+    (1.7, Action::ExpectDialog("Save this game first?")),
+    (1.8, Action::Ui("game.menu")),
+    (1.9, Action::ExpectDialog("")),
+    (2.0, Action::ExpectScreen("pause")),
+    // Cancel leaves the game as it was.
+    (2.1, Action::Ui("ask.leave:game.exit")),
+    (2.2, Action::Ui("dialog.answer:2")),
+    (2.3, Action::ExpectDialog("")),
+    (2.4, Action::ExpectScreen("pause")),
+    (2.45, Action::ExpectSaves(0)),
+    // Save and continue writes the save and goes on out.
+    (2.5, Action::Ui("ask.leave:game.exit")),
+    (2.6, Action::Ui("dialog.answer:0")),
+    (3.2, Action::ExpectDialog("")),
+    (3.3, Action::ExpectSaves(1)),
+    (3.4, Action::ExpectScreen("title")),
+    (3.9, Action::Capture("title_continue.png")),
+    // Continue brings it back, and time passes, so there is something to lose again.
+    (4.0, Action::Ui("game.continue")),
+    (4.5, Action::ExpectScreen("")),
+    (5.0, Action::Ui("game.menu")),
+    (5.1, Action::Ui("ask.leave:game.exit")),
+    (5.2, Action::ExpectDialog("Save this game first?")),
+    // Don't save goes out and leaves the save as it was.
+    (5.3, Action::Ui("dialog.answer:1")),
+    (5.9, Action::ExpectScreen("title")),
+    (6.0, Action::ExpectSaves(1)),
+    // Just saved, so nothing is asked.
+    (6.1, Action::Ui("game.continue")),
+    (6.6, Action::Ui("game.menu")),
+    (6.7, Action::Ui("game.save")),
+    (6.9, Action::Ui("ask.leave:game.exit")),
+    (7.4, Action::ExpectDialog("")),
+    (7.5, Action::ExpectScreen("title")),
+    (7.6, Action::ExpectSaves(1)),
+    // Tutorials are reachable again, and a new game starts clean, with nothing asked.
+    (7.7, Action::Ui("menu.open:tutorials")),
+    (7.8, Action::ExpectScreen("tutorials")),
+    (7.9, Action::Ui("menu.back")),
+    (8.0, Action::Ui("ask.leave:game.new")),
+    (8.2, Action::ExpectDialog("")),
+    (8.5, Action::ExpectEditor(Some(""))),
+    (8.6, Action::Ui("editor.show:sounder")),
+    (10.0, Action::Ui("editor.launch")),
+    (11.0, Action::ExpectEditor(None)),
+    (11.1, Action::ExpectGame(1, "Sounder")),
+    (11.2, Action::ExpectSaves(2)),
+    // Back from New game leaves the game untouched, after asking.
+    (11.5, Action::Ui("game.menu")),
+    (11.6, Action::Ui("ask.leave:game.new")),
+    (11.7, Action::ExpectDialog("Save this game first?")),
+    (11.8, Action::Ui("dialog.answer:1")),
+    (12.3, Action::ExpectEditor(Some(""))),
+    (12.4, Action::Ui("menu.back")),
+    (12.9, Action::ExpectEditor(None)),
+    (13.0, Action::ExpectGame(1, "Sounder")),
+    // Deleting a save asks, through the dialog, over the screen it was asked on.
+    (13.1, Action::Ui("menu.open:load")),
+    (13.2, Action::Ui("ask.delete_save:game_1")),
+    (13.7, Action::Capture("delete_asked.png")),
+    (13.8, Action::ExpectDialog("Delete Game 1?")),
+    (13.9, Action::Ui("dialog.answer:1")),
+    (14.0, Action::ExpectScreen("load")),
+    (14.1, Action::ExpectSaves(2)),
+    (14.2, Action::Ui("ask.delete_save:game_1")),
+    (14.3, Action::Ui("dialog.answer:0")),
+    (14.6, Action::ExpectSaves(1)),
+    (14.7, Action::ExpectScreen("load")),
+    // Loading from in a game asks; Cancel stays on the list.
+    (14.8, Action::Ui("ask.leave:game.load:game_2")),
+    (14.9, Action::ExpectDialog("Save this game first?")),
+    (15.0, Action::Ui("dialog.answer:2")),
+    (15.1, Action::ExpectScreen("load")),
+    (15.2, Action::Ui("menu.back")),
+    // Quit asks too. Cancelled first, then answered: this ends the run.
+    (15.3, Action::Ui("ask.leave:game.quit")),
+    (15.4, Action::ExpectDialog("Save this game first?")),
+    (15.5, Action::Ui("dialog.answer:2")),
+    (15.6, Action::ExpectScreen("pause")),
+    (15.7, Action::Ui("ask.leave:game.quit")),
+    (15.8, Action::Ui("dialog.answer:1")),
+    (17.0, Action::ExpectScreen("the game should have closed")),
 ];
 
 /// `OSP_CAPTURE_MENUS=1`: every screen of the menu, walked with Esc and Back in turn so a difference
@@ -736,6 +931,8 @@ const SAS_SCRIPT: &[(f64, Action)] = &[
     (5.5, Action::Capture("sas_inputs_tab.png")),
     (5.6, Action::Steer(DVec3::ZERO)),
     (5.7, Action::Ui("target.vessel:1")),
+    // Near enough to click on its parts, so no box in the way of them.
+    (5.9, Action::ExpectMarker("Eagle", false)),
     (6.0, Action::PointAtTargetPort),
     (6.2, Action::Press(MouseButton::Right)),
     (6.3, Action::Release(MouseButton::Right)),
@@ -1083,6 +1280,16 @@ fn sequences_summary(propulsion: &Propulsion) -> String {
 #[derive(SystemParam)]
 struct UiPointer<'w, 's> {
     input: MessageWriter<'w, PointerInput>,
+    markers: Query<
+        'w,
+        's,
+        (
+            &'static ComputedNode,
+            &'static UiGlobalTransform,
+            &'static InheritedVisibility,
+            &'static MarkerBox,
+        ),
+    >,
     data: Res<'w, UiData>,
     formatters: Res<'w, Formatters>,
     nodes: Query<
@@ -1122,6 +1329,15 @@ impl UiPointer<'_, '_> {
             .map(|(node, transform, ..)| (transform.translation, node.size()))
     }
 
+    /// The middle of the box shown round what is called `name`, physical px.
+    fn find_marker(&self, name: &str) -> Option<Vec2> {
+        (self.markers.iter())
+            .find(|(node, _, visible, named)| {
+                visible.get() && node.size().min_element() > 0.0 && named.0 == name
+            })
+            .map(|(_, transform, ..)| transform.translation)
+    }
+
     fn send(&mut self, target: &Handle<Image>, position: Vec2, action: PointerAction) {
         let target = NormalizedRenderTarget::Image(ImageRenderTarget {
             handle: target.clone(),
@@ -1154,7 +1370,7 @@ fn run_script(
     mut buttons: ResMut<ButtonInput<MouseButton>>,
     mut ui_pointer: UiPointer,
     mut locked: ResMut<InputLocked>,
-    menu: Res<Menu>,
+    (menu, dialog, saves): (Res<Menu>, Res<Dialog>, Res<Saves>),
     mut editor: ResMut<Editor>,
 ) {
     let Some(&(at, action)) = script.actions.get(script.step) else {
@@ -1214,6 +1430,24 @@ fn run_script(
             let showing = if menu.open { menu.screen() } else { "" };
             if showing != wanted {
                 error!("smoke test: the menu shows `{showing}`, wanted `{wanted}`");
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectDialog(wanted) => {
+            if dialog.title() != wanted {
+                error!(
+                    "smoke test: the dialog asks `{}`, wanted `{wanted}`",
+                    dialog.title()
+                );
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectSaves(wanted) => {
+            if saves.list.len() != wanted {
+                error!(
+                    "smoke test: there are {} saves, wanted {wanted}",
+                    saves.list.len()
+                );
                 exit.write(AppExit::error());
             }
         }
@@ -1293,6 +1527,13 @@ fn run_script(
                 let behind = approach.far.at.position - approach.far.out * 0.3;
                 project(camera.0, camera.1, frame.to_render(parent, behind))
             });
+            // One mouse: the UI's pointer leaves whatever it was on.
+            if let Some(to) = pointer.0 {
+                let delta = to - script.ui_pointer;
+                script.ui_pointer = to;
+                let target = script.target.clone();
+                ui_pointer.send(&target, to, PointerAction::Move { delta });
+            }
         }
         Action::Press(button) => buttons.press(button),
         Action::Release(button) => buttons.release(button),
@@ -1309,6 +1550,79 @@ fn run_script(
             script.ui_pointer = to;
             let target = script.target.clone();
             ui_pointer.send(&target, to, PointerAction::Move { delta });
+        }
+        Action::UiPointAtMarker(name) => {
+            let Some(to) = ui_pointer.find_marker(name) else {
+                panic!("smoke test: no box round `{name}`");
+            };
+            let delta = to - script.ui_pointer;
+            script.ui_pointer = to;
+            let target = script.target.clone();
+            ui_pointer.send(&target, to, PointerAction::Move { delta });
+            if rig.map_view {
+                pointer.0 = Some(to);
+            }
+        }
+        Action::ClearPointer => pointer.0 = None,
+        Action::LookAtTarget => {
+            let vessel = sim.active_vessel();
+            let system = &sim.universe.system;
+            let target = vessel.target.and_then(Target::vessel);
+            let Some(target) = target.and_then(|id| sim.universe.vessel(id)) else {
+                panic!("smoke test: no vessel targeted to look at");
+            };
+            let at = vessel.state_at(system, frame.time).position;
+            let there = target.state_at(system, frame.time).position;
+            let here = frame.relative(vessel.parent(), at);
+            let back = (here - frame.relative(target.parent(), there)).normalize();
+            let up = at.normalize();
+            let east = system.body(vessel.parent()).pole().cross(up).normalize();
+            let north = up.cross(east);
+            rig.look_from(back.dot(east).atan2(back.dot(north)), back.dot(up).asin());
+        }
+        Action::MapOverFlown => {
+            let vessel = sim.active_vessel();
+            let system = &sim.universe.system;
+            let over = vessel.state_at(system, frame.time).position.normalize();
+            let pole = system.body(vessel.parent()).pole();
+            let east = pole.cross(DVec3::Z).try_normalize().unwrap_or(DVec3::X);
+            let north = DVec3::Z.cross(east);
+            rig.look_from(
+                over.dot(east).atan2(over.dot(north)),
+                over.dot(DVec3::Z).asin(),
+            );
+        }
+        Action::ExpectBurns(wanted) => {
+            let burns = sim.active_vessel().plan.burns().len();
+            if burns != wanted {
+                error!("smoke test: {burns} burns are planned, wanted {wanted}");
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectTarget(wanted) => {
+            let universe = &sim.universe;
+            let name = match sim.active_vessel().target {
+                None => "",
+                Some(Target::Body(id)) => universe.system.body(id).name.as_str(),
+                Some(target) => (target.vessel().and_then(|id| universe.vessel(id)))
+                    .map_or("", |vessel| vessel.name.as_str()),
+            };
+            if name != wanted {
+                error!("smoke test: the target is `{name}`, wanted `{wanted}`");
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectMarker(name, wanted) => {
+            if ui_pointer.find_marker(name).is_some() != wanted {
+                error!("smoke test: `{name}` should have a box: {wanted}");
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectMapView(wanted) => {
+            if rig.map_view != wanted {
+                error!("smoke test: the map should be showing: {wanted}");
+                exit.write(AppExit::error());
+            }
         }
         Action::UiPress(button) => {
             let (target, at) = (script.target.clone(), script.ui_pointer);

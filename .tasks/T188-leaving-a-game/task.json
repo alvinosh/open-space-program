@@ -2,7 +2,7 @@
   "id": "T188",
   "title": "Leaving a game: one dialog, exit to main menu, Continue",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "ui",
   "size": "S",
   "parent": "T185",
@@ -16,7 +16,7 @@
   ],
   "created": "2026-11-04",
   "updated": "2026-11-04",
-  "done": null,
+  "done": "2026-11-04",
   "milestone": "M1",
   "priority": 39
 }

@@ -168,6 +168,12 @@ impl CameraRig {
         self.flight_distance = (size * 1.2 + 8.0).clamp(15.0, 400.0);
     }
 
+    /// Look from this direction, in the horizon of what is being looked at (radians).
+    pub fn look_from(&mut self, yaw: f64, pitch: f64) {
+        self.yaw = yaw;
+        self.pitch = pitch;
+    }
+
     /// Follow `what` (`None`: the active vessel again); following a body opens the map.
     pub fn set_follow(&mut self, what: Option<Follow>, sim: &Sim) {
         self.follow = what.filter(|&f| f != Follow::Vessel(sim.active_id()));

@@ -1,6 +1,6 @@
-// The vessels in the game in progress (`menu.vessels`, debris left out), to fly with `game.fly:<id>`
-// or destroy with `vessel.destroy:<id>`, which asks and then does it. Destroying the one being flown
-// flies another, and if it was the last goes to the empty hangar for a new one.
+// The vessels in the game in progress (`menu.vessels`, debris left out), to fly with `vessel.fly:<id>`
+// or destroy with `ask.destroy:<id>`, which asks first. Destroying the one being flown flies another,
+// and if it was the last goes to the empty hangar for a new one.
 {
   id: "menu_vessels",
   group: "menu",
@@ -14,9 +14,8 @@
         widget: "row",
         class: "menu_row_action",
         children: [
-          { widget: "menu_row", style: { grow: 1 }, text: "{item.name}", meta: "{item.state}", detail: "{item.where}", active: "item.flying", action: "game.fly:{item.id}" },
-          { widget: "button", class: "btn btn_danger", text: "Destroy", action: "vessel.destroy:{item.id}", visible: "!item.destroying" },
-          { widget: "button", class: "btn btn_danger", text: "Sure?", action: "vessel.destroy:{item.id}", visible: "item.destroying" },
+          { widget: "menu_row", style: { grow: 1 }, text: "{item.name}", meta: "{item.state}", detail: "{item.where}", active: "item.flying", action: "vessel.fly:{item.id}" },
+          { widget: "button", class: "btn btn_danger", text: "Destroy", action: "ask.destroy:{item.id}" },
         ],
       },
     ],

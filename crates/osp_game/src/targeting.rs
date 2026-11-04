@@ -7,7 +7,7 @@
 //! | --- | --- |
 //! | `target.body:<id>`, `target.vessel:<key>`, `target.clear` | Choose or drop the target |
 //! | `target.part:<vessel>-<part>` | Target one part of another vessel: a docking port is then the one to dock with |
-//! | `vessel.fly:<key>` | Fly another vessel (`key` as in `manifest.items`) |
+//! | `vessel.fly:<key>` | Fly another vessel (`key` as in `manifest.items`): the camera frames it and stays in the view it is in, and no burn stays selected |
 //! | `plan.match_plane` | Plan a burn at the next node that matches the target's plane |
 //! | `warp.to:approach` | Warp to the first closest approach |
 
@@ -97,6 +97,7 @@ fn target_actions(
     mut sim: ResMut<Sim>,
     mut warp: ResMut<TimeWarp>,
     mut plan_ui: ResMut<PlanUi>,
+    mut rig: ResMut<CameraRig>,
     info: Res<TargetInfo>,
     time: Res<Time>,
 ) {
@@ -133,10 +134,15 @@ fn target_actions(
                 }
             }
             "vessel.fly" => {
-                if let Ok(id) = arg.parse() {
-                    sim.fly(VesselId(id));
-                    plan_ui.selected = None;
-                }
+                let id = arg.parse().ok().map(VesselId);
+                let Some(id) = id.filter(|&id| sim.universe.vessel(id).is_some()) else {
+                    warn!("no vessel to fly in `{}`", action.0);
+                    continue;
+                };
+                sim.fly(id);
+                plan_ui.selected = None;
+                rig.follow = None;
+                rig.frame(sim.active_vessel().propulsion.length());
             }
             "plan.match_plane" => {
                 let Some(marks) = info.nodes else {
