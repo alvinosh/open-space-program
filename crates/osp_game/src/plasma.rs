@@ -3,14 +3,16 @@
 //!
 //! How strong it is and how it looks come from the air's density and the vessel's speed
 //! (`osp_sim::plasma`). Its shape comes from the vessel's own meshes: they are gathered when it is
-//! first needed and whenever the vessel changes, into one mesh of the hull's triangles and of strips
-//! on points scattered over them. The way the air goes and a depth map of the hull looking along it
-//! reach the shader from here as the flow turns. The light it throws on the vessel and anything else
-//! near is a point light at the shock.
+//! first needed and whenever the vessel changes, into one mesh of the hull's triangles, of strips on
+//! points scattered over them and of a grid for the shock. The way the air goes, a depth map of the
+//! hull looking along it and the shock worked out from that reach the shader from here as the flow
+//! turns. The light it throws on the vessel and anything else near is two point lights: one at the
+//! shock, for the shield and the ground, and one in the wake, for the vessel's flanks.
 
 use bevy::{
     asset::{RenderAssetUsages, embedded_asset},
-    camera::visibility::NoFrustumCulling,
+    camera::{Exposure, visibility::NoFrustumCulling},
+    image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
     light::{NotShadowCaster, NotShadowReceiver},
     math::Affine3A,
     mesh::{Indices, MeshVertexBufferLayoutRef, PrimitiveTopology, VertexAttributeValues},
@@ -25,14 +27,15 @@ use bevy::{
 };
 use osp_sim::{
     plasma::{
-        AIRSTREAM_SIZE, Airstream, EntryLook, HullPoints, HullTriangle, NOTHING_THERE, airstream,
-        entry_look, flow_in_vessel, nose_radius, scatter_points,
+        AIRSTREAM_SIZE, Airstream, EntryLook, HullPoints, HullTriangle, NOTHING_THERE, SHOCK_SIZE,
+        airstream, entry_look, flow_in_vessel, nose_radius, scatter_points,
     },
     vessel::VesselId,
 };
 
 use crate::{
     FrameSet,
+    camera::MainCamera,
     frame::{RenderFrame, rotation_to_render},
     part_info::ShowsPart,
     part_mesh::axes,
@@ -54,31 +57,36 @@ const LOOK_RATE: f32 = 1.5;
 const REMAP_ANGLE: f32 = 0.015;
 /// The most points on a hull per square metre, for a small one.
 const POINTS_PER_SQUARE_METRE: f32 = 220.0;
-/// Of the hull's points, every this many also gets a spark.
-const SPARK_EVERY: usize = 2;
 /// Strips in the long stream behind it all.
 const WAKE_STRIPS: usize = 72;
-/// A streak is this many times the distance between points wide, at the hull.
-const STRIP_WIDTH: f32 = 1.6;
+/// How many strips there are around a hull at most, whichever of its points they are on (`STRIPS` in
+/// the shader).
+const STRIPS: f32 = 1400.0;
+/// How bright a strip is, when there are this many: fewer are each brighter.
+const STRIPS_FOR_BRIGHTNESS: f32 = 42.0;
 /// How wide a spark is, m.
-const SPARK_WIDTH: f32 = 0.04;
+const SPARK_WIDTH: f32 = 0.05;
 /// Brightness of the gas at full strength, cd/m².
 const GAS_BRIGHTNESS: f32 = 42_000.0;
-/// Light the gas throws at full strength, lumens per square metre of hull.
+/// Light the gas throws at full strength, lumens per square metre of hull: from the shock, and from
+/// the wake on the vessel's flanks.
 const LIGHT_PER_AREA: f32 = 1.2e7;
-/// How fast bits of hull are shown to leave, m/s, whatever the true speed: at the true 7 km/s they
-/// would only be a blur.
-const SHOWN_FLOW: f32 = 160.0;
+const WAKE_LIGHT_PER_AREA: f32 = 0.55e7;
+/// The most of the camera's exposure the fire is seen with (`MOST_EXPOSURE` in the shader).
+const MOST_EXPOSURE: f32 = 5.0e-5;
 /// What air burns like when the data doesn't say.
 const AIR_PLASMA: [f32; 3] = [1.0, 0.42, 0.2];
 /// Colours that don't depend on the air: hot blue gas, the violet of the thinnest air.
 const BLUE: [f32; 3] = [0.36, 0.46, 1.0];
 const VIOLET: [f32; 3] = [0.5, 0.32, 1.0];
+/// Texels along each side of the noise map, and how many times the coarsest of it fits along them.
+const NOISE_SIZE: usize = 256;
+const NOISE_CELLS: usize = 16;
 
 /// Places along a strip: closer together near the hull, where more goes on.
-const LONG_STRIP: [f32; 6] = [0.0, 0.05, 0.14, 0.3, 0.58, 1.0];
+const LONG_STRIP: [f32; 7] = [0.0, 0.02, 0.06, 0.14, 0.3, 0.58, 1.0];
 const SHORT_STRIP: [f32; 4] = [0.0, 0.2, 0.55, 1.0];
-const STREAM_STRIP: [f32; 9] = [0.0, 0.06, 0.14, 0.24, 0.36, 0.5, 0.65, 0.82, 1.0];
+const STREAM_STRIP: [f32; 7] = [0.0, 0.08, 0.2, 0.36, 0.55, 0.76, 1.0];
 const SPARK_STRIP: [f32; 2] = [0.0, 1.0];
 
 /// The layers, in the order they are drawn (`GLOW` and so on in the shader).
@@ -88,9 +96,9 @@ enum Layer {
     Wake = 1,
     Wrap = 2,
     Trail = 3,
-    Cone = 4,
-    Spark = 5,
-    Bow = 6,
+    Spark = 4,
+    Gas = 5,
+    Shock = 6,
 }
 
 pub struct PlasmaPlugin;
@@ -106,7 +114,8 @@ impl Plugin for PlasmaPlugin {
 
 #[derive(Debug, Clone, Copy, Default, ShaderType)]
 struct PlasmaParams {
-    /// x: how many of the hull's points streaks can come off.
+    /// x: how many of the hull's points streaks can come off; y: how bright each strip is; z: how
+    /// wide the hull is, m; w: half the shock map's width, m.
     edge: Vec4,
     flow: Vec4,
     across_x: Vec4,
@@ -127,6 +136,11 @@ struct PlasmaMaterial {
     params: PlasmaParams,
     #[texture(1, sample_type = "float", filterable = false)]
     airstream: Handle<Image>,
+    #[texture(2)]
+    #[sampler(3)]
+    noise: Handle<Image>,
+    #[texture(4, sample_type = "float", filterable = false)]
+    shock: Handle<Image>,
 }
 
 impl Material for PlasmaMaterial {
@@ -269,7 +283,7 @@ impl Pieces {
     }
 
     /// A strip on a point of the hull, the vertex shader to shape it. Its two random numbers are
-    /// `n`'s, `width` its width at the hull.
+    /// `n`'s; `width` is its width where the shader doesn't work that out itself.
     fn strip(
         &mut self,
         (position, normal): (Vec3, Vec3),
@@ -299,6 +313,27 @@ impl Pieces {
         }
     }
 
+    /// A grid over the shock map, one vertex to a texel, as one layer. Its place is its texel.
+    fn shock_grid(&mut self, layer: Layer) {
+        let n = SHOCK_SIZE as u32;
+        let base = self.positions.len() as u32;
+        for j in 0..n {
+            for i in 0..n {
+                self.positions.push([0.0; 3]);
+                self.normals.push([0.0, 0.0, 1.0]);
+                self.places.push([i as f32, j as f32]);
+                self.strips.push([layer as u32 as f32, 0.0, 0.0, 0.0]);
+            }
+        }
+        for j in 0..n - 1 {
+            for i in 0..n - 1 {
+                let (a, b) = (base + j * n + i, base + j * n + i + 1);
+                let (c, d) = (a + n, b + n);
+                self.indices.extend([a, b, c, b, d, c]);
+            }
+        }
+    }
+
     fn into_mesh(self) -> Mesh {
         Mesh::new(
             PrimitiveTopology::TriangleList,
@@ -315,7 +350,6 @@ impl Pieces {
 /// The effect's whole mesh, for a hull and its points, in the order it draws.
 fn effect_mesh(hull: &Gathered, points: &HullPoints) -> Mesh {
     let mut pieces = Pieces::default();
-    let width = points.spacing * STRIP_WIDTH;
     let at = |k: usize| {
         let point = &points.points[k];
         (point.position, point.normal)
@@ -326,18 +360,16 @@ fn effect_mesh(hull: &Gathered, points: &HullPoints) -> Mesh {
         pieces.strip((Vec3::ZERO, Vec3::Z), Layer::Wake, &STREAM_STRIP, k, 0.0);
     }
     for k in 0..count {
-        pieces.strip(at(k), Layer::Wrap, &SHORT_STRIP, k, width * 2.0);
+        pieces.strip(at(k), Layer::Wrap, &SHORT_STRIP, k, 0.0);
     }
     for k in 0..count {
-        pieces.strip(at(k), Layer::Trail, &LONG_STRIP, k, width);
+        pieces.strip(at(k), Layer::Trail, &LONG_STRIP, k, 0.0);
     }
     for k in 0..count {
-        pieces.strip(at(k), Layer::Cone, &SHORT_STRIP, k, width * 2.5);
-    }
-    for k in (0..count).step_by(SPARK_EVERY) {
         pieces.strip(at(k), Layer::Spark, &SPARK_STRIP, k, SPARK_WIDTH);
     }
-    pieces.hull(hull, Layer::Bow);
+    pieces.shock_grid(Layer::Gas);
+    pieces.shock_grid(Layer::Shock);
     pieces.into_mesh()
 }
 
@@ -346,6 +378,7 @@ struct Effect {
     /// Nothing is spawned until the hull has been gathered.
     drawn: Option<Drawn>,
     light: Entity,
+    wake_light: Entity,
     strength: f32,
     look: EntryLook,
     /// What the hull was gathered from, to tell when it changes.
@@ -359,11 +392,80 @@ struct Drawn {
     entity: Entity,
     material: Handle<PlasmaMaterial>,
     image: Handle<Image>,
+    shock: Handle<Image>,
     mesh: Handle<Mesh>,
 }
 
 #[derive(Resource, Default)]
-struct PlasmaEffects(HashMap<VesselId, Effect>);
+struct PlasmaEffects {
+    vessels: HashMap<VesselId, Effect>,
+    /// Shared by all of them.
+    noise: Option<Handle<Image>>,
+}
+
+/// Smooth noise that meets itself at the map's edges, 0 to 1: `cells` of it along each side.
+fn tiling_noise(x: f32, y: f32, cells: usize, salt: u32) -> f32 {
+    let lattice = |i: usize, j: usize| {
+        random(
+            (j % cells) * cells + (i % cells),
+            salt.wrapping_add(cells as u32 * 7),
+        )
+    };
+    let (fx, fy) = (x * cells as f32, y * cells as f32);
+    let (i, j) = (fx as usize, fy as usize);
+    let (u, v) = (fx - i as f32, fy - j as f32);
+    let (u, v) = (
+        u * u * u * (u * (u * 6.0 - 15.0) + 10.0),
+        v * v * v * (v * (v * 6.0 - 15.0) + 10.0),
+    );
+    let low = lattice(i, j) + (lattice(i + 1, j) - lattice(i, j)) * u;
+    let high = lattice(i, j + 1) + (lattice(i + 1, j + 1) - lattice(i, j + 1)) * u;
+    low + (high - low) * v
+}
+
+/// What the streaks are made of: two unrelated channels of noise of several sizes, that tile.
+fn noise_image() -> Image {
+    let n = NOISE_SIZE;
+    let mut data = Vec::with_capacity(n * n * 4);
+    let layered = |x: f32, y: f32, salt: u32| {
+        let (mut sum, mut total, mut weight, mut cells) = (0.0, 0.0, 1.0, NOISE_CELLS);
+        for octave in 0..4 {
+            sum += weight * tiling_noise(x, y, cells, salt + octave);
+            total += weight;
+            weight *= 0.55;
+            cells *= 2;
+        }
+        // Spread back out over 0 to 1, where adding them up has gathered them around the middle.
+        (((sum / total) - 0.5) * 1.9 + 0.5).clamp(0.0, 1.0)
+    };
+    for j in 0..n {
+        for i in 0..n {
+            let (x, y) = (i as f32 / n as f32, j as f32 / n as f32);
+            data.push((layered(x, y, 11) * 255.0) as u8);
+            data.push((layered(x, y, 47) * 255.0) as u8);
+            data.extend([0, 255]);
+        }
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: n as u32,
+            height: n as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8Unorm,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        address_mode_u: ImageAddressMode::Repeat,
+        address_mode_v: ImageAddressMode::Repeat,
+        mag_filter: ImageFilterMode::Linear,
+        min_filter: ImageFilterMode::Linear,
+        ..default()
+    });
+    image
+}
 
 /// The map as a texture, its depth and how far inside the outline: read texel by texel in both
 /// stages, so it needs no filtering.
@@ -391,6 +493,31 @@ fn airstream_image(map: Option<&Airstream>) -> Image {
     image
 }
 
+/// The shock as a texture, where it is and how far outside the outline, read texel by texel.
+fn shock_image(map: Option<&Airstream>) -> Image {
+    let n = SHOCK_SIZE;
+    let mut data = Vec::with_capacity(n * n * 8);
+    for k in 0..n * n {
+        let (depth, outside) = map.map_or((0.0, 1e3), |m| (m.shock.depth[k], m.shock.outside[k]));
+        data.extend_from_slice(&depth.to_le_bytes());
+        data.extend_from_slice(&outside.to_le_bytes());
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: n as u32,
+            height: n as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rg32Float,
+        // Rebuilt as the flow turns, so the main world keeps its copy to write into.
+        RenderAssetUsages::default(),
+    );
+    image.texture_descriptor.usage |= TextureUsages::COPY_DST;
+    image
+}
+
 fn mix3(a: [f32; 3], b: [f32; 3], k: f32) -> Vec3 {
     Vec3::from(a).lerp(Vec3::from(b), k)
 }
@@ -399,16 +526,22 @@ fn mix3(a: [f32; 3], b: [f32; 3], k: f32) -> Vec3 {
 fn colours(tint: [f32; 3], look: &EntryLook, strength: f32) -> [Vec3; 5] {
     let (thin, white) = (look.thin as f32, look.white as f32);
     // At the hull, between yellow and blue with how strong it is and how thin the air.
-    let yellow = mix3(tint, [1.0, 0.86, 0.62], 0.7).to_array();
+    let yellow = mix3(tint, [1.0, 0.8, 0.46], 0.7).to_array();
     let hot = mix3(
         yellow,
         BLUE,
         (thin * thin * 0.5 + (strength - 0.8).max(0.0)).min(0.8),
     );
-    let mid = Vec3::from(tint);
-    // A pale red, going violet only in the thinnest air.
-    let pale = Vec3::from(tint) * Vec3::new(0.85, 0.55, 0.5);
-    let far = mix3(pale.to_array(), VIOLET, thin * thin * thin * 0.75);
+    // Deeper than the air's own colour: what adds up to it ends up paler.
+    let mid = Vec3::from(tint) * Vec3::new(1.0, 0.82, 0.55);
+    // The air's own colour with its green taken down and some blue put in: dim orange is brown, but
+    // dim pink is still a glow. It goes on to violet as the entry gets stronger and the air thinner.
+    let pink = Vec3::from(tint) * Vec3::new(0.95, 0.5, 0.85) + Vec3::new(0.0, 0.0, 0.2);
+    let far = mix3(
+        pink.to_array(),
+        VIOLET,
+        (strength * strength * 0.55 + thin * thin * 0.45).min(0.85),
+    );
     let wrap = mix3(BLUE, VIOLET, thin * 0.5);
     let shock = Vec3::from(BLUE);
     // A Mach cone's white over it all.
@@ -419,7 +552,7 @@ fn colours(tint: [f32; 3], look: &EntryLook, strength: f32) -> [Vec3; 5] {
 fn update_effects(
     mut commands: Commands,
     sim: Res<Sim>,
-    frame: Res<RenderFrame>,
+    (frame, exposure): (Res<RenderFrame>, Single<&Exposure, With<MainCamera>>),
     settings: Res<GraphicsSettings>,
     time: Res<Time>,
     mut effects: ResMut<PlasmaEffects>,
@@ -444,6 +577,10 @@ fn update_effects(
         return;
     }
     let system = &sim.universe.system;
+    let noise = effects
+        .noise
+        .get_or_insert_with(|| images.add(noise_image()))
+        .clone();
     let most_points = match settings.effects {
         Quality::Off | Quality::Low => 3_000,
         Quality::Medium => 6_000,
@@ -470,16 +607,15 @@ fn update_effects(
             radius,
             climbing,
         );
-        if target.strength <= 0.0 && !effects.0.contains_key(&vessel.id()) {
+        if target.strength <= 0.0 && !effects.vessels.contains_key(&vessel.id()) {
             continue;
         }
         if seen.len() >= MOST_AT_ONCE {
             continue;
         }
         seen.push(vessel.id());
-        let effect = effects.0.entry(vessel.id()).or_insert_with(|| Effect {
-            drawn: None,
-            light: commands
+        let mut spawn_light = || {
+            commands
                 .spawn((
                     PointLight {
                         intensity: 0.0,
@@ -489,13 +625,26 @@ fn update_effects(
                     },
                     Transform::default(),
                 ))
-                .id(),
-            strength: 0.0,
-            look: target,
-            gathered: (0, 0),
-            points: HullPoints::default(),
-            map: None,
-        });
+                .id()
+        };
+        let (light, wake_light) = if effects.vessels.contains_key(&vessel.id()) {
+            (Entity::PLACEHOLDER, Entity::PLACEHOLDER)
+        } else {
+            (spawn_light(), spawn_light())
+        };
+        let effect = effects
+            .vessels
+            .entry(vessel.id())
+            .or_insert_with(|| Effect {
+                drawn: None,
+                light,
+                wake_light,
+                strength: 0.0,
+                look: target,
+                gathered: (0, 0),
+                points: HullPoints::default(),
+                map: None,
+            });
 
         // Swells and fades instead of jumping when a stage goes, or the view changes vessel.
         let most = CHANGE_RATE * time.delta_secs();
@@ -547,9 +696,12 @@ fn update_effects(
                         }
                         None => {
                             let image = images.add(airstream_image(None));
+                            let shock = images.add(shock_image(None));
                             let material = materials.add(PlasmaMaterial {
                                 params: PlasmaParams::default(),
                                 airstream: image.clone(),
+                                noise: noise.clone(),
+                                shock: shock.clone(),
                             });
                             let mesh = meshes.add(mesh);
                             let entity = commands
@@ -568,6 +720,7 @@ fn update_effects(
                                 entity,
                                 material,
                                 image,
+                                shock,
                                 mesh,
                             });
                         }
@@ -585,10 +738,13 @@ fn update_effects(
             .is_none_or(|map| map.flow.angle_between(flow) > REMAP_ANGLE);
         if remap && effect.strength > 0.0 && !effect.points.points.is_empty() {
             let map = airstream(&effect.points, flow);
-            if let Some(drawn) = &effect.drawn
-                && let Some(mut image) = images.get_mut(&drawn.image)
-            {
-                *image = airstream_image(Some(&map));
+            if let Some(drawn) = &effect.drawn {
+                if let Some(mut image) = images.get_mut(&drawn.image) {
+                    *image = airstream_image(Some(&map));
+                }
+                if let Some(mut image) = images.get_mut(&drawn.shock) {
+                    *image = shock_image(Some(&map));
+                }
             }
             effect.map = Some(map);
         }
@@ -614,7 +770,12 @@ fn update_effects(
         if show && let Some(mut material) = materials.get_mut(&drawn.material) {
             let [hot, mid, far, wrap, shock] = colours(tint, &effect.look, effect.strength);
             material.params = PlasmaParams {
-                edge: Vec4::new(map.on_edge as f32, 0.0, 0.0, 0.0),
+                edge: Vec4::new(
+                    map.on_edge as f32,
+                    STRIPS_FOR_BRIGHTNESS / (map.on_edge as f32).clamp(1.0, STRIPS),
+                    map.shock.breadth,
+                    map.shock.half_width,
+                ),
                 flow: map.flow.extend(map.half_width),
                 across_x: map.across[0].extend(map.reach),
                 across_y: map.across[1].extend(map.back),
@@ -625,12 +786,7 @@ fn update_effects(
                     effect.look.thin as f32,
                     effect.look.white as f32,
                 ),
-                extent: Vec4::new(
-                    effect.look.spread as f32,
-                    effect.points.spacing,
-                    GAS_BRIGHTNESS,
-                    SHOWN_FLOW,
-                ),
+                extent: Vec4::new(effect.look.spread as f32, 0.0, GAS_BRIGHTNESS, 0.0),
                 hot: hot.extend(1.0),
                 mid: mid.extend(1.0),
                 far: far.extend(1.0),
@@ -638,25 +794,38 @@ fn update_effects(
                 shock: shock.extend(1.0),
             };
         }
+        let area = map.reach * map.reach;
+        // Its light is held back with the camera opened up, as the fire itself is.
+        let held_back = (MOST_EXPOSURE / exposure.exposure()).min(1.0);
+        let glow = if show {
+            area * effect.strength * effect.strength * held_back
+        } else {
+            0.0
+        };
         if let Ok((mut light, mut transform)) = lights.get_mut(effect.light) {
             light.color = Color::linear_rgb(tint[0], tint[1], tint[2]);
-            let area = map.reach * map.reach;
-            light.intensity = LIGHT_PER_AREA * area * effect.strength * effect.strength;
-            if !show {
-                light.intensity = 0.0;
-            }
+            light.intensity = LIGHT_PER_AREA * glow;
             let ahead = map.centre + map.flow * (map.front - map.reach * 0.6);
             transform.translation = root.translation + root.rotation * ahead;
         }
+        // Behind the hull and in the fire, which is what lights its flanks.
+        if let Ok((mut light, mut transform)) = lights.get_mut(effect.wake_light) {
+            light.color = Color::linear_rgb(tint[0], tint[1] * 0.9, tint[2] * 1.1);
+            light.intensity = WAKE_LIGHT_PER_AREA * glow;
+            let behind = map.centre + map.flow * (map.back + map.reach * 1.3);
+            transform.translation = root.translation + root.rotation * behind;
+        }
     }
     // Gone, or cooled right down.
-    effects.0.retain(|id, effect| {
+    effects.vessels.retain(|id, effect| {
         let keep = seen.contains(id);
         if !keep {
             commands.entity(effect.light).despawn();
+            commands.entity(effect.wake_light).despawn();
             if let Some(drawn) = &effect.drawn {
                 commands.entity(drawn.entity).despawn();
                 images.remove(&drawn.image);
+                images.remove(&drawn.shock);
                 materials.remove(&drawn.material);
                 meshes.remove(&drawn.mesh);
             }

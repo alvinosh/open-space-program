@@ -6,7 +6,8 @@
 //! thicker air they are shorter, hotter and orange; slower still they go white, which is the Mach
 //! cone. The hull is a set of points scattered evenly over the vessel's own meshes, so that the
 //! plasma doesn't depend on how the meshes happen to be divided, and a depth map of them looking
-//! along the flow (the **airstream map**): only what the air reaches gives off plasma.
+//! along the flow (the **airstream map**): only what the air reaches gives off plasma. The bow shock
+//! is worked out from that map too, so it stands off whatever shape the air sees.
 
 use glam::{DVec3, Vec3};
 
@@ -23,6 +24,21 @@ const EDGE_ON: f32 = 0.15;
 /// map a point may be and still be reached, in texels (`UPSTREAM_TEXELS` in the shader). The plane
 /// a point is on doesn't really go on for ever: at a corner it would hide what is on the other side.
 const UPSTREAM_TEXELS: f32 = 2.0;
+
+/// Texels along each side of the shock map (`textureDimensions` in the shader).
+pub const SHOCK_SIZE: usize = 64;
+/// How far the shock map goes past the hull's outline, as a share of the hull's breadth.
+const SHOCK_MARGIN: f32 = 1.8;
+/// How far back the shock sweeps for each metre past the outline. Near the hull a blunt body's shock
+/// is about this steep: further off it would lean back more, but by then it has faded.
+const SHOCK_SWEEP: f32 = 1.1;
+/// How far ahead of the hull the shock stands, at the outline and at the middle of it, as shares of
+/// the hull's breadth. A real one stands closer, about a tenth, but then it hides in the hull's own
+/// glow.
+const SHOCK_STANDOFF_RIM: f32 = 0.14;
+const SHOCK_STANDOFF_MIDDLE: f32 = 0.4;
+/// How many times the shock is smoothed over its neighbours: it is built from a cone at each texel.
+const SHOCK_SMOOTHING: usize = 3;
 
 /// How wide the band around the hull's outline that streaks come off is, as a share of its reach
 /// (`RIM_BAND` in the shader).
@@ -197,48 +213,148 @@ pub struct Airstream {
     /// How many of the hull's points streaks can come off: reached by the air, and on the outline
     /// or running along the flow. The shader keeps so many of them, whatever the hull's shape.
     pub on_edge: usize,
+    /// The bow shock standing ahead of it.
+    pub shock: Shock,
+}
+
+/// The bow shock, as a surface over a wider map across the flow than [`Airstream`]'s, around the same
+/// middle: [`SHOCK_SIZE`] squared, row by row.
+#[derive(Debug, Clone, Default)]
+pub struct Shock {
+    /// Half the map's width, m.
+    pub half_width: f32,
+    /// How far the deepest point of the hull's outline is from its edge, m: how wide the hull is at
+    /// its narrowest, which is what a shock scales with. A long rocket going sideways has a shock the
+    /// size of its width, not its length.
+    pub breadth: f32,
+    /// How far along the flow the shock is, m, from the same zero as [`Airstream::depth`].
+    pub depth: Vec<f32>,
+    /// How far outside the hull's outline, m; negative inside it.
+    pub outside: Vec<f32>,
+}
+
+/// Two passes over a square map, each texel taking the least of itself and its neighbours plus what
+/// it costs to step from them; what is off the map counts as `beyond`.
+fn spread(values: &mut [f32], n: usize, straight: f32, diagonal: f32, beyond: f32) {
+    let size = n as i32;
+    let at = |values: &[f32], i: i32, j: i32| {
+        if (0..size).contains(&i) && (0..size).contains(&j) {
+            values[j as usize * n + i as usize]
+        } else {
+            beyond
+        }
+    };
+    for j in 0..size {
+        for i in 0..size {
+            let best = (at(values, i - 1, j) + straight)
+                .min(at(values, i, j - 1) + straight)
+                .min(at(values, i - 1, j - 1) + diagonal)
+                .min(at(values, i + 1, j - 1) + diagonal);
+            let here = &mut values[j as usize * n + i as usize];
+            *here = here.min(best);
+        }
+    }
+    for j in (0..size).rev() {
+        for i in (0..size).rev() {
+            let best = (at(values, i + 1, j) + straight)
+                .min(at(values, i, j + 1) + straight)
+                .min(at(values, i + 1, j + 1) + diagonal)
+                .min(at(values, i - 1, j + 1) + diagonal);
+            let here = &mut values[j as usize * n + i as usize];
+            *here = here.min(best);
+        }
+    }
 }
 
 /// How far each texel is inside the outline, m, by a two-pass chamfer distance. The map's edge
 /// counts as outside.
 fn inside_outline(depth: &[f32], texel: f32) -> Vec<f32> {
-    let n = AIRSTREAM_SIZE;
     let mut out: Vec<f32> = depth
         .iter()
         .map(|d| if *d >= NOTHING_THERE { 0.0 } else { f32::MAX })
         .collect();
-    let (straight, diagonal) = (1.0, std::f32::consts::SQRT_2);
-    let at = |out: &[f32], i: i32, j: i32| {
-        if (0..n as i32).contains(&i) && (0..n as i32).contains(&j) {
-            out[j as usize * n + i as usize]
-        } else {
-            0.0
-        }
-    };
-    for j in 0..n as i32 {
-        for i in 0..n as i32 {
-            let best = (at(&out, i - 1, j) + straight)
-                .min(at(&out, i, j - 1) + straight)
-                .min(at(&out, i - 1, j - 1) + diagonal)
-                .min(at(&out, i + 1, j - 1) + diagonal);
-            let here = &mut out[j as usize * n + i as usize];
-            *here = here.min(best);
-        }
-    }
-    for j in (0..n as i32).rev() {
-        for i in (0..n as i32).rev() {
-            let best = (at(&out, i + 1, j) + straight)
-                .min(at(&out, i, j + 1) + straight)
-                .min(at(&out, i + 1, j + 1) + diagonal)
-                .min(at(&out, i - 1, j + 1) + diagonal);
-            let here = &mut out[j as usize * n + i as usize];
-            *here = here.min(best);
-        }
-    }
+    spread(&mut out, AIRSTREAM_SIZE, 1.0, std::f32::consts::SQRT_2, 0.0);
     for value in &mut out {
         *value *= texel;
     }
     out
+}
+
+/// The bow shock over an airstream map: a cone back from each texel of the hull, the least of them
+/// all, then stood off ahead of it, furthest at the middle of the outline so that even a flat shield
+/// gets a dome, and smoothed.
+fn shock_surface(depth: &[f32], inside: &[f32], half_width: f32) -> Shock {
+    let n = SHOCK_SIZE;
+    let breadth = inside.iter().copied().fold(0.0, f32::max).max(0.2);
+    let shock_half = half_width + breadth * SHOCK_MARGIN;
+    let texel = 2.0 * shock_half / n as f32;
+    let map_texel = 2.0 * half_width / AIRSTREAM_SIZE as f32;
+    let mut front = vec![NOTHING_THERE; n * n];
+    let mut deep = vec![0.0f32; n * n];
+    for j in 0..AIRSTREAM_SIZE {
+        for i in 0..AIRSTREAM_SIZE {
+            let k = j * AIRSTREAM_SIZE + i;
+            if depth[k] >= NOTHING_THERE {
+                continue;
+            }
+            let cell = |c: usize| {
+                let x = (c as f32 + 0.5) * map_texel - half_width;
+                (((x + shock_half) / texel) as usize).min(n - 1)
+            };
+            let there = cell(j) * n + cell(i);
+            front[there] = front[there].min(depth[k]);
+            deep[there] = deep[there].max(inside[k]);
+        }
+    }
+    let diagonal = std::f32::consts::SQRT_2;
+    let mut from_rim: Vec<f32> = front
+        .iter()
+        .map(|f| if *f < NOTHING_THERE { 0.0 } else { f32::MAX })
+        .collect();
+    spread(&mut from_rim, n, texel, texel * diagonal, f32::MAX);
+    let outside: Vec<f32> = from_rim
+        .iter()
+        .zip(&deep)
+        .map(|(rim, d)| if *rim > 0.0 { *rim } else { -*d })
+        .collect();
+    spread(
+        &mut front,
+        n,
+        texel * SHOCK_SWEEP,
+        texel * diagonal * SHOCK_SWEEP,
+        NOTHING_THERE,
+    );
+    let mut surface: Vec<f32> = front
+        .iter()
+        .zip(&deep)
+        .map(|(f, d)| {
+            let share = (*d / breadth).clamp(0.0, 1.0);
+            let dome = (1.0 - (1.0 - share) * (1.0 - share)).sqrt();
+            let standoff = SHOCK_STANDOFF_RIM + (SHOCK_STANDOFF_MIDDLE - SHOCK_STANDOFF_RIM) * dome;
+            f - breadth * standoff
+        })
+        .collect();
+    let mut next = surface.clone();
+    for _ in 0..SHOCK_SMOOTHING {
+        for j in 0..n as i32 {
+            for i in 0..n as i32 {
+                let mut sum = 0.0;
+                for (dx, dy) in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)] {
+                    let x = (i + dx).clamp(0, n as i32 - 1) as usize;
+                    let y = (j + dy).clamp(0, n as i32 - 1) as usize;
+                    sum += surface[y * n + x];
+                }
+                next[j as usize * n + i as usize] = sum / 5.0;
+            }
+        }
+        std::mem::swap(&mut surface, &mut next);
+    }
+    Shock {
+        half_width: shock_half,
+        breadth,
+        depth: surface,
+        outside,
+    }
 }
 
 /// How depth changes across the map on the plane of a point with this normal, given its parts
@@ -314,6 +430,8 @@ pub fn airstream(hull: &HullPoints, flow: Vec3) -> Airstream {
         }
     }
     let reach = ((high_x - low_x).max(high_y - low_y) * 0.5).max(0.2);
+    let inside = inside_outline(&depth, texel);
+    let shock = shock_surface(&depth, &inside, half_width);
     let mut map = Airstream {
         flow,
         across: [x_axis, y_axis],
@@ -322,9 +440,10 @@ pub fn airstream(hull: &HullPoints, flow: Vec3) -> Airstream {
         reach,
         front: front - centre.dot(flow),
         back: back - centre.dot(flow),
-        inside: inside_outline(&depth, texel),
+        inside,
         depth,
         on_edge: 0,
+        shock,
     };
     map.on_edge = hull.points.iter().filter(|p| map.gives_streak(p)).count();
     map
@@ -584,6 +703,64 @@ mod tests {
         };
         assert!(hits(near.collect()) > 0.99);
         assert!(hits(far.collect()) < 0.01);
+    }
+
+    /// The shock at a place across the flow from the map's middle: how far along it, and how far
+    /// outside the outline.
+    fn shock_at(map: &Airstream, x: f32, y: f32) -> (f32, f32) {
+        let n = SHOCK_SIZE;
+        let texel = 2.0 * map.shock.half_width / n as f32;
+        let i = ((x + map.shock.half_width) / texel) as usize;
+        let j = ((y + map.shock.half_width) / texel) as usize;
+        (map.shock.depth[j * n + i], map.shock.outside[j * n + i])
+    }
+
+    #[test]
+    fn the_shock_stands_ahead_of_a_flat_end_as_a_dome_and_sweeps_back_past_it() {
+        let hull = scatter_points(&cylinder(2.0, 10.0), 20000, 1e6);
+        let map = airstream(&hull, Vec3::NEG_Z);
+        assert!(
+            (map.shock.breadth - 2.0).abs() < 0.2,
+            "{}",
+            map.shock.breadth
+        );
+        let (middle, inside) = shock_at(&map, 0.0, 0.0);
+        let (partway, _) = shock_at(&map, 1.4, 0.0);
+        let (rim, _) = shock_at(&map, 2.0, 0.0);
+        let (past, outside) = shock_at(&map, 3.5, 0.0);
+        assert!(inside < -1.5, "{inside}");
+        assert!(outside > 1.0, "{outside}");
+        // Ahead of the flat end, which is at `map.front`, most of all in the middle.
+        assert!(middle < map.front - 0.4, "{middle} {}", map.front);
+        assert!(
+            middle < partway && partway < rim && rim < past,
+            "{middle} {partway} {rim} {past}"
+        );
+        // Past the outline it has swept back behind the end, without being a plate.
+        assert!(past > map.front + 0.5, "{past} {}", map.front);
+    }
+
+    #[test]
+    fn the_shock_of_a_long_hull_going_sideways_follows_its_outline() {
+        let hull = scatter_points(&cylinder(2.0, 30.0), 40000, 1e6);
+        // Across the cylinder, whose axis the map then has somewhere across it.
+        let map = airstream(&hull, Vec3::NEG_X);
+        // It scales with how wide the hull is, not how long.
+        assert!(map.shock.breadth < 3.0, "{}", map.shock.breadth);
+        let at = |along: f32, off: f32| {
+            let across = Vec3::Z * along + Vec3::Y * off - map.centre;
+            shock_at(&map, across.dot(map.across[0]), across.dot(map.across[1]))
+        };
+        let (near_top, _) = at(12.0, 0.0);
+        let (near_bottom, _) = at(-12.0, 0.0);
+        let (beside, outside) = at(0.0, 7.0);
+        // As far ahead all along it, and swept back well beside it.
+        assert!(
+            (near_top - near_bottom).abs() < 0.2,
+            "{near_top} {near_bottom}"
+        );
+        assert!(outside > 3.0, "{outside}");
+        assert!(beside > near_top + 3.0, "{beside} {near_top}");
     }
 
     #[test]
