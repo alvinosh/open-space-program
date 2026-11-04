@@ -35,7 +35,7 @@ impl Source {
 pub fn blue_marble() -> Source {
     Source::new(
         "world.200407.3x21600x10800.jpg",
-        "https://eoimages.gsfc.nasa.gov/images/imagerecords/74000/74092/world.200407.3x21600x10800.jpg",
+        "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/july/world.200407.3x21600x10800.jpg",
     )
 }
 /// NOAA ETOPO 2022, 60 arc-second surface elevation (bathymetry and land).
@@ -56,7 +56,7 @@ pub fn cci_land_cover() -> Source {
 pub fn black_marble() -> Source {
     Source::new(
         "BlackMarble_2016_3km_gray.jpg",
-        "https://eoimages.gsfc.nasa.gov/images/imagerecords/144000/144897/BlackMarble_2016_3km_gray.jpg",
+        "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144897/BlackMarble_2016_3km_gray.jpg",
     )
 }
 
