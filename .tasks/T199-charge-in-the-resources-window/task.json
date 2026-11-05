@@ -1,0 +1,19 @@
+{
+  "id": "T199",
+  "title": "Charge in the Resources window",
+  "kind": "feature",
+  "status": "done",
+  "area": "power",
+  "size": "S",
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/systems.rs",
+    "assets/core/layouts/resources.json5"
+  ],
+  "created": "2026-11-05",
+  "updated": "2026-11-05",
+  "done": "2026-11-05",
+  "milestone": "M1",
+  "priority": null
+}

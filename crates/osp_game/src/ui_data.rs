@@ -2,6 +2,8 @@
 //!
 //! Every key is listed in `docs/modding.md`; in game, press F12 for the data inspector.
 
+use std::collections::BTreeMap;
+
 use bevy::{math::DVec3, prelude::*};
 use osp_mods::Severity;
 use osp_sim::{
@@ -389,6 +391,7 @@ fn publish_flight(
     data.set("vessel.stages", rows);
     publish_sequences(&mut data, vessel, mass * local_g, &marks, &edits);
     publish_resources(&mut data, propulsion);
+    publish_power(&mut data, &vessel.power_state(system, now));
 
     // Procedural tanks and fins: what each is made of and how hard it is working.
     data.set("vessel.destroyed", vessel.is_destroyed());
@@ -926,17 +929,40 @@ fn stage_color(id: usize) -> &'static str {
     STAGE_COLORS[id % STAGE_COLORS.len()]
 }
 
-/// Every propellant on board, a row per stage that holds it, top of the stack first
-/// (`vessel.resources`): how much is left, whether the stage's engines or RCS burn it, and
-/// the stage's colour.
+/// Every propellant on board and the charge in its batteries, a row per stage that holds it, top of
+/// the stack first (`vessel.resources`): how much is left, whether the stage's engines or RCS burn
+/// it, and the stage's colour.
 fn publish_resources(data: &mut UiData, propulsion: &osp_sim::propulsion::Propulsion) {
+    let tree = propulsion.parts();
+    let mut charge_by_stage: BTreeMap<usize, (f64, f64)> = BTreeMap::new();
+    for (part, held, most) in propulsion.systems.stores() {
+        let stage = tree.get(part).map_or(0, |p| p.stage);
+        let total = charge_by_stage.entry(stage).or_default();
+        *total = (total.0 + held, total.1 + most);
+    }
     let rows: Vec<_> = propulsion
         .sections
         .iter()
         .enumerate()
         .rev()
         .flat_map(|(i, stage)| {
-            propulsion.propellants(stage.id).into_iter().map(move |p| {
+            let charge = charge_by_stage.get(&stage.id).map(|&(held, most)| {
+                record([
+                    ("name", "Charge".into()),
+                    ("stage", stage.name.as_str().into()),
+                    ("color", stage_color(stage.id).into()),
+                    ("bottom", (i == 0).into()),
+                    // J: what `|energy` takes.
+                    ("amount", (held * 1e3).into()),
+                    ("capacity", (most * 1e3).into()),
+                    ("fraction", (held / most.max(1e-9)).into()),
+                    ("charge", true.into()),
+                    ("engines", false.into()),
+                    ("rcs", false.into()),
+                    ("tag", "".into()),
+                ])
+            });
+            let propellants = propulsion.propellants(stage.id).into_iter().map(move |p| {
                 let engines = propulsion
                     .engines_of(stage.id)
                     .any(|e| e.def.propellants.contains_key(&p.name));
@@ -951,16 +977,46 @@ fn publish_resources(data: &mut UiData, propulsion: &osp_sim::propulsion::Propul
                     ("amount", p.amount.into()),
                     ("capacity", p.capacity.into()),
                     ("fraction", (p.amount / p.capacity.max(1e-9)).into()),
+                    ("charge", false.into()),
                     ("engines", engines.into()),
                     ("rcs", rcs.into()),
                     // Marks RCS-only propellant in the window.
                     ("tag", if rcs && !engines { "RCS" } else { "" }.into()),
                 ])
-            })
+            });
+            charge.into_iter().chain(propellants)
         })
         .collect();
     data.set("vessel.resource_count", rows.len());
     data.set("vessel.resources", rows);
+}
+
+/// `vessel.has_power` and what is said about it: how long until it runs out if it is running down
+/// (`vessel.power_draining`, `vessel.power_left`), holding (`vessel.power_steady`), its batteries
+/// flat with everything still running on what it makes (`vessel.power_flat`), some of its loads off
+/// (`vessel.power_shedding`) or what it cannot do without off (`vessel.power_out`), and how much of it
+/// is left (`vessel.power_fraction`).
+fn publish_power(data: &mut UiData, power: &osp_sim::systems::PowerState) {
+    let has_store = power.capacity > 0.0;
+    data.set(
+        "vessel.has_power",
+        has_store || power.browned_out || power.shedding,
+    );
+    data.set("vessel.power_out", power.browned_out);
+    data.set(
+        "vessel.power_shedding",
+        power.shedding && !power.browned_out,
+    );
+    let draining = power.runs_out_in.filter(|_| !power.browned_out);
+    data.set("vessel.power_draining", draining.is_some());
+    data.set("vessel.power_left", draining.unwrap_or(0.0));
+    let holding = has_store && draining.is_none() && !power.shedding && !power.browned_out;
+    data.set("vessel.power_steady", holding && !power.is_flat());
+    data.set("vessel.power_flat", holding && power.is_flat());
+    data.set(
+        "vessel.power_fraction",
+        power.charge / power.capacity.max(1e-9),
+    );
 }
 
 #[cfg(test)]

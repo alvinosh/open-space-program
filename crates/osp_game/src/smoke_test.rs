@@ -146,6 +146,8 @@ impl Plugin for SmokeTestPlugin {
                 ASCENT_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_FALLING").is_some() {
                 FALLING_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_POWER").is_some() {
+                POWER_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_WINDOWS").is_some() {
                 WINDOWS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_LAUNCH_TIMES").is_some() {
@@ -1251,6 +1253,26 @@ const FALLING_SCRIPT: &[(f64, Action)] = &[
     (21.0, Action::LookFrom(30.0, 180.0, 5.0)),
     (21.8, Action::Capture("falling_later_other_side.png")),
     (22.6, Action::Exit),
+];
+
+/// `OSP_CAPTURE_POWER=1`: a vessel on batteries alone in the Resources window, on the pad as time
+/// goes by, until they run out. Its avionics draw nothing, so it keeps control and only its other
+/// loads go. A Saturn V left on the pad shows `Out of power` too, once its fuel cells have also run
+/// dry, after about a week.
+const POWER_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.show:lunar_module")),
+    (4.0, Action::Ui("editor.launch")),
+    (6.0, Action::Ui("ui.show:resources")),
+    (6.5, Action::ExpectData("vessel.has_power")),
+    (6.6, Action::ExpectData("vessel.power_draining")),
+    (7.0, Action::Capture("power_start.png")),
+    (7.2, Action::Warp(9)),
+    (20.0, Action::Capture("power_warped.png")),
+    (40.0, Action::ExpectData("vessel.power_shedding")),
+    (40.5, Action::Capture("power_gone.png")),
+    (41.3, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_WINDOWS=1` (with `OSP_USER_DIR=<a folder>`, and its `windows.json` if there is to be

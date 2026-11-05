@@ -287,6 +287,10 @@ impl System for Load {
         self.essential && !self.on
     }
 
+    fn shed(&self) -> bool {
+        !self.on
+    }
+
     boxed!();
 }
 
@@ -339,6 +343,10 @@ impl System for Avionics {
         self.on = on;
     }
 
+    fn shed(&self) -> bool {
+        !self.on
+    }
+
     boxed!();
 }
 
@@ -380,6 +388,10 @@ impl System for Antenna {
 
     fn powered(&mut self, on: bool) {
         self.on = on;
+    }
+
+    fn shed(&self) -> bool {
+        !self.on
     }
 
     boxed!();

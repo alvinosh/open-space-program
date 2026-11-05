@@ -4,7 +4,7 @@
 //! `{key}` prints a value with the default format, `{key|name}` or `{key|name:arg}` runs a
 //! registered formatter, and `{{` / `}}` print literal braces.
 //!
-//! Built-in formatters: `fixed:N`, `int`, `percent[:N]`, `distance`, `speed`, `mass`,
+//! Built-in formatters: `fixed:N`, `int`, `percent[:N]`, `distance`, `speed`, `mass`, `energy`,
 //! `force`, `torque`, `pressure`, `duration`, `countdown`, `degrees[:N]`, `sci[:N]`,
 //! `upper`, `lower`, `yesno`.
 //! The game (or a plugin) can register more with [`Formatters::register`].
@@ -130,6 +130,11 @@ impl Default for Formatters {
         });
         f.register("mass", |v, _| {
             number(v, |n| scaled(n, &[(1e3, "t"), (1.0, "kg")], 2))
+        });
+        f.register("energy", |v, _| {
+            number(v, |n| {
+                scaled(n, &[(3.6e9, "MWh"), (3.6e6, "kWh"), (3.6e3, "Wh")], 2)
+            })
         });
         f.register("force", |v, _| {
             number(v, |n| scaled(n, &[(1e6, "MN"), (1e3, "kN"), (1.0, "N")], 1))

@@ -1,8 +1,10 @@
-// Resources window (closed at the start; the stage stack has a fuel bar per stage): every propellant on board, a row per stage that holds it, top of the
+// Resources window (closed at the start; the stage stack has a fuel bar per stage): every propellant
+// on board and the charge in its batteries, a row per stage that holds it, top of the
 // stack first. Each bar is in its stage's colour, the colour of that stage's fuel bars in
 // the sequence stack; hover a row for the stage's name. The bottom stage (burning now)
-// has its names lit; propellant only the RCS burns is tagged. The first line is the
-// delta-v the RCS can still give the whole vessel.
+// has its names lit; propellant only the RCS burns is tagged. The first lines are how long the
+// power lasts at what it draws now, as avionics stop without it, and the delta-v the RCS can still
+// give the whole vessel.
 {
   id: "resources",
   visible: false,
@@ -15,6 +17,22 @@
     title: "Resources",
     style: { width: 250 },
     children: [
+      {
+        id: "power_supply",
+        widget: "row",
+        visible: "vessel.has_power",
+        style: { gap: 6, margin: [0, 0, 3, 0] },
+        children: [
+          { widget: "label", class: "caption", text: "POWER" },
+          { widget: "label", visible: "vessel.power_draining", text: "{vessel.power_left|duration} left" },
+          { widget: "label", visible: "vessel.power_steady", text: "Not running down" },
+          { widget: "label", class: "warning", visible: "vessel.power_flat", text: "Batteries flat" },
+          { widget: "label", class: "warning", visible: "vessel.power_shedding", text: "Loads off" },
+          { widget: "label", class: "warning", visible: "vessel.power_out", text: "Out of power" },
+          { widget: "spacer" },
+          { widget: "label", class: "dim", text: "{vessel.power_fraction|percent} left" },
+        ],
+      },
       {
         id: "rcs_supply",
         widget: "row",
@@ -40,13 +58,14 @@
             children: [
               { widget: "label", class: "res_name", active: "item.bottom", text: "{item.name}" },
               { widget: "bar", class: "res_bar", value: "item.fraction", color: "item.color" },
-              { widget: "label", class: "res_amount", text: "{item.amount|mass}" },
+              { widget: "label", class: "res_amount", visible: "!item.charge", text: "{item.amount|mass}" },
+              { widget: "label", class: "res_amount", visible: "item.charge", text: "{item.amount|energy}" },
               { widget: "label", class: "caption res_tag", text: "{item.tag}" },
             ],
           },
         ],
       },
-      { widget: "label", class: "dim", visible: "!vessel.resource_count", text: "No propellant on board" },
+      { widget: "label", class: "dim", visible: "!vessel.resource_count", text: "Nothing on board" },
     ],
   },
 }

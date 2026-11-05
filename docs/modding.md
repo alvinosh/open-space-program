@@ -956,7 +956,7 @@ stops the scenario from starting, with the reason.
 | `Plan` | `min` / `max`: how many burns are planned |
 | `Goal` | The scenario's goal with this `id` is met. Only a tutorial step can ask this |
 
-Not there yet: battery charge (no electrical model), splashing down (no sea), crew lost (no crew).
+Not there yet: battery charge, splashing down (no sea), crew lost (no crew).
 The results show the mission time, the delta-v the engines gave (thrust over mass, summed over
 physics ticks, so it counts what gravity and drag took too), the peak acceleration and the
 highest altitude. The UI reads it all from the `mission.*` data keys.
@@ -1193,6 +1193,7 @@ produce literal braces.
 | `distance` | `950 m`, `12.35 km`, `384400 km`, `1.000 AU` |
 | `speed` | `216.9 m/s`, `11.20 km/s` |
 | `mass` | `431.14 t` |
+| `energy` | `19.60 kWh` (from joules) |
 | `force` | `7.7 MN` |
 | `torque` | `17.6 MN m` |
 | `pressure` | `20.18 kPa` |
@@ -1380,7 +1381,8 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.next_caption`, `vessel.armed_lines[]` | What the stage key does next; the lit engines in lines of four (`tiles[]`) |
 | `vessel.sequence_count`, `vessel.stage_twr` | How many sequences are left; thrust-to-weight of the bottom stage at full throttle here |
 | `vessel.armed[]`, `vessel.armed_count`, `vessel.armed_number` | Stages whose engines are lit (their sequence fired), bottom first: `stage`, `count`, `multiple`, `fuel` (0..1), `has_fuel`, `color`; how many; the number of the last sequence fired |
-| `vessel.resources[]`, `vessel.resource_count` | Every propellant on board, a row per stage that holds it, top of the stack first: `name`, `stage`, `color` (the stage's, `"#rrggbb"`; a stage keeps its colour as the ones below fall away), `bottom` (on the bottom stage), `amount` and `capacity` (kg), `fraction`, `engines` and `rcs` (whether the stage's engines or RCS burn it), `tag` (`"RCS"` if only the RCS does); how many rows |
+| `vessel.has_power`, `vessel.power_draining`, `vessel.power_left`, `vessel.power_steady`, `vessel.power_flat`, `vessel.power_shedding`, `vessel.power_out`, `vessel.power_fraction` | It has batteries, or a load with no power; the first power network to run down, and how long its batteries last at what it draws now (s); nothing is running down; its batteries are flat and everything is still running on what it makes; some load is off for want of power; its avionics or another load it cannot do without have no power; share of its charge left (0..1) |
+| `vessel.resources[]`, `vessel.resource_count` | Every propellant on board and the charge in its batteries (`charge` true, `name` `Charge`, `amount` and `capacity` in joules, for `\|energy`), a row per stage that holds it, top of the stack first: `name`, `stage`, `color` (the stage's, `"#rrggbb"`; a stage keeps its colour as the ones below fall away), `bottom` (on the bottom stage), `amount` and `capacity` (kg), `fraction`, `engines` and `rcs` (whether the stage's engines or RCS burn it), `tag` (`"RCS"` if only the RCS does); how many rows |
 | `vessel.parts[]` | Tanks and fin sets: `stage`, `name`, `tank` (bool), `size`, `material`, `mass` (kg, empty), `load` (0..1+), `mode` (`buckling`, `pressure`, `bending`); tanks also `volume` (m³), `utilization`, `contents`, `wall` (mm), `max_pressure` (bar), `max_axial_load` (N, cylinders); fins `max_fin_force` (N per fin) |
 | `vessel.log[]` | `time`, `message` (newest first) |
 | `orbit.apoapsis`, `orbit.periapsis` | Altitudes, m (apoapsis empty when escaping) |

@@ -1402,6 +1402,12 @@ impl Vessel {
         environment
     }
 
+    /// How its power stands at `time`.
+    pub fn power_state(&self, system: &SolarSystem, time: SimTime) -> crate::systems::PowerState {
+        let environment = self.system_environment(system, time);
+        self.propulsion.systems.power_state(&environment)
+    }
+
     /// How it stands as seen from the part it is flown from: what the navball shows.
     pub fn control_attitude(&self, system: &SolarSystem, time: SimTime) -> Attitude {
         let attitude = self.attitude_state(system, time);

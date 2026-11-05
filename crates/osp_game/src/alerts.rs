@@ -8,6 +8,8 @@ use osp_ui::{UiData, record};
 
 use crate::{FrameSet, settings::InterfaceSettings, sim::Sim};
 
+/// How long before the power runs out it is warned about, s: time to do something about it.
+const LOW_POWER: f64 = 300.0;
 /// Share of its strength a structure is warned about at.
 const STRUCTURE: f64 = 0.85;
 /// Share of the propellant feeding the lit engines that is warned about.
@@ -37,6 +39,10 @@ struct Readings {
     /// Load on the structure, as a share of its strength.
     structure: f64,
     no_power: bool,
+    /// Seconds until the power runs out, if it is running down.
+    power_left: Option<f64>,
+    /// Some load is off for want of power, or the batteries are flat.
+    shedding: bool,
     no_control: bool,
     /// It has a radio, and nothing to talk to.
     no_signal: bool,
@@ -66,6 +72,8 @@ fn judge(readings: &Readings) -> Vec<&'static str> {
     }
     if readings.no_power {
         alerts.push("Out of power");
+    } else if readings.shedding || readings.power_left.is_some_and(|left| left < LOW_POWER) {
+        alerts.push("Low power");
     }
     if readings.no_control {
         alerts.push("No control");
@@ -95,9 +103,13 @@ fn readings(vessel: &Vessel, sim: &Sim) -> Readings {
     let state = vessel.state_at(system, time);
     let body = system.body(vessel.parent());
     let fixed = body.orientation(time).inverse() * state.position.normalize();
+    let power = vessel.power_state(system, time);
     Readings {
         structure: vessel.flight.structure_load,
-        no_power: propulsion.systems.brownout(),
+        no_power: power.browned_out,
+        power_left: power.runs_out_in,
+        // Flat, it is on whatever it makes, with nothing to fall back on.
+        shedding: power.shedding || power.is_flat(),
         no_control: !vessel.controlled(system),
         no_signal: vessel.radio().is_some() && vessel.link().is_none(),
         propellant: propulsion.feed_fraction(&lit),
@@ -162,6 +174,36 @@ mod tests {
         assert_eq!(
             says(Readings {
                 no_power: true,
+                ..some
+            }),
+            ["Out of power"]
+        );
+        assert_eq!(
+            says(Readings {
+                power_left: Some(120.0),
+                ..some
+            }),
+            ["Low power"]
+        );
+        assert_eq!(
+            says(Readings {
+                shedding: true,
+                ..some
+            }),
+            ["Low power"]
+        );
+        // Plenty left, it is no news. Run out, it says so rather than low.
+        assert!(
+            says(Readings {
+                power_left: Some(3_600.0),
+                ..some
+            })
+            .is_empty()
+        );
+        assert_eq!(
+            says(Readings {
+                no_power: true,
+                power_left: Some(120.0),
                 ..some
             }),
             ["Out of power"]
