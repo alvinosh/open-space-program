@@ -140,6 +140,10 @@ impl Plugin for SmokeTestPlugin {
                 BOXES_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_LEAVING").is_some() {
                 LEAVING_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_ASCENT").is_some() {
+                ASCENT_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_FALLING").is_some() {
+                FALLING_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_WINDOWS").is_some() {
                 WINDOWS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_LAUNCH_TIMES").is_some() {
@@ -1170,6 +1174,48 @@ const TRANSFER_SCRIPT: &[(f64, Action)] = &[
     (6.4, Action::MapView(true)),
     (8.0, Action::Capture("transfer_map.png")),
     (8.5, Action::Exit),
+];
+
+/// `OSP_SCENARIO=pad OSP_CAPTURE_ASCENT=1`: the same by day, closer, to see what the air does to the
+/// rocket through the fastest part of the climb.
+const ASCENT_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("ui.hide_group:flight")),
+    (2.0, Action::Launch),
+    (21.0, Action::LookFrom(45.0, 40.0, 5.0)),
+    (22.0, Action::Capture("ascent_t20.png")),
+    (41.0, Action::LookFrom(45.0, 40.0, 5.0)),
+    (42.0, Action::Capture("ascent_t40.png")),
+    (56.0, Action::LookFrom(45.0, 40.0, 5.0)),
+    (57.0, Action::Capture("ascent_t55.png")),
+    (66.0, Action::LookFrom(45.0, 40.0, 5.0)),
+    (67.0, Action::Capture("ascent_t65.png")),
+    (76.0, Action::LookFrom(45.0, 40.0, 5.0)),
+    (77.0, Action::Capture("ascent_t75.png")),
+    (86.0, Action::LookFrom(45.0, 200.0, 5.0)),
+    (87.0, Action::Capture("ascent_t85_far_side.png")),
+    (101.0, Action::LookFrom(45.0, 40.0, 5.0)),
+    (102.0, Action::Capture("ascent_t100.png")),
+    (103.0, Action::Exit),
+];
+
+/// `OSP_CAPTURE_FALLING=1`, with `OSP_SCENARIO` a scenario starting fast in the air: what the air does
+/// to it, from two sides close to and further off, soon after the start and again once it has had
+/// time to turn into the flow.
+const FALLING_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (0.6, Action::Ui("ui.hide_group:flight")),
+    (2.0, Action::LookFrom(30.0, 90.0, 5.0)),
+    (2.8, Action::Capture("falling_close.png")),
+    (3.0, Action::LookFrom(80.0, 90.0, 5.0)),
+    (3.8, Action::Capture("falling_far.png")),
+    (4.0, Action::LookFrom(80.0, 250.0, 15.0)),
+    (4.8, Action::Capture("falling_far_other_side.png")),
+    (20.0, Action::LookFrom(30.0, 90.0, 5.0)),
+    (20.8, Action::Capture("falling_later_close.png")),
+    (21.0, Action::LookFrom(30.0, 180.0, 5.0)),
+    (21.8, Action::Capture("falling_later_other_side.png")),
+    (22.6, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_WINDOWS=1` (with `OSP_USER_DIR=<a folder>`, and its `windows.json` if there is to be

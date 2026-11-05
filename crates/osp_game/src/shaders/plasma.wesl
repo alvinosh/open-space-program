@@ -44,7 +44,8 @@ struct Params {
     /// x: strength, 0 to 1; y: how long the streaks are, m; z: how thin the air is, 0 to 1; w: how
     /// much is a Mach cone's white.
     look: vec4<f32>,
-    /// x: how far the streaks flare out, m; z: brightness of the gas at full strength, cd/m².
+    /// x: how far the streaks flare out, m; z: brightness of the gas at full strength, cd/m²; w: how
+    /// much of a Mach cone's white the light here shows.
     extent: vec4<f32>,
     /// The gas's colours: at the hull, along the streak, at its end, the closing streaks, the shock.
     hot: vec4<f32>,
@@ -75,6 +76,8 @@ const SHOCK: i32 = 6;
 /// As `osp_sim::plasma` has them.
 const EDGE_ON: f32 = 0.15;
 const UPSTREAM_TEXELS: f32 = 2.0;
+/// In the map, at or above this nothing of the hull is there (`NOTHING_THERE` in `osp_sim::plasma`).
+const NOTHING_THERE: f32 = 1.0e8;
 /// Below this strength, none of the wrap, the shock or the sparks: only strong entries have them.
 const WRAP_FROM: f32 = 0.4;
 const SHOCK_FROM: f32 = 0.22;
@@ -163,16 +166,23 @@ fn exposure(p: vec3<f32>, n: vec3<f32>) -> f32 {
     let most = UPSTREAM_TEXELS * texel;
     let cell = map_cell(across);
     var sum = 0.0;
+    var hull = 0.0;
     for (var j = -1; j <= 1; j++) {
         for (var i = -1; i <= 1; i++) {
             let c = cell + vec2<i32>(i, j);
+            let map = textureLoad(airstream, clamp(c, vec2<i32>(0), vec2<i32>(last)), 0).r;
+            // Open air beside the outline says nothing about this point. Counted, the wall of a long
+            // hull is reached all the way back, and strips come off the length of it.
+            if map >= NOTHING_THERE {
+                continue;
+            }
+            hull += 1.0;
             let offset = (vec2<f32>(c) + 0.5) * texel - half_width - across;
             let there = z + clamp(dot(offset, slope), -most, most);
-            let map = textureLoad(airstream, clamp(c, vec2<i32>(0), vec2<i32>(last)), 0).r;
             sum += step(there, map + most);
         }
     }
-    return sum / 9.0;
+    return select(1.0, sum / hull, hull > 0.0);
 }
 
 /// How near a point is to the hull's outline as the air sees it: 1 on it, 0 past the band around it.
@@ -443,7 +453,9 @@ fn fragment(in: Output) -> @location(0) vec4<f32> {
     let layer = i32(in.strip.x + 0.5);
     let strength = params.look.x;
     let exposed = min(view.exposure, MOST_EXPOSURE);
-    let bright = params.extent.z * (0.35 + 0.65 * strength) * exposed;
+    // A Mach cone's white is vapour, lit by what falls on it (`extent.w`), where the fire is its own.
+    let bright = params.extent.z * (0.35 + 0.65 * strength) * exposed
+        * mix(1.0, params.extent.w, params.look.w);
     let time = globals.time;
     let flow = params.flow.xyz;
     let reach = max(params.across_x.w, 0.1);

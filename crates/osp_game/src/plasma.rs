@@ -45,6 +45,8 @@ use crate::{
     vessel_render::VesselVisual,
 };
 
+/// What of a Mach cone's white still shows on the night side, by the sky's own light.
+const VAPOUR_AT_NIGHT: f32 = 0.02;
 /// Vessels with effects at once.
 const MOST_AT_ONCE: usize = 4;
 /// Below this strength, nothing is drawn.
@@ -518,6 +520,13 @@ fn shock_image(map: Option<&Airstream>) -> Image {
     image
 }
 
+/// How much of a Mach cone's white can be seen with the sun this far above the horizon, as the sine
+/// of its height. The vapour gives off no light of its own: it shows by what falls on it.
+fn vapour_light(sun_height: f64) -> f32 {
+    let t = ((sun_height + 0.12) / 0.22).clamp(0.0, 1.0) as f32;
+    VAPOUR_AT_NIGHT + (1.0 - VAPOUR_AT_NIGHT) * t * t * (3.0 - 2.0 * t)
+}
+
 fn mix3(a: [f32; 3], b: [f32; 3], k: f32) -> Vec3 {
     Vec3::from(a).lerp(Vec3::from(b), k)
 }
@@ -600,7 +609,12 @@ fn update_effects(
         }
         let airflow = state.velocity - body.surface_velocity(state.position);
         let radius = nose_radius(vessel.propulsion.shape().reference_area());
-        let climbing = airflow.dot(state.position.normalize_or_zero());
+        let up = state.position.normalize_or_zero();
+        let climbing = airflow.dot(up);
+        let to_sun = (frame.body_offset(system.root())
+            - frame.relative(vessel.parent(), state.position))
+        .normalize_or_zero();
+        let vapour = vapour_light(up.dot(to_sun));
         let target = entry_look(
             air.sample(altitude).density,
             airflow.length(),
@@ -786,7 +800,7 @@ fn update_effects(
                     effect.look.thin as f32,
                     effect.look.white as f32,
                 ),
-                extent: Vec4::new(effect.look.spread as f32, 0.0, GAS_BRIGHTNESS, 0.0),
+                extent: Vec4::new(effect.look.spread as f32, 0.0, GAS_BRIGHTNESS, vapour),
                 hot: hot.extend(1.0),
                 mid: mid.extend(1.0),
                 far: far.extend(1.0),
@@ -798,7 +812,8 @@ fn update_effects(
         // Its light is held back with the camera opened up, as the fire itself is.
         let held_back = (MOST_EXPOSURE / exposure.exposure()).min(1.0);
         let glow = if show {
-            area * effect.strength * effect.strength * held_back
+            let lit = 1.0 + (vapour - 1.0) * effect.look.white as f32;
+            area * effect.strength * effect.strength * held_back * lit
         } else {
             0.0
         };
@@ -832,4 +847,17 @@ fn update_effects(
         }
         keep
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_mach_cones_vapour_shows_by_day_and_hardly_at_night() {
+        assert_eq!(vapour_light(0.8), 1.0);
+        assert_eq!(vapour_light(-0.5), VAPOUR_AT_NIGHT);
+        let dusk = vapour_light(-0.01);
+        assert!(VAPOUR_AT_NIGHT < dusk && dusk < 1.0, "{dusk}");
+    }
 }

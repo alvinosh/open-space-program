@@ -64,6 +64,9 @@ fn smoothstep(e0: f64, e1: f64, x: f64) -> f64 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// How much glow it takes to show at all while climbing, from none to all of it (`glow_level`).
+const CLIMB_GLOW: (f64, f64) = (0.25, 0.5);
+
 /// How the plasma around a vessel looks at a moment of its flight.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct EntryLook {
@@ -82,12 +85,16 @@ pub struct EntryLook {
 /// The look at this air density (kg/m³), airspeed (m/s), hull radius (m) and rate of climb (m/s).
 pub fn entry_look(density: f64, speed: f64, radius: f64, climbing: f64) -> EntryLook {
     let heat = glow_level(stagnation_heating(density, speed, radius));
-    // A shock in thick air shows from about Mach 1.2. Less of it on the way up, where it would
-    // hide the rocket for the whole of the climb through the worst of the air.
+    // A shock in thick air shows from about Mach 1.2, coming down.
     let pressure = 0.5 * density * speed * speed;
-    let mach = smoothstep(380.0, 800.0, speed)
-        * smoothstep(1_500.0, 16_000.0, pressure)
-        * if climbing > 0.0 { 0.3 } else { 0.6 };
+    let mach = smoothstep(380.0, 800.0, speed) * smoothstep(1_500.0, 16_000.0, pressure) * 0.6;
+    // Going up nothing shows: a rocket is through the thick air before it is going fast, and what
+    // heating that comes to is no glow. Only the way out of a skipping entry is still hot enough.
+    let (heat, mach) = if climbing > 0.0 {
+        (heat * smoothstep(CLIMB_GLOW.0, CLIMB_GLOW.1, heat), 0.0)
+    } else {
+        (heat, mach)
+    };
     let strength = heat.max(mach);
     let white = if strength > 0.0 {
         (mach / (heat + mach)).clamp(0.0, 1.0) * (1.0 - heat).powi(2)
@@ -584,11 +591,36 @@ mod tests {
         let cone = entry_look(0.3, 600.0, 2.0, -100.0);
         assert!(cone.strength > 0.1, "{cone:?}");
         assert!(cone.white > 0.9, "{cone:?}");
-        // Less of it climbing.
-        let climbing = entry_look(0.3, 600.0, 2.0, 100.0);
-        assert!(climbing.strength < cone.strength, "{climbing:?} {cone:?}");
         // A plane on approach.
         assert_eq!(entry_look(1.2, 80.0, 2.0, -5.0).strength, 0.0);
+    }
+
+    #[test]
+    fn a_rocket_on_its_way_up_shows_nothing_but_the_way_out_of_a_skip_does() {
+        // Air density and speed through a climb to orbit, up to the nearly orbital and thin, for a
+        // small rocket and a big one.
+        let climb = [
+            (0.65, 300.0),
+            (0.3, 600.0),
+            (0.09, 1_000.0),
+            (0.004, 1_500.0),
+            (1e-3, 2_500.0),
+            (3e-4, 3_000.0),
+            (1.8e-5, 4_000.0),
+            (1e-6, 6_000.0),
+            (1e-7, 7_500.0),
+        ];
+        for radius in [0.5, 2.0, 5.0] {
+            for (density, speed) in climb {
+                let look = entry_look(density, speed, radius, 200.0);
+                assert_eq!(look.strength, 0.0, "{density} {speed} {radius}: {look:?}");
+            }
+        }
+        // Going out again at 70 km and most of orbital speed, it is still on fire.
+        let skip = entry_look(8e-5, 7_000.0, 2.0, 200.0);
+        let in_again = entry_look(8e-5, 7_000.0, 2.0, -200.0);
+        assert!(skip.strength > 0.4, "{skip:?}");
+        assert!(in_again.strength >= skip.strength, "{skip:?} {in_again:?}");
     }
 
     #[test]
