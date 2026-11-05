@@ -1,6 +1,7 @@
 // Transfer planner (F4): delta-v to the target for every departure time (across) and
 // flight time (up). Blue is cheap, red is four times the cheapest, black is impossible
-// (through the planet). Click the plot to pick a transfer, then make its burn.
+// (through the planet). Click the plot to pick a transfer, then make its burn. On the ground, for a
+// target around the same body, Compute lists when to launch and which way to fly instead.
 {
   id: "transfer_planner",
   visible: false,
@@ -25,6 +26,41 @@
       },
       { widget: "label", class: "dim", visible: "!target.has", text: "Choose a target first (Shift+click in map view, or F11)." },
       { widget: "label", class: "warning", visible: "transfer.stale", text: "Plotted for another target: compute again", style: { margin: [2, 0, 0, 0] } },
+      {
+        id: "launch",
+        widget: "column",
+        visible: "transfer.on_ground",
+        style: { gap: 3, margin: [4, 0, 0, 0] },
+        children: [
+          { widget: "label", class: "dim", visible: "transfer.launch_far", text: "Flying the heading lines your orbit up with where {target.name} will be, for a flight of about {transfer.launch_flight|duration}." },
+          { widget: "label", class: "dim", visible: "!transfer.launch_far", text: "Flying the heading puts your orbit as close to {target.name}'s plane as it can be from here." },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Launch now" }, { widget: "label", text: "Heading {transfer.now_heading}°, inclination {transfer.now_inclination}°" }] },
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Extra to reach orbit" }, { widget: "label", text: "{transfer.now_extra|speed}" }] },
+          { widget: "row", class: "kv", visible: "transfer.now_misses", children: [{ widget: "label", class: "key", text: "Off its plane by" }, { widget: "label", text: "{transfer.now_miss}°" }] },
+          { widget: "label", class: "key", visible: "transfer.has_windows", text: "Best times", style: { margin: [4, 0, 0, 0] } },
+          { widget: "label", class: "dim", visible: "!transfer.has_windows", text: "No time is better than any other." },
+          {
+            id: "launch_times",
+            widget: "column",
+            repeat: "transfer.windows",
+            visible: "transfer.has_windows",
+            style: { gap: 2 },
+            children: [
+              {
+                widget: "row",
+                class: "kv",
+                children: [
+                  { widget: "label", text: "{item.in|countdown}" },
+                  { widget: "label", class: "dim", text: "Heading {item.heading}°, inclination {item.inclination}°", style: { margin: [0, 0, 0, 8] } },
+                  { widget: "label", class: "warning", visible: "item.misses", text: "off by {item.miss}°", style: { margin: [0, 0, 0, 8] } },
+                  { widget: "spacer" },
+                  { widget: "button", class: "step_button", text: "Warp", action: "transfer.warp_launch:{item.index}" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
       {
         id: "plot",
         widget: "column",

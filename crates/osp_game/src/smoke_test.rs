@@ -139,6 +139,8 @@ impl Plugin for SmokeTestPlugin {
                 BOXES_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_LEAVING").is_some() {
                 LEAVING_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_LAUNCH_TIMES").is_some() {
+                LAUNCH_TIMES_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_REVERT").is_some() {
                 REVERT_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MENUS").is_some() {
@@ -301,6 +303,8 @@ enum Action {
     ExpectDialog(&'static str),
     /// Stop the capture with a failure unless there are this many saves.
     ExpectSaves(usize),
+    /// Stop the capture with a failure unless this condition on the UI's data holds.
+    ExpectData(&'static str),
     /// Stop the capture with a failure unless the game can revert to the launch of what is called
     /// this, or cannot for `None`.
     ExpectRevert(Option<&'static str>),
@@ -1161,6 +1165,28 @@ const TRANSFER_SCRIPT: &[(f64, Action)] = &[
     (8.5, Action::Exit),
 ];
 
+/// On the pad (`OSP_SCENARIO=pad OSP_CAPTURE_LAUNCH_TIMES=1`): target the Moon and ask when to launch,
+/// warp to the first time and go. Leaving the ground takes the list away, and the plot is then what
+/// there is.
+const LAUNCH_TIMES_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("target.body:Moon")),
+    (1.2, Action::Ui("ui.show:transfer_planner")),
+    (1.4, Action::ExpectData("!transfer.on_ground")),
+    (1.5, Action::Ui("transfer.compute")),
+    (2.5, Action::ExpectData("transfer.on_ground")),
+    (2.6, Action::ExpectData("transfer.has_windows")),
+    (2.7, Action::ExpectData("transfer.launch_far")),
+    (3.0, Action::Capture("launch_times.png")),
+    (3.1, Action::Ui("transfer.warp_launch:0")),
+    (15.0, Action::Capture("launch_times_warped.png")),
+    (15.1, Action::ExpectData("transfer.on_ground")),
+    (15.2, Action::Launch),
+    (18.0, Action::ExpectData("!transfer.on_ground")),
+    (18.5, Action::Capture("launch_times_gone.png")),
+    (19.0, Action::Exit),
+];
+
 /// On the pad (`OSP_CAPTURE_PARTS=1`): part windows with their colours, one opened by a
 /// right-click on a staging tile (every part of the tile tinted), another on a single part.
 const PARTS_SCRIPT: &[(f64, Action)] = &[
@@ -1616,6 +1642,12 @@ fn run_script(
                     "smoke test: there are {} saves, wanted {wanted}",
                     saves.list.len()
                 );
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectData(condition) => {
+            if !ui_pointer.data.condition(condition) {
+                error!("smoke test: `{condition}` does not hold");
                 exit.write(AppExit::error());
             }
         }

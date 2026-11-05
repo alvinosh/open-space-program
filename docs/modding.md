@@ -1401,6 +1401,9 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `transfer.has`, `transfer.computing`, `transfer.stale`, `transfer.kind` | A plot exists; being computed; made for another target; what kind |
 | `transfer.window_from`, `transfer.window_to`, `transfer.tof_min`, `transfer.tof_max`, `transfer.best_total` | The plot's departure window (s from now), flight times (s), cheapest total (m/s) |
 | `transfer.picked`, `transfer.departure_in`, `transfer.tof`, `transfer.depart_dv`, `transfer.arrive_dv`, `transfer.total` | The picked transfer |
+| `transfer.on_ground`, `transfer.launch_far`, `transfer.launch_flight` | Launch times are showing, for a vessel on the ground; the target is far, so it is reached where it will be rather than matched in its plane; the flight that assumes (s) |
+| `transfer.now_heading`, `transfer.now_inclination`, `transfer.now_extra`, `transfer.now_misses`, `transfer.now_miss` | Launching now: the heading over the ground (`090`) and the orbit's inclination to the equator (degrees), the speed that costs over flying due east (m/s), and how far its plane is from the target's (degrees), if it is |
+| `transfer.has_windows`, `transfer.windows[]` (`index`, `in`, `heading`, `inclination`, `extra`, `misses`, `miss`) | The best times to come, soonest first, with `in` in seconds from now. None if no time is better than another |
 | `burn.arrival_periapsis`, `burn.targets_body` | Periapsis altitude at the targeted body after the selected burn (m) |
 | `manifest.items[]` | The rows the filters let through: `name`, `kind` (`body`, `vessel`, `debris`), `is_body`, `is_debris`, `key` (action argument), `parent`, `apoapsis`, `periapsis`, `distance` and `speed` (from what the camera follows), `is_target`, `is_active`, `is_followed`, `target_body`, `target_vessel`, `can_fly`, `can_recover` (landed on a world with a launch site), `can_destroy`, `confirming` (asking whether to remove it), `confirm_text` |
 | `manifest.show_bodies`, `manifest.show_vessels`, `manifest.show_debris` | The manifest's filters |
@@ -1468,7 +1471,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `plan.time:<1|-1>`, `plan.orbit:<1|-1>`, `plan.time_step:<s>` | Move it by one time step or one orbit |
 | `plan.aim:<m>` | Adjust the selected burn for a periapsis this high above the targeted body |
 | `plan.execute` | Engage or disengage the burn executor (throttle and SAS commands also disengage it) |
-| `transfer.compute`, `transfer.best`, `transfer.create` | Plot transfers to the target; pick the cheapest; plan its departure burn |
+| `transfer.compute`, `transfer.best`, `transfer.create`, `transfer.warp_launch:<index>` | Plot transfers to the target, or on the ground list when to launch for a target around the same body; pick the cheapest; plan its departure burn; warp to just before a launch time |
 | `view.toggle_map` | |
 | `ui.toggle:<layout>`, `ui.show:<layout>`, `ui.hide:<layout>` | For an instanced layout, `<layout>:<key>` names a copy |
 | `ui.pin:<layout>` | Pin or unpin a popup, so a click outside does not close it |

@@ -6,11 +6,16 @@
 //! transfer and the burn is the ejection from the vessel's parking orbit (see
 //! [`osp_sim::transfer`]).
 //!
+//! From the ground there is no orbit to plot from yet. There it says when to launch for a target
+//! around the same body, and which way to fly to end up in the plane that reaches it, at any time and
+//! at the best times to come.
+//!
 //! | Action | Effect |
 //! | --- | --- |
-//! | `transfer.compute` | Plot transfers to the current target |
+//! | `transfer.compute` | Plot transfers to the current target, or from the ground list launch times |
 //! | `transfer.best` | Pick the cheapest |
 //! | `transfer.create` | Plan the departure burn of the picked transfer |
+//! | `transfer.warp_launch:<index>` | Warp to just before that launch time |
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -26,22 +31,29 @@ use osp_sim::{
     orbit::Orbit,
     rendezvous::Target,
     transfer::{
-        Porkchop, TransferRequest, departure_burn, ejection_burn, hohmann_time, porkchop,
-        synodic_period,
+        LaunchRequest, LaunchWindow, Porkchop, TransferRequest, departure_burn, ejection_burn,
+        hohmann_time, porkchop, synodic_period,
     },
+    vessel::VesselId,
 };
-use osp_ui::{UiAction, UiData, WidgetContext, WidgetRegistry};
+use osp_ui::{UiAction, UiData, UiRecord, WidgetContext, WidgetRegistry, record};
 
 use crate::{
     FrameSet,
     flight_plan::PlanUi,
-    sim::{Sim, TimeWarp},
+    sim::{Sim, SimRestarted, TimeWarp},
 };
 
 const COLUMNS: usize = 72;
 const ROWS: usize = 54;
 /// Longest departure window plotted, s.
 const MAX_WINDOW: f64 = 2.0 * 365.25 * 86_400.0;
+/// How many launch times are listed.
+const LAUNCH_TIMES: usize = 4;
+/// A warp to a launch time stops this long before it, s, to get ready.
+const BEFORE_LAUNCH: f64 = 60.0;
+/// A plane is only said to be missed by more than this, rad.
+const WORTH_SAYING: f64 = 0.05 * std::f64::consts::PI / 180.0;
 
 pub struct TransferPlannerPlugin;
 
@@ -52,10 +64,22 @@ impl Plugin for TransferPlannerPlugin {
             .register("porkchop", porkchop_widget);
         app.init_resource::<Planner>()
             .add_systems(Startup, make_image)
-            .add_systems(Update, planner_actions.in_set(FrameSet::Input))
             .add_systems(
                 Update,
-                (attach_image, finish_task, pick_cell, paint, publish)
+                (forget_on_restart, planner_actions)
+                    .chain()
+                    .in_set(FrameSet::Input),
+            )
+            .add_systems(
+                Update,
+                (
+                    attach_image,
+                    finish_task,
+                    keep_launch_times,
+                    pick_cell,
+                    paint,
+                    publish,
+                )
                     .chain()
                     .in_set(FrameSet::Render),
             );
@@ -71,6 +95,16 @@ struct Planner {
     image: Handle<Image>,
     /// The plot changed and needs painting.
     dirty: bool,
+    /// What a vessel on the ground gets in place of a plot.
+    launch: Option<LaunchTimes>,
+}
+
+/// When to launch for a target, from where a vessel stands.
+struct LaunchTimes {
+    vessel: VesselId,
+    target: Target,
+    request: LaunchRequest,
+    windows: Vec<LaunchWindow>,
 }
 
 struct Plot {
@@ -139,6 +173,15 @@ fn planner_actions(
     let real = time.elapsed_secs_f64();
     for action in actions.read() {
         match action.name() {
+            "transfer.compute" if sim.active_vessel().is_landed() => match launch_times(&sim) {
+                Ok(times) => {
+                    planner.task = None;
+                    planner.chop = None;
+                    planner.selected = None;
+                    planner.launch = Some(times);
+                }
+                Err(why) => warp.notice = Some((why.into(), real)),
+            },
             "transfer.compute" => match request(&sim) {
                 Ok((request, meta)) => {
                     let task = AsyncComputeTaskPool::get().spawn(async move { porkchop(&request) });
@@ -146,6 +189,18 @@ fn planner_actions(
                 }
                 Err(why) => warp.notice = Some((why.into(), real)),
             },
+            "transfer.warp_launch" => {
+                let index: Option<usize> = action.arg().and_then(|index| index.parse().ok());
+                let times = planner.launch.as_ref();
+                let window = index.and_then(|index| times?.windows.get(index));
+                match window {
+                    Some(window) => {
+                        let time = window.time.add_seconds(-BEFORE_LAUNCH);
+                        warp.warp_to(time, "the launch time", &sim, real);
+                    }
+                    None => warn!("no launch time in `{}`", action.0),
+                }
+            }
             "transfer.best" => {
                 if let Some(plot) = &planner.chop {
                     planner.selected = plot.chop.best().map(|(c, r, _)| (c, r));
@@ -183,6 +238,91 @@ fn planner_actions(
     }
 }
 
+/// A game started afresh, or gone back to: what was planned was for what is gone.
+fn forget_on_restart(mut restarted: MessageReader<SimRestarted>, mut planner: ResMut<Planner>) {
+    if restarted.read().count() > 0 {
+        planner.chop = None;
+        planner.task = None;
+        planner.selected = None;
+        planner.launch = None;
+    }
+}
+
+/// The launch times for the vessel being flown, while it is on the ground.
+fn launch_times(sim: &Sim) -> Result<LaunchTimes, &'static str> {
+    let system = &sim.universe.system;
+    let now = sim.universe.time();
+    let vessel = sim.active_vessel();
+    let target = vessel
+        .target
+        .ok_or("Transfer planner: choose a target first")?;
+    let on_ground = (target.vessel())
+        .and_then(|id| sim.universe.vessel(id))
+        .is_some_and(|other| other.is_landed());
+    if on_ground {
+        return Err("Transfer planner: the target is on the ground");
+    }
+    let (frame, arrival) = sim
+        .universe
+        .target_orbit(target, now)
+        .ok_or("Transfer planner: the target has no orbit")?;
+    // Between planets the launch hardly matters and the parking orbit is what the plot starts from.
+    if frame != vessel.parent() {
+        return Err("Transfer planner: for that target, get into orbit first");
+    }
+    let body = system.body(frame);
+    let site = body.orientation(now).inverse() * vessel.state_at(system, now).position;
+    let request = LaunchRequest::new(body, frame, site, arrival)
+        .ok_or("Transfer planner: needs a closed orbit to go to")?;
+    Ok(LaunchTimes {
+        vessel: vessel.id(),
+        target,
+        request,
+        windows: request.windows(system, now, LAUNCH_TIMES),
+    })
+}
+
+/// They go when the vessel leaves the ground or the target changes, and move on as they pass.
+fn keep_launch_times(sim: Res<Sim>, mut planner: ResMut<Planner>) {
+    let Some(times) = &mut planner.launch else {
+        return;
+    };
+    let vessel = sim.active_vessel();
+    let same = times.vessel == vessel.id() && Some(times.target) == vessel.target;
+    if !same || !vessel.is_landed() {
+        planner.launch = None;
+        return;
+    }
+    let now = sim.render_time;
+    if times.windows.first().is_some_and(|w| w.time <= now) {
+        times.windows = times
+            .request
+            .windows(&sim.universe.system, now, LAUNCH_TIMES);
+    }
+}
+
+/// `transfer.windows[]`, and what `transfer.now_*` says about leaving now.
+fn window_record(index: usize, window: &LaunchWindow, now: osp_sim::time::SimTime) -> UiRecord {
+    record([
+        ("index", index.into()),
+        ("in", window.time.seconds_since(now).into()),
+        ("heading", heading_text(window.heading).into()),
+        ("inclination", angle_text(window.inclination).into()),
+        ("extra", window.extra.into()),
+        ("misses", (window.miss > WORTH_SAYING).into()),
+        ("miss", angle_text(window.miss).into()),
+    ])
+}
+
+/// How a heading reads on the navball: 090.
+fn heading_text(radians: f64) -> String {
+    format!("{:03.0}", radians.to_degrees().rem_euclid(360.0))
+}
+
+fn angle_text(radians: f64) -> String {
+    format!("{:.1}", radians.to_degrees())
+}
+
 /// Pick up a finished plot.
 fn finish_task(mut planner: ResMut<Planner>) {
     let Some((task, _)) = &mut planner.task else {
@@ -202,9 +342,6 @@ fn request(sim: &Sim) -> Result<(TransferRequest, Meta), &'static str> {
     let system = &sim.universe.system;
     let now = sim.universe.time();
     let vessel = sim.active_vessel();
-    if vessel.is_landed() {
-        return Err("Transfer planner: get into orbit first");
-    }
     let target = vessel
         .target
         .ok_or("Transfer planner: choose a target first")?;
@@ -333,9 +470,29 @@ fn publish(sim: Res<Sim>, planner: Res<Planner>, mut data: ResMut<UiData>) {
     let now = sim.render_time;
     let system = &sim.universe.system;
     data.set("transfer.computing", planner.task.is_some());
+    data.set("transfer.on_ground", planner.launch.is_some());
+    if let Some(times) = &planner.launch {
+        let leaving = times.request.at(system, now);
+        data.set("transfer.launch_far", times.request.is_far());
+        data.set("transfer.launch_flight", times.request.flight);
+        data.set("transfer.now_heading", heading_text(leaving.heading));
+        data.set("transfer.now_inclination", angle_text(leaving.inclination));
+        data.set("transfer.now_extra", leaving.extra);
+        data.set("transfer.now_misses", leaving.miss > WORTH_SAYING);
+        data.set("transfer.now_miss", angle_text(leaving.miss));
+        data.set("transfer.has_windows", !times.windows.is_empty());
+        let windows: Vec<_> = (times.windows.iter().enumerate())
+            .map(|(index, window)| window_record(index, window, now))
+            .collect();
+        data.set("transfer.windows", windows);
+    }
     let plot = planner.chop.as_ref();
     data.set("transfer.has", plot.is_some());
-    let Some(plot) = plot else { return };
+    let Some(plot) = plot else {
+        data.set("transfer.picked", false);
+        data.set("transfer.stale", false);
+        return;
+    };
     let r = &plot.chop.request;
     let meta = &plot.meta;
     data.set(
@@ -369,5 +526,17 @@ fn publish(sim: Res<Sim>, planner: Res<Planner>, mut data: ResMut<UiData>) {
         data.set("transfer.depart_dv", t.depart_dv);
         data.set("transfer.arrive_dv", t.arrive_dv);
         data.set("transfer.total", t.total());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_heading_reads_as_on_the_navball() {
+        assert_eq!(heading_text(90f64.to_radians()), "090");
+        assert_eq!(heading_text(7f64.to_radians()), "007");
+        assert_eq!(heading_text(0.0), "000");
     }
 }

@@ -1,0 +1,18 @@
+{
+  "id": "T195",
+  "title": "Launch times in the transfer planner",
+  "kind": "feature",
+  "status": "done",
+  "area": "orbit",
+  "size": "S",
+  "parent": "T061",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/transfer.rs"
+  ],
+  "created": "2026-11-05",
+  "updated": "2026-11-05",
+  "done": "2026-11-05",
+  "milestone": "later",
+  "priority": null
+}

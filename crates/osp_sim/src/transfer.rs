@@ -18,13 +18,21 @@
 //! orbit of its time (`phase_search`): from low orbit the cheap departures to a moon on
 //! another plane come only when the moon's arrival point lies in the parking plane, twice
 //! a month, and this is what finds them.
+//!
+//! [`LaunchRequest`] answers the same question from the ground, where the plane of the parking orbit
+//! is still to be chosen: when to leave and which way. A far target is reached where it will be on
+//! arrival, so the orbit's plane has to hold that point, and any plane through the launch site and
+//! that point will do: the cheapest is the one flown most nearly due east, twice a day. This works
+//! from a site further from the equator than the target's orbit ever goes, which never passes under
+//! it. A near target has to be matched all the way round, so the plane is its own, when the
+//! site passes under it or comes closest.
 
 use std::f64::consts::{PI, TAU};
 
 use glam::DVec3;
 
 use crate::{
-    body::BodyId,
+    body::{Body, BodyId},
     kepler::stumpff,
     orbit::{Orbit, StateVector},
     plan::Burn,
@@ -435,6 +443,183 @@ pub fn synodic_period(p1: f64, p2: f64) -> f64 {
     }
 }
 
+/// A target further out than this, in radii of the parking orbit, is reached where it will be rather
+/// than matched in its plane.
+const FAR_TARGET: f64 = 5.0;
+/// How far above what it has to clear a parking orbit is, m.
+const PARKING_HEIGHT: f64 = 60e3;
+/// How many times are tried per turn of the ground under the launch.
+const LAUNCH_STEPS: usize = 96;
+/// Launch times are found to about this share of the step.
+const REFINE_STEPS: usize = 30;
+/// When the best and worst times of a turn are this close, rad, no time is better than another.
+const FLAT: f64 = 0.1 * PI / 180.0;
+
+/// Leaving the ground at a time, for a target in orbit around the same body.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LaunchWindow {
+    pub time: SimTime,
+    /// The compass heading to fly over the ground, rad clockwise from north.
+    pub heading: f64,
+    /// Of the orbit it leads to, against the body's equator, rad.
+    pub inclination: f64,
+    /// How far the plane the launch can reach is from the one it wants, rad: 0 when the site is in
+    /// that plane, as it always is for a far target.
+    pub miss: f64,
+    /// How much more speed over the ground this orbit takes than one flown due east, m/s: what the
+    /// body's rotation does not give it.
+    pub extra: f64,
+}
+
+/// A launch from where a vessel stands to a target in orbit around the same body.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LaunchRequest {
+    pub body: BodyId,
+    /// Where it stands, body-fixed.
+    pub site: DVec3,
+    pub arrival: Orbit,
+    /// Radius of the orbit it goes to first, m.
+    pub parking: f64,
+    /// The flight from that orbit to the target, s.
+    pub flight: f64,
+    /// From the launch to leaving that orbit, s.
+    pub lead: f64,
+}
+
+impl LaunchRequest {
+    /// `None` if the target's orbit is not a closed one.
+    pub fn new(body: &Body, id: BodyId, site: DVec3, arrival: Orbit) -> Option<Self> {
+        let parking = body.coast_floor() + PARKING_HEIGHT;
+        let far = arrival.semi_major_axis();
+        arrival.period()?;
+        (far > 0.0).then(|| Self {
+            body: id,
+            site,
+            arrival,
+            parking,
+            flight: hohmann_time(body.gm, parking, far),
+            lead: TAU * (parking * parking * parking / body.gm).sqrt(),
+        })
+    }
+
+    /// Is the target reached where it will be, rather than matched in its plane?
+    pub fn is_far(&self) -> bool {
+        self.arrival.semi_major_axis() > FAR_TARGET * self.parking
+    }
+
+    /// The plane to go into from the site at `time`, by its normal, and how far that is from the one
+    /// wanted, rad.
+    fn plane(&self, system: &SolarSystem, time: SimTime) -> (DVec3, f64) {
+        let up = system.body(self.body).orientation(time) * self.site.normalize_or_zero();
+        let along = self.arrival.normal();
+        if self.is_far() {
+            let there = time.add_seconds(self.lead + self.flight);
+            let normal = up.cross(self.arrival.state_at(there).position);
+            let normal = normal.normalize_or_zero();
+            // Going round the way it does.
+            let sign = if normal.dot(along) < 0.0 { -1.0 } else { 1.0 };
+            (normal * sign, 0.0)
+        } else {
+            let off = along.dot(up);
+            let normal = (along - up * off).normalize_or_zero();
+            (normal, off.clamp(-1.0, 1.0).asin().abs())
+        }
+    }
+
+    /// What is left to wish for at `time`: how far a near target's plane is, and how much a far one
+    /// is flown away from the rotation that helps, as the inclination this makes.
+    fn cost(&self, system: &SolarSystem, time: SimTime) -> f64 {
+        let (normal, miss) = self.plane(system, time);
+        if self.is_far() {
+            let pole = system.body(self.body).pole();
+            normal.dot(pole).abs().clamp(0.0, 1.0).acos()
+        } else {
+            miss
+        }
+    }
+
+    /// Leaving at `time`: which way, and into what.
+    pub fn at(&self, system: &SolarSystem, time: SimTime) -> LaunchWindow {
+        let body = system.body(self.body);
+        let up = body.orientation(time) * self.site.normalize_or_zero();
+        let (normal, miss) = self.plane(system, time);
+        let pole = body.pole();
+        let east = pole.cross(up).normalize_or_zero();
+        let north = up.cross(east);
+        // Over the ground the orbit's speed has the ground's own taken off it.
+        let speed = (body.gm / self.parking).sqrt();
+        let ground = body.surface_velocity(up * self.site.length());
+        let over_ground = normal.cross(up) * speed - ground;
+        LaunchWindow {
+            time,
+            heading: over_ground
+                .dot(east)
+                .atan2(over_ground.dot(north))
+                .rem_euclid(TAU),
+            inclination: normal.dot(pole).clamp(-1.0, 1.0).acos(),
+            miss,
+            extra: over_ground.length() - (speed - ground.length()),
+        }
+    }
+
+    /// The best times to leave after `after`, soonest first, up to `count` of them. None at all if
+    /// no time is better than another.
+    pub fn windows(&self, system: &SolarSystem, after: SimTime, count: usize) -> Vec<LaunchWindow> {
+        let rate = system.body(self.body).angular_velocity().length();
+        // A body that does not turn still sees a far target go round.
+        let turn = if rate > 0.0 {
+            TAU / rate
+        } else {
+            self.arrival.period().unwrap_or(0.0)
+        };
+        if turn <= 0.0 {
+            return Vec::new();
+        }
+        let step = turn / LAUNCH_STEPS as f64;
+        let at = |index: usize| after.add_seconds(step * index as f64);
+        let cost = |index: usize| self.cost(system, at(index));
+        let first_turn = (0..=LAUNCH_STEPS).map(&cost);
+        let (low, high) = first_turn.fold((f64::INFINITY, 0.0f64), |(low, high), c| {
+            (low.min(c), high.max(c))
+        });
+        if high - low < FLAT {
+            return Vec::new();
+        }
+        let mut found = Vec::new();
+        // One a turn at the least, however many are asked for.
+        let steps = LAUNCH_STEPS * (count + 1);
+        let mut around = [cost(0), cost(1), cost(2)];
+        for index in 1..steps {
+            if found.len() == count {
+                break;
+            }
+            if around[1] <= around[0] && around[1] < around[2] {
+                let best = self.refine(system, at(index - 1), step * 2.0);
+                found.push(self.at(system, best));
+            }
+            around = [around[1], around[2], cost(index + 2)];
+        }
+        found
+    }
+
+    /// The least cost in the `span` after `from`, by golden section.
+    fn refine(&self, system: &SolarSystem, from: SimTime, span: f64) -> SimTime {
+        const SHARE: f64 = 0.618_033_988_749_894_9;
+        let cost = |offset: f64| self.cost(system, from.add_seconds(offset));
+        let (mut low, mut high) = (0.0, span);
+        for _ in 0..REFINE_STEPS {
+            let near = high - (high - low) * SHARE;
+            let far = low + (high - low) * SHARE;
+            if cost(near) < cost(far) {
+                high = far;
+            } else {
+                low = near;
+            }
+        }
+        from.add_seconds((low + high) / 2.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -728,5 +913,185 @@ mod tests {
     fn synodic_period_of_earth_and_mars() {
         let s = synodic_period(365.25, 686.98);
         assert!((s - 779.9).abs() < 1.0, "{s}");
+    }
+
+    /// The real Earth and Moon of the base game, and a site at the Cape's latitude.
+    fn earth_and_moon() -> (SolarSystem, BodyId, Orbit, DVec3) {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/core");
+        let text = std::fs::read_to_string(root.join("bodies/solar_system.json5")).unwrap();
+        let bodies = json5::from_str(&text).unwrap();
+        let system = SolarSystem::from_def(&crate::data::SystemDef { bodies }).unwrap();
+        let earth = system.find("Earth").unwrap();
+        let moon = system.body(system.find("Moon").unwrap()).orbit.unwrap();
+        let site = Body::surface_normal_fixed(28.6083f64.to_radians(), -80.6f64.to_radians());
+        (system, earth, moon, site * 6_371e3)
+    }
+
+    /// The circular parking orbit `window` leads to, as it passes over the site.
+    fn parking_orbit(system: &SolarSystem, request: &LaunchRequest, time: SimTime) -> Orbit {
+        let body = system.body(request.body);
+        let up = body.orientation(time) * request.site.normalize();
+        let (normal, _) = request.plane(system, time);
+        let speed = (body.gm / request.parking).sqrt();
+        let state = StateVector::new(up * request.parking, normal.cross(up) * speed);
+        Orbit::new(body.gm, time, state)
+    }
+
+    /// The same launch flown due east whatever the time, as a player with no window to go by would.
+    fn due_east(system: &SolarSystem, request: &LaunchRequest, time: SimTime) -> Orbit {
+        let body = system.body(request.body);
+        let up = body.orientation(time) * request.site.normalize();
+        let east = body.pole().cross(up).normalize();
+        let speed = (body.gm / request.parking).sqrt();
+        let state = StateVector::new(up * request.parking, east * speed);
+        Orbit::new(body.gm, time, state)
+    }
+
+    /// What the planner would find to the Moon from `orbit` soon after reaching it: the cheapest
+    /// total leaving within two of its orbits, over the flight times it plots.
+    fn cheapest_soon(
+        system: &SolarSystem,
+        request: &LaunchRequest,
+        orbit: Orbit,
+        start: SimTime,
+    ) -> f64 {
+        let period = orbit.period().unwrap();
+        let chop = porkchop(&TransferRequest {
+            departure: orbit,
+            arrival: request.arrival,
+            depart_from: start,
+            depart_span: 2.0 * period,
+            tof_min: 0.5 * request.flight,
+            tof_max: 1.5 * request.flight,
+            columns: 12,
+            rows: 24,
+            parking: None,
+            floor: system.body(request.body).coast_floor(),
+            phase_search: Some(period),
+        });
+        chop.best().map_or(f64::INFINITY, |(_, _, t)| t.total())
+    }
+
+    #[test]
+    fn a_launch_for_the_moon_goes_twice_a_day_flying_due_east() {
+        let (system, earth, arrival, site) = earth_and_moon();
+        let request = LaunchRequest::new(system.body(earth), earth, site, arrival).unwrap();
+        assert!(request.is_far());
+        let start = SimTime::from_seconds(21_600.0);
+        let windows = request.windows(&system, start, 4);
+        assert_eq!(windows.len(), 4);
+        assert!(windows[0].time > start);
+        for pair in windows.windows(2) {
+            assert!(pair[1].time > pair[0].time);
+        }
+        // Not evenly: how far apart the two of a day are depends on how far the Moon is from the
+        // equator. Each comes round a day later, and the Moon has moved on.
+        let again = windows[2].time.seconds_since(windows[0].time) / 3_600.0;
+        assert!((24.0..=26.0).contains(&again), "{again} h");
+        for window in &windows {
+            // As low as the Cape's latitude allows, flown due east, taking all the rotation has.
+            let inclination = window.inclination.to_degrees();
+            assert!((inclination - 28.6).abs() < 0.1, "{inclination}");
+            let heading = window.heading.to_degrees();
+            assert!((heading - 90.0).abs() < 0.5, "{heading}");
+            assert!(window.extra.abs() < 1.0, "{} m/s", window.extra);
+            assert_eq!(window.miss, 0.0);
+        }
+    }
+
+    #[test]
+    fn the_moon_is_cheap_to_reach_from_a_window_and_from_the_heading_given_at_any_time() {
+        let (system, earth, arrival, site) = earth_and_moon();
+        let request = LaunchRequest::new(system.body(earth), earth, site, arrival).unwrap();
+        // A fortnight apart: the Moon on opposite sides of the Earth.
+        for start in [21_600.0, 21_600.0 + 14.0 * 86_400.0].map(SimTime::from_seconds) {
+            for window in request.windows(&system, start, 2) {
+                let orbit = parking_orbit(&system, &request, window.time);
+                let cost = cheapest_soon(&system, &request, orbit, window.time);
+                assert!(cost < 4_150.0, "{cost} m/s from a window");
+            }
+            let mut worst_east = 0.0f64;
+            for hour in 0..25 {
+                let time = start.add_seconds(f64::from(hour) * 3_600.0);
+                let orbit = parking_orbit(&system, &request, time);
+                let cost = cheapest_soon(&system, &request, orbit, time);
+                assert!(cost < 4_400.0, "{cost} m/s at hour {hour}");
+                let east = due_east(&system, &request, time);
+                worst_east = worst_east.max(cheapest_soon(&system, &request, east, time));
+            }
+            // Flown due east at the wrong time, leaving soon costs twice as much.
+            assert!(worst_east > 8_000.0, "{worst_east} m/s");
+        }
+    }
+
+    #[test]
+    fn going_other_than_due_east_costs_what_the_rotation_no_longer_gives() {
+        let (system, earth, arrival, site) = earth_and_moon();
+        let request = LaunchRequest::new(system.body(earth), earth, site, arrival).unwrap();
+        let start = SimTime::from_seconds(21_600.0);
+        let window = request.windows(&system, start, 1)[0];
+        // An hour or two off it costs next to nothing, and near-polar nearly all the 408 m/s.
+        let off = request.at(&system, window.time.add_seconds(-2.0 * 3_600.0));
+        assert!(off.extra < 30.0, "{} m/s", off.extra);
+        let polar = request.at(&system, start);
+        assert!(polar.inclination.to_degrees() > 80.0);
+        assert!((350.0..450.0).contains(&polar.extra), "{} m/s", polar.extra);
+    }
+
+    /// A circular orbit at this inclination to `body`'s equator.
+    fn inclined(body: &Body, degrees: f64) -> Orbit {
+        let radius = 6_771e3;
+        let speed = (body.gm / radius).sqrt();
+        let (sin, cos) = degrees.to_radians().sin_cos();
+        let to_equator = glam::DQuat::from_rotation_arc(DVec3::Z, body.pole());
+        let state = StateVector::new(
+            to_equator * DVec3::X * radius,
+            to_equator * DVec3::new(0.0, cos, sin) * speed,
+        );
+        Orbit::new(body.gm, SimTime::J2000, state)
+    }
+
+    #[test]
+    fn a_near_target_is_matched_in_its_plane_when_the_site_passes_under_it() {
+        let (system, earth, _, site) = earth_and_moon();
+        let body = system.body(earth);
+        // Steeper than the site's latitude: it passes under it twice a turn, once going north and
+        // once going south, and the launch is into just that plane.
+        let request = LaunchRequest::new(body, earth, site, inclined(body, 51.6)).unwrap();
+        assert!(!request.is_far());
+        let start = SimTime::from_seconds(21_600.0);
+        let windows = request.windows(&system, start, 2);
+        assert_eq!(windows.len(), 2);
+        let (one, other) = (
+            windows[0].heading.to_degrees(),
+            windows[1].heading.to_degrees(),
+        );
+        assert!((one - 90.0) * (other - 90.0) < 0.0, "{one} {other}");
+        for window in &windows {
+            assert!(window.miss.to_degrees() < 0.01, "{}", window.miss);
+            assert!((window.inclination.to_degrees() - 51.6).abs() < 0.01);
+        }
+        // Shallower than the latitude: it never does, so once a turn it comes closest, due east.
+        let request = LaunchRequest::new(body, earth, site, inclined(body, 5.0)).unwrap();
+        let windows = request.windows(&system, start, 2);
+        assert_eq!(windows.len(), 2);
+        let apart = windows[1].time.seconds_since(windows[0].time) / 3_600.0;
+        assert!((apart - 23.93).abs() < 0.1, "{apart} h apart");
+        for window in &windows {
+            let miss = window.miss.to_degrees();
+            assert!((miss - 23.6).abs() < 0.1, "{miss}");
+            assert!((window.heading.to_degrees() - 90.0).abs() < 0.5);
+        }
+    }
+
+    #[test]
+    fn a_site_on_the_equator_under_an_equatorial_orbit_has_no_better_time() {
+        let (system, earth, _, _) = earth_and_moon();
+        let body = system.body(earth);
+        let site = Body::surface_normal_fixed(0.0, 0.0) * body.radius;
+        let request = LaunchRequest::new(body, earth, site, inclined(body, 0.0)).unwrap();
+        let start = SimTime::from_seconds(21_600.0);
+        assert!(request.windows(&system, start, 4).is_empty());
+        assert!((request.at(&system, start).heading.to_degrees() - 90.0).abs() < 1e-6);
     }
 }
