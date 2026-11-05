@@ -27,7 +27,8 @@ use osp_sim::{
     staging::Activation,
 };
 use osp_ui::{
-    ActionSource, ContextAction, DragPayload, DropAction, Formatters, Template, UiAction, UiData,
+    ActionSource, ContextAction, DragPayload, DropAction, Formatters, LayoutVisibility, Template,
+    UiAction, UiData,
 };
 
 use crate::{
@@ -139,6 +140,8 @@ impl Plugin for SmokeTestPlugin {
                 BOXES_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_LEAVING").is_some() {
                 LEAVING_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_WINDOWS").is_some() {
+                WINDOWS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_LAUNCH_TIMES").is_some() {
                 LAUNCH_TIMES_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_REVERT").is_some() {
@@ -305,6 +308,10 @@ enum Action {
     ExpectSaves(usize),
     /// Stop the capture with a failure unless this condition on the UI's data holds.
     ExpectData(&'static str),
+    /// Stop the capture with a failure unless this layout is open or closed.
+    ExpectOpen(&'static str, bool),
+    /// Stop the capture with a failure unless `windows.json` says this about a window.
+    ExpectRemembered(&'static str, bool),
     /// Stop the capture with a failure unless the game can revert to the launch of what is called
     /// this, or cannot for `None`.
     ExpectRevert(Option<&'static str>),
@@ -1165,6 +1172,41 @@ const TRANSFER_SCRIPT: &[(f64, Action)] = &[
     (8.5, Action::Exit),
 ];
 
+/// `OSP_CAPTURE_WINDOWS=1` (with `OSP_USER_DIR=<a folder>`, and its `windows.json` if there is to be
+/// one): the stage stack is open from the start, whatever that file says, and back after every launch
+/// though the empty hangar closes it, a revert to the hangar included. What the player chooses of the
+/// other windows is saved.
+const WINDOWS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::ExpectOpen("staging", true)),
+    (1.1, Action::Ui("ui.show:flight_info")),
+    (1.3, Action::ExpectRemembered("flight_info", true)),
+    (1.4, Action::Ui("game.menu")),
+    (1.5, Action::Ui("game.new")),
+    (2.2, Action::ExpectEditor(Some(""))),
+    (2.3, Action::ExpectOpen("staging", false)),
+    (2.6, Action::Ui("editor.show:sounder")),
+    (3.8, Action::ExpectOpen("staging", true)),
+    (3.9, Action::Ui("editor.launch")),
+    (4.8, Action::ExpectEditor(None)),
+    (4.9, Action::ExpectOpen("staging", true)),
+    (5.1, Action::Ui("game.menu")),
+    (5.2, Action::Ui("game.revert:hangar")),
+    (6.0, Action::ExpectEditor(Some("sounder"))),
+    (6.1, Action::Ui("editor.launch")),
+    (7.0, Action::ExpectEditor(None)),
+    (7.1, Action::ExpectOpen("staging", true)),
+    (7.6, Action::Capture("windows_relaunched.png")),
+    // Closed by the player, it stays closed through the hangar, until the game is next run.
+    (7.7, Action::Ui("ui.toggle:staging")),
+    (8.0, Action::Ui("game.menu")),
+    (8.1, Action::Ui("editor.open")),
+    (8.8, Action::Ui("menu.back")),
+    (9.4, Action::ExpectEditor(None)),
+    (9.5, Action::ExpectOpen("staging", false)),
+    (9.6, Action::Exit),
+];
+
 /// On the pad (`OSP_SCENARIO=pad OSP_CAPTURE_LAUNCH_TIMES=1`): target the Moon and ask when to launch,
 /// warp to the first time and go. Leaving the ground takes the list away, and the plot is then what
 /// there is.
@@ -1566,6 +1608,7 @@ fn run_script(
     mut locked: ResMut<InputLocked>,
     (menu, dialog, saves, last_launch): (Res<Menu>, Res<Dialog>, Res<Saves>, Res<LastLaunch>),
     mut editor: ResMut<Editor>,
+    shown: Res<LayoutVisibility>,
 ) {
     let Some(&(at, action)) = script.actions.get(script.step) else {
         return;
@@ -1642,6 +1685,23 @@ fn run_script(
                     "smoke test: there are {} saves, wanted {wanted}",
                     saves.list.len()
                 );
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectOpen(layout, wanted) => {
+            if shown.shown(layout) != wanted {
+                error!("smoke test: `{layout}` should be open: {wanted}");
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectRemembered(window, wanted) => {
+            let text = (crate::windows::windows_file())
+                .and_then(|file| std::fs::read_to_string(file).ok());
+            let saved: Option<std::collections::BTreeMap<String, bool>> =
+                text.and_then(|text| serde_json::from_str(&text).ok());
+            let found = saved.and_then(|saved| saved.get(window).copied());
+            if found != Some(wanted) {
+                error!("smoke test: windows.json says {found:?} of `{window}`, wanted {wanted}");
                 exit.write(AppExit::error());
             }
         }

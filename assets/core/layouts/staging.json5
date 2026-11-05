@@ -21,7 +21,8 @@
 // teal. The + box at the top adds an empty sequence (and takes a dropped tile as a new last one),
 // x removes an empty one, and the arrow beside the + undoes the last change.
 // Under the stack, numbered after the last sequence fired, are the engines already lit,
-// their fuel draining, until their stage falls away. F8 shows and hides it.
+// their fuel draining, until their stage falls away. F8 shows and hides it, until the game is next
+// run: it always starts open (see `windows.rs`).
 {
   id: "staging",
   group: "flight",

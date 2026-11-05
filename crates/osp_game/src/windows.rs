@@ -1,10 +1,11 @@
 //! Which flight windows are open: the ones the player opened stay open between runs, and
-//! the Orbit window opens by itself on leaving the atmosphere and closes on re-entering it.
+//! the Orbit window opens by itself on leaving the atmosphere and closes on re-entering it. The
+//! stage stack is not one of them: it is what flying needs, so every run starts with it open.
 //!
 //! A launch starts with only what flying needs (the altimeter, the navball, the stage
 //! stack and the clock); Flight, Resources and the rest are one click away on the launcher
-//! (`layouts` with `visible: false`). The choices are saved in `windows.json` beside the
-//! settings file; scripted captures (`OSP_CAPTURE`) neither read nor write it.
+//! (`layouts` with `visible: false`). The choices are saved in `windows.json` in `OSP_USER_DIR`, or
+//! beside the settings file; scripted captures (`OSP_CAPTURE`) only touch it with `OSP_USER_DIR` set.
 
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -31,8 +32,13 @@ impl Plugin for WindowsPlugin {
     }
 }
 
-/// The window that opens and closes with the vessel's situation, so it is not remembered.
+/// The window that opens and closes with the vessel's situation.
 const ORBIT_WINDOW: &str = "orbit_info";
+/// The stage stack: F8 is all that opens it, and on many keyboards that is a media key, so a saved
+/// "closed" could leave a player with no way to stage. The editor closes it for an empty hangar too.
+const STAGING: &str = "staging";
+/// What is not remembered, and is ignored in a file from when it was.
+const NOT_REMEMBERED: [&str; 2] = [ORBIT_WINDOW, STAGING];
 
 #[derive(Resource)]
 struct Remembered {
@@ -40,7 +46,10 @@ struct Remembered {
     windows: BTreeMap<String, bool>,
 }
 
-fn windows_file() -> Option<PathBuf> {
+pub(crate) fn windows_file() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("OSP_USER_DIR") {
+        return Some(PathBuf::from(dir).join("windows.json"));
+    }
     if std::env::var_os("OSP_CAPTURE").is_some() {
         return None;
     }
@@ -61,7 +70,9 @@ fn load(file: &PathBuf) -> BTreeMap<String, bool> {
 /// is there instead of their own `visible`.
 fn restore(remembered: Res<Remembered>, mut ui: ResMut<LayoutVisibility>) {
     for (id, open) in &remembered.windows {
-        ui.layouts.insert(id.clone(), *open);
+        if !NOT_REMEMBERED.contains(&id.as_str()) {
+            ui.layouts.insert(id.clone(), *open);
+        }
     }
 }
 
@@ -98,7 +109,7 @@ fn remember(ui: Res<LayoutVisibility>, docs: Res<UiDocuments>, mut remembered: R
         .layouts
         .iter()
         .filter(|l| l.group.as_deref() == Some("flight") && !l.instanced && !l.popup)
-        .filter(|l| l.id != ORBIT_WINDOW)
+        .filter(|l| !NOT_REMEMBERED.contains(&l.id.as_str()))
         .filter_map(|l| Some((l.id.clone(), *ui.layouts.get(&l.id)?)))
         .collect();
     if windows.is_empty() || windows == remembered.windows {
@@ -151,6 +162,7 @@ mod tests {
                 layouts: vec![
                     layout("flight_info", "flight"),
                     layout("orbit_info", "flight"),
+                    layout("staging", "flight"),
                     layout("help", "menu"),
                 ],
                 ..default()
@@ -196,6 +208,30 @@ mod tests {
                 .shown("flight_info")
         );
         assert!(!second.world().resource::<LayoutVisibility>().shown("help"));
+        let _ = std::fs::remove_file(&file);
+    }
+
+    #[test]
+    fn the_stage_stack_is_neither_saved_nor_read_back() {
+        let file = std::env::temp_dir().join(format!("osp_stack_{}.json", std::process::id()));
+        let _ = std::fs::remove_file(&file);
+        // A file saved with it closed, as an empty hangar used to leave it.
+        let saved = BTreeMap::from([
+            ("staging".to_owned(), false),
+            ("flight_info".to_owned(), true),
+        ]);
+        let mut app = app(Some(file.clone()), saved);
+        app.update();
+        let ui = app.world().resource::<LayoutVisibility>();
+        assert_eq!(ui.layouts.get("staging"), None, "left as its layout has it");
+        assert!(ui.shown("flight_info"));
+        // Closed in play, that does not reach the file.
+        app.world_mut()
+            .resource_mut::<LayoutVisibility>()
+            .layouts
+            .insert("staging".into(), false);
+        app.update();
+        assert_eq!(load(&file).get("staging"), None);
         let _ = std::fs::remove_file(&file);
     }
 
