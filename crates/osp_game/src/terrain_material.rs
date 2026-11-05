@@ -74,7 +74,7 @@ pub struct TerrainParams {
 pub struct TerrainExtension {
     #[uniform(100)]
     pub params: TerrainParams,
-    /// rgb: sRGB imagery, a: night lights.
+    /// sRGB imagery.
     #[texture(101)]
     #[sampler(102)]
     pub color: Handle<Image>,
@@ -85,6 +85,10 @@ pub struct TerrainExtension {
     /// Land-cover class per sample.
     #[texture(105, sample_type = "u_int")]
     pub cover: Handle<Image>,
+    /// Night lights, finer than the rest, as they are all that shows at night (`planet`).
+    #[texture(106)]
+    #[sampler(107)]
+    pub lights: Handle<Image>,
     /// The body's air (`atmosphere::BodyAir`, as `shaders/atmosphere.wesl` binds it).
     #[texture(110)]
     #[sampler(111)]

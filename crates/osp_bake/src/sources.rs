@@ -52,12 +52,86 @@ pub fn cci_land_cover() -> Source {
         "https://dap.ceda.ac.uk/neodc/esacci/land_cover/data/land_cover_maps/v2.0.7/ESACCI-LC-L4-LCCS-Map-300m-P1Y-2015-v2.0.7.tif",
     )
 }
-/// NASA Black Marble 2016 night lights.
-pub fn black_marble() -> Source {
-    Source::new(
-        "BlackMarble_2016_3km_gray.jpg",
-        "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144897/BlackMarble_2016_3km_gray.jpg",
-    )
+/// One tile of NASA Black Marble 2016 night lights, 500 m. Eight tiles of 90° by 90°: A to D going
+/// east from 180° W, 1 north of the equator and 2 south of it.
+fn black_marble_tile(column: usize, row: usize) -> Source {
+    let name = format!(
+        "BlackMarble_2016_{}{}_geo_gray.tif",
+        ['A', 'B', 'C', 'D'][column],
+        row + 1
+    );
+    Source {
+        url: format!(
+            "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144897/{name}"
+        ),
+        file: name,
+    }
+}
+
+/// Samples along a side of a [`black_marble_tile`].
+const BLACK_MARBLE_TILE: usize = 21_600;
+
+/// NASA Black Marble 2016 night lights as one global raster, downloading what is not in `cache`.
+pub fn load_black_marble(cache: &Path) -> io::Result<Raster<u8>> {
+    let (width, height) = (4 * BLACK_MARBLE_TILE, 2 * BLACK_MARBLE_TILE);
+    let mut data = vec![0u8; width * height];
+    for row in 0..2 {
+        for column in 0..4 {
+            let source = black_marble_tile(column, row);
+            let path = fetch(cache, &source, false)?.expect("required download");
+            println!("  {}", source.file);
+            let band = read_black_marble_tile(&path, column, row)?;
+            let start = row * BLACK_MARBLE_TILE;
+            let rows =
+                data[start * width..(start + BLACK_MARBLE_TILE) * width].par_chunks_mut(width);
+            rows.enumerate().for_each(|(y, line)| {
+                let x = column * BLACK_MARBLE_TILE;
+                line[x..x + BLACK_MARBLE_TILE]
+                    .copy_from_slice(&band[y * BLACK_MARBLE_TILE..(y + 1) * BLACK_MARBLE_TILE]);
+            });
+        }
+    }
+    Ok(Raster::new(width, height, data))
+}
+
+/// The samples of a tile, after checking it covers what its name says: a wrong guess about where it
+/// goes would put every city in the wrong place, with nothing else to show for it.
+fn read_black_marble_tile(path: &Path, column: usize, row: usize) -> io::Result<Vec<u8>> {
+    let mut decoder = tiff_decoder(path)?;
+    let (width, height) = decoder.dimensions().map_err(io::Error::other)?;
+    if (width as usize, height as usize) != (BLACK_MARBLE_TILE, BLACK_MARBLE_TILE) {
+        return Err(io::Error::other(format!(
+            "{}: {width}×{height}, expected {BLACK_MARBLE_TILE} on a side",
+            path.display()
+        )));
+    }
+    let scale = decoder
+        .get_tag_f64_vec(Tag::ModelPixelScaleTag)
+        .map_err(io::Error::other)?;
+    let tie = decoder
+        .get_tag_f64_vec(Tag::ModelTiepointTag)
+        .map_err(io::Error::other)?;
+    let (west, north) = (-180.0 + 90.0 * column as f64, 90.0 - 90.0 * row as f64);
+    let per_sample = 90.0 / BLACK_MARBLE_TILE as f64;
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
+    let placed = near(scale[0], per_sample)
+        && near(scale[1], per_sample)
+        && near(tie[0], 0.0)
+        && near(tie[1], 0.0)
+        && near(tie[3], west)
+        && near(tie[4], north);
+    if !placed {
+        return Err(io::Error::other(format!(
+            "{}: scale {scale:?} tiepoint {tie:?}, expected to start at {west}, {north}",
+            path.display()
+        )));
+    }
+    let DecodingResult::U8(samples) = decoder.read_image().map_err(io::Error::other)? else {
+        return Err(io::Error::other(format!("{}: not 8 bit", path.display())));
+    };
+    // Grey, stored as red, green and blue.
+    let channels = samples.len() / (BLACK_MARBLE_TILE * BLACK_MARBLE_TILE);
+    Ok(samples.into_iter().step_by(channels).collect())
 }
 
 pub const ATTRIBUTION: &[&str] = &[
@@ -243,14 +317,6 @@ pub fn load_jpeg_rgb(path: &Path) -> io::Result<Raster<[u8; 3]>> {
     let (w, h) = (image.width() as usize, image.height() as usize);
     let data: Vec<[u8; 3]> = image.pixels().map(|p| p.0).collect();
     Ok(Raster::new(w, h, data))
-}
-
-pub fn load_jpeg_gray(path: &Path) -> io::Result<Raster<u8>> {
-    let mut reader = image::ImageReader::open(path)?;
-    reader.no_limits();
-    let image = reader.decode().map_err(io::Error::other)?.into_luma8();
-    let (w, h) = (image.width() as usize, image.height() as usize);
-    Ok(Raster::new(w, h, image.into_raw()))
 }
 
 /// ESA CCI land cover (129600×64800, 300 m) reduced to the ETOPO grid (21600×10800, 6×6

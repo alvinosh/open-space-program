@@ -27,7 +27,7 @@ use bevy::{
 };
 use half::f16;
 use osp_sim::body::BodyId;
-use osp_terrain::{Layer, TILE_CELLS, TILE_SAMPLES, TileKey, cube::east_north};
+use osp_terrain::{Dataset, Layer, TILE_CELLS, TILE_SAMPLES, TileKey, cube::east_north};
 
 use crate::{
     FrameSet,
@@ -47,6 +47,10 @@ const STRIDE: usize = TILE_CELLS / CHUNK_RESOLUTION;
 /// A chunk splits when the camera is closer than this many chunk widths (at High terrain
 /// detail). Each level then has about 40 chunks around the camera.
 const SPLIT_DISTANCE: f64 = 2.0;
+/// How many levels finer than a chunk its night lights go, data permitting.
+const LIGHTS_DEEPER: u8 = 1;
+/// Night lights no brighter than this count as dark, 0..255.
+const DARK_LIGHTS: u8 = 2;
 /// Ground seen edge-on splits as if farther, up to twice as far at this sine of the
 /// camera's elevation above it and below: its triangles would be slivers on screen, and
 /// GPUs shade pixels in 2x2 blocks, so slivers cost several times their area.
@@ -424,6 +428,7 @@ struct BuiltChunk {
     color: Image,
     surface: Image,
     cover: Image,
+    lights: Image,
     center: DVec3,
     params: TerrainParams,
 }
@@ -452,6 +457,7 @@ impl BuiltChunk {
                 color: images.add(self.color),
                 surface: images.add(self.surface),
                 cover: images.add(self.cover),
+                lights: images.add(self.lights),
                 transmittance: air.transmittance,
                 multiple: air.multiple,
                 irradiance: air.irradiance,
@@ -516,6 +522,64 @@ fn data_image(format: TextureFormat, data: Vec<u8>, filtered: bool) -> Image {
     image
 }
 
+/// A chunk's night lights. Unlike the rest of its textures these go finer than the chunk: far off, a
+/// chunk has kilometres to a sample, and a bright town on black ground shows that where a day's
+/// imagery would not. Filtered down with distance, as they are all that shows at night and would
+/// sparkle. Most of the world is dark, and takes a texel.
+fn lights_image(data: Option<&Dataset>, key: TileKey) -> Image {
+    let lit = |texels: &Vec<u8>| texels.iter().any(|&v| v > DARK_LIGHTS);
+    let (side, texels) = data
+        .and_then(|data| data.finer_bytes(Layer::Lights, 0, key, LIGHTS_DEEPER))
+        .filter(|(_, texels)| lit(texels))
+        .unwrap_or((1, vec![0]));
+    let (levels, texels) = with_mip_levels(side, texels);
+    let mut image = Image::default();
+    image.texture_descriptor.size = Extent3d {
+        width: side as u32,
+        height: side as u32,
+        depth_or_array_layers: 1,
+    };
+    image.texture_descriptor.format = TextureFormat::R8Unorm;
+    image.texture_descriptor.mip_level_count = levels;
+    image.data = Some(texels);
+    image.asset_usage = RenderAssetUsages::RENDER_WORLD;
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        address_mode_u: ImageAddressMode::ClampToEdge,
+        address_mode_v: ImageAddressMode::ClampToEdge,
+        mag_filter: ImageFilterMode::Linear,
+        min_filter: ImageFilterMode::Linear,
+        mipmap_filter: ImageFilterMode::Linear,
+        anisotropy_clamp: 16,
+        ..default()
+    });
+    image
+}
+
+/// `level` of `side` by `side` texels, a power of two, with every level below it, each the average of
+/// the one before: how many levels, and all their texels one after another.
+fn with_mip_levels(mut side: usize, level: Vec<u8>) -> (u32, Vec<u8>) {
+    let mut all = level;
+    let mut start = 0;
+    let mut levels = 1;
+    while side > 1 {
+        let half = side / 2;
+        for j in 0..half {
+            for i in 0..half {
+                let at = |i: usize, j: usize| u32::from(all[start + j * side + i]);
+                let sum = at(2 * i, 2 * j)
+                    + at(2 * i + 1, 2 * j)
+                    + at(2 * i, 2 * j + 1)
+                    + at(2 * i + 1, 2 * j + 1);
+                all.push(((sum + 2) / 4) as u8);
+            }
+        }
+        start += side * side;
+        side = half;
+        levels += 1;
+    }
+    (levels, all)
+}
+
 /// Build a chunk's mesh and data textures (runs on a worker thread).
 fn build_chunk(surface: &Surface, key: TileKey) -> BuiltChunk {
     let n = TILE_SAMPLES;
@@ -553,7 +617,6 @@ fn build_chunk(surface: &Surface, key: TileKey) -> BuiltChunk {
 
     // Textures.
     let color_view = data.and_then(|d| d.view(Layer::Color, key));
-    let lights_view = data.and_then(|d| d.view(Layer::Lights, key));
     let cover_view = surface.cover_view(key);
 
     let mut color = Vec::with_capacity(n * n * 4);
@@ -568,10 +631,7 @@ fn build_chunk(surface: &Surface, key: TileKey) -> BuiltChunk {
             let rgb = color_view.as_ref().map_or(surface.fallback_color, |v| {
                 v.rgb(fi, fj).map(|c| c.round() as u8)
             });
-            let lights = lights_view
-                .as_ref()
-                .map_or(0, |v| v.byte_linear(0, fi, fj).round() as u8);
-            color.extend([rgb[0], rgb[1], rgb[2], lights]);
+            color.extend([rgb[0], rgb[1], rgb[2], 255]);
 
             // Normal from neighbouring positions, as east/north components.
             let dx = position(k + 1) - position(k - 1);
@@ -696,6 +756,7 @@ fn build_chunk(surface: &Surface, key: TileKey) -> BuiltChunk {
         color: data_image(TextureFormat::Rgba8UnormSrgb, color, true),
         surface: data_image(TextureFormat::Rgba16Float, surface_texels, true),
         cover: data_image(TextureFormat::R8Uint, cover, false),
+        lights: lights_image(data, key),
         center,
         params,
     }
@@ -731,5 +792,24 @@ fn place_stars(sim: Res<Sim>, frame: Res<RenderFrame>, mut stars: Query<(&Star, 
         let body = sim.universe.system.body(star.0);
         transform.translation = frame.to_render(star.0, DVec3::ZERO);
         transform.scale = Vec3::splat(body.radius as f32);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_mip_level_of_a_chunks_lights_is_there_and_keeps_the_average() {
+        let (levels, all) = with_mip_levels(
+            4,
+            vec![0, 8, 16, 24, 8, 8, 8, 8, 0, 0, 40, 40, 0, 0, 40, 40],
+        );
+        assert_eq!(levels, 3);
+        assert_eq!(all.len(), 16 + 4 + 1);
+        assert_eq!(&all[16..20], [6, 14, 0, 40]);
+        assert_eq!(all[20], 15);
+        // A dark chunk is one texel.
+        assert_eq!(with_mip_levels(1, vec![0]), (1, vec![0]));
     }
 }

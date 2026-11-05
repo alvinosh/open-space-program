@@ -12,13 +12,15 @@ use rayon::prelude::*;
 
 use crate::raster::Pyramid;
 
+/// Night lights no brighter than this count as dark, 0..255.
+const NOTHING_LIT: u8 = 2;
+
 /// Whole-planet sources.
 pub struct Global {
     pub height: Pyramid<f32>,
     pub color: Pyramid<[u8; 3]>,
     pub class: Pyramid<u8>,
     pub water: Pyramid<u8>,
-    pub lights: Pyramid<u8>,
     /// Deepest level baked everywhere.
     pub level: u8,
 }
@@ -190,23 +192,6 @@ impl Earth {
         }))
     }
 
-    pub fn lights_tile(&self, key: TileKey) -> TileData {
-        let texel = texel_degrees(key.level);
-        let lights = &self.global.lights;
-        let level = lights.level_for(texel);
-        TileData::Bytes {
-            channels: 1,
-            data: grid(key, |dir| {
-                let mut sum = 0.0;
-                for (di, dj) in SUPERSAMPLE {
-                    let (lat, lon) = degrees(dir(di, dj));
-                    sum += lights.bilinear(level, lat, lon, |v| [v as f32])[0];
-                }
-                (sum / 4.0).round().clamp(0.0, 255.0) as u8
-            }),
-        }
-    }
-
     pub fn cover_tile(&self, key: TileKey) -> TileData {
         let texel = texel_degrees(key.level);
         let samples = grid(key, |dir| {
@@ -240,7 +225,9 @@ impl Earth {
                     let max = match layer {
                         Layer::Height => r.height_level,
                         Layer::Cover => r.cover_level,
-                        Layer::Color | Layer::Lights => 0,
+                        Layer::Color => 0,
+                        // Baked on its own: see `write_lights`.
+                        Layer::Lights => 0,
                     };
                     key.level < max && r.intersects(key)
                 });
@@ -272,39 +259,88 @@ pub fn write_layer(
     out_dir: &Path,
     build: impl Fn(&Earth, TileKey) -> TileData + Sync,
 ) -> io::Result<()> {
-    let keys = earth.keys(layer);
+    write_tiles(&earth.keys(layer), layer, out_dir, |key| {
+        Some((
+            build(earth, key),
+            // Global data has metre-level detail at best; regional data is finer.
+            if key.level <= earth.global.level {
+                0.5
+            } else {
+                0.05
+            },
+        ))
+    })
+}
+
+/// Night lights all over to `level`, on their own as they go deeper than the other global layers.
+/// Past `kept_level`, a tile with nothing lit in it is left out: what looks for it finds its parent,
+/// and most of the world is dark at night.
+pub fn write_lights(
+    lights: &Pyramid<u8>,
+    kept_level: u8,
+    level: u8,
+    out_dir: &Path,
+) -> io::Result<()> {
+    let mut keys = Vec::new();
+    let mut stack: Vec<TileKey> = (0..6).map(TileKey::root).collect();
+    while let Some(key) = stack.pop() {
+        keys.push(key);
+        if key.level < level {
+            stack.extend(key.children());
+        }
+    }
+    keys.sort();
+    write_tiles(&keys, Layer::Lights, out_dir, |key| {
+        let texel = texel_degrees(key.level);
+        let pyramid_level = lights.level_for(texel);
+        let data = grid(key, |dir| {
+            let mut sum = 0.0;
+            for (di, dj) in SUPERSAMPLE {
+                let (lat, lon) = degrees(dir(di, dj));
+                sum += lights.bilinear(pyramid_level, lat, lon, |v| [v as f32])[0];
+            }
+            (sum / 4.0).round().clamp(0.0, 255.0) as u8
+        });
+        let lit = data.iter().any(|&v| v > NOTHING_LIT);
+        (lit || key.level <= kept_level).then_some((TileData::Bytes { channels: 1, data }, 0.0))
+    })
+}
+
+/// Build and write these tiles, with what `build` gives for each: the tile, if there is to be one,
+/// and how finely to keep its heights, m.
+fn write_tiles(
+    keys: &[TileKey],
+    layer: Layer,
+    out_dir: &Path,
+    build: impl Fn(TileKey) -> Option<(TileData, f32)> + Sync,
+) -> io::Result<()> {
     let path = out_dir.join(layer.file_name());
     let mut writer = PackWriter::create(&path)?;
     let total = keys.len();
     let mut done = 0;
     for batch in keys.chunks(256) {
-        let encoded: io::Result<Vec<(TileKey, osp_terrain::pack::Encoding, Vec<u8>)>> = batch
-            .par_iter()
-            .map(|&key| {
-                let tile = build(earth, key);
-                let blob = match &tile {
-                    // Global data has metre-level detail at best; regional data is finer.
-                    TileData::Height(h) => osp_terrain::pack::encode_height(
-                        h,
-                        if key.level <= earth.global.level {
-                            0.5
-                        } else {
-                            0.05
+        let encoded: io::Result<Vec<Option<(TileKey, osp_terrain::pack::Encoding, Vec<u8>)>>> =
+            batch
+                .par_iter()
+                .map(|&key| {
+                    let Some((tile, height_step)) = build(key) else {
+                        return Ok(None);
+                    };
+                    let blob = match &tile {
+                        TileData::Height(h) => osp_terrain::pack::encode_height(h, height_step)?,
+                        other => other.encode()?,
+                    };
+                    let encoding = match &tile {
+                        TileData::Height(_) => osp_terrain::pack::Encoding::Height,
+                        TileData::Rgb(_) => osp_terrain::pack::Encoding::Rgb,
+                        TileData::Bytes { channels, .. } => osp_terrain::pack::Encoding::Bytes {
+                            channels: *channels,
                         },
-                    )?,
-                    other => other.encode()?,
-                };
-                let encoding = match &tile {
-                    TileData::Height(_) => osp_terrain::pack::Encoding::Height,
-                    TileData::Rgb(_) => osp_terrain::pack::Encoding::Rgb,
-                    TileData::Bytes { channels, .. } => osp_terrain::pack::Encoding::Bytes {
-                        channels: *channels,
-                    },
-                };
-                Ok((key, encoding, blob))
-            })
-            .collect();
-        for (key, encoding, blob) in encoded? {
+                    };
+                    Ok(Some((key, encoding, blob)))
+                })
+                .collect();
+        for (key, encoding, blob) in encoded?.into_iter().flatten() {
             writer.write_encoded(key, encoding, &blob)?;
         }
         done += batch.len();

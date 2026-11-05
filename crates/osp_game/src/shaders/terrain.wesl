@@ -1,6 +1,7 @@
 // Planet surface. Extends the standard PBR material with per-chunk data textures:
 //
-// - colour: satellite imagery (rgb, sRGB) and night lights (a)
+// - colour: satellite imagery (rgb, sRGB)
+// - lights: night lights, finer than the rest, with mip levels
 // - surface: normal (east, north components), raw elevation in metres (bathymetry
 //   included) and water fraction
 // - cover: land-cover class per sample (see `osp_terrain::Cover`)
@@ -38,6 +39,8 @@ struct TerrainParams {
 @group(constants::MATERIAL_BIND_GROUP) @binding(103) var surface_texture: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(104) var surface_sampler: sampler;
 @group(constants::MATERIAL_BIND_GROUP) @binding(105) var cover_texture: texture_2d<u32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(106) var lights_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(107) var lights_sampler: sampler;
 /// Slope of the waves, its square, and foam, per cascade (see `crate::ocean`).
 @group(constants::MATERIAL_BIND_GROUP) @binding(120) var waves_texture: texture_2d_array<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(121) var waves_sampler: sampler;
@@ -83,6 +86,22 @@ fn noise(p: vec3<f32>, cell: f32) -> f32 {
     let x0 = mix(mix(v000, v100, u.x), mix(v010, v110, u.x), u.y);
     let x1 = mix(mix(v001, v101, u.x), mix(v011, v111, u.x), u.y);
     return mix(x0, x1, u.z) * 2.0 - 1.0;
+}
+
+/// What a town's lights look like close to, with a mean of 1 so that from afar it is the map alone:
+/// a little brighter and dimmer in places. Nothing with an edge or a point to it, which would read
+/// as single lights.
+fn city_detail(p: vec3<f32>, footprint: f32) -> f32 {
+    var glow = 1.0;
+    let coarse = 1.0 - smoothstep(512.0, 2048.0, footprint);
+    if coarse > 0.0 {
+        glow += 0.3 * coarse * noise(p, 1024.0);
+    }
+    let fine = 1.0 - smoothstep(128.0, 512.0, footprint);
+    if fine > 0.0 {
+        glow *= 1.0 + 0.2 * fine * noise(p, 256.0);
+    }
+    return glow;
 }
 
 /// Octave weight that fades a pattern of `cell` metres out before it would alias.
@@ -243,6 +262,8 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let texcoord = (uv * CELLS + 0.5) / (CELLS + 1.0);
     let color = textureSample(color_texture, color_sampler, texcoord);
     let surface = textureSample(surface_texture, surface_sampler, texcoord);
+    // Its texels fill the chunk from edge to edge, unlike the rest.
+    let lights_map = textureSample(lights_texture, lights_sampler, uv).r;
 
     // Procedural detail in body-fixed coordinates.
     let local = (local_from_world * vec4<f32>(position, 1.0)).xyz;
@@ -351,12 +372,17 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
         pbr_input.material.base_color = vec4<f32>(albedo * tint, 1.0);
     }
 
-    // City lights on the night side, seen from a distance.
+    // City lights on the night side: the map of them, with no more than a gentle unevenness close to.
     let sun_up = dot(normalize(from_center), sun);
     let night = smoothstep(0.05, -0.12, sun_up);
-    let lights_level = color.a * color.a * (1.0 - water);
-    let lights_glow = vec3<f32>(1.0, 0.7, 0.4) * lights_level * night * smoothstep(3000.0, 30000.0, d);
-    pbr_input.material.emissive = vec4<f32>(lights_glow * 250.0, 1.0);
+    let lit_here = (1.0 - water) * night * smoothstep(1500.0, 6000.0, d);
+    pbr_input.material.emissive = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    if lit_here * lights_map > 0.0 {
+        let warmth = 0.5 + 0.5 * noise(p, 2048.0);
+        let tint = mix(vec3<f32>(1.0, 0.78, 0.5), vec3<f32>(1.0, 0.6, 0.3), warmth);
+        let level = lights_map * lights_map * 250.0 * city_detail(p, footprint);
+        pbr_input.material.emissive = vec4<f32>(tint * level * lit_here, 1.0);
+    }
 
     var out: FragmentOutput;
     out.color = apply_pbr_lighting(pbr_input);

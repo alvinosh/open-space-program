@@ -140,6 +140,8 @@ impl Plugin for SmokeTestPlugin {
                 BOXES_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_LEAVING").is_some() {
                 LEAVING_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_NIGHT").is_some() {
+                NIGHT_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_ASCENT").is_some() {
                 ASCENT_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_FALLING").is_some() {
@@ -1174,6 +1176,39 @@ const TRANSFER_SCRIPT: &[(f64, Action)] = &[
     (6.4, Action::MapView(true)),
     (8.0, Action::Capture("transfer_map.png")),
     (8.5, Action::Exit),
+];
+
+/// `OSP_SCENARIO=pad OSP_CAPTURE_NIGHT=1`: a launch at night, from the pad to where the cities show,
+/// with nothing of the HUD in the way. From the side, from under the nose, and from above with the
+/// ground behind.
+const NIGHT_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("target.body:Moon")),
+    (1.2, Action::Ui("ui.show:transfer_planner")),
+    (1.5, Action::Ui("transfer.compute")),
+    (2.0, Action::Ui("transfer.warp_launch:0")),
+    (2.5, Action::Ui("ui.hide:transfer_planner")),
+    (2.6, Action::Ui("ui.hide_group:flight")),
+    (14.0, Action::LookFrom(70.0, 200.0, 12.0)),
+    (15.0, Action::Capture("night_pad.png")),
+    (15.2, Action::Launch),
+    (18.0, Action::LookFrom(70.0, 200.0, 12.0)),
+    (19.0, Action::Capture("night_liftoff.png")),
+    (26.0, Action::LookFrom(70.0, 40.0, 25.0)),
+    (27.0, Action::Capture("night_t12_above.png")),
+    (45.0, Action::LookFrom(70.0, 40.0, 25.0)),
+    (46.0, Action::Capture("night_t30_above.png")),
+    (70.0, Action::LookFrom(40.0, 100.0, 8.0)),
+    (71.0, Action::Capture("night_t55_close.png")),
+    (72.0, Action::LookFrom(120.0, 220.0, 35.0)),
+    (73.0, Action::Capture("night_t57_above.png")),
+    (90.0, Action::LookFrom(40.0, 40.0, 8.0)),
+    (91.0, Action::Capture("night_t75_close.png")),
+    (92.0, Action::LookFrom(120.0, 40.0, 35.0)),
+    (93.0, Action::Capture("night_t77_above.png")),
+    (110.0, Action::LookFrom(120.0, 40.0, 35.0)),
+    (111.0, Action::Capture("night_t95_above.png")),
+    (114.0, Action::Exit),
 ];
 
 /// `OSP_SCENARIO=pad OSP_CAPTURE_ASCENT=1`: the same by day, closer, to see what the air does to the

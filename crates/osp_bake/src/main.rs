@@ -1,13 +1,13 @@
 //! Bakes Earth terrain for Open Space Program from public datasets.
 //!
 //! ```sh
-//! cargo run -p osp_bake --release            # download (~900 MB, cached) and bake
+//! cargo run -p osp_bake --release            # download (~1.1 GB, cached) and bake
 //! cargo run -p osp_bake --release -- --help
 //! ```
 //!
-//! Global layers (elevation, colour, land cover, night lights) are baked to cube-sphere
-//! level 5 (~2.4 km per texel). Around Cape Canaveral, 30 m elevation and 10 m land cover
-//! go much deeper. Output: `assets/core/terrain/earth/`.
+//! Global layers (elevation, colour, land cover) are baked to cube-sphere level 5 (~2.4 km per
+//! texel), and night lights to level 7 (~600 m). Around Cape Canaveral, 30 m elevation and 10 m land
+//! cover go much deeper. Output: `assets/core/terrain/earth/`.
 //!
 //! `--sky` instead bakes the star background, `assets/core/sky/starmap.png` (see `sky`).
 
@@ -36,6 +36,8 @@ use crate::{
 /// Global quadtree depth: level 5 tiles are ~312 km wide with ~2.4 km texels, matching the
 /// ~1.9 km sources.
 const GLOBAL_LEVEL: u8 = 5;
+/// Night lights go deeper: level 7 tiles have ~600 m texels, matching the 500 m source.
+const LIGHTS_LEVEL: u8 = 7;
 
 struct RegionSpec {
     name: &'static str,
@@ -60,6 +62,7 @@ struct Options {
     cache: PathBuf,
     regions: bool,
     sky: bool,
+    lights_only: bool,
 }
 
 fn workspace_root() -> PathBuf {
@@ -73,6 +76,7 @@ fn parse_args() -> Options {
         cache: root.join(".bake-cache"),
         regions: true,
         sky: false,
+        lights_only: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -81,6 +85,7 @@ fn parse_args() -> Options {
             "--cache" => options.cache = args.next().expect("--cache needs a directory").into(),
             "--no-regions" => options.regions = false,
             "--sky" => options.sky = true,
+            "--lights-only" => options.lights_only = true,
             "-h" | "--help" => {
                 println!(
                     "osp_bake: bake Earth terrain tiles from public datasets\n\n\
@@ -88,6 +93,7 @@ fn parse_args() -> Options {
                      --out <dir>     output (default assets/core/terrain/earth)\n  \
                      --cache <dir>   downloads (default .bake-cache)\n  \
                      --no-regions    skip the high-resolution regions\n  \
+                     --lights-only   bake only the night lights, leaving the other layers\n  \
                      --sky           bake the star background instead"
                 );
                 std::process::exit(0);
@@ -110,6 +116,20 @@ fn main() -> io::Result<()> {
         return sky::bake(cache, &workspace_root().join("assets/core/sky/starmap.png"));
     }
 
+    if options.lights_only {
+        bake_lights(cache, &options.out)?;
+        let meta_path = options.out.join(META_FILE);
+        let mut meta: Meta =
+            serde_json::from_slice(&std::fs::read(&meta_path)?).map_err(io::Error::other)?;
+        meta.description = describe(&meta.description);
+        std::fs::write(
+            meta_path,
+            serde_json::to_vec_pretty(&meta).map_err(io::Error::other)?,
+        )?;
+        println!("Done in {:.0} s", start.elapsed().as_secs_f64());
+        return Ok(());
+    }
+
     println!("Fetching sources into {}", cache.display());
     let fetch_required = |source: Source| -> io::Result<PathBuf> {
         Ok(fetch(cache, &source, false)?.expect("required download"))
@@ -117,15 +137,13 @@ fn main() -> io::Result<()> {
     let etopo_path = fetch_required(etopo())?;
     let color_path = fetch_required(blue_marble())?;
     let cover_path = fetch_required(cci_land_cover())?;
-    let lights_path = fetch_required(black_marble())?;
 
     println!("Loading elevation");
     let etopo = load_etopo(&etopo_path)?;
     println!("Loading land cover");
     let (class, water) = load_cci(&cover_path, &etopo)?;
-    println!("Loading colour and night lights");
+    println!("Loading colour");
     let color = load_jpeg_rgb(&color_path)?;
-    let lights = load_jpeg_gray(&lights_path)?;
 
     println!("Building mip levels");
     let global = Global {
@@ -133,7 +151,6 @@ fn main() -> io::Result<()> {
         color: Pyramid::new(Geo::global(color.width, color.height), color, mean_rgb),
         class: Pyramid::new(Geo::global(class.width, class.height), class, mode_u8),
         water: Pyramid::new(Geo::global(water.width, water.height), water, mean_u8),
-        lights: Pyramid::new(Geo::global(lights.width, lights.height), lights, mean_u8),
         level: GLOBAL_LEVEL,
     };
 
@@ -145,24 +162,25 @@ fn main() -> io::Result<()> {
         }
     }
     let earth = Earth { global, regions };
+    let regions_described: String = earth
+        .regions
+        .iter()
+        .map(|r| format!("; {} to level {}/{}", r.name, r.height_level, r.cover_level))
+        .collect();
 
     std::fs::create_dir_all(&options.out)?;
     println!("Baking tiles into {}", options.out.display());
     bake::write_layer(&earth, Layer::Height, &options.out, Earth::height_tile)?;
     bake::write_layer(&earth, Layer::Cover, &options.out, Earth::cover_tile)?;
     bake::write_layer(&earth, Layer::Color, &options.out, Earth::color_tile)?;
-    bake::write_layer(&earth, Layer::Lights, &options.out, Earth::lights_tile)?;
+    drop(earth);
+    bake_lights(cache, &options.out)?;
 
     let meta = Meta {
         format: FORMAT_VERSION,
-        description: format!(
-            "Earth: global level {GLOBAL_LEVEL}{}",
-            earth
-                .regions
-                .iter()
-                .map(|r| format!("; {} to level {}/{}", r.name, r.height_level, r.cover_level))
-                .collect::<String>()
-        ),
+        description: describe(&format!(
+            "Earth: global level {GLOBAL_LEVEL}{regions_described}"
+        )),
         attribution: ATTRIBUTION.iter().map(|s| s.to_string()).collect(),
     };
     std::fs::write(
@@ -171,6 +189,26 @@ fn main() -> io::Result<()> {
     )?;
     println!("Done in {:.0} s", start.elapsed().as_secs_f64());
     Ok(())
+}
+
+/// Download and bake the night lights.
+fn bake_lights(cache: &Path, out: &Path) -> io::Result<()> {
+    println!("Loading night lights");
+    let lights = load_black_marble(cache)?;
+    println!("Building mip levels");
+    let lights = Pyramid::new(Geo::global(lights.width, lights.height), lights, mean_u8);
+    std::fs::create_dir_all(out)?;
+    println!("Baking tiles into {}", out.display());
+    bake::write_lights(&lights, GLOBAL_LEVEL, LIGHTS_LEVEL, out)
+}
+
+/// What a dataset says it is, with how deep its night lights go.
+fn describe(description: &str) -> String {
+    let lights = format!("; night lights to level {LIGHTS_LEVEL}");
+    match description.contains("; night lights") {
+        true => description.to_owned(),
+        false => format!("{description}{lights}"),
+    }
 }
 
 fn load_region(cache: &Path, spec: &RegionSpec) -> io::Result<Region> {

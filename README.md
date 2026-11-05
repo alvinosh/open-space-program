@@ -57,7 +57,7 @@ Rebind them on the menu's Controls page.
 ## Build from source
 
 ```sh
-cargo run -p osp_bake --release   # once: downloads about 900 MB and bakes Earth's terrain
+cargo run -p osp_bake --release   # once: downloads about 1.1 GB and bakes Earth's terrain
 cargo run                         # the game (without the bake, Earth is a smooth sphere)
 cargo run --features dev          # faster incremental builds
 OSP_SCENARIO=apollo11 cargo run   # skip the menu; ids are in the scenarios folders

@@ -1,0 +1,18 @@
+{
+  "id": "T197",
+  "title": "City lights from up close",
+  "kind": "bug",
+  "status": "done",
+  "area": "rendering",
+  "size": "S",
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "crates/osp_game/src/shaders/terrain.wesl"
+  ],
+  "created": "2026-11-05",
+  "updated": "2026-11-05",
+  "done": "2026-11-05",
+  "milestone": "M1",
+  "priority": null
+}

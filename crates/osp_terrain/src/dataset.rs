@@ -193,6 +193,45 @@ impl Dataset {
         })
     }
 
+    /// A plane of `layer` across `key`, finer than its own tile where the layer goes deeper, up to
+    /// `depth` levels. Gives how many texels it has a side and the texels, row-major, with their
+    /// centres filling the tile from edge to edge, so that it can have mip levels. A tile that is
+    /// not stored comes from its nearest ancestor, as in [`Self::view`].
+    pub fn finer_bytes(
+        &self,
+        layer: Layer,
+        channel: usize,
+        key: TileKey,
+        depth: u8,
+    ) -> Option<(usize, Vec<u8>)> {
+        let deeper = depth.min(self.max_level(layer)?.saturating_sub(key.level));
+        let across = 1usize << deeper;
+        let side = TILE_CELLS << deeper;
+        let mut views = Vec::with_capacity(across * across);
+        for y in 0..across as u32 {
+            for x in 0..across as u32 {
+                views.push(self.view(
+                    layer,
+                    TileKey {
+                        face: key.face,
+                        level: key.level + deeper,
+                        x: key.x * across as u32 + x,
+                        y: key.y * across as u32 + y,
+                    },
+                )?);
+            }
+        }
+        let mut texels = Vec::with_capacity(side * side);
+        let inside = |texel: usize| (texel % TILE_CELLS) as f64 + 0.5;
+        for j in 0..side {
+            for i in 0..side {
+                let view = &views[j / TILE_CELLS * across + i / TILE_CELLS];
+                texels.push(view.byte_linear(channel, inside(i), inside(j)).round() as u8);
+            }
+        }
+        Some((side, texels))
+    }
+
     /// View of the tile covering a direction, no deeper than `max_level`, with the sample
     /// coordinates of that direction inside it.
     pub fn locate(&self, layer: Layer, dir: DVec3, max_level: u8) -> Option<(TileView, f64, f64)> {
@@ -345,5 +384,49 @@ mod tests {
         let exact = probe.x * 1000.0 + probe.y * 300.0 - probe.z * 700.0;
         assert!((data.height(probe, 20).unwrap() - exact).abs() < 0.1);
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_finer_plane_comes_from_the_tiles_below_each_in_its_own_place() {
+        let dir = std::env::temp_dir().join(format!("osp_finer_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let meta = Meta {
+            format: FORMAT_VERSION,
+            ..Default::default()
+        };
+        std::fs::write(dir.join(META_FILE), serde_json::to_vec(&meta).unwrap()).unwrap();
+        let flat = |value: u8| TileData::Bytes {
+            channels: 1,
+            data: vec![value; TILE_SAMPLES * TILE_SAMPLES],
+        };
+        let mut writer = PackWriter::create(&dir.join(Layer::Lights.file_name())).unwrap();
+        let root = TileKey::root(0);
+        writer.write(root, &flat(10)).unwrap();
+        // One of the four children is left out, as a dark one is.
+        let [a, b, c, _] = root.children();
+        writer.write(a, &flat(20)).unwrap();
+        writer.write(b, &flat(40)).unwrap();
+        writer.write(c, &flat(60)).unwrap();
+        writer.finish().unwrap();
+        let data = Dataset::open(&dir).unwrap();
+
+        // It only goes one level deeper, however deep is asked for.
+        let (side, texels) = data.finer_bytes(Layer::Lights, 0, root, 2).unwrap();
+        assert_eq!(side, TILE_CELLS * 2);
+        assert_eq!(texels.len(), side * side);
+        let at = |i: usize, j: usize| texels[j * side + i];
+        let far = side - 1;
+        assert_eq!(at(0, 0), 20);
+        assert_eq!(at(far, 0), 40);
+        assert_eq!(at(0, far), 60);
+        // The one not stored comes from its parent.
+        assert_eq!(at(far, far), 10);
+
+        // Deep already, it is as fine as the data goes, and no layer gives nothing.
+        let (side, texels) = data.finer_bytes(Layer::Lights, 0, b, 2).unwrap();
+        assert_eq!((side, texels[0]), (TILE_CELLS, 40));
+        assert!(data.finer_bytes(Layer::Color, 0, root, 2).is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
