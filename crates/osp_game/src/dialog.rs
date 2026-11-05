@@ -6,8 +6,9 @@
 //!
 //! - `ask.leave:<action>` does the action, asking first to save a game that would lose something:
 //!   Save and continue, Don't save, Cancel.
-//! - `ask.delete_save:<file>` and `ask.destroy:<vessel>` ask whether to. `ask.clear` is the editor's
-//!   (see `editor`), which knows what stands in the way.
+//! - `ask.delete_save:<file>` and `ask.destroy:<vessel>` ask whether to. `ask.clear` and
+//!   `ask.revert:<launch|hangar>` are the editor's (see `editor`), which knows what stands in the way
+//!   and what was launched.
 //!
 //! `dialog.answer:<index>` takes an answer and `dialog.cancel` closes it, as Esc does: the menu and
 //! the editor leave Esc and Back alone while a question is open, and this runs after them so the

@@ -19,10 +19,11 @@ New, open, save, save as; the craft list with shipped and user craft; launch the
 ## Done so far
 
 - Launch picks pad, runway or orbit and takes the sequences left in the editor; the Play page lists every craft.
+- Revert from flight (pause menu, asks first): `game.revert:launch` to the moment it left, `game.revert:hangar` to the editor with the same craft, staging and place. Everything since goes, saves are not touched. A game loaded from a save has nothing to revert to until its next launch. `OSP_CAPTURE_REVERT=1` with `OSP_USER_DIR=<empty folder>` runs it.
 
 ## Still open
 
-- New, open, save and save as; user craft files; revert to the editor from flight.
+- New, open, save and save as; user craft files.
 
 ## Where it comes from
 

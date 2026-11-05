@@ -11,7 +11,8 @@
 //!
 //! `game.new` goes to the editor (see `editor`) to choose what to launch: nothing is lost until the
 //! first launch from there, and going back drops it. `game.exit` leaves the game for the title
-//! screen. Saves are in `saves`, and asking before anything is lost in `dialog`.
+//! screen. Saves are in `saves`, asking before anything is lost in `dialog`, and going back to the
+//! last launch in `editor`.
 
 use bevy::prelude::*;
 use osp_sim::{
@@ -25,7 +26,7 @@ use crate::{
     camera::CameraRig,
     content::GameContent,
     dialog::Dialog,
-    editor::Editor,
+    editor::{Editor, LastLaunch},
     saves::{Saves, ago, now},
     sim::{DEFAULT_SCENARIO, Sim, SimRestarted, TimeWarp},
     ui_data::format_date,
@@ -228,12 +229,14 @@ fn save_list(saves: &Saves) -> Vec<UiRecord> {
 
 /// `menu.screen`, `menu.playing`, `menu.new_game`, `menu.tutorials`, `menu.vessels`,
 /// `menu.vessel_line`, `menu.saves`, `menu.has_saves`, `menu.can_continue`, `menu.continue_line`,
-/// `menu.save_name`, `menu.game_line` and `menu.notice`. See `docs/modding.md`.
+/// `menu.save_name`, `menu.game_line`, `menu.notice`, `menu.can_revert` and `menu.revert_line`. See
+/// `docs/modding.md`.
 fn publish_menu(
     content: Res<GameContent>,
     menu: Res<Menu>,
     saves: Res<Saves>,
     sim: Res<Sim>,
+    last_launch: Res<LastLaunch>,
     mut data: ResMut<UiData>,
 ) {
     if content.is_changed() {
@@ -265,6 +268,10 @@ fn publish_menu(
         };
         data.set("menu.vessel_line", line);
         data.set("menu.vessels", vessels);
+    }
+    if menu.is_changed() || last_launch.is_changed() {
+        data.set("menu.can_revert", last_launch.name().is_some());
+        data.set("menu.revert_line", last_launch.name().unwrap_or(""));
     }
     if menu.is_changed() || saves.is_changed() {
         data.set("menu.saves", save_list(&saves));
@@ -302,6 +309,7 @@ pub(crate) fn go_to_title(
     rig: &mut CameraRig,
     ui: &mut LayoutVisibility,
     saves: &mut Saves,
+    last_launch: &mut LastLaunch,
     content: &GameContent,
     restarted: &mut MessageWriter<SimRestarted>,
 ) {
@@ -314,6 +322,7 @@ pub(crate) fn go_to_title(
             restarted.write(SimRestarted);
             saves.forget_current();
             saves.notice.clear();
+            last_launch.forget();
             menu.playing = false;
             menu.back_to_root();
             menu.show(true, sim, ui);
@@ -336,6 +345,7 @@ pub(crate) fn menu_actions(
     docs: Res<UiDocuments>,
     mut ui: ResMut<LayoutVisibility>,
     mut saves: ResMut<Saves>,
+    mut last_launch: ResMut<LastLaunch>,
     editor: Res<Editor>,
     dialog: Res<Dialog>,
     mut restarted: MessageWriter<SimRestarted>,
@@ -393,8 +403,17 @@ pub(crate) fn menu_actions(
             "game.exit" if menu.playing => {
                 let (sim, warp, rig, ui) = (&mut *sim, &mut *warp, &mut *rig, &mut *ui);
                 let restarted = &mut restarted;
+                let (saves, last_launch) = (&mut *saves, &mut *last_launch);
                 go_to_title(
-                    &mut menu, sim, warp, rig, ui, &mut saves, &content, restarted,
+                    &mut menu,
+                    sim,
+                    warp,
+                    rig,
+                    ui,
+                    saves,
+                    last_launch,
+                    &content,
+                    restarted,
                 );
             }
             "game.start_tutorial" => {
@@ -407,6 +426,7 @@ pub(crate) fn menu_actions(
                         rig.map_view = false;
                         restarted.write(SimRestarted);
                         saves.forget_current();
+                        last_launch.forget();
                         menu.back_to_root();
                         menu.playing = true;
                         menu.show(false, &mut sim, &mut ui);

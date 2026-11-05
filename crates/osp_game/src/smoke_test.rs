@@ -35,7 +35,7 @@ use crate::{
     camera::{CameraRig, MainCamera, ViewOutput},
     controls::InputLocked,
     dialog::Dialog,
-    editor::Editor,
+    editor::{Editor, LastLaunch},
     frame::{RenderFrame, to_render},
     map_labels::{body_spheres, hidden},
     markers::MarkerBox,
@@ -139,6 +139,8 @@ impl Plugin for SmokeTestPlugin {
                 BOXES_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_LEAVING").is_some() {
                 LEAVING_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_REVERT").is_some() {
+                REVERT_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MENUS").is_some() {
                 MENUS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MENU_TUTORIAL").is_some() {
@@ -299,6 +301,12 @@ enum Action {
     ExpectDialog(&'static str),
     /// Stop the capture with a failure unless there are this many saves.
     ExpectSaves(usize),
+    /// Stop the capture with a failure unless the game can revert to the launch of what is called
+    /// this, or cannot for `None`.
+    ExpectRevert(Option<&'static str>),
+    /// Stop the capture with a failure unless the game's clock is this many seconds past the last
+    /// launch, from the first to the second.
+    ExpectSinceLaunch(f64, f64),
     /// Turn the editor's view by this many pixels of mouse movement, and zoom by these lines of
     /// the wheel.
     EditorLook(f32, f32, f32),
@@ -347,6 +355,8 @@ const GLIDER_RUNWAY_SCRIPT: &[(f64, Action)] = &[
 
 /// How many sequences the Saturn V is built with.
 const SATURN_V_SEQUENCES: usize = 11;
+/// And the sounding rocket.
+const SOUNDER_SEQUENCES: usize = 2;
 
 /// `OSP_CAPTURE_PLAY=1` (with `OSP_USER_DIR=<empty folder>`, for the saves): from the menu to flying
 /// and back. New game goes to an empty hangar, which has nothing to launch. A vessel is chosen there,
@@ -724,6 +734,101 @@ const LEAVING_SCRIPT: &[(f64, Action)] = &[
     (15.7, Action::Ui("ask.leave:game.quit")),
     (15.8, Action::Ui("dialog.answer:1")),
     (17.0, Action::ExpectScreen("the game should have closed")),
+];
+
+/// `OSP_CAPTURE_REVERT=1` (with `OSP_USER_DIR=<empty folder>`, for the saves): a game with nothing
+/// launched has nothing to revert to. A launch and a flight, then a revert that is cancelled, one to
+/// the launch, and one to the hangar with the staging it left with and the pad clear to launch again,
+/// over the same save. A second vessel goes back to the first when the hangar is left; with nothing
+/// else in the game the hangar goes to the title screen, and a game loaded from a save cannot revert.
+const REVERT_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::ExpectRevert(None)),
+    (1.2, Action::Capture("revert_none.png")),
+    (1.3, Action::Ui("game.new")),
+    (1.8, Action::ExpectEditor(Some(""))),
+    (1.9, Action::Ui("editor.show:sounder")),
+    (3.0, Action::Unlock),
+    (3.1, Action::Ui("staging.add")),
+    (3.3, Action::ExpectSequenceCount(SOUNDER_SEQUENCES + 1)),
+    (3.5, Action::Ui("editor.launch")),
+    (4.5, Action::ExpectEditor(None)),
+    (4.6, Action::ExpectGame(1, "Sounder")),
+    (4.7, Action::ExpectSaves(1)),
+    (4.8, Action::ExpectRevert(Some("Sounder"))),
+    (4.9, Action::Launch),
+    (8.0, Action::Capture("revert_flying.png")),
+    (8.1, Action::Ui("game.menu")),
+    (8.2, Action::ExpectSinceLaunch(2.0, 8.0)),
+    (8.6, Action::Capture("revert_menu.png")),
+    // Asked first, and Cancel keeps the flight.
+    (8.7, Action::Ui("ask.revert:launch")),
+    (9.1, Action::Capture("revert_asked.png")),
+    (9.2, Action::ExpectDialog("Revert to launch?")),
+    (9.3, Action::Ui("dialog.answer:1")),
+    (9.4, Action::ExpectDialog("")),
+    (9.45, Action::ExpectScreen("pause")),
+    (9.5, Action::ExpectSinceLaunch(2.0, 8.0)),
+    // Back at the moment it left, flying.
+    (9.6, Action::Ui("ask.revert:launch")),
+    (9.7, Action::Ui("dialog.answer:0")),
+    (10.0, Action::ExpectDialog("")),
+    (10.05, Action::ExpectScreen("")),
+    (10.1, Action::ExpectSinceLaunch(0.0, 1.0)),
+    (10.2, Action::ExpectGame(1, "Sounder")),
+    (10.25, Action::ExpectSequenceCount(SOUNDER_SEQUENCES + 1)),
+    (11.0, Action::Capture("revert_launch.png")),
+    (11.1, Action::Ui("game.menu")),
+    (11.2, Action::Ui("ask.revert:hangar")),
+    (11.3, Action::ExpectDialog("Revert to hangar?")),
+    (11.4, Action::Ui("dialog.answer:0")),
+    (12.0, Action::ExpectEditor(Some("sounder"))),
+    (12.05, Action::ExpectScreen("")),
+    (12.1, Action::ExpectList(false)),
+    (12.15, Action::ExpectSequenceCount(SOUNDER_SEQUENCES + 1)),
+    (13.0, Action::Capture("revert_hangar.png")),
+    // Nothing stands on the pad, and the game stays in the save it was in.
+    (13.1, Action::Ui("editor.launch")),
+    (14.0, Action::ExpectEditor(None)),
+    (14.1, Action::ExpectGame(1, "Sounder")),
+    (14.15, Action::ExpectSaves(1)),
+    (14.2, Action::ExpectSequenceCount(SOUNDER_SEQUENCES + 1)),
+    (14.3, Action::Ui("game.menu")),
+    // A second vessel: the first is still there to go back to from the hangar.
+    (14.4, Action::Ui("editor.open")),
+    (14.9, Action::Ui("editor.show:glider")),
+    (16.5, Action::Ui("editor.place:orbit")),
+    (16.6, Action::Ui("editor.launch")),
+    (17.5, Action::ExpectGame(2, "Kestrel")),
+    (17.6, Action::ExpectRevert(Some("Kestrel"))),
+    (17.7, Action::Ui("game.menu")),
+    (17.8, Action::Ui("ask.revert:hangar")),
+    (17.9, Action::Ui("dialog.answer:0")),
+    (18.8, Action::ExpectEditor(Some("glider"))),
+    (18.9, Action::Ui("menu.back")),
+    (19.5, Action::ExpectEditor(None)),
+    (19.6, Action::ExpectScreen("pause")),
+    (19.7, Action::ExpectGame(1, "Sounder")),
+    // Going back to the launch of a new game's first vessel leaves nothing to go back to.
+    (19.8, Action::Ui("game.new")),
+    (20.3, Action::Ui("editor.show:sounder")),
+    (21.5, Action::Ui("editor.launch")),
+    (22.3, Action::ExpectSaves(2)),
+    (22.4, Action::Ui("game.menu")),
+    (22.5, Action::Ui("ask.revert:hangar")),
+    (22.6, Action::Ui("dialog.answer:0")),
+    (23.3, Action::ExpectEditor(Some("sounder"))),
+    (23.4, Action::Ui("menu.back")),
+    (24.0, Action::ExpectEditor(None)),
+    (24.1, Action::ExpectScreen("title")),
+    (24.2, Action::ExpectRevert(None)),
+    (24.3, Action::ExpectSaves(2)),
+    // Loaded from a save there is no launch to go back to.
+    (24.4, Action::Ui("game.continue")),
+    (25.0, Action::ExpectGame(1, "Sounder")),
+    (25.1, Action::ExpectRevert(None)),
+    (25.5, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_MENUS=1`: every screen of the menu, walked with Esc and Back in turn so a difference
@@ -1433,7 +1538,7 @@ fn run_script(
     mut buttons: ResMut<ButtonInput<MouseButton>>,
     mut ui_pointer: UiPointer,
     mut locked: ResMut<InputLocked>,
-    (menu, dialog, saves): (Res<Menu>, Res<Dialog>, Res<Saves>),
+    (menu, dialog, saves, last_launch): (Res<Menu>, Res<Dialog>, Res<Saves>, Res<LastLaunch>),
     mut editor: ResMut<Editor>,
 ) {
     let Some(&(at, action)) = script.actions.get(script.step) else {
@@ -1511,6 +1616,24 @@ fn run_script(
                     "smoke test: there are {} saves, wanted {wanted}",
                     saves.list.len()
                 );
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectRevert(wanted) => {
+            if last_launch.name() != wanted {
+                error!(
+                    "smoke test: can revert to {:?}, wanted {wanted:?}",
+                    last_launch.name()
+                );
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectSinceLaunch(from, to) => {
+            let since = last_launch
+                .time()
+                .map(|t| sim.universe.time().seconds_since(t));
+            if !since.is_some_and(|since| (from..=to).contains(&since)) {
+                error!("smoke test: {since:?} s since the launch, wanted {from} to {to}");
                 exit.write(AppExit::error());
             }
         }

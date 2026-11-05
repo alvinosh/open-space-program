@@ -6,6 +6,11 @@
 //! a vessel on it takes no launch until that is cleared (`editor.clear`, asked once). Back or Esc
 //! goes back to the menu with the game as it was. Placing parts is still to come.
 //!
+//! A launch is remembered ([`LastLaunch`]) until the game is left or another launch replaces it. The
+//! pause menu can go back to it: `game.revert:launch` to the moment it left, `game.revert:hangar` to
+//! here with the same craft, staging and place, as if it had never gone (`ask.revert:<to>` asks
+//! first). Saves are not touched, so what was saved since can still be loaded.
+//!
 //! A game always has a vessel in it. With the last one destroyed, here or from the menu's Vessels
 //! screen (`vessel.destroy:<id>`, asked once), the hangar is what is left: going back from it leaves
 //! the game for the title screen, as there is nothing to go back to.
@@ -35,7 +40,9 @@ use bevy::{
 use osp_mods::ModManifest;
 use osp_sim::{
     data::{CraftDef, LaunchSiteDef, LaunchSiteStartDef, OrbitStartDef, StartDef},
+    staging::Sequences,
     time::SimTime,
+    universe::Snapshot,
     vessel::{Vessel, VesselId},
 };
 use osp_ui::{LayoutVisibility, PointerOverUi, UiAction, UiData, UiDocuments, UiRecord, record};
@@ -107,18 +114,21 @@ pub struct EditorPlugin;
 
 impl Plugin for EditorPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Editor>().add_systems(
-            Update,
-            (
-                // After the menu, which leaves Esc to the editor while the editor is open.
-                editor_actions.in_set(FrameSet::Input).after(menu_actions),
-                drive_camera.in_set(FrameSet::Camera).after(update_camera),
-                place_hangar.in_set(FrameSet::Render),
-                // After what lights the world, which would take this for a night in deep space.
-                light_hangar.after(FrameSet::Render),
-                publish_editor,
-            ),
-        );
+        app.init_resource::<Editor>()
+            .init_resource::<LastLaunch>()
+            .add_systems(
+                Update,
+                (
+                    // After the menu, which leaves Esc to the editor while the editor is open.
+                    editor_actions.in_set(FrameSet::Input).after(menu_actions),
+                    revert_actions.in_set(FrameSet::Input).after(editor_actions),
+                    drive_camera.in_set(FrameSet::Camera).after(update_camera),
+                    place_hangar.in_set(FrameSet::Render),
+                    // After what lights the world, which would take this for a night in deep space.
+                    light_hangar.after(FrameSet::Render),
+                    publish_editor,
+                ),
+            );
     }
 }
 
@@ -372,6 +382,98 @@ impl Editor {
         let showing = self.0.as_ref()?;
         Some(showing.craft.as_ref().map_or("", |craft| craft.id.as_str()))
     }
+}
+
+/// What the game can go back to: the last launch, from the moment it left.
+struct LaunchPoint {
+    /// The whole game at that moment, the launched vessel in it.
+    game: Snapshot,
+    launched: VesselId,
+    /// What it is called, and when in the game it left.
+    name: String,
+    time: SimTime,
+    /// How it was launched, to put it back on show.
+    craft: CraftDef,
+    sequences: Option<Sequences>,
+    place: Place,
+    /// The vessel the hangar goes back to, in `game`: none if the launch started the game, or the
+    /// game had nothing else to fly.
+    flown: Option<VesselId>,
+}
+
+/// The launch the game in progress can be reverted to. A game loaded from a save has none, as a save
+/// holds the game and not how it got there.
+#[derive(Resource, Default)]
+pub struct LastLaunch(Option<LaunchPoint>);
+
+impl LastLaunch {
+    /// The game is no longer the one that launched it.
+    pub fn forget(&mut self) {
+        self.0 = None;
+    }
+
+    /// What was launched, if the game can go back to it.
+    pub fn name(&self) -> Option<&str> {
+        self.0.as_ref().map(|point| point.name.as_str())
+    }
+
+    /// When in the game it left.
+    pub fn time(&self) -> Option<SimTime> {
+        self.0.as_ref().map(|point| point.time)
+    }
+}
+
+/// Where a revert goes back to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RevertTo {
+    Launch,
+    Hangar,
+}
+
+impl RevertTo {
+    fn parse(text: &str) -> Option<Self> {
+        match text {
+            "launch" => Some(Self::Launch),
+            "hangar" => Some(Self::Hangar),
+            _ => None,
+        }
+    }
+
+    /// How its actions write it.
+    fn id(self) -> &'static str {
+        match self {
+            Self::Launch => "launch",
+            Self::Hangar => "hangar",
+        }
+    }
+}
+
+/// How long `seconds` of the game reads in the question: 40 s, 12 min, 3 h 5 min, 2 d 4 h.
+fn time_since(seconds: f64) -> String {
+    let seconds = seconds.max(0.0).round() as u64;
+    match seconds {
+        0..60 => format!("{seconds} s"),
+        60..3_600 => format!("{} min", seconds / 60),
+        3_600..86_400 => format!("{} h {} min", seconds / 3_600, seconds % 3_600 / 60),
+        _ => format!("{} d {} h", seconds / 86_400, seconds % 86_400 / 3_600),
+    }
+}
+
+/// Whether to go back to `to`, losing all of the game since `name` left, `since` seconds ago.
+fn revert_question(to: RevertTo, name: &str, since: f64) -> Question {
+    let title = match to {
+        RevertTo::Launch => "Revert to launch?",
+        RevertTo::Hangar => "Revert to hangar?",
+    };
+    Question::destructive(
+        title.to_owned(),
+        &format!(
+            "Everything since {name} launched, {} ago, will be lost. Saves stay as they are.",
+            time_since(since)
+        ),
+        "Revert",
+        format!("game.revert:{}", to.id()),
+    )
 }
 
 /// `editor.vessels` (name, and in `craft` each one's id, name, parts and selected): every craft
@@ -705,6 +807,7 @@ pub(crate) fn editor_actions(
     content: Res<GameContent>,
     docs: Res<UiDocuments>,
     mut dialog: ResMut<Dialog>,
+    mut last_launch: ResMut<LastLaunch>,
 ) {
     for action in actions.read() {
         match action.name() {
@@ -827,35 +930,15 @@ pub(crate) fn editor_actions(
                         continue;
                     }
                 };
-                let pressure = (sim.universe.vessel(showing.vessel))
-                    .map_or(0.0, |left| left.flight.static_pressure);
-                sim.universe.remove_vessel(showing.vessel);
-                showing.vessel = sim.universe.add_vessel(vessel);
-                sim.universe.focus = Some(showing.vessel);
-                sim.active_vessel_mut().flight.static_pressure = pressure;
-                let index = sim.active_index();
-                (showing.low, showing.high) = extent(&mut sim, index);
-                let (radius, height) = (showing.radius(), showing.height());
-                showing.craft = Some(craft);
-                showing.notice.clear();
-                // Every craft is first seen the same way, with the list out of its way.
-                showing.list_open = false;
-                showing.yaw = START_YAW;
-                showing.pitch = START_PITCH;
-                showing.pan = DVec3::ZERO;
-                showing.distance = showing.size() * 1.15 + 6.0;
-                // The hall fits what is in it.
-                commands.entity(showing.hangar).despawn();
-                showing.hangar = spawn_hangar(
+                put_on_show(
+                    showing,
+                    craft,
+                    vessel,
                     &mut commands,
-                    &mut meshes,
-                    &mut materials,
-                    &mut images,
-                    radius as f32,
-                    height as f32,
+                    &mut sim,
+                    &mut ui,
+                    (&mut meshes, &mut materials, &mut images),
                 );
-                close_part_windows(&mut ui);
-                ui.layouts.insert(STAGING.into(), true);
             }
             "editor.list" => {
                 if let Some(showing) = editor.0.as_mut() {
@@ -886,6 +969,7 @@ pub(crate) fn editor_actions(
                         &mut rig,
                         &mut ui,
                         &mut saves,
+                        &mut last_launch,
                         &content,
                         &mut restarted,
                     );
@@ -926,7 +1010,8 @@ pub(crate) fn editor_actions(
                 let sequences = vessel.map(|v| v.propulsion.sequences.clone());
                 let catalog = catalog(registry, &mut Vec::new());
                 let universe = &mut sim.universe;
-                let launched = universe.launch(&all, &catalog, &craft, &start, sequences, new_game);
+                let launched =
+                    universe.launch(&all, &catalog, &craft, &start, sequences.clone(), new_game);
                 let id = match launched {
                     Ok(id) => id,
                     Err(e) => {
@@ -949,6 +1034,17 @@ pub(crate) fn editor_actions(
                 if menu.new_game {
                     saves.forget_current();
                 }
+                last_launch.0 = Some(LaunchPoint {
+                    game: sim.universe.snapshot(),
+                    launched: id,
+                    name: sim.active_vessel().name.clone(),
+                    time,
+                    place: showing.place,
+                    // A new game has nothing in it from before.
+                    flown: if menu.new_game { None } else { showing.flown },
+                    craft,
+                    sequences,
+                });
                 menu.back_to_root();
                 menu.playing = true;
                 menu.show(false, &mut sim, &mut ui);
@@ -957,6 +1053,162 @@ pub(crate) fn editor_actions(
             }
             _ => {}
         }
+    }
+}
+
+/// Put `vessel`, built from `craft`, on show in place of what is there.
+fn put_on_show(
+    showing: &mut Showing,
+    craft: CraftDef,
+    vessel: Vessel,
+    commands: &mut Commands,
+    sim: &mut Sim,
+    ui: &mut LayoutVisibility,
+    (meshes, materials, images): (
+        &mut Assets<Mesh>,
+        &mut Assets<StandardMaterial>,
+        &mut Assets<Image>,
+    ),
+) {
+    let pressure =
+        (sim.universe.vessel(showing.vessel)).map_or(0.0, |left| left.flight.static_pressure);
+    sim.universe.remove_vessel(showing.vessel);
+    showing.vessel = sim.universe.add_vessel(vessel);
+    sim.universe.focus = Some(showing.vessel);
+    sim.active_vessel_mut().flight.static_pressure = pressure;
+    let index = sim.active_index();
+    (showing.low, showing.high) = extent(sim, index);
+    let (radius, height) = (showing.radius(), showing.height());
+    showing.craft = Some(craft);
+    showing.notice.clear();
+    // Every craft is first seen the same way, with the list out of its way.
+    showing.list_open = false;
+    showing.yaw = START_YAW;
+    showing.pitch = START_PITCH;
+    showing.pan = DVec3::ZERO;
+    showing.distance = showing.size() * 1.15 + 6.0;
+    // The hall fits what is in it.
+    commands.entity(showing.hangar).despawn();
+    showing.hangar = spawn_hangar(
+        commands,
+        meshes,
+        materials,
+        images,
+        radius as f32,
+        height as f32,
+    );
+    close_part_windows(ui);
+    ui.layouts.insert(STAGING.into(), true);
+}
+
+/// `ask.revert:<launch|hangar>` and `game.revert:<launch|hangar>`. If the game cannot go back,
+/// nothing changes and the menu says why.
+#[allow(clippy::too_many_arguments)]
+fn revert_actions(
+    mut commands: Commands,
+    mut actions: MessageReader<UiAction>,
+    mut editor: ResMut<Editor>,
+    mut menu: ResMut<Menu>,
+    mut sim: ResMut<Sim>,
+    mut warp: ResMut<TimeWarp>,
+    mut rig: ResMut<CameraRig>,
+    mut ui: ResMut<LayoutVisibility>,
+    mut ambient: ResMut<GlobalAmbientLight>,
+    mut saves: ResMut<Saves>,
+    (mut meshes, mut materials, mut images): (
+        ResMut<Assets<Mesh>>,
+        ResMut<Assets<StandardMaterial>>,
+        ResMut<Assets<Image>>,
+    ),
+    mut restarted: MessageWriter<SimRestarted>,
+    content: Res<GameContent>,
+    mut dialog: ResMut<Dialog>,
+    last_launch: Res<LastLaunch>,
+) {
+    for action in actions.read() {
+        if !matches!(action.name(), "ask.revert" | "game.revert") {
+            continue;
+        }
+        let to = action.arg().and_then(RevertTo::parse);
+        let (Some(to), Some(point)) = (to, last_launch.0.as_ref()) else {
+            warn!("nothing to revert to in `{}`", action.0);
+            continue;
+        };
+        if editor.is_open() {
+            continue;
+        }
+        if action.name() == "ask.revert" {
+            let since = sim.universe.time().seconds_since(point.time);
+            dialog.ask(revert_question(to, &point.name, since));
+            continue;
+        }
+        // What goes on show is built first, as it comes from the records and can fail.
+        let registry = &content.0.registry;
+        let display = match to {
+            RevertTo::Launch => None,
+            RevertTo::Hangar => {
+                let catalog = catalog(registry, &mut Vec::new());
+                let system = &sim.universe.system;
+                match Vessel::on_display(&point.craft, &catalog, system, point.time) {
+                    Ok(vessel) => Some(vessel),
+                    Err(e) => {
+                        error!("cannot put `{}` back on show: {e}", point.craft.id);
+                        menu.notice = format!("Cannot revert: {e}");
+                        continue;
+                    }
+                }
+            }
+        };
+        if let Err(e) = sim.universe.restore(point.game.clone()) {
+            error!("cannot revert: {e}");
+            menu.notice = format!("Cannot revert: {e}");
+            continue;
+        }
+        info!("reverted `{}` to {}", point.name, to.id());
+        sim.restarted();
+        *warp = TimeWarp::default();
+        rig.map_view = false;
+        rig.follow = None;
+        restarted.write(SimRestarted);
+        saves.notice.clear();
+        menu.back_to_root();
+        let Some(mut display) = display else {
+            rig.frame(sim.active_vessel().propulsion.length());
+            menu.show(false, &mut sim, &mut ui);
+            continue;
+        };
+        if let Some(sequences) = &point.sequences {
+            display.propulsion.sequences = sequences.clone();
+        }
+        sim.universe.remove_vessel(point.launched);
+        let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
+        open_hangar(
+            &mut commands,
+            &mut editor,
+            &mut menu,
+            &mut sim,
+            &mut rig,
+            &mut ui,
+            &mut ambient,
+            (&mut meshes, &mut materials, &mut images),
+            &all,
+            point.flown,
+        );
+        let Some(showing) = editor.0.as_mut() else {
+            continue;
+        };
+        showing.place = point.place;
+        // The camera was on what is gone.
+        showing.flown_changed = true;
+        put_on_show(
+            showing,
+            point.craft.clone(),
+            display,
+            &mut commands,
+            &mut sim,
+            &mut ui,
+            (&mut meshes, &mut materials, &mut images),
+        );
     }
 }
 
@@ -1283,6 +1535,30 @@ mod tests {
         assert_eq!(on(Place::Runway), Some(("strip", true)));
         assert_eq!(on(Place::Orbit), None);
         assert!(launch_ground(Place::Runway, &[site("a", true, false)]).is_none());
+    }
+
+    #[test]
+    fn a_revert_asks_about_where_it_goes() {
+        let mut dialog = Dialog::default();
+        dialog.ask(revert_question(RevertTo::Hangar, "Saturn V", 300.0));
+        assert_eq!(dialog.title(), "Revert to hangar?");
+        dialog.ask(revert_question(RevertTo::Launch, "Saturn V", 300.0));
+        assert_eq!(dialog.title(), "Revert to launch?");
+        assert_eq!(RevertTo::parse("hangar"), Some(RevertTo::Hangar));
+        assert_eq!(
+            RevertTo::parse(RevertTo::Launch.id()),
+            Some(RevertTo::Launch)
+        );
+        assert_eq!(RevertTo::parse("orbit"), None);
+    }
+
+    #[test]
+    fn the_time_since_a_launch_reads_naturally() {
+        assert_eq!(time_since(40.2), "40 s");
+        assert_eq!(time_since(720.0), "12 min");
+        assert_eq!(time_since(3.0 * 3_600.0 + 300.0), "3 h 5 min");
+        assert_eq!(time_since(2.0 * 86_400.0 + 4.0 * 3_600.0), "2 d 4 h");
+        assert_eq!(time_since(-5.0), "0 s");
     }
 
     #[test]

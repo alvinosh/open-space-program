@@ -1,7 +1,7 @@
 // One question at a time, over whatever is showing (see `crates/osp_game/src/dialog.rs`). It is not in
 // a group, so it shows over the flight, the menu and the editor alike, and takes the pointer from all
-// of them. `ask.leave:<action>`, `ask.delete_save:<file>`, `ask.destroy:<vessel>` and `ask.clear` open
-// it. `dialog.answer:<index>` takes an answer; Esc and `dialog.cancel` close it.
+// of them. `ask.leave:<action>`, `ask.delete_save:<file>`, `ask.destroy:<vessel>`, `ask.clear` and
+// `ask.revert:<to>` open it. `dialog.answer:<index>` takes an answer; Esc and `dialog.cancel` close it.
 {
   id: "dialog",
   visible: false,

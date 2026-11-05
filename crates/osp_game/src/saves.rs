@@ -20,6 +20,7 @@ use osp_ui::{LayoutVisibility, UiAction};
 use crate::{
     FrameSet,
     camera::CameraRig,
+    editor::LastLaunch,
     menu::Menu,
     sim::{Sim, SimRestarted, TimeWarp},
 };
@@ -267,6 +268,7 @@ fn save_actions(
     mut warp: ResMut<TimeWarp>,
     mut rig: ResMut<CameraRig>,
     mut ui: ResMut<LayoutVisibility>,
+    mut last_launch: ResMut<LastLaunch>,
     mut restarted: MessageWriter<SimRestarted>,
 ) {
     for action in actions.read() {
@@ -286,6 +288,7 @@ fn save_actions(
                     Ok(()) => {
                         info!("loaded `{file}`");
                         saves.notice.clear();
+                        last_launch.forget();
                         sim.restarted();
                         *warp = TimeWarp::default();
                         rig.map_view = false;
