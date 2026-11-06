@@ -1,0 +1,22 @@
+{
+  "id": "T202",
+  "title": "Quicksave and quickload",
+  "kind": "feature",
+  "status": "done",
+  "area": "ui",
+  "size": "M",
+  "parent": "T062",
+  "depends_on": [
+    "T090"
+  ],
+  "refs": [
+    "crates/osp_game/src/saves.rs",
+    "assets/core/layouts/menu/load.json5",
+    "assets/core/keybindings/default.json5"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": "2026-11-06",
+  "milestone": "later",
+  "priority": null
+}

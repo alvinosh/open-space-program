@@ -136,6 +136,16 @@ impl FlightPlan {
         self.insert(id, burn)
     }
 
+    /// Change burn `index`'s Δv, leaving it where it is in the plan.
+    pub fn set_delta_v(&mut self, index: usize, delta_v: DVec3) {
+        if let Some(burn) = self.burns.get_mut(index)
+            && burn.delta_v != delta_v
+        {
+            burn.delta_v = delta_v;
+            self.revision += 1;
+        }
+    }
+
     pub fn remove(&mut self, index: usize) -> Option<Burn> {
         (index < self.burns.len()).then(|| {
             self.revision += 1;

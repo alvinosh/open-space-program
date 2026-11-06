@@ -1682,11 +1682,13 @@ pub fn drag_window(
 pub fn read_keybindings(
     keys: Res<ButtonInput<KeyCode>>,
     docs: Res<UiDocuments>,
+    focus: Res<crate::input::TextFocus>,
     mut state: ResMut<ActionState>,
     mut actions: MessageWriter<UiAction>,
 ) {
     state.held.clear();
-    if state.suspended {
+    // Keys typed into a text box are not commands.
+    if state.suspended || focus.typing() {
         return;
     }
     for binding in &docs.bindings {

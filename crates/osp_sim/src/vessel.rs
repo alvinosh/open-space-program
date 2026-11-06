@@ -91,6 +91,9 @@ const SEPARATION_SPEED: f64 = 1.0;
 const FAIRING_SWING: f64 = 0.3;
 const FAIRING_PUSH: f64 = 0.5;
 const MAX_LOG: usize = 64;
+/// Thrust counts towards the next burn from this long before the burn starts, s (a pilot
+/// flying it by hand may light up a little early).
+const BURN_DUE: f64 = 60.0;
 /// How far over the star's pole a vessel on display is, m: far from anything there is to see.
 const DISPLAY_DISTANCE: f64 = 1.5e13;
 
@@ -981,14 +984,17 @@ impl Vessel {
         Some(BurnTiming::of(burn, &capability, self.mass.mass))
     }
 
-    /// The burns ahead of `time`, for prediction: the plan, with a burn in progress
-    /// replaced by what is left of it, given now.
+    /// The burns ahead of `time`, for prediction: the plan (the next burn already less what
+    /// has been given towards it, see [`Self::count_towards_burn`]), with a burn under way
+    /// whose time has passed given what is left of it now.
     pub fn burns_ahead(&self, system: &SolarSystem, time: SimTime) -> Vec<Burn> {
         let mut burns = self.plan.burns().to_vec();
-        if let Some(remaining) = self.executor.remaining()
-            && !burns.is_empty()
+        let soon = time.add_ticks(1);
+        let under_way = self.executor.burning() || self.flight.thrust > 0.0;
+        if under_way
+            && burns.first().is_some_and(|b| b.time <= soon)
+            && let Some(remaining) = self.burn_vector(system, time)
         {
-            let soon = time.add_ticks(1);
             let state = self.orbit(system, time).state_at(soon);
             match Burn::from_inertial(soon, &state, remaining) {
                 Some(rest) => burns[0] = rest,
@@ -998,6 +1004,55 @@ impl Vessel {
             }
         }
         burns
+    }
+
+    /// Count `given` (inertial Δv the engines and RCS gave the vessel at `state`, relative
+    /// to its parent, in the tick from `time`) towards the next burn, if it is due: the
+    /// burn is reshaped to lead where it led before, so it shrinks as it is flown, by hand
+    /// or by the executor, and what remains of it is what is still to give. Thrust before a
+    /// burn is due, or with a change of SOI before it, leaves the burn as it is.
+    fn count_towards_burn(
+        &mut self,
+        system: &SolarSystem,
+        time: SimTime,
+        state: &StateVector,
+        given: DVec3,
+        pressure: f64,
+    ) {
+        let Some(burn) = self.plan.burns().first().copied() else {
+            return;
+        };
+        if given == DVec3::ZERO {
+            return;
+        }
+        let start = self
+            .burn_timing(&burn, pressure)
+            .map_or(burn.time, |t| t.start);
+        if time < start.add_seconds(-BURN_DUE) {
+            return;
+        }
+        let gm = system.body(self.parent).gm;
+        let coast = Orbit::new(gm, time, *state);
+        // The burn is in the orbit frame of the trajectory then, which is this conic only if
+        // nothing changes the SOI first.
+        if burn.time > time
+            && next_event(system, self.parent, &coast, time, burn.time)
+                .is_some_and(|e| e.kind != EventKind::Descent)
+        {
+            return;
+        }
+        let pushed = Orbit::new(
+            gm,
+            time,
+            StateVector::new(state.position, state.velocity + given),
+        );
+        let (before, after) = (coast.state_at(burn.time), pushed.state_at(burn.time));
+        let Some(goal) = burn.inertial(&before).map(|dv| before.velocity + dv) else {
+            return;
+        };
+        if let Some(rest) = Burn::from_inertial(burn.time, &after, goal - after.velocity) {
+            self.plan.set_delta_v(0, rest.delta_v);
+        }
     }
 
     /// The earliest time the vessel needs physics ticks again although it could coast on
@@ -1795,6 +1850,8 @@ impl Vessel {
         let thrust = force.length();
         let thrust_accel = start.orientation * force / mass;
         let tail_off = self.propulsion.tail_off_impulse(air.pressure) / mass;
+        // Before the executor's accounting, which may end the burn and so bring on the next.
+        self.count_towards_burn(system, t0, &state, thrust_accel * dt, air.pressure);
         if let Some(finish) = self.executor.account(
             thrust_accel * dt,
             self.propulsion.any_engine_running(),
@@ -3247,6 +3304,69 @@ pub(crate) mod tests {
         );
         assert!((after.periapsis() - expected.periapsis()).abs() < 1e3);
         assert!(after.normal().angle_between(expected.normal()) < 1e-4);
+    }
+
+    /// Where the next burn leads, from the orbit the vessel is on now.
+    fn after_next_burn(v: &Vessel, system: &SolarSystem, t: SimTime) -> Orbit {
+        let burn = v.plan.burns()[0];
+        let orbit = v.orbit(system, t);
+        let state = orbit.state_at(burn.time);
+        let velocity = state.velocity + burn.inertial(&state).unwrap();
+        Orbit::new(
+            orbit.mu(),
+            burn.time,
+            StateVector::new(state.position, velocity),
+        )
+    }
+
+    /// Pushing while a burn is due comes off it: it still leads where it did, and what is
+    /// left of it is what is still to give. Pushing before it is due leaves it alone.
+    #[test]
+    fn a_burn_flown_by_hand_is_used_up() {
+        let system = rss();
+        let (mut v, mut t) = leo_vessel(&system);
+        let planned = DVec3::new(20.0, 0.0, 0.0);
+        v.plan.add(Burn {
+            time: t.add_seconds(60.0),
+            delta_v: planned,
+        });
+        v.plan.add(Burn {
+            time: t.add_seconds(3_000.0),
+            delta_v: DVec3::new(0.0, 5.0, 0.0),
+        });
+        let goal = after_next_burn(&v, &system, t);
+        v.press_sas_mode(&system, t, SasMode::Burn);
+        run(&mut v, &system, &mut t, 15.0);
+        v.rcs = true;
+        v.translation_input = DVec3::Z;
+        let coast = v.orbit(&system, t);
+        run(&mut v, &system, &mut t, 20.0);
+        v.translation_input = DVec3::ZERO;
+        let given =
+            (v.orbit(&system, t).state_at(t).velocity - coast.state_at(t).velocity).length();
+        assert!(given > 0.2, "{given}");
+
+        let left = v.plan.burns()[0].delta_v;
+        assert!(
+            (planned.length() - left.length() - given).abs() < 0.05 * given,
+            "{left} after {given}"
+        );
+        let now = after_next_burn(&v, &system, t);
+        let ap = |o: &Orbit| o.apoapsis().unwrap();
+        assert!(
+            (ap(&now) - ap(&goal)).abs() < 50.0,
+            "{}",
+            ap(&now) - ap(&goal)
+        );
+        assert!((now.periapsis() - goal.periapsis()).abs() < 50.0);
+        // The burn after it is not due, and keeps its own Δv.
+        assert_eq!(v.plan.burns()[1].delta_v, DVec3::new(0.0, 5.0, 0.0));
+
+        // Well before a burn, a push is a manoeuvre of its own.
+        v.plan.remove(0);
+        v.translation_input = DVec3::Z;
+        run(&mut v, &system, &mut t, 2.0);
+        assert_eq!(v.plan.burns()[0].delta_v, DVec3::new(0.0, 5.0, 0.0));
     }
 
     #[test]

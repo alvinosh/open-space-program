@@ -1,8 +1,11 @@
-//! Orbit camera around the active vessel (flight view) or its parent body (map view), or
-//! around what the player follows instead (from the Universe Manifest): another vessel, or
-//! in map view a body. Following ends when the player flies another vessel, the followed
-//! vessel is gone, or (for a body) the map closes. The flight camera stays above the ground
-//! (or the sea): looking down from low, it stops at the ground instead of going under.
+//! Orbit camera around the active vessel, in flight view and in map view alike, or around
+//! what the player follows instead (from the Universe Manifest or a body's box): another
+//! vessel, or in map view a body. Following ends when the player flies another vessel, the
+//! followed vessel is gone, or (for a body) the map closes. The flight camera stays above the
+//! ground (or the sea): looking down from low, it stops at the ground instead of going under.
+//! The map camera, looking at a vessel from the far side of its body, rises out of the body.
+//! The map opens looking at the vessel from where the flight camera did, so the vessel is in
+//! front of its body rather than behind it, and the flight camera is back as it was after.
 //!
 //! The view goes to the window, or to an image for scripted captures ([`ViewOutput`]).
 //! Below 100% render scale (see `settings`) it renders into an image that much smaller,
@@ -45,6 +48,8 @@ const COMPOSITE_LAYER: usize = 8;
 const MAX_PITCH: f64 = 1.55;
 /// The flight camera stays at least this high above the ground, m.
 const GROUND_CLEARANCE: f64 = 2.0;
+/// The map camera stays at least this high above the ground, in radii of the body.
+const MAP_CLEARANCE: f64 = 0.05;
 /// How far ambient occlusion looks for occluders, m: about a landing leg's gap to the hull.
 const AO_RADIUS: f32 = 1.2;
 
@@ -95,8 +100,13 @@ pub struct CameraRig {
     yaw: f64,
     /// Elevation above the local horizon, radians.
     pitch: f64,
+    /// Whether the last frame was in map view, to see the map open and close.
+    was_map: bool,
+    /// The flight view's `yaw` and `pitch` while the map is open.
+    flight_look: (f64, f64),
     flight_distance: f64,
-    /// Map distance as a multiple of the focused body's radius.
+    /// Map distance as a multiple of the radius of the body followed, or else of the viewed
+    /// vessel's parent.
     pub map_distance: f64,
     /// Flight view: look at this height above the base of the stack instead of its middle
     /// (debugging, `OSP_CAMERA`).
@@ -119,6 +129,8 @@ impl Default for CameraRig {
             // South of the vessel: the sun is behind the camera for northern launch sites.
             yaw: std::f64::consts::PI,
             pitch: 0.15,
+            was_map: false,
+            flight_look: (0.0, 0.0),
             flight_distance: 120.0,
             map_distance: 4.0,
             focus_height: None,
@@ -154,13 +166,13 @@ impl CameraRig {
         .unwrap_or_else(|| sim.active_vessel())
     }
 
-    /// The body the map view is centred on: the one followed, or else the viewed vessel's
-    /// parent. `None` in flight view.
-    pub fn map_centre(&self, sim: &Sim) -> Option<BodyId> {
-        self.map_view.then(|| match self.follow {
-            Some(Follow::Body(body)) => body,
-            _ => self.viewed_vessel(sim).parent(),
-        })
+    /// The body the map view is centred on, when it follows one. `None` when the view is
+    /// centred on a vessel, as the map is by default and the flight view always is.
+    pub fn map_centre(&self) -> Option<BodyId> {
+        match self.follow {
+            Some(Follow::Body(body)) if self.map_view => Some(body),
+            _ => None,
+        }
     }
 
     /// Stand far enough off to see a vessel `size` metres long.
@@ -472,17 +484,36 @@ pub(crate) fn update_camera(
     };
     let system = &sim.universe.system;
     let vessel = rig.viewed_vessel(&sim);
-    let centre = rig.map_centre(&sim).unwrap_or(origin_body);
-    let body = system.body(centre);
+    // The body followed in map view, or else the viewed vessel's parent (see `frame`).
+    let body = system.body(origin_body);
+    let pole = body.pole();
 
-    // Positions here are relative to the render origin, in f64: the vessel in flight view.
+    if rig.map_view != rig.was_map {
+        rig.was_map = rig.map_view;
+        if rig.map_view {
+            rig.flight_look = (rig.yaw, rig.pitch);
+            if rig.map_centre().is_none() {
+                // Along the flight camera's line of sight, in the map's horizon.
+                let flight = horizon(pole, frame.origin_offset.normalize());
+                let from = look_direction(flight, rig.yaw, rig.pitch);
+                let (north, east, up) = horizon(pole, DVec3::Z);
+                rig.yaw = from.dot(east).atan2(from.dot(north));
+                rig.pitch = from.dot(up).asin().clamp(-MAX_PITCH, MAX_PITCH);
+            }
+        } else {
+            (rig.yaw, rig.pitch) = rig.flight_look;
+        }
+    }
+
+    // Positions here are relative to the render origin, in f64: the vessel, unless the map
+    // follows a body.
     let (focus, up, distance) = if rig.map_view {
         rig.map_distance = (rig.map_distance * zoom).clamp(1.2, 5_000.0);
-        (
-            frame.body_offset(centre),
-            DVec3::Z,
-            rig.map_distance * body.radius,
-        )
+        let focus = match rig.map_centre() {
+            Some(centre) => frame.body_offset(centre),
+            None => frame.relative(vessel.parent(), frame.vessel_offset),
+        };
+        (focus, DVec3::Z, rig.map_distance * body.radius)
     } else {
         rig.flight_distance = (rig.flight_distance * zoom).clamp(5.0, 2_000_000.0);
         // The origin is the centre of mass; look a little below the middle of the stack, so
@@ -494,35 +525,46 @@ pub(crate) fn update_camera(
         (focus, frame.origin_offset.normalize(), rig.flight_distance)
     };
 
-    // Horizon basis around `up`, anchored to the body's pole so yaw is stable.
-    let pole = body.pole();
-    let east = pole.cross(up).try_normalize().unwrap_or(DVec3::X);
-    let north = up.cross(east);
+    let basis = horizon(pole, up);
     let yaw = rig.yaw;
-    let place = |pitch: f64| {
-        focus + distance * (pitch.cos() * (yaw.cos() * north + yaw.sin() * east) + pitch.sin() * up)
-    };
+    let place = |pitch: f64| focus + distance * look_direction(basis, yaw, pitch);
     rig.position = place(rig.pitch);
-    if !rig.map_view {
-        // Height above the ground of a point relative to the origin.
-        let to_fixed = body.orientation(frame.time).inverse();
-        let clearance = |at: DVec3| {
-            let at = frame.origin_offset + at;
-            at.length() - body.radius - body.terrain_height(to_fixed * at.normalize())
-        };
+    // Height above the ground of a point relative to the origin.
+    let to_fixed = body.orientation(frame.time).inverse();
+    let clearance = |at: DVec3| {
+        let at = frame.origin_offset + at;
+        at.length() - body.radius - body.terrain_height(to_fixed * at.normalize())
+    };
+    let floor = if rig.map_view {
+        MAP_CLEARANCE * body.radius
+    } else {
         rig.pitch = pitch_above_ground(rig.pitch, |pitch| clearance(place(pitch)));
         rig.position = place(rig.pitch);
-        // Nothing clears it (the vessel is down in a hole): straight up out of the ground.
-        let short = GROUND_CLEARANCE - clearance(rig.position);
-        if short > 0.0 {
-            let vertical = (frame.origin_offset + rig.position).normalize();
-            rig.position += vertical * short;
-        }
+        GROUND_CLEARANCE
+    };
+    // Nothing clears it (the vessel is down in a hole, or the map looks at it through its
+    // body): straight up out of the ground.
+    let short = floor - clearance(rig.position);
+    if short > 0.0 {
+        let vertical = (frame.origin_offset + rig.position).normalize();
+        rig.position += vertical * short;
     }
 
     let eye = to_render(rig.position);
     let target = to_render(focus);
     **camera = Transform::from_translation(eye).looking_at(target, to_render(up));
+}
+
+/// North, east and up for the horizon of `up`, anchored to a body's pole so yaw is stable.
+fn horizon(pole: DVec3, up: DVec3) -> (DVec3, DVec3, DVec3) {
+    let east = pole.cross(up).try_normalize().unwrap_or(DVec3::X);
+    (up.cross(east), east, up)
+}
+
+/// From what is looked at towards the camera, `yaw` from north towards east and `pitch` above
+/// the horizon.
+fn look_direction((north, east, up): (DVec3, DVec3, DVec3), yaw: f64, pitch: f64) -> DVec3 {
+    pitch.cos() * (yaw.cos() * north + yaw.sin() * east) + pitch.sin() * up
 }
 
 /// The lowest pitch from `pitch` up to [`MAX_PITCH`] at which the camera is

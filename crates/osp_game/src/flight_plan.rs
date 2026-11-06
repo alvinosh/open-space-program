@@ -20,6 +20,7 @@
 //! | `plan.circularize:ap`, `plan.circularize:pe` | New burn there that circularises |
 //! | `plan.select:<i>` | Select burn `i` |
 //! | `plan.dv:<prograde|normal|radial>:<+1|-1>` | Change the selected burn by one step |
+//! | `plan.set_dv:<prograde|normal|radial>:<m/s>` | Set the selected burn's Δv that way (typed into its box) |
 //! | `plan.dv_step:<m/s>`, `plan.time_step:<s>` | Step sizes |
 //! | `plan.time:<+1|-1>`, `plan.orbit:<+1|-1>` | Move it by one time step / one orbit |
 //! | `plan.zero`, `plan.delete`, `plan.clear` | Zero its Δv, delete it, delete all |
@@ -275,6 +276,19 @@ fn plan_actions(
                 if let Some(axis) = axis {
                     let step = ui.dv_step;
                     edit_selected(&mut sim, &mut ui, |burn| burn.delta_v[axis] += sign * step);
+                }
+            }
+            "plan.set_dv" => {
+                let (axis, value) = arg.split_once(':').unwrap_or((arg, ""));
+                let axis = AXES.iter().position(|x| *x == axis);
+                match (axis, value.trim().parse::<f64>()) {
+                    (Some(axis), Ok(value)) if value.is_finite() => {
+                        edit_selected(&mut sim, &mut ui, |burn| burn.delta_v[axis] = value);
+                    }
+                    _ => {
+                        let text = format!("Not a speed in m/s: {value}");
+                        warp.notice = Some((text, real));
+                    }
                 }
             }
             "plan.dv_step" => ui.dv_step = arg.parse().unwrap_or(ui.dv_step),

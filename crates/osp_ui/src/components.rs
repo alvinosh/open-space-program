@@ -258,7 +258,7 @@ mod tests {
     /// What can be clicked in a menu.
     const CONTROLS: [&str; 5] = ["back", "menu_row", "btn", "choice_item", "tab"];
     /// The classes the components and controls are made of.
-    const MENU_CLASSES: [&str; 29] = [
+    const MENU_CLASSES: [&str; 30] = [
         "menu_shade",
         "menu_rail",
         "menu_body",
@@ -279,6 +279,7 @@ mod tests {
         "menu_row_meta",
         "menu_row_value",
         "menu_row_detail",
+        "menu_nested",
         "setting_label",
         "choice_item",
         "tab",

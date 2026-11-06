@@ -211,7 +211,14 @@ fn number(value: &UiValue, f: impl Fn(f64) -> String) -> String {
 
 fn fixed(value: &UiValue, arg: Option<&str>) -> String {
     let digits = arg.and_then(|a| a.parse().ok()).unwrap_or(2);
-    number(value, |n| format!("{:.*}", digits, n))
+    number(value, |n| {
+        let text = format!("{:.*}", digits, n);
+        // A hair below zero reads as zero, not "-0.0".
+        match text.strip_prefix('-') {
+            Some(rest) if rest.chars().all(|c| c == '0' || c == '.') => rest.to_owned(),
+            _ => text,
+        }
+    })
 }
 
 fn scaled(n: f64, units: &[(f64, &str)], digits: usize) -> String {
@@ -272,6 +279,13 @@ mod tests {
         );
         assert!(Template::parse("static").is_static());
         assert_eq!(Template::parse("{a|nope}").render(&data, &f), "<?nope>");
+    }
+
+    #[test]
+    fn a_hair_below_zero_is_zero() {
+        assert_eq!(fixed(&UiValue::Number(-0.004), Some("1")), "0.0");
+        assert_eq!(fixed(&UiValue::Number(-0.06), Some("1")), "-0.1");
+        assert_eq!(fixed(&UiValue::Number(-3.0), Some("0")), "-3");
     }
 
     #[test]

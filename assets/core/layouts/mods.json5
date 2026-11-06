@@ -76,7 +76,7 @@
           },
           {
             widget: "button",
-            text: "Reload (F5)",
+            text: "Reload (F7)",
             action: "game.reload",
           },
         ],

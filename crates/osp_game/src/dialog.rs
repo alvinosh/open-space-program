@@ -151,6 +151,16 @@ impl Dialog {
     }
 }
 
+/// What deleting a save with this many quicksaves of its own says.
+fn deleted_text(quicksaves: usize) -> String {
+    let gone = "A deleted save cannot be brought back.";
+    match quicksaves {
+        0 => gone.to_owned(),
+        1 => format!("{gone} Its quicksave goes with it."),
+        count => format!("{gone} Its {count} quicksaves go with it."),
+    }
+}
+
 /// Whether leaving now would lose anything: a game in progress that its save does not hold. There
 /// is nothing to save in a running tutorial, which has no Save.
 fn would_lose(menu: &Menu, sim: &Sim, saves: &Saves) -> bool {
@@ -180,7 +190,7 @@ fn dialog_actions(
                 let Some(file) = action.arg() else { continue };
                 dialog.ask(Question::destructive(
                     format!("Delete {}?", saves.name_of(file)),
-                    "A deleted save cannot be brought back.",
+                    &deleted_text(saves.quicksave_count(file)),
                     "Delete",
                     format!("game.delete_save:{file}"),
                 ));
@@ -303,6 +313,13 @@ mod tests {
             "{}",
             question.text
         );
+    }
+
+    #[test]
+    fn deleting_a_save_says_its_quicksaves_go_too() {
+        assert_eq!(deleted_text(0), "A deleted save cannot be brought back.");
+        assert!(deleted_text(1).ends_with("Its quicksave goes with it."));
+        assert!(deleted_text(3).ends_with("Its 3 quicksaves go with it."));
     }
 
     #[test]

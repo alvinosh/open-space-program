@@ -2,7 +2,8 @@
 //!
 //! Any widget name not in the registry is a plain container: `column`, `row`, `panel`,
 //! `spacer` and friends differ only by their default theme class. Built-ins with behaviour:
-//! `label`, `button`, `bar`, `gauge` (an arc), `slider` (a value dragged along a track), `window`,
+//! `label`, `button`, `bar`, `gauge` (an arc), `slider` (a value dragged along a track), `input` (a
+//! text box, see [`crate::input`]), `window`,
 //! `dock` (a container that lets clicks through to the scene; with an id, layouts with that `dock`
 //! stack into it) and `image` (a picture from a mod, PNG or SVG: `image: "icons/engine.svg"`). Rust code can register
 //! more widgets with [`WidgetRegistry::register`]; data-only mods compose these.
@@ -100,6 +101,7 @@ impl Default for WidgetRegistry {
         registry.register("dock", dock);
         registry.register("image", image);
         registry.register("slider", slider);
+        registry.register("input", crate::input::input);
         registry
     }
 }

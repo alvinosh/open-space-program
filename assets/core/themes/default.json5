@@ -211,6 +211,8 @@
     menu_row_head: { gap: 8 },
     // A row with a button of its own beside it, the button's edge in line with the rows' text.
     menu_row_action: { gap: 8, margin: [0, 12, 0, 0] },
+    // What belongs to the row above it, like a save's quicksaves: stepped in under its text.
+    menu_nested: { margin: [0, 0, 4, 24] },
     menu_row_text: { font_size: 15, color: "$text" },
     menu_row_meta: { font_size: 12, color: "$text_dim" },
     // A value that is what the row is for, like a key on the Controls tab.
@@ -471,6 +473,24 @@
     sas_icon_off: { color: [1, 1, 1, 0.25] },
     // Small +/- and step buttons (flight plan).
     step_button: { min_width: 26, padding: [1, 6], font_size: 12 },
+    // A text box: a well in the panel, teal-edged while typed into, with what it showed in teal
+    // until the first key replaces it.
+    input: {
+      padding: [2, 6],
+      background: "$track",
+      hover_background: "$control",
+      active_background: "$track",
+      border: 1,
+      border_color: "#24364a",
+      active_border_color: "$accent",
+      active_color: "$accent",
+      radius: 3,
+      color: "$text",
+      font_size: 13,
+      align_items: "center",
+    },
+    // A box in the Flight plan window, as wide as the value it replaced.
+    value_input: { min_width: 86 },
     // Buttons that take something out of the game, and recovery (Universe Manifest).
     danger_button: { color: "$danger", hover_background: "$danger_hover" },
     recover_button: { color: "#6ff0d6", hover_background: "$selected" },
@@ -636,6 +656,7 @@
     node_axes: { gap: 12, margin: [0, 0, 4, 0] },
     node_axis: { gap: 3 },
     node_axis_icon: { width: 15, height: 15, color: "$text_strong" },
+    node_axis_input: { min_width: 56, padding: [1, 5] },
     node_actions: { gap: 4, margin: [6, 0, 0, 0] },
 
     // --- named classes ---

@@ -123,8 +123,9 @@ pub enum Finish {
 enum Phase {
     #[default]
     Idle,
-    /// Engaged, pointing, waiting for the start time, with what an ullage push has given so far.
-    Waiting { pushed: DVec3 },
+    /// Engaged, pointing, waiting for the start time. In braces as it once carried the
+    /// ullage push, so saves from then still load.
+    Waiting {},
     /// A burn too small for the engine, or with none to light: the RCS pushes it, forward.
     Pushing {
         remaining: DVec3,
@@ -177,9 +178,7 @@ impl BurnExecutor {
 
     pub fn engage(&mut self) {
         if self.phase == Phase::Idle {
-            self.phase = Phase::Waiting {
-                pushed: DVec3::ZERO,
-            };
+            self.phase = Phase::Waiting {};
         }
     }
 
@@ -208,9 +207,10 @@ impl BurnExecutor {
         let mut command = Command::default();
         match self.phase {
             Phase::Idle => {}
-            Phase::Waiting { pushed } => {
-                // What an ullage push has given already is part of the burn.
-                let wanted = s.delta_v - pushed;
+            Phase::Waiting {} => {
+                // What an ullage push has given already has come off the burn (the vessel
+                // counts all thrust towards the burn that is due).
+                let wanted = s.delta_v;
                 let total = wanted.length();
                 if total <= 0.0 {
                     return self.finish(0.0);
@@ -309,12 +309,6 @@ impl BurnExecutor {
     /// left is no more than the engines' tail-off would still give (`tail_off`, m/s) or
     /// would be overshot by more than this tick's share.
     pub fn account(&mut self, given: DVec3, running: bool, tail_off: f64) -> Option<Finish> {
-        if let Phase::Waiting { pushed } = self.phase {
-            self.phase = Phase::Waiting {
-                pushed: pushed + given,
-            };
-            return None;
-        }
         if let Phase::Pushing {
             remaining,
             total,
@@ -422,9 +416,10 @@ mod tests {
         }
     }
 
-    /// What the RCS gave settling the propellant is part of the burn, not over and above it.
+    /// What the RCS gave settling the propellant has already come off the burn (the vessel
+    /// counts it), so the engines light for what the vessel says is left, not less.
     #[test]
-    fn the_ullage_push_counts_towards_the_burn() {
+    fn the_engines_light_for_what_is_left_after_the_ullage_push() {
         let burn = Burn {
             time: SimTime::J2000,
             delta_v: DVec3::X * 500.0,
@@ -434,10 +429,31 @@ mod tests {
         let command = executor.command(&situation(&burn, Some(engine()), false));
         assert!(command.ullage);
         assert_eq!(executor.account(DVec3::Z * 0.9, false, 0.0), None);
-        executor.command(&situation(&burn, Some(engine()), true));
+        let mut settled = situation(&burn, Some(engine()), true);
+        settled.delta_v = DVec3::Z * 499.1;
+        executor.command(&settled);
         assert!(executor.burning());
         let left = executor.remaining().unwrap();
         assert!((left.z - 499.1).abs() < 1e-9, "{left}");
+    }
+
+    /// Saves from when a waiting executor kept the ullage push still load.
+    #[test]
+    fn a_waiting_executor_saved_with_its_push_loads() {
+        #[derive(Serialize)]
+        enum Old {
+            Waiting { pushed: DVec3 },
+        }
+        #[derive(Serialize)]
+        struct Saved {
+            phase: Old,
+        }
+        let saved = Saved {
+            phase: Old::Waiting { pushed: DVec3::X },
+        };
+        let bytes = rmp_serde::to_vec_named(&saved).unwrap();
+        let executor: BurnExecutor = rmp_serde::from_slice(&bytes).unwrap();
+        assert!(executor.engaged() && !executor.burning());
     }
 
     /// A burn the engine would overshoot goes on the RCS, and ends when it has been given.

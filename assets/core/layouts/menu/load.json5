@@ -1,5 +1,6 @@
-// The saves (`menu.saves`), newest first. Clicking one carries on from it, asking first to save a game
-// in progress (`ask.leave`); deleting one asks (`ask.delete_save`).
+// The saves (`menu.saves`), newest first, each with its own quicksaves under it (`item.quicksaves`,
+// made with F5). Clicking one carries on from it, asking first to save a game in progress
+// (`ask.leave`); deleting one asks (`ask.delete_save`), and a save takes its quicksaves with it.
 {
   id: "menu_load",
   group: "menu",
@@ -19,6 +20,22 @@
             children: [
               { widget: "menu_row", style: { grow: 1 }, text: "{item.name}", meta: "{item.saved}", detail: "{item.detail}", action: "ask.leave:game.load:{item.file}" },
               { widget: "button", class: "btn btn_danger", text: "Delete", action: "ask.delete_save:{item.file}" },
+            ],
+          },
+          {
+            widget: "column",
+            class: "menu_nested",
+            repeat: "item.quicksaves",
+            visible: "item.has_quicksaves",
+            children: [
+              {
+                widget: "row",
+                class: "menu_row_action",
+                children: [
+                  { widget: "menu_row", style: { grow: 1 }, text: "{item.name}", meta: "{item.saved}", detail: "{item.detail}", action: "ask.leave:game.load:{item.file}" },
+                  { widget: "button", class: "btn btn_danger", text: "Delete", action: "ask.delete_save:{item.file}" },
+                ],
+              },
             ],
           },
         ],

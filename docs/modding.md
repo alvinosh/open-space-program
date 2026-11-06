@@ -23,7 +23,7 @@ Mods are data-only. There is no scripting language and none is planned for now.
    { id: "my_mod", name: "My Mod", version: "0.1.0", dependencies: ["core"] }
    ```
 
-2. Add files (see below), start the game, and press **F5** to reload after each edit.
+2. Add files (see below), start the game, and press **F7** to reload after each edit.
 3. Press **F2** to see loaded mods and any problems, and **F12** to browse every value the
    UI can display.
 
@@ -300,7 +300,7 @@ component works with any shape that has what it needs:
 
   What vessels collide with is what is drawn: each part's surfaces and the triangles of its models,
   with a strut and foot for a landing leg, cut into convex pieces that stay within a few centimetres
-  of them (F9 shows the pieces). A closed part comes out solid and an open one hollow, from its shape
+  of them (O shows the pieces). A closed part comes out solid and an open one hollow, from its shape
   alone, so a new part or a procedural one needs nothing added to collide. A model's `proxy` is for
   the air and for mass only, unless its file cannot be read. Vessels are rigid bodies when they touch:
   they push each other, turn each other and rub, and a vessel standing on wheels or a belly is shoved
@@ -1120,7 +1120,7 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 
 | Field | Meaning |
 | --- | --- |
-| `widget` | `column` (default), `row`, `panel`, `spacer`, `label`, `button`, `bar`, `gauge`, `slider`, `window`, `dock`, `image`, `navball`. Unknown names act as containers. |
+| `widget` | `column` (default), `row`, `panel`, `spacer`, `label`, `button`, `bar`, `gauge`, `slider`, `input`, `window`, `dock`, `image`, `navball`. Unknown names act as containers. |
 | `image` | `image` only: a PNG or SVG relative to the mod root (`"icons/engine.svg"`), from the highest-priority mod that has it, tinted with the style's `color` (`active_color` while its `active` condition holds); size it with `width` and `height`. SVGs are rasterised at load, well above their size and with mipmaps, so they stay sharp at any size; draw what the theme should tint in white. Text in an SVG is not drawn: convert it to paths. |
 | `icon` | `window` only: an image shown before the title (class `window_icon`). |
 | `pin` | `window` only: a pin button in the title bar (classes `window_pin`, `window_pin_icon`). Popup windows have one unless `pin: false`. |
@@ -1130,12 +1130,13 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 | `id` | Optional; lets patches address the node with `#id`. |
 | `class` | Space-separated theme classes. |
 | `style` | Inline style (overrides classes). |
-| `text` | Text template (`label`, `button`). |
+| `text` | Text template (`label`, `button`, `input`). |
 | `title` | Window title template. |
-| `action` | Action fired on click (`button`); may contain `{bindings}`. |
+| `action` | Action fired on click (`button`), or with what was typed (`input`); may contain `{bindings}`. |
 | `value` | Data key for the fill (`bar`), 0..1 unless `min` / `max` say otherwise; for a `slider`, the value it shows. |
 | `min`, `max`, `vertical`, `color` | `bar` only: the value range (with `min` below zero the bar fills either way from zero, for −1..1 inputs), filling upwards instead of across, and a data key holding the fill colour (`"#rrggbb"`; empty keeps the theme's). |
 | `min`, `max`, `step` | `slider`: the range (default 0 to 100) and the steps it lands on (default 1). Pressing or dragging on it fires `<action>:<value>` once for each step it is moved to. Classes `slider`, `slider_track`, `slider_fill`, `slider_thumb`. |
+| `numeric` | `input`, a text box: it shows its `text` until clicked, then what is typed (the first key replaces what it showed). Enter, or a click elsewhere, fires its `action` with `$text` standing for what was typed, e.g. `action: "plan.set_dv:prograde:$text"`; Escape, or nothing typed, leaves it. `numeric: true` takes only digits, a sign, a point and an exponent. Keybindings do nothing while it has the keys. Classes `input` (`hover_background`, and `active_background`, `active_border_color` while typing; `active_color` for the text the first key replaces) and `input_text`. |
 | `min`, `max`, `start`, `end` | `gauge` only: an arc of a ring from `start` to `end` degrees (0 at the top, clockwise; an `end` below `start` runs anticlockwise), filled from `start` by `value` between `min` and `max`. The node is the ring's square: its `border` is the thickness, `border_color` the empty track and `color` the fill. |
 | `visible` | Condition (below); the node shows while it holds. |
 | `active` | Condition for the node's active look (`active_background`, `active_color`, `active_border_color`): a selected mode, a toggle that is on, an open window. |
@@ -1429,7 +1430,8 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `mods.problems[]` | `error` (bool), `text` |
 | `menu.screen`, `menu.playing`, `menu.tutorials[]` | The screen showing; a game is in progress; the tutorials: `id`, `name`, `description`, `steps` |
 | `menu.new_game`, `menu.vessels[]`, `menu.vessel_line`, `menu.game_line` | New game was picked and has not started; the vessels in the game to fly (`id`, `name`, `where`, `flying`, `state`, `destroying`: asked once), debris left out; how many, in words; the line under Paused |
-| `menu.saves[]`, `menu.has_saves`, `menu.save_name`, `menu.next_save`, `menu.notice` | The saves, newest first: `file`, `current` (the one the game in progress goes to), `name`, `saved` (how long ago), `time` (the game's date), `flying`, `vessels`, `problem` (why it cannot be loaded), `detail` (the line to show: the problem, or what is flying, the date and the vessels); whether there are any; the save the game in progress goes to; what a new save would be called; what just happened |
+| `menu.saves[]`, `menu.has_saves`, `menu.save_name`, `menu.next_save`, `menu.notice` | The saves, newest first: `file`, `current` (the one the game in progress goes to), `name`, `saved` (how long ago), `time` (the game's date), `flying`, `vessels`, `problem` (why it cannot be loaded), `detail` (the line to show: the problem, or what is flying, the date and the vessels), `has_quicksaves`, `quicksaves[]` (its own, newest first, with the same fields; `file` is `<save>/quicksave_<n>`); whether there are any; the save the game in progress goes to; what a new save would be called; what just happened |
+| `saves.flash` | What a quicksave or quickload just said over the flight, for a few seconds |
 | `menu.can_continue`, `menu.continue_line` | There is a save this game can read; the newest one's name and what it was flying |
 | `menu.can_revert`, `menu.revert_line` | The game in progress launched something it can go back to; what it was called. A game loaded from a save has none until its next launch |
 | `marker.name`, `marker.key`, `marker.distance`, `marker.is_vessel`, `marker.targeted`, `marker.target_vessel`, `marker.target_body`, `marker.centre_vessel`, `marker.centre_body` | What the `marker_menu` is open on: a box round a vessel or a body. `key` goes in the actions (`target.vessel`, `target.body`, `vessel.fly`, `manifest.follow`, `manifest.follow_body`), `distance` is from the vessel flown (to a body's surface), and the rest say which items to show |
@@ -1500,7 +1502,8 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `guidance.land`, `guidance.hover`, `guidance.hold:<m/s>`, `guidance.entry`, `guidance.off` | What its computer flies by itself: down to the ground from where it is on its engine, holding its height, sinking at a rate, or rolling its lift through an entry to hold about 4 g |
 | `dialog.answer:<index>`, `dialog.cancel` | Take an answer of the question being asked (`dialog.answers[]`); close it, as Esc and Back do |
 | `game.new` | Go to the editor to choose what to launch in a new game. Nothing changes until the launch; the game in progress goes on if the player goes back |
-| `game.save`, `game.save_as`, `game.save_to:<file>`, `game.load:<file>`, `game.continue`, `game.delete_save:<file>` | Save the game in progress to its save; to a new save, or over the save `file`, which it then goes to (from the Save screen, either goes back to Pause); carry on from a save; from the newest this game can read; delete one |
+| `game.save`, `game.save_as`, `game.save_to:<file>`, `game.load:<file>`, `game.continue`, `game.delete_save:<file>` | Save the game in progress to its save; to a new save, or over the save `file`, which it then goes to (from the Save screen, either goes back to Pause); carry on from a save or a quicksave (`<save>/quicksave_<n>`); from the newest save this game can read; delete one, a save with its quicksaves |
+| `game.quicksave`, `game.quickload` | In flight only, not in a tutorial: add a quicksave to the save the game in progress goes to, starting that save if there is none; carry on from its newest quicksave. Bound to a held key (F9), `game.quickload` waits for it to be held a second; fired from a button it loads at once. Neither changes the save itself, so leaving still asks to save |
 | `editor.list`, `editor.clear`, `vessel.destroy:<vessel>` | Show or hide the editor's list of vessels (`editor.list_open`), which choosing one hides; destroy what stands on the pad or runway picked; destroy a vessel, flying another if it was the one being flown and going to the empty hangar if it was the last |
 | `editor.open`, `editor.show:<craft>`, `editor.back`, `editor.place:<pad|runway|orbit>`, `editor.launch` | Open the editor with the hangar empty; put a craft on show in place of what is there; go back to the menu; pick where it launches from; launch it, with the sequences it was left with, which also saves the game. With nothing on show `editor.launch` only says to choose a vessel |
 | `tutorial.next`, `tutorial.skip` | Move past the current step (Continue, or skip it); give the tutorial up |
@@ -1509,12 +1512,12 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 
 ## Troubleshooting
 
-- **Nothing changed?** Press F5, then F2. Syntax errors, unknown style properties, invalid
+- **Nothing changed?** Press F7, then F2. Syntax errors, unknown style properties, invalid
   or unmatched patches and values of the wrong type are listed there (and in the console)
   with the mod and file. A broken record is skipped; the rest of the mod still loads.
 - **A patch says "matched nothing"?** Check the collection name, the target id, and whether
   the target mod loads before yours (add it to `dependencies` or `load_after`).
-- **Physics data (bodies, parts, craft, launch sites) is read when a game starts.** F5
+- **Physics data (bodies, parts, craft, launch sites) is read when a game starts.** F7
   reloads the UI immediately; restart to fly with changed parts or planets.
 - **Earth is a smooth blue sphere?** Its terrain data has not been baked; F2 shows a warning.
   Run `cargo run -p osp_bake --release`.

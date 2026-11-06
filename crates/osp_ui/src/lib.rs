@@ -4,8 +4,9 @@
 //! - **Themes** (`themes` collection): named style classes merged across mods, see [`style`].
 //! - **Data bindings**: the game publishes values into [`UiData`]; layouts show them with
 //!   text templates (`"{vessel.altitude|distance}"`), conditions, bars and repeated lists.
-//! - **Actions**: buttons and keybindings (`keybindings` collection) emit [`UiAction`]
-//!   messages by name; held keys show up in [`ActionState`]. The game decides what each
+//! - **Actions**: buttons, text boxes and keybindings (`keybindings` collection) emit
+//!   [`UiAction`] messages by name; held keys show up in [`ActionState`]. Keybindings wait
+//!   while a text box has the keys ([`TextFocus`]). The game decides what each
 //!   action does, so mods can add buttons and rebind keys without code.
 //! - **Hot reload**: replace the [`UiDocuments`] resource and the UI rebuilds.
 //! - **Art**: `image` nodes and window icons take PNG or SVG files from the mods (SVGs are
@@ -27,6 +28,7 @@
 pub mod components;
 pub mod data;
 pub mod format;
+pub mod input;
 pub mod layout;
 pub mod runtime;
 pub mod style;
@@ -37,6 +39,7 @@ use bevy::prelude::*;
 
 pub use data::{UiData, UiRecord, UiValue, record};
 pub use format::{Formatter, Formatters, Template};
+pub use input::{TextFocus, TextInput};
 pub use layout::{
     KeyBindingDef, LayoutDef, NodeDef, UiDocuments, instance_data, instance_id,
 };
@@ -74,11 +77,16 @@ impl Plugin for UiPlugin {
             .init_resource::<PointerOverUi>()
             .init_resource::<UiHover>()
             .init_resource::<UiHighlight>()
+            .init_resource::<TextFocus>()
             .add_message::<UiAction>()
             .configure_sets(Update, (UiSet::Input, UiSet::Build, UiSet::Update).chain())
             .add_systems(
                 Update,
-                (runtime::read_keybindings, runtime::track_pointer_over_ui).in_set(UiSet::Input),
+                (
+                    (runtime::read_keybindings, input::type_into_inputs).chain(),
+                    runtime::track_pointer_over_ui,
+                )
+                    .in_set(UiSet::Input),
             )
             .add_systems(
                 Update,
@@ -111,6 +119,12 @@ impl Plugin for UiPlugin {
                     runtime::update_scroll_thumbs,
                 )
                     .chain()
+                    .in_set(UiSet::Update),
+            )
+            .add_systems(
+                Update,
+                input::show_inputs
+                    .after(runtime::update_text)
                     .in_set(UiSet::Update),
             );
     }

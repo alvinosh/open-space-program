@@ -27,7 +27,7 @@ use crate::{
     content::GameContent,
     dialog::Dialog,
     editor::{Editor, LastLaunch},
-    saves::{Saves, ago, now},
+    saves::{SaveEntry, Saves, ago, now},
     sim::{DEFAULT_SCENARIO, Sim, SimRestarted, TimeWarp},
     ui_data::format_date,
 };
@@ -197,35 +197,46 @@ fn save_detail(flying: &str, time: &str, vessels: usize) -> String {
     shown.join(", ")
 }
 
-/// `menu.saves` (file, current, name, saved, time, flying, vessels, problem, detail), newest first;
-/// `current` is the one the game in progress goes to.
+/// A save's or quicksave's record in `menu.saves`.
+fn save_record(entry: &SaveEntry, current: bool, now: u64) -> UiRecord {
+    let header = entry.header.as_ref();
+    let name = header.map_or(entry.file.as_str(), |h| h.name.as_str());
+    let saved = header.map_or(String::new(), |h| ago(h.saved_at, now));
+    let time = header.map_or(String::new(), |h| format_date(h.time));
+    let flying = header.map_or("", |h| h.flying.as_str());
+    let vessels = header.map_or(0, |h| h.vessels);
+    let problem = entry.problem.as_deref().unwrap_or("");
+    let detail = match problem {
+        "" => save_detail(flying, &time, vessels),
+        problem => problem.to_owned(),
+    };
+    let quicksaves: Vec<_> = (entry.quicksaves.iter())
+        .map(|quick| save_record(quick, false, now))
+        .collect();
+    record([
+        ("file", entry.file.as_str().into()),
+        ("current", current.into()),
+        ("name", name.into()),
+        ("saved", saved.into()),
+        ("time", time.into()),
+        ("flying", flying.into()),
+        ("vessels", vessels.into()),
+        ("problem", problem.into()),
+        ("detail", detail.into()),
+        ("has_quicksaves", (!quicksaves.is_empty()).into()),
+        ("quicksaves", quicksaves.into()),
+    ])
+}
+
+/// `menu.saves` (file, current, name, saved, time, flying, vessels, problem, detail,
+/// has_quicksaves, quicksaves), newest first; `current` is the one the game in progress goes to,
+/// and `quicksaves` are its own, newest first, with the same fields.
 fn save_list(saves: &Saves) -> Vec<UiRecord> {
     let now = now();
     (saves.list.iter())
         .map(|entry| {
-            let header = entry.header.as_ref();
-            let name = header.map_or(entry.file.as_str(), |h| h.name.as_str());
-            let saved = header.map_or(String::new(), |h| ago(h.saved_at, now));
-            let time = header.map_or(String::new(), |h| format_date(h.time));
-            let flying = header.map_or("", |h| h.flying.as_str());
-            let vessels = header.map_or(0, |h| h.vessels);
-            let problem = entry.problem.as_deref().unwrap_or("");
-            let detail = match problem {
-                "" => save_detail(flying, &time, vessels),
-                problem => problem.to_owned(),
-            };
             let current = saves.current_file() == Some(entry.file.as_str());
-            record([
-                ("file", entry.file.as_str().into()),
-                ("current", current.into()),
-                ("name", name.into()),
-                ("saved", saved.into()),
-                ("time", time.into()),
-                ("flying", flying.into()),
-                ("vessels", vessels.into()),
-                ("problem", problem.into()),
-                ("detail", detail.into()),
-            ])
+            save_record(entry, current, now)
         })
         .collect()
 }

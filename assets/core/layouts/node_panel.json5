@@ -1,6 +1,6 @@
 // The selected manoeuvre in map view (`map.node_panel`): what it does, beside the navball as
-// in KSP, where it keeps clear of the trajectory. The Flight plan window has the fine
-// controls.
+// in KSP, where it keeps clear of the trajectory. Each way's Δv is a box to type it into; the
+// Flight plan window has the fine controls.
 {
   id: "node_panel",
   group: "flight",
@@ -25,9 +25,9 @@
         widget: "row",
         class: "node_axes",
         children: [
-          { widget: "row", class: "node_axis", tooltip: "Prograde", children: [{ widget: "image", class: "node_axis_icon", image: "icons/sas_prograde.svg" }, { widget: "label", text: "{burn.prograde|fixed:1}" }] },
-          { widget: "row", class: "node_axis", tooltip: "Normal", children: [{ widget: "image", class: "node_axis_icon", image: "icons/sas_normal.svg" }, { widget: "label", text: "{burn.normal|fixed:1}" }] },
-          { widget: "row", class: "node_axis", tooltip: "Radial out", children: [{ widget: "image", class: "node_axis_icon", image: "icons/sas_radial_out.svg" }, { widget: "label", text: "{burn.radial|fixed:1}" }] },
+          { widget: "row", class: "node_axis", tooltip: "Prograde, m/s: click to type", children: [{ widget: "image", class: "node_axis_icon", image: "icons/sas_prograde.svg" }, { widget: "input", class: "node_axis_input", text: "{burn.prograde|fixed:1}", action: "plan.set_dv:prograde:$text", numeric: true }] },
+          { widget: "row", class: "node_axis", tooltip: "Normal, m/s: click to type", children: [{ widget: "image", class: "node_axis_icon", image: "icons/sas_normal.svg" }, { widget: "input", class: "node_axis_input", text: "{burn.normal|fixed:1}", action: "plan.set_dv:normal:$text", numeric: true }] },
+          { widget: "row", class: "node_axis", tooltip: "Radial out, m/s: click to type", children: [{ widget: "image", class: "node_axis_icon", image: "icons/sas_radial_out.svg" }, { widget: "input", class: "node_axis_input", text: "{burn.radial|fixed:1}", action: "plan.set_dv:radial:$text", numeric: true }] },
         ],
       },
       { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Burn time" }, { widget: "label", text: "{burn.duration|duration}" }] },

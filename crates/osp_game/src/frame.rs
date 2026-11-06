@@ -107,9 +107,9 @@ fn update_frame(sim: Res<Sim>, rig: Res<CameraRig>, mut frame: ResMut<RenderFram
     let vessel = rig.viewed_vessel(&sim);
     let vessel_body = vessel.parent();
     let vessel_offset = vessel.state_at(system, time).position;
-    // Centred on the vessel, a map of Mars seen from Earth would be placed in f32 steps of
-    // kilometres.
-    let (origin_body, origin_offset) = match rig.map_centre(&sim) {
+    // The origin is what the camera looks at: the vessel, or the body the map follows.
+    // Centred on a vessel by Earth, a map of Mars would be placed in f32 steps of kilometres.
+    let (origin_body, origin_offset) = match rig.map_centre() {
         Some(body) => (body, DVec3::ZERO),
         None => (vessel_body, vessel_offset),
     };

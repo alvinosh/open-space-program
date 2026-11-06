@@ -20,6 +20,8 @@
       },
       { widget: "label", class: "warning notice", style: { font_size: 16 }, text: "{screen.message}", visible: "screen.message" },
       { widget: "label", class: "warning notice", text: "{time.notice}", visible: "time.notice" },
+      // A quicksave made or loaded (F5, F9), or why it was not.
+      { widget: "label", class: "notice", style: { font_size: 16 }, text: "{saves.flash}", visible: "saves.flash" },
       // A goal met or the mission passed, and the mission failed.
       { widget: "label", class: "notice goal_notice", style: { font_size: 16 }, text: "{mission.notice}", visible: "mission.notice" },
       { widget: "label", class: "warning notice", style: { font_size: 16 }, text: "{mission.notice_bad}", visible: "mission.notice_bad" },

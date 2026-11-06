@@ -9,6 +9,10 @@ use std::path::PathBuf;
 use bevy::{
     camera::{ImageRenderTarget, NormalizedRenderTarget},
     ecs::system::SystemParam,
+    input::{
+        ButtonState,
+        keyboard::{Key, KeyboardInput, NativeKey, NativeKeyCode},
+    },
     math::{DVec2, DVec3},
     picking::{
         backend::prelude::PointerId,
@@ -28,7 +32,7 @@ use osp_sim::{
 };
 use osp_ui::{
     ActionSource, ContextAction, DragPayload, DropAction, Formatters, LayoutVisibility, Slider,
-    Template, UiAction, UiData,
+    Template, TextInput, UiAction, UiData,
 };
 
 use crate::{
@@ -102,6 +106,8 @@ impl Plugin for SmokeTestPlugin {
                 PLAN_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MAP_UI").is_some() {
                 MAP_UI_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_NODE_INPUT").is_some() {
+                NODE_INPUT_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_RENDEZVOUS").is_some() {
                 RENDEZVOUS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_SAS").is_some() {
@@ -154,6 +160,8 @@ impl Plugin for SmokeTestPlugin {
                 WARP_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_SAVE").is_some() {
                 SAVE_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_QUICKSAVE").is_some() {
+                QUICKSAVE_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_ALARMS").is_some() {
                 ALARMS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_LAUNCH_TIMES").is_some() {
@@ -284,6 +292,8 @@ enum Action {
     UiPointAlong(&'static str, f32),
     /// The same, near its left edge: on a row, its number rather than one of its tiles.
     UiPointAtEdge(&'static str),
+    /// Type this, as a keyboard would (`\n` for Enter, `\x1b` for Escape).
+    Type(&'static str),
     /// Press or release that pointer's button.
     UiPress(PointerButton),
     UiRelease(PointerButton),
@@ -322,6 +332,10 @@ enum Action {
     ExpectDialog(&'static str),
     /// Stop the capture with a failure unless there are this many saves.
     ExpectSaves(usize),
+    /// Stop the capture with a failure unless the save the game goes to holds this many quicksaves.
+    ExpectQuicksaves(usize),
+    /// Press or release a key, as a player would.
+    Key(KeyCode, bool),
     /// Stop the capture with a failure unless this condition on the UI's data holds.
     ExpectData(&'static str),
     /// Stop the capture with a failure unless this layout is open or closed.
@@ -1074,6 +1088,51 @@ const MAP_UI_SCRIPT: &[(f64, Action)] = &[
     (8.5, Action::Exit),
 ];
 
+/// `OSP_SCENARIO=rendezvous OSP_CAPTURE_NODE_INPUT=1`: a burn's Δv typed into its boxes, then
+/// flown. A burn placed on the map; its prograde box in the node panel clicked (what it
+/// showed in teal), typed into and handed in with Enter; the normal one the same in the
+/// Flight plan window; the radial one typed into and put away with Escape, which leaves it and
+/// opens no menu. Then the executor flies it: the node stays where it was planned, the path
+/// after it stays put and the Δv left goes down, until the burn is done.
+const NODE_INPUT_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(true)),
+    (0.6, Action::Ui("ui.show:flight_plan")),
+    (3.0, Action::PointAt(240.0)),
+    (3.5, Action::Press(MouseButton::Left)),
+    (3.6, Action::Release(MouseButton::Left)),
+    (3.7, Action::ClearPointer),
+    (3.8, Action::ExpectBurns(1)),
+    (4.2, Action::UiPointAt("plan.set_dv:prograde:$text")),
+    (4.4, Action::UiPress(PointerButton::Primary)),
+    (4.5, Action::UiRelease(PointerButton::Primary)),
+    (5.0, Action::Capture("node_input_clicked.png")),
+    (5.1, Action::Type("40.5")),
+    (5.6, Action::Capture("node_input_typed.png")),
+    (5.7, Action::Type("\n")),
+    (6.2, Action::Capture("node_input_set.png")),
+    (6.3, Action::ExpectData("burn.prograde == 40.50")),
+    (6.4, Action::UiPointAt("plan.set_dv:normal:$text")),
+    (6.6, Action::UiPress(PointerButton::Primary)),
+    (6.7, Action::UiRelease(PointerButton::Primary)),
+    (6.8, Action::Type("-6\n")),
+    (7.0, Action::ExpectData("burn.normal == -6")),
+    (7.1, Action::UiPointAt("plan.set_dv:radial:$text")),
+    (7.3, Action::UiPress(PointerButton::Primary)),
+    (7.4, Action::UiRelease(PointerButton::Primary)),
+    (7.5, Action::Type("99\x1b")),
+    (7.7, Action::ExpectData("burn.radial == 0")),
+    (7.8, Action::ExpectScreen("")),
+    (8.0, Action::Capture("node_input_planned.png")),
+    (8.1, Action::Ui("plan.execute")),
+    (8.2, Action::Ui("warp.to:burn")),
+    (24.0, Action::Capture("node_input_burn_1.png")),
+    (27.0, Action::Capture("node_input_burn_2.png")),
+    (30.0, Action::Capture("node_input_burn_3.png")),
+    (40.0, Action::Capture("node_input_done.png")),
+    (40.1, Action::ExpectBurns(0)),
+    (40.5, Action::Exit),
+];
+
 /// `OSP_SCENARIO=rendezvous OSP_CAPTURE_RENDEZVOUS=1`: the target windows, the map with
 /// the station, closest approaches and plane nodes, then a planned plane match, and an alarm at the
 /// closest approach.
@@ -1370,6 +1429,73 @@ const LAUNCH_TIMES_SCRIPT: &[(f64, Action)] = &[
     (18.0, Action::ExpectData("!transfer.on_ground")),
     (18.5, Action::Capture("launch_times_gone.png")),
     (19.0, Action::Exit),
+];
+
+/// `OSP_CAPTURE_QUICKSAVE=1` (with `OSP_USER_DIR=<an empty folder>`): F5 and F9. A quicksave in a
+/// game with no save starts the save; after a launch a tap of F9 only says to hold it, and holding it
+/// goes back to the pad. A second quicksave after another launch; both under their save on the Load
+/// screen, where the save itself was not touched so loading one asks; F9 then takes the newest. One
+/// deleted alone, then the save with the other.
+const QUICKSAVE_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::ExpectSaves(0)),
+    (1.1, Action::Key(KeyCode::F5, true)),
+    (1.2, Action::Key(KeyCode::F5, false)),
+    (1.4, Action::ExpectSaves(1)),
+    (1.5, Action::ExpectQuicksaves(1)),
+    (
+        1.6,
+        Action::ExpectData("saves.flash == Saved as Quicksave 1"),
+    ),
+    (1.8, Action::Capture("quicksaved.png")),
+    // Off the pad, so there is something for a quickload to undo.
+    (2.0, Action::Launch),
+    (5.0, Action::ExpectData("vessel.engines_running")),
+    (5.1, Action::Key(KeyCode::F9, true)),
+    (
+        5.3,
+        Action::ExpectData("saves.flash == Keep holding to load Quicksave 1"),
+    ),
+    (5.4, Action::Capture("quickload_hold.png")),
+    (5.5, Action::Key(KeyCode::F9, false)),
+    (6.8, Action::ExpectData("vessel.engines_running")),
+    (7.0, Action::Key(KeyCode::F9, true)),
+    (8.5, Action::Key(KeyCode::F9, false)),
+    (8.6, Action::ExpectData("!vessel.engines_running")),
+    (8.7, Action::ExpectData("saves.flash == Loaded Quicksave 1")),
+    (8.8, Action::ExpectQuicksaves(1)),
+    (9.0, Action::Capture("quickloaded.png")),
+    (9.5, Action::Launch),
+    (12.0, Action::Ui("game.quicksave")),
+    (12.1, Action::ExpectQuicksaves(2)),
+    (12.2, Action::ExpectSaves(1)),
+    (12.3, Action::Ui("game.menu")),
+    (12.4, Action::Ui("menu.open:load")),
+    (13.0, Action::Capture("load_quicksaves.png")),
+    (13.1, Action::Ui("ask.leave:game.load:game_1/quicksave_1")),
+    (13.2, Action::ExpectDialog("Save this game first?")),
+    (13.3, Action::Ui("dialog.answer:1")),
+    (13.8, Action::ExpectScreen("")),
+    (13.9, Action::ExpectData("!vessel.engines_running")),
+    (14.0, Action::Ui("game.quickload")),
+    (14.5, Action::ExpectData("vessel.engines_running")),
+    (
+        14.6,
+        Action::ExpectData("saves.flash == Loaded Quicksave 2"),
+    ),
+    (14.7, Action::Ui("game.menu")),
+    (14.8, Action::Ui("menu.open:load")),
+    (14.9, Action::Ui("ask.delete_save:game_1/quicksave_1")),
+    (15.0, Action::ExpectDialog("Delete Quicksave 1?")),
+    (15.1, Action::Ui("dialog.answer:0")),
+    (15.3, Action::ExpectQuicksaves(1)),
+    (15.4, Action::ExpectSaves(1)),
+    (15.5, Action::Ui("ask.delete_save:game_1")),
+    (15.6, Action::ExpectDialog("Delete Game 1?")),
+    (15.9, Action::Capture("delete_with_quicksaves.png")),
+    (16.0, Action::Ui("dialog.answer:0")),
+    (16.2, Action::ExpectSaves(0)),
+    (16.5, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_SAVE=1` (with `OSP_USER_DIR=<an empty folder>`): the Save screen. New saves, saving
@@ -1825,8 +1951,10 @@ struct UiPointer<'w, 's> {
             Option<&'static DropAction>,
             Option<&'static ContextAction>,
             Option<&'static Slider>,
+            Option<&'static TextInput>,
         ),
     >,
+    keys: MessageWriter<'w, KeyboardInput>,
 }
 
 impl UiPointer<'_, '_> {
@@ -1834,21 +1962,24 @@ impl UiPointer<'_, '_> {
     fn find(&self, what: &str) -> Option<(Vec2, Vec2)> {
         self.nodes
             .iter()
-            .find(|(node, _, visible, click, drag, drop, context, slider)| {
-                let says = |template: Option<&Template>| {
-                    template.is_some_and(|t| {
-                        let said = t.render(&self.data, &self.formatters);
-                        said == what || (what.ends_with(':') && said.starts_with(what))
-                    })
-                };
-                visible.get()
-                    && node.size().min_element() > 0.0
-                    && (says(click.map(|t| &t.0))
-                        || says(drag.map(|t| &t.0))
-                        || says(drop.map(|t| &t.0))
-                        || says(context.map(|t| &t.0))
-                        || says(slider.map(|s| &s.action)))
-            })
+            .find(
+                |(node, _, visible, click, drag, drop, context, slider, input)| {
+                    let says = |template: Option<&Template>| {
+                        template.is_some_and(|t| {
+                            let said = t.render(&self.data, &self.formatters);
+                            said == what || (what.ends_with(':') && said.starts_with(what))
+                        })
+                    };
+                    visible.get()
+                        && node.size().min_element() > 0.0
+                        && (says(click.map(|t| &t.0))
+                            || says(drag.map(|t| &t.0))
+                            || says(drop.map(|t| &t.0))
+                            || says(context.map(|t| &t.0))
+                            || says(slider.map(|s| &s.action))
+                            || says(input.map(TextInput::action)))
+                },
+            )
             .map(|(node, transform, ..)| (transform.translation, node.size()))
     }
 
@@ -1859,6 +1990,33 @@ impl UiPointer<'_, '_> {
                 visible.get() && node.size().min_element() > 0.0 && named.0 == name
             })
             .map(|(_, transform, ..)| transform.translation)
+    }
+
+    /// Keys typed, as a keyboard sends them: `\n` is Enter and `\x1b` Escape.
+    fn type_keys(&mut self, typed: &str) {
+        for c in typed.chars() {
+            let typed = c.to_string();
+            let (key_code, logical_key, text) = match c {
+                '\n' => (KeyCode::Enter, Key::Enter, None),
+                '\x1b' => (KeyCode::Escape, Key::Escape, None),
+                _ => (
+                    KeyCode::Unidentified(NativeKeyCode::Unidentified),
+                    Key::Character(typed.as_str().into()),
+                    Some(typed.as_str()),
+                ),
+            };
+            for state in [ButtonState::Pressed, ButtonState::Released] {
+                let pressed = state == ButtonState::Pressed;
+                self.keys.write(KeyboardInput {
+                    key_code,
+                    logical_key: logical_key.clone(),
+                    state,
+                    text: text.filter(|_| pressed).map(Into::into),
+                    repeat: false,
+                    window: Entity::PLACEHOLDER,
+                });
+            }
+        }
     }
 
     fn send(&mut self, target: &Handle<Image>, position: Vec2, action: PointerAction) {
@@ -1974,6 +2132,30 @@ fn run_script(
                 );
                 exit.write(AppExit::error());
             }
+        }
+        Action::ExpectQuicksaves(wanted) => {
+            let found = saves
+                .current_file()
+                .map_or(0, |file| saves.quicksave_count(file));
+            if found != wanted {
+                error!("smoke test: the game's save holds {found} quicksaves, wanted {wanted}");
+                exit.write(AppExit::error());
+            }
+        }
+        // As the keyboard sends it, so a press is seen as one by what reads keys this frame.
+        Action::Key(key_code, pressed) => {
+            ui_pointer.keys.write(KeyboardInput {
+                key_code,
+                logical_key: Key::Unidentified(NativeKey::Unidentified),
+                state: if pressed {
+                    ButtonState::Pressed
+                } else {
+                    ButtonState::Released
+                },
+                text: None,
+                repeat: false,
+                window: Entity::PLACEHOLDER,
+            });
         }
         Action::ExpectOpen(layout, wanted) => {
             if shown.shown(layout) != wanted {
@@ -2100,6 +2282,7 @@ fn run_script(
                 ui_pointer.send(&target, to, PointerAction::Move { delta });
             }
         }
+        Action::Type(typed) => ui_pointer.type_keys(typed),
         Action::Press(button) => buttons.press(button),
         Action::Release(button) => buttons.release(button),
         Action::Unlock => locked.0 = false,
