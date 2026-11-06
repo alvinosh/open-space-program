@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tasks</title>
+<style>
+/* The task viewer, served by `python3 .tasks/tasks.py serve`. Same look as the website and the
+   game's UI: navy panels, Barlow, one teal accent, amber for things in progress. */
+@font-face { font-family: "Barlow"; font-weight: 500; src: url("fonts/Barlow-Medium.woff") format("woff"); }
+@font-face { font-family: "Barlow"; font-weight: 600; src: url("fonts/Barlow-SemiBold.woff") format("woff"); }
+
+:root {
+  color-scheme: dark;
+  --bg: #070d14;
+  --panel: #0f1c2a;
+  --panel-top: #16263a;
+  --line: #24364a;
+  --line-lit: #3b5772;
+  --hair: #1b2a3b;
+  --control: #1a2a3a;
+  --control-hover: #23374a;
+  --selected: #0e3a35;
+  --text: #e4edf4;
+  --strong: #f2f7fa;
+  --dim: #8fa3b4;
+  --faint: #5d7286;
+  --teal: #38e0c4;
+  --amber: #ffb340;
+  --red: #ff6b6b;
+  --violet: #a98bff;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 500 14px/1.45 "Barlow", system-ui, sans-serif;
+  display: flex; flex-direction: column;
+}
+button, input, select { font: inherit; color: inherit; }
+code, pre { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+a { color: var(--teal); }
+
+/* top bar */
+header {
+  padding: 14px 20px 12px;
+  background: linear-gradient(var(--panel-top), var(--panel));
+  border-bottom: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.row1 { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--strong); }
+.progress { flex: 1; min-width: 240px; display: flex; align-items: center; gap: 12px; }
+.bar { flex: 1; height: 8px; border-radius: 4px; background: var(--control); overflow: hidden; display: flex; }
+.bar i { display: block; height: 100%; }
+.bar .done { background: var(--teal); }
+.bar .prog { background: var(--amber); }
+.progress .num { color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.progress .num b { color: var(--strong); font-weight: 600; }
+.counts { display: flex; gap: 14px; color: var(--dim); font-size: 13px; flex-wrap: wrap; }
+.counts span b { color: var(--text); font-weight: 600; margin-right: 3px; }
+
+.row2 { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tabs { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.tabs button { background: var(--control); border: 0; padding: 5px 14px; cursor: pointer; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; font-weight: 600; color: var(--dim); }
+.tabs button + button { border-left: 1px solid var(--line); }
+.tabs button:hover { background: var(--control-hover); color: var(--text); }
+.tabs button.on { background: var(--selected); color: var(--teal); }
+input[type=search], select {
+  background: var(--control); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; outline: none;
+}
+input[type=search] { width: 220px; }
+input[type=search]:focus, select:focus { border-color: var(--teal); }
+label.chk { display: flex; gap: 6px; align-items: center; color: var(--dim); font-size: 13px; cursor: pointer; user-select: none; }
+.spacer { flex: 1; }
+.hint { color: var(--faint); font-size: 12px; }
+
+main { flex: 1; min-height: 0; display: flex; }
+#view { flex: 1; min-width: 0; overflow: auto; padding: 16px 20px 40px; }
+
+/* board */
+.board { display: grid; grid-template-columns: repeat(5, minmax(240px, 1fr)); gap: 14px; align-items: start; min-width: 1240px; }
+.col { background: var(--panel); border: 1px solid var(--hair); border-radius: 8px; }
+.col h2 { margin: 0; padding: 10px 12px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; display: flex; justify-content: space-between; border-bottom: 1px solid var(--hair); }
+.col h2 small { color: var(--dim); font-weight: 500; letter-spacing: 0; font-size: 13px; }
+.col .sub { padding: 6px 12px 0; color: var(--faint); font-size: 12px; }
+.col .cards { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.card {
+  background: var(--control); border: 1px solid var(--line); border-left: 3px solid var(--line-lit); border-radius: 6px;
+  padding: 7px 9px; cursor: pointer;
+}
+.card:hover { background: var(--control-hover); border-color: var(--line-lit); }
+.card.sel { border-color: var(--teal); }
+.card .top { display: flex; gap: 6px; align-items: baseline; }
+.card .id { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+.card .t { color: var(--strong); }
+.card .meta { margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.card .waits { margin-top: 4px; color: var(--faint); font-size: 12px; }
+.card.done .t { color: var(--dim); }
+.more { width: 100%; background: none; border: 1px dashed var(--line); border-radius: 6px; padding: 5px; color: var(--dim); cursor: pointer; }
+.more:hover { color: var(--text); border-color: var(--line-lit); }
+
+.c-in_progress { border-left-color: var(--amber); }
+.c-ready { border-left-color: var(--teal); }
+.c-waiting { border-left-color: var(--line-lit); }
+.c-backlog { border-left-color: var(--violet); }
+.c-done { border-left-color: #2a6b60; }
+.c-dropped { border-left-color: var(--faint); }
+
+.tag { font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; line-height: 17px; }
+.tag.ms { color: var(--text); border-color: var(--line-lit); }
+.tag.bug { color: var(--red); border-color: #6b3438; }
+.tag.kind { color: var(--violet); border-color: #4b3f75; }
+.tag.prio { color: var(--faint); border: 0; padding: 0 2px; margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--line-lit); }
+.s-in_progress { background: var(--amber); }
+.s-ready { background: var(--teal); }
+.s-waiting { background: transparent; border: 1.5px solid var(--line-lit); }
+.s-blocked { background: transparent; border: 1.5px solid var(--red); }
+.s-backlog { background: var(--violet); }
+.s-done { background: #2a6b60; }
+.s-dropped { background: var(--faint); }
+.s-open { background: transparent; border: 1.5px solid var(--teal); }
+
+/* milestones */
+.ms-list { display: flex; flex-direction: column; gap: 14px; max-width: 1100px; }
+.ms { background: var(--panel); border: 1px solid var(--hair); border-radius: 8px; }
+.ms-head { padding: 12px 14px; display: grid; grid-template-columns: 80px 1fr 260px; gap: 14px; align-items: center; border-bottom: 1px solid var(--hair); }
+.ms-head .name { font-weight: 600; font-size: 16px; color: var(--strong); letter-spacing: .05em; }
+.ms-head .what { color: var(--dim); font-size: 13px; }
+.ms-head .p { display: flex; align-items: center; gap: 10px; }
+.ms-head .p .num { color: var(--dim); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ms-body { padding: 6px 6px 8px; }
+.line { display: grid; grid-template-columns: 14px 48px 1fr auto; gap: 8px; align-items: center; padding: 4px 8px; border-radius: 5px; cursor: pointer; }
+.line:hover { background: var(--control); }
+.line.sel { background: var(--selected); }
+.line .id { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+.line .tags { display: flex; gap: 4px; }
+.line.done .t { color: var(--dim); }
+.line .waits { color: var(--faint); font-size: 12px; margin-left: 6px; }
+details.ms-done { margin: 4px 8px 0; }
+details.ms-done summary { cursor: pointer; color: var(--dim); font-size: 13px; padding: 4px 0; }
+.ms-epics { padding: 4px 14px 10px; color: var(--faint); font-size: 12px; }
+.ms-epics a { color: var(--dim); cursor: pointer; text-decoration: none; }
+.ms-epics a:hover { color: var(--teal); }
+
+/* list */
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--hair); white-space: nowrap; }
+td.title { white-space: normal; width: 100%; color: var(--strong); }
+th { position: sticky; top: -16px; background: var(--bg); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); cursor: pointer; user-select: none; font-weight: 600; }
+th:hover { color: var(--text); }
+th.sorted { color: var(--teal); }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--control); }
+tbody tr.sel { background: var(--selected); }
+td.st { display: flex; gap: 7px; align-items: center; }
+td.num { font-variant-numeric: tabular-nums; color: var(--dim); }
+
+/* detail */
+#detail {
+  width: min(620px, 48vw); border-left: 1px solid var(--line); background: var(--panel); overflow: auto;
+  padding: 16px 22px 40px; display: none;
+}
+#detail.open { display: block; }
+.d-head { display: flex; gap: 10px; align-items: flex-start; }
+.d-head h2 { margin: 0; font-size: 19px; line-height: 1.3; color: var(--strong); font-weight: 600; flex: 1; }
+.d-head .x { background: var(--control); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; padding: 2px 9px; color: var(--dim); }
+.d-head .x:hover { color: var(--text); }
+.d-id { color: var(--dim); font-size: 13px; margin-bottom: 4px; display: flex; gap: 8px; align-items: center; }
+.d-meta { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin: 14px 0; font-size: 13px; }
+.d-meta dt { color: var(--faint); text-transform: uppercase; letter-spacing: .08em; font-size: 11px; padding-top: 2px; }
+.d-meta dd { margin: 0; }
+.links { display: flex; flex-wrap: wrap; gap: 5px; }
+.link { display: inline-flex; gap: 6px; align-items: center; background: var(--control); border: 1px solid var(--line); border-radius: 5px; padding: 1px 7px; cursor: pointer; font-size: 12.5px; max-width: 100%; }
+.link:hover { border-color: var(--line-lit); background: var(--control-hover); }
+.link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 360px; }
+.none { color: var(--faint); }
+.md { border-top: 1px solid var(--hair); margin-top: 6px; padding-top: 4px; }
+.md h1 { display: none; }
+.md h2, .md h3, .md h4 { color: var(--strong); font-size: 13px; text-transform: uppercase; letter-spacing: .1em; margin: 18px 0 6px; font-weight: 600; }
+.md h3, .md h4 { text-transform: none; letter-spacing: 0; font-size: 14px; }
+.md p, .md ul, .md ol { margin: 6px 0; }
+.md ul, .md ol { padding-left: 20px; }
+.md li { margin: 2px 0; }
+.md code { background: var(--control); padding: 0 4px; border-radius: 3px; }
+.md pre { background: var(--bg); border: 1px solid var(--hair); padding: 8px 10px; border-radius: 6px; overflow: auto; }
+.md pre code { background: none; padding: 0; }
+.md table { margin: 8px 0; font-size: 13px; }
+.md td, .md th { white-space: normal; border: 1px solid var(--hair); position: static; cursor: default; text-transform: none; letter-spacing: 0; }
+.md a.tid { cursor: pointer; text-decoration: none; border-bottom: 1px dotted var(--teal); }
+.path { color: var(--faint); font-size: 12px; margin-top: 18px; }
+.empty { color: var(--faint); padding: 40px; text-align: center; }
+.err { color: var(--red); padding: 40px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="row1">
+    <h1>Tasks</h1>
+    <div class="progress">
+      <div class="bar" id="bar"></div>
+      <div class="num" id="barnum"></div>
+    </div>
+    <div class="counts" id="counts"></div>
+  </div>
+  <div class="row2">
+    <div class="tabs" id="tabs">
+      <button data-v="board">Board</button>
+      <button data-v="milestones">Milestones</button>
+      <button data-v="list">List</button>
+    </div>
+    <input type="search" id="q" placeholder="Search titles and text  ( / )">
+    <select id="f-ms"><option value="">All milestones</option></select>
+    <select id="f-area"><option value="">All areas</option></select>
+    <select id="f-kind"><option value="">All kinds</option></select>
+    <label class="chk"><input type="checkbox" id="f-epics"> Epics</label>
+    <span class="spacer"></span>
+    <span class="hint" id="stamp"></span>
+  </div>
+</header>
+<main>
+  <div id="view"></div>
+  <aside id="detail"></aside>
+</main>
+<script>
+"use strict";
+const MILESTONES = ["M0", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "later", "shelved"];
+const MS_WHAT = {};
+let T = {};          // id -> task
+let order = [];      // ids sorted
+const S = load({ view: "board", q: "", ms: "", area: "", kind: "", epics: false, sort: "priority", dir: 1 });
+const urlView = new URLSearchParams(location.search).get("view");
+if (["board", "milestones", "list"].includes(urlView)) S.view = urlView;
+let selected = location.hash.slice(1) || null;
+const shown = {};    // board column -> how many cards shown
+
+function load(d) { try { return Object.assign(d, JSON.parse(localStorage.getItem("tasks-viewer") || "{}")); } catch (e) { return d; } }
+function save() { try { localStorage.setItem("tasks-viewer", JSON.stringify(S)); } catch (e) {} }
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+/* the state a viewer cares about: done, in progress, ready to start, waiting for something, backlog */
+const finished = id => T[id] && (T[id].status === "done" || T[id].status === "dropped");
+function state(t) {
+  if (t.kind === "epic" && t.status === "todo") return "open";   // an epic groups tasks; it is never "ready"
+  if (t.status === "todo") return t.depends_on.every(finished) ? "ready" : "waiting";
+  return t.status;
+}
+const STATE_NAME = { ready: "ready", waiting: "waiting", in_progress: "in progress", done: "done", dropped: "dropped", backlog: "backlog", blocked: "blocked", open: "open epic" };
+
+async function init() {
+  let data;
+  try {
+    data = await (await fetch("tasks.json", { cache: "no-store" })).json();
+  } catch (e) {
+    $("#view").innerHTML = '<div class="err">Could not load tasks.json. Start the viewer with <code>python3 .tasks/tasks.py serve</code>.</div>';
+    return;
+  }
+  Object.assign(MS_WHAT, data.milestones || {});
+  T = {};
+  for (const t of data.tasks) { t.blocks = []; t.children = []; T[t.id] = t; }
+  order = Object.keys(T).sort();
+  for (const id of order) {
+    const t = T[id];
+    for (const d of t.depends_on) if (T[d]) T[d].blocks.push(id);
+    if (t.parent && T[t.parent]) T[t.parent].children.push(id);
+  }
+  for (const id of order) T[id].state = state(T[id]);
+  $("#stamp").textContent = "loaded " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + "  ·  reload for changes";
+  fillSelect("#f-ms", MILESTONES.filter(m => order.some(i => T[i].milestone === m)), S.ms);
+  fillSelect("#f-area", [...new Set(order.map(i => T[i].area))].sort(), S.area);
+  fillSelect("#f-kind", [...new Set(order.map(i => T[i].kind))].sort(), S.kind);
+  $("#q").value = S.q;
+  $("#f-epics").checked = S.epics;
+  header();
+  render();
+  detail();
+}
+
+function fillSelect(sel, values, cur) {
+  const el = $(sel);
+  el.length = 1;
+  for (const v of values) el.add(new Option(v, v));
+  el.value = values.includes(cur) ? cur : "";
+}
+
+function header() {
+  const work = order.map(i => T[i]).filter(t => t.kind !== "epic" && t.status !== "dropped");
+  const n = s => work.filter(t => t.state === s).length;
+  const done = n("done"), prog = n("in_progress"), total = work.length;
+  $("#bar").innerHTML = `<i class="done" style="width:${100 * done / total}%"></i><i class="prog" style="width:${100 * prog / total}%"></i>`;
+  $("#barnum").innerHTML = `<b>${done}</b> of ${total} done · ${Math.round(100 * done / total)}%`;
+  $("#counts").innerHTML = [["in_progress", "in progress"], ["ready", "ready"], ["waiting", "waiting"], ["backlog", "backlog"]]
+    .map(([s, l]) => `<span><span class="dot s-${s}"></span> <b>${n(s)}</b>${l}</span>`).join("");
+}
+
+function matches(t) {
+  if (t.kind === "epic" && !S.epics && S.kind !== "epic") return false;
+  if (S.ms && t.milestone !== S.ms) return false;
+  if (S.area && t.area !== S.area) return false;
+  if (S.kind && t.kind !== S.kind) return false;
+  if (S.q) {
+    const words = S.q.toLowerCase().split(/\s+/).filter(Boolean);
+    const hay = (t.id + " " + t.title + " " + t.area + " " + (t.readme || "")).toLowerCase();
+    if (!words.every(w => hay.includes(w))) return false;
+  }
+  return true;
+}
+const prio = t => t.priority ?? 1e9;
+const byPrio = (a, b) => prio(T[a]) - prio(T[b]) || (a < b ? -1 : 1);
+
+function tags(t, opts = {}) {
+  let h = "";
+  if (t.milestone && !opts.noMs) h += `<span class="tag ms">${esc(t.milestone)}</span>`;
+  if (t.kind === "bug") h += `<span class="tag bug">bug</span>`;
+  else if (t.kind !== "feature") h += `<span class="tag kind">${esc(t.kind)}</span>`;
+  h += `<span class="tag">${esc(t.area)}</span>`;
+  if (t.size) h += `<span class="tag">${esc(t.size)}</span>`;
+  if (t.kind === "epic") h += `<span class="tag">${t.children.filter(finished).length}/${t.children.length} done</span>`;
+  return h;
+}
+function waits(t) {
+  const w = t.depends_on.filter(d => !finished(d));
+  return w.length ? "waits for " + w.map(d => `<a class="tid" data-id="${d}">${d}</a>`).join(", ") : "";
+}
+
+function render() {
+  for (const b of document.querySelectorAll("#tabs button")) b.classList.toggle("on", b.dataset.v === S.view);
+  const ids = order.filter(i => matches(T[i]));
+  const v = $("#view");
+  if (!ids.length) { v.innerHTML = '<div class="empty">Nothing matches.</div>'; return; }
+  if (S.view === "board") v.innerHTML = board(ids);
+  else if (S.view === "milestones") v.innerHTML = milestones(ids);
+  else v.innerHTML = list(ids);
+  markSelected();
+}
+
+function card(t) {
+  return `<div class="card c-${t.state}" data-id="${t.id}">
+    <div class="top"><span class="id">${t.id}</span><span class="t">${esc(t.title)}</span></div>
+    <div class="meta">${tags(t)}${t.priority != null && t.state !== "done" ? `<span class="tag prio">#${t.priority}</span>` : ""}</div>
+    ${t.state === "waiting" ? `<div class="waits">${waits(t)}</div>` : ""}
+    ${t.state === "done" && t.done ? `<div class="waits">done ${esc(t.done)}</div>` : ""}
+  </div>`;
+}
+
+function board(ids) {
+  const cols = [
+    ["in_progress", "In progress", "", byPrio],
+    ["ready", "Ready to start", "Dependencies done, lowest priority first", byPrio],
+    ["waiting", "Waiting", "Something it depends on is not done", byPrio],
+    ["backlog", "Backlog", "Ideas nobody has planned", byPrio],
+    ["done", "Done", "Most recent first", (a, b) => (T[b].done || "").localeCompare(T[a].done || "") || (a < b ? 1 : -1)],
+  ];
+  const started = t => t.children.some(c => T[c].status === "done" || T[c].status === "in_progress");
+  const isIn = (s, t) => t.state === "open" ? s === (started(t) ? "in_progress" : "waiting")
+    : s === "waiting" ? (t.state === "waiting" || t.state === "blocked")
+    : s === "done" ? (t.state === "done" || t.state === "dropped") : t.state === s;
+  return '<div class="board">' + cols.map(([s, name, sub, cmp]) => {
+    const list = ids.filter(i => isIn(s, T[i])).sort(cmp);
+    const n = shown[s] || 40;
+    return `<section class="col"><h2><span><span class="dot s-${s}"></span>&nbsp; ${name}</span><small>${list.length}</small></h2>
+      ${sub ? `<div class="sub">${sub}</div>` : ""}
+      <div class="cards">${list.slice(0, n).map(i => card(T[i])).join("")}
+      ${list.length > n ? `<button class="more" data-col="${s}">Show ${list.length - n} more</button>` : ""}</div></section>`;
+  }).join("") + "</div>";
+}
+
+function line(t) {
+  return `<div class="line ${t.state === "done" ? "done" : ""}" data-id="${t.id}" title="${STATE_NAME[t.state]}">
+    <span class="dot s-${t.state}"></span><span class="id">${t.id}</span>
+    <span><span class="t">${esc(t.title)}</span>${t.state === "waiting" ? `<span class="waits">${waits(t)}</span>` : ""}</span>
+    <span class="tags">${tags(t, { noMs: true })}</span></div>`;
+}
+
+function milestones(ids) {
+  const groups = [...MILESTONES, null];
+  return '<div class="ms-list">' + groups.map(ms => {
+    const all = order.filter(i => (T[i].milestone ?? null) === ms);
+    const inMs = ids.filter(i => (T[i].milestone ?? null) === ms);
+    if (!inMs.length) return "";
+    const work = all.map(i => T[i]).filter(t => t.kind !== "epic" && t.status !== "dropped");
+    const done = work.filter(t => t.status === "done").length, prog = work.filter(t => t.status === "in_progress").length;
+    const pct = work.length ? 100 * done / work.length : 0;
+    const open = inMs.filter(i => T[i].kind !== "epic" && !finished(i)).sort((a, b) => {
+      const rank = t => t.state === "in_progress" ? 0 : 1;
+      return rank(T[a]) - rank(T[b]) || byPrio(a, b);
+    });
+    const closed = inMs.filter(i => T[i].kind !== "epic" && finished(i)).sort((a, b) => (T[b].done || "").localeCompare(T[a].done || ""));
+    const epics = inMs.filter(i => T[i].kind === "epic");
+    return `<section class="ms">
+      <div class="ms-head"><div class="name">${ms ?? "none"}</div><div class="what">${esc(MS_WHAT[ms] || (ms ? "" : "No milestone set"))}</div>
+        <div class="p"><div class="bar"><i class="done" style="width:${pct}%"></i><i class="prog" style="width:${work.length ? 100 * prog / work.length : 0}%"></i></div>
+        <span class="num">${done}/${work.length}</span></div></div>
+      <div class="ms-body">${open.map(i => line(T[i])).join("") || '<div class="line"><span></span><span></span><span class="none">Nothing open</span></div>'}
+      ${closed.length ? `<details class="ms-done"><summary>${[["done", "done"], ["dropped", "dropped"]].map(([s, l]) => [closed.filter(i => T[i].status === s).length, l]).filter(([n]) => n).map(([n, l]) => n + " " + l).join(", ")}</summary>${closed.map(i => line(T[i])).join("")}</details>` : ""}</div>
+      ${epics.length ? `<div class="ms-epics">Epics: ${epics.map(i => `<a data-id="${i}">${i} ${esc(T[i].title)}</a>`).join(" · ")}</div>` : ""}
+    </section>`;
+  }).join("") + "</div>";
+}
+
+const COLS = [
+  ["id", "Id", t => t.id],
+  ["state", "Status", t => ["in_progress", "ready", "waiting", "blocked", "backlog", "done", "dropped"].indexOf(t.state)],
+  ["title", "Title", t => t.title.toLowerCase()],
+  ["milestone", "Ms", t => t.milestone == null ? 99 : MILESTONES.indexOf(t.milestone)],
+  ["priority", "Prio", t => prio(t)],
+  ["area", "Area", t => t.area],
+  ["kind", "Kind", t => t.kind],
+  ["size", "Size", t => ["S", "M", "L", "XL"].indexOf(t.size)],
+  ["updated", "Updated", t => t.updated || ""],
+];
+function list(ids) {
+  const col = COLS.find(c => c[0] === S.sort) || COLS[0];
+  const key = col[2];
+  ids = ids.slice().sort((a, b) => {
+    const x = key(T[a]), y = key(T[b]);
+    return (x < y ? -1 : x > y ? 1 : a < b ? -1 : 1) * S.dir;
+  });
+  return `<table><thead><tr>${COLS.map(c => `<th data-sort="${c[0]}" class="${c[0] === S.sort ? "sorted" : ""}">${c[1]}${c[0] === S.sort ? (S.dir > 0 ? " ↑" : " ↓") : ""}</th>`).join("")}</tr></thead>
+  <tbody>${ids.map(i => { const t = T[i]; return `<tr data-id="${i}">
+    <td class="num">${i}</td><td class="st"><span class="dot s-${t.state}"></span>${STATE_NAME[t.state]}</td>
+    <td class="title">${esc(t.title)}</td><td>${esc(t.milestone ?? "")}</td><td class="num">${t.priority ?? ""}</td>
+    <td>${esc(t.area)}</td><td>${esc(t.kind)}</td><td>${esc(t.size ?? "")}</td><td class="num">${esc(t.updated)}</td></tr>`; }).join("")}</tbody></table>`;
+}
+
+function chip(id) {
+  const t = T[id];
+  if (!t) return `<span class="link"><span>${esc(id)} (missing)</span></span>`;
+  return `<span class="link" data-id="${id}" title="${STATE_NAME[t.state]}"><span class="dot s-${t.state}"></span><span>${id} ${esc(t.title)}</span></span>`;
+}
+const chips = ids => ids.length ? `<div class="links">${ids.slice().sort(byPrio).map(chip).join("")}</div>` : '<span class="none">none</span>';
+
+function detail() {
+  const d = $("#detail");
+  const t = selected && T[selected];
+  d.classList.toggle("open", !!t);
+  if (!t) { d.innerHTML = ""; return; }
+  const meta = [
+    ["status", `<span class="dot s-${t.state}"></span> ${STATE_NAME[t.state]}`],
+    ["milestone", esc(t.milestone ?? "—") + (t.priority != null ? ` · priority ${t.priority}` : "")],
+    ["kind", esc(t.kind) + (t.size ? ` · size ${esc(t.size)}` : "") + ` · ${esc(t.area)}`],
+    ["dates", `created ${esc(t.created)} · updated ${esc(t.updated)}${t.done ? ` · done ${esc(t.done)}` : ""}`],
+  ];
+  if (t.parent) meta.push(["epic", chips([t.parent])]);
+  meta.push(["depends on", chips(t.depends_on)]);
+  meta.push(["blocks", chips(t.blocks)]);
+  if (t.children.length) meta.push(["tasks", chips(t.children)]);
+  if (t.refs && t.refs.length) meta.push(["refs", t.refs.map(r => `<div>${inline(r)}</div>`).join("")]);
+  d.innerHTML = `<div class="d-id"><span class="dot s-${t.state}"></span>${t.id}</div>
+    <div class="d-head"><h2>${esc(t.title)}</h2><button class="x" title="Close (Esc)">✕</button></div>
+    <dl class="d-meta">${meta.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
+    <div class="md">${markdown(t.readme || "")}</div>
+    <div class="path">.tasks/${esc(t.folder)}/</div>`;
+  d.scrollTop = 0;
+}
+
+function markSelected() {
+  for (const el of document.querySelectorAll("#view [data-id]")) el.classList.toggle("sel", el.dataset.id === selected);
+}
+function select(id) {
+  selected = id && T[id] ? id : null;
+  history.replaceState(null, "", selected ? "#" + selected : location.pathname);
+  detail();
+  markSelected();
+}
+
+/* a small Markdown renderer: headings, paragraphs, lists, fences, tables, inline code, bold, links */
+function inline(s) {
+  const codes = [];
+  s = s.replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
+  s = esc(s)
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/(^|[^*\w])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>")
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => /^https?:/.test(url) ? `<a href="${url}" target="_blank" rel="noopener">${txt}</a>` : `<span title="${url}">${txt}</span>`)
+    .replace(/\bT\d{3}\b/g, id => T[id] ? `<a class="tid" data-id="${id}">${id}</a>` : id);
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${esc(codes[i]).replace(/\bT\d{3}\b/g, id => T[id] ? `<a class="tid" data-id="${id}">${id}</a>` : id)}</code>`);
+}
+function markdown(src) {
+  const lines = src.replace(/\r/g, "").split("\n");
+  let out = "", i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^\s*$/.test(l)) { i++; continue; }
+    if (/^```/.test(l)) {
+      const buf = [];
+      for (i++; i < lines.length && !/^```/.test(lines[i]); i++) buf.push(lines[i]);
+      i++;
+      out += `<pre><code>${esc(buf.join("\n"))}</code></pre>`;
+      continue;
+    }
+    let m = l.match(/^(#{1,4})\s+(.*)/);
+    if (m) { out += `<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`; i++; continue; }
+    if (/^\s*\|/.test(l)) {
+      const rows = [];
+      for (; i < lines.length && /^\s*\|/.test(lines[i]); i++) rows.push(lines[i].trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim()));
+      let head = "";
+      if (rows.length > 1 && rows[1].every(c => /^:?-+:?$/.test(c))) {
+        head = `<tr>${rows[0].map(c => `<th>${inline(c)}</th>`).join("")}</tr>`;
+        rows.splice(0, 2);
+      }
+      out += "<table>" + head + rows.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("") + "</table>";
+      continue;
+    }
+    if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
+      const ordered = /^\s*\d+\./.test(l);
+      const items = [];
+      for (; i < lines.length; i++) {
+        const x = lines[i];
+        const im = x.match(/^\s*(?:[-*]|\d+\.)\s+(.*)/);
+        if (im && x.search(/\S/) <= 1) items.push(im[1]);
+        else if (/^\s+\S/.test(x) && items.length) items[items.length - 1] += "\n" + x.trim();
+        else break;
+      }
+      const tag = ordered ? "ol" : "ul";
+      out += `<${tag}>` + items.map(it => {
+        const [first, ...rest] = it.split("\n");
+        const sub = rest.filter(r => /^([-*]|\d+\.)\s+/.test(r));
+        const cont = rest.filter(r => !/^([-*]|\d+\.)\s+/.test(r));
+        return `<li>${inline([first, ...cont].join(" "))}${sub.length ? "<ul>" + sub.map(s => `<li>${inline(s.replace(/^([-*]|\d+\.)\s+/, ""))}</li>`).join("") + "</ul>" : ""}</li>`;
+      }).join("") + `</${tag}>`;
+      continue;
+    }
+    const buf = [];
+    for (; i < lines.length && !/^\s*$/.test(lines[i]) && !/^(#{1,4}\s|```|\s*\||\s*([-*]|\d+\.)\s)/.test(lines[i]); i++) buf.push(lines[i]);
+    out += `<p>${inline(buf.join(" "))}</p>`;
+  }
+  return out;
+}
+
+/* events */
+document.addEventListener("click", e => {
+  const more = e.target.closest(".more");
+  if (more) { shown[more.dataset.col] = (shown[more.dataset.col] || 40) + 200; render(); return; }
+  const th = e.target.closest("th[data-sort]");
+  if (th) { S.dir = S.sort === th.dataset.sort ? -S.dir : 1; S.sort = th.dataset.sort; save(); render(); return; }
+  if (e.target.closest("#detail .x")) { select(null); return; }
+  const tab = e.target.closest("#tabs button");
+  if (tab) { S.view = tab.dataset.v; save(); render(); return; }
+  const el = e.target.closest("[data-id]");
+  if (el && !e.target.closest("summary")) { e.preventDefault(); select(el.dataset.id === selected && !el.closest("#detail") ? null : el.dataset.id); }
+});
+let qTimer;
+$("#q").addEventListener("input", e => { clearTimeout(qTimer); qTimer = setTimeout(() => { S.q = e.target.value; save(); render(); }, 120); });
+for (const [sel, key] of [["#f-ms", "ms"], ["#f-area", "area"], ["#f-kind", "kind"]])
+  $(sel).addEventListener("change", e => { S[key] = e.target.value; save(); render(); });
+$("#f-epics").addEventListener("change", e => { S.epics = e.target.checked; save(); render(); });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { if (document.activeElement === $("#q") && S.q) return; select(null); }
+  if (e.key === "/" && document.activeElement.tagName !== "INPUT") { e.preventDefault(); $("#q").focus(); }
+});
+window.addEventListener("hashchange", () => select(location.hash.slice(1)));
+init();
+</script>
+</body>
+</html>

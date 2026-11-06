@@ -11,6 +11,7 @@ The plan documents say why and how; the tasks say what is left.
 .tasks/
   README.md                  this file
   tasks.py                   checks and queries (standard library only)
+  viewer.html                the browser viewer `tasks.py serve` shows
   T013-build-smoke-tests-first-version-placement-matrix/
     task.json                the data a tool reads
     README.md                what the task is, its scope, and when it is done
@@ -55,7 +56,11 @@ python3 .tasks/tasks.py list --status todo --area editor
 python3 .tasks/tasks.py set T026 done  # status, `updated`, and `done` together
 python3 .tasks/tasks.py next           # the ready tasks with the lowest priority (started ones first)
 python3 .tasks/tasks.py plan M3        # a milestone's open tasks in order; without M3, all of them
+python3 .tasks/tasks.py serve          # the viewer in the browser: board, milestones, list, each task's README
 ```
+
+The viewer (`viewer.html`, served on http://127.0.0.1:8765) reads the folders again on every reload.
+Click a task to see its README, what it depends on and what it blocks; `/` searches.
 
 To add a task: make a folder `T0nn-short-slug` with the next free id, copy a `task.json` and a
 `README.md` from a similar task, set `depends_on` honestly, and run `check`. A task is done when

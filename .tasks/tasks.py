@@ -8,6 +8,7 @@
     python3 .tasks/tasks.py set T026 done    change a status (sets `updated`, and `done` for done)
     python3 .tasks/tasks.py next [N]         the N (default 10) ready tasks with the lowest `priority`
     python3 .tasks/tasks.py plan [M3]        every milestone (or one) with its open tasks in priority order
+    python3 .tasks/tasks.py serve [PORT]     the task viewer in the browser (default port 8765)
 
 See .tasks/README.md for the format.
 """
@@ -208,6 +209,67 @@ def cmd_set(tasks, args):
     print("%s is now %s" % (args[0], args[1]))
 
 
+def viewer_data(tasks):
+    """Every task with its README, and what each milestone delivers (from README.md's table)."""
+    out = []
+    for id in sorted(tasks):
+        t = dict(tasks[id])
+        t["folder"] = t.pop("_folder")
+        try:
+            with open(os.path.join(HERE, t["folder"], "README.md")) as f:
+                t["readme"] = f.read()
+        except OSError:
+            t["readme"] = ""
+        out.append(t)
+    milestones = {}
+    with open(os.path.join(HERE, "README.md")) as f:
+        for line in f:
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) == 2 and cells[0].strip("`") in MILESTONES:
+                milestones[cells[0].strip("`")] = cells[1]
+    return {"tasks": out, "milestones": milestones}
+
+
+def cmd_serve(args):
+    import http.server
+    import webbrowser
+
+    port = int(args[0]) if args else 8765
+    fonts = os.path.join(os.path.dirname(HERE), "website", "fonts")
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            path = self.path.split("?")[0].split("#")[0]
+            if path == "/tasks.json":
+                # read fresh on every request, so a reload shows the folder as it is now
+                body, kind = json.dumps(viewer_data(load())).encode(), "application/json"
+            elif path in ("/", "/index.html"):
+                body, kind = open(os.path.join(HERE, "viewer.html"), "rb").read(), "text/html; charset=utf-8"
+            elif path.startswith("/fonts/") and os.path.basename(path) in os.listdir(fonts):
+                body, kind = open(os.path.join(fonts, os.path.basename(path)), "rb").read(), "font/woff"
+            else:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    url = "http://127.0.0.1:%d/" % port
+    print("task viewer at %s (Ctrl-C to stop; reload the page to see changes)" % url)
+    if "--no-open" not in sys.argv:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
 def main():
     args = sys.argv[1:]
     if not args:
@@ -238,6 +300,8 @@ def main():
         cmd_plan(tasks, args[1:])
     elif cmd == "set":
         cmd_set(tasks, args[1:])
+    elif cmd == "serve":
+        cmd_serve([a for a in args[1:] if not a.startswith("--")])
     else:
         print(__doc__)
 
