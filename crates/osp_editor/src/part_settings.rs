@@ -1,15 +1,18 @@
-//! The part window in the editor, as KSP's part menu with its procedural parts: a click on a part
-//! opens it beside the pointer (and a part just put on opens it), with everything that can be set
-//! on that part (`osp_sim::properties`): its shape and every size, what its tank holds, its tank
-//! type and utilization, its material, a sizer's requirement. Numbers are typed (`editor.set:<field>:
+//! The picked part's settings, in the editor's rail on the left in place of the parts list, as
+//! KSP's part menu with its procedural parts: everything that can be set on that part
+//! (`osp_sim::properties`): its shape and every size, what its tank holds, its tank type and
+//! utilization, its material, a sizer's requirement. Numbers are typed (`editor.set:<field>:
 //! <text>`) or stepped (`editor.step:<field>:<-1|1>`), choices drop down (`editor.expand:<field>`)
 //! and are picked with `editor.set`. What the part comes to (volume, propellant, dry and full mass)
 //! is under them. Each change goes through the builder, so it is checked and can be undone; a
-//! refusal says why in the window. The handles on the part stay, for dragging a size by eye.
+//! refusal says why under them. The handles on the part stay, for dragging a size by eye.
 //!
-//! A click elsewhere closes the window unless it is pinned; the part stays picked. Publishes
-//! `editor.part.picked`, `editor.part.name`, `editor.part.rows` and `editor.part.problem` (see
-//! the `editor_part` layout).
+//! They show while a part is picked: a click on a part, or a part just put on. Letting go of it (a
+//! click on nothing, Esc, the close button or Parts) brings the parts list back.
+//!
+//! Publishes `editor.rail`, which of the rail's screens shows (`vessels`, `parts`, `part`, or
+//! nothing), and `editor.part.picked`, `editor.part.name`, `editor.part.rows` and
+//! `editor.part.problem` (see the `editor` layout).
 
 use std::sync::Arc;
 
@@ -27,37 +30,36 @@ use osp_game::{
 };
 
 use crate::{
+    building::Placing,
     hangar::Editor,
     shaping::{Shaping, nice_step, shape_parts},
 };
 
-/// The window's layout.
-const LAYOUT: &str = "editor_part";
+pub struct PartSettingsPlugin;
 
-pub struct PartWindowPlugin;
-
-impl Plugin for PartWindowPlugin {
+impl Plugin for PartSettingsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PartWindow>().add_systems(
+        app.init_resource::<PartSettings>().add_systems(
             Update,
             (
-                part_window.in_set(FrameSet::Input).after(shape_parts),
-                publish_part_window,
+                part_settings.in_set(FrameSet::Input).after(shape_parts),
+                publish_part_settings,
+                publish_rail,
             ),
         );
     }
 }
 
-/// Which part the window is for, which of its choices is dropped down, and why the last change
+/// Which part the settings are for, which of its choices is dropped down, and why the last change
 /// was refused.
 #[derive(Resource, Default)]
-pub struct PartWindow {
+pub struct PartSettings {
     part: Option<String>,
     open_field: Option<String>,
     problem: String,
 }
 
-/// `value` in `unit`, as the window shows it.
+/// `value` in `unit`, as the settings show it.
 fn shown(value: f64, unit: Unit) -> String {
     match unit {
         Unit::Metres => format!("{value:.2} m"),
@@ -90,9 +92,9 @@ fn step_of(value: f64, least: f64, most: f64) -> f64 {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn part_window(
-    mut window: ResMut<PartWindow>,
-    mut shaping: ResMut<Shaping>,
+fn part_settings(
+    mut window: ResMut<PartSettings>,
+    shaping: Res<Shaping>,
     mut editor: ResMut<Editor>,
     mut sim: ResMut<Sim>,
     mut ui: ResMut<LayoutVisibility>,
@@ -101,9 +103,7 @@ fn part_window(
     mut stores: Local<Option<Arc<PartCatalog>>>,
 ) {
     if !editor.is_open() {
-        if window.part.take().is_some() || ui.shown(LAYOUT) {
-            ui.layouts.insert(LAYOUT.into(), false);
-        }
+        window.part = None;
         actions.clear();
         return;
     }
@@ -113,16 +113,12 @@ fn part_window(
     let Some(catalog) = stores.as_ref().map(Arc::clone) else {
         return;
     };
-    // A part picked anew, or clicked again, opens the window beside the pointer.
+    // A part picked anew starts with nothing dropped down and nothing refused.
     let picked = shaping.picked().map(str::to_owned);
-    let clicked = shaping.take_click();
     if picked != window.part {
         window.open_field = None;
         window.problem.clear();
-        window.part = picked.clone();
-        ui.layouts.insert(LAYOUT.into(), picked.is_some());
-    } else if clicked && picked.is_some() {
-        ui.layouts.insert(LAYOUT.into(), true);
+        window.part = picked;
     }
     for action in actions.read() {
         let Some(arg) = action.arg() else {
@@ -191,10 +187,10 @@ fn part_window(
     }
 }
 
-/// Set `field` of the window's part from `text` through the builder, and show the craft as it is
+/// Set `field` of the picked part from `text` through the builder, and show the craft as it is
 /// then; or say why not.
 fn apply(
-    window: &mut PartWindow,
+    window: &mut PartSettings,
     editor: &mut Editor,
     catalog: &PartCatalog,
     sim: &mut Sim,
@@ -225,7 +221,7 @@ fn apply(
     }
 }
 
-/// The rows of the window for `part`, `open` the choice dropped down, with the sizes a handle in
+/// The rows of the settings for `part`, `open` the choice dropped down, with the sizes a handle in
 /// hand has in place of the part's own.
 fn rows(
     part: &CraftPartDef,
@@ -310,8 +306,8 @@ fn rows(
 }
 
 /// `editor.part.*`, see the module.
-fn publish_part_window(
-    window: Res<PartWindow>,
+fn publish_part_settings(
+    window: Res<PartSettings>,
     shaping: Res<Shaping>,
     editor: Res<Editor>,
     content: Res<GameContent>,
@@ -363,9 +359,51 @@ fn publish_part_window(
     );
 }
 
+/// Which of the rail's screens shows: the list of vessels while it is out, the picked part's
+/// settings, the parts list while it is out, or nothing.
+fn rail(list_open: bool, picked: bool, parts_open: bool) -> &'static str {
+    if list_open {
+        "vessels"
+    } else if picked {
+        "part"
+    } else if parts_open {
+        "parts"
+    } else {
+        ""
+    }
+}
+
+/// `editor.rail`, see the module.
+fn publish_rail(
+    editor: Res<Editor>,
+    shaping: Res<Shaping>,
+    placing: Res<Placing>,
+    mut data: ResMut<UiData>,
+    mut published: Local<&'static str>,
+) {
+    let now = rail(
+        editor.list_open(),
+        shaping.picked().is_some(),
+        placing.is_open(),
+    );
+    if *published != now || data.get("editor.rail").is_none() {
+        *published = now;
+        data.set("editor.rail", now);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_rail_shows_the_list_then_a_picked_part_then_the_parts() {
+        assert_eq!(rail(true, true, true), "vessels");
+        assert_eq!(rail(false, true, true), "part");
+        assert_eq!(rail(false, true, false), "part");
+        assert_eq!(rail(false, false, true), "parts");
+        assert_eq!(rail(false, false, false), "");
+    }
 
     #[test]
     fn numbers_read_in_their_units() {

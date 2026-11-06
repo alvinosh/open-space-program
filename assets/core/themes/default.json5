@@ -300,6 +300,21 @@
       border_color: "$rail_edge",
     },
     editor_stat: { min_height: 32 },
+    // The picked part's settings in the rail, made of the menu's pieces on a narrower row: a back
+    // to the parts over the part's name, sections, and a setting a row, its label keeping its width
+    // and what sets it taking the rest. A choice drops its options down under it.
+    editor_part_back: { align_self: "start" },
+    editor_part_body: { margin: [12, 0, 0, 0] },
+    editor_part_section: { margin: [14, 0, 2, 0] },
+    editor_setting: { min_height: 34, padding: 0, gap: 6, align_items: "center" },
+    editor_setting_label: { min_width: 0, width: 96, grow: 0, shrink: 0, font_size: 12, color: "$text_dim" },
+    editor_step: { height: 26, min_width: 26, padding: [0, 6] },
+    editor_part_wide: { grow: 1, shrink: 1, min_width: 0, height: 28, padding: [0, 8], font_size: 12 },
+    editor_part_text: { grow: 1, shrink: 1, min_width: 0 },
+    editor_options: { gap: 2, margin: [2, 0, 6, 102] },
+    editor_option: { height: 26, padding: [0, 8], font_size: 12, background: "$clear", hover_background: "$control_hover", active_background: "$selected", active_color: "$accent" },
+    editor_part_problem: { margin: [8, 0, 0, 0] },
+    editor_part_remove: { margin: [12, 0, 0, 0] },
     editor_occupied: { margin: [12, 12, 0, 12], gap: 8 },
     editor_clear: { align_self: "stretch" },
     editor_notice: { margin: [0, 12, 8, 12] },

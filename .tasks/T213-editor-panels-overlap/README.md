@@ -12,6 +12,9 @@ Seen in `OSP_CAPTURE_EDITOR_BUILD` (`build_part_window.png`): the part window op
 panel and hides its top row, so the Shape button is cut off behind it. Most of it goes with T207,
 which takes the popup away; this task is for what is left.
 
+Also seen (2026-11-06, `build_pod.png`): in the parts list the Control tab runs under the list's
+scroll bar, and a row's detail ("2 crew, 3.7 m") wraps onto a second line beside long names.
+
 ## Scope
 
 - Check every editor state (empty hangar, list of vessels, parts list, a part picked, a part in

@@ -1,30 +1,43 @@
-// The editor (see `osp_editor::hangar`): where a vessel is chosen, looked over and launched. New game
-// (`game.new`) and Fly a new vessel (`editor.open`) come here with the hangar empty. Nothing can be
-// placed yet. The list is `editor.vessels`, by mod: `name`, then in `craft` each one's `id`, `name`,
-// `parts` and `selected`; `editor.show:<id>` puts one on show and puts the list away, and
-// `editor.list` shows and hides it (`editor.list_open`). The staging window docks at the left once
-// a vessel is on show, beside the list while that is out, and works as it does in flight
-// (staging.json5); the sequences it is left with go with the launch.
+// The editor (see `osp_editor::hangar`): where a vessel is chosen, built, looked over and launched.
+// New game (`game.new`) and Fly a new vessel (`editor.open`) come here with the hangar empty. The
+// list is `editor.vessels`, by mod: `name`, then in `craft` each one's `id`, `name`, `parts` and
+// `selected`; `editor.show:<id>` puts one on show and puts the list away, and `editor.list` shows
+// and hides it (`editor.list_open`). The staging window docks at the left once a vessel is on show,
+// beside the rail while that is out, and works as it does in flight (staging.json5); the sequences
+// it is left with go with the launch.
+//
+// The rail on the left shows one thing at a time, which `editor.rail` names: `vessels` (the list),
+// `parts` (the parts list), `part` (the picked part's settings), or nothing.
 //
 // `editor.place:<pad|runway|orbit>` picks where it goes from (`editor.place` is the one picked,
 // `editor.place_name` says which site or orbit that is, and `editor.pad`, `editor.runway` and
 // `editor.orbit` are empty when there is none), `editor.launch` launches it, and Back or Esc goes
 // back to the menu. `editor.can_launch` says whether it can go: not with nothing on show, nor from
 // a pad or runway with a vessel on it. `editor.occupied` says what is there and `editor.clear`
-// removes it, once `editor.clearing` has asked (`editor.clear_label`, `editor.clear_question`). `editor.heading` says what the player came for, `editor.has_vessel` whether
-// one is on show, `editor.name`, `editor.height`, `editor.mass` and `editor.parts` describe it, and
+// removes it, once `editor.clearing` has asked (`editor.clear_label`, `editor.clear_question`).
+// `editor.heading` says what the player came for, `editor.has_vessel` whether one is on show,
+// `editor.name`, `editor.height`, `editor.mass` and `editor.parts` describe it, and
 // `editor.notice` says why a launch or a change failed.
 //
 // `editor.new` starts a vessel from nothing, and `editor.parts` shows the parts it is built from
-// (`osp_editor::building`): `editor.palette_open`, `editor.group` (`editor.group:<group>` picks
-// one), `editor.palette` (`id`, `name`, `detail`, `held`), `editor.palette_more`, and
-// `editor.search:<text>` with `editor.search_shown`. `editor.add:<id>` takes one in hand, and a row
-// dragged out (`palette:<id>`) takes it to go where it is let go;
-// `editor.has_parts` says whether the craft has any.
+// (`osp_editor::building`), or brings them back in place of a part's settings:
+// `editor.palette_open`, `editor.group` (`editor.group:<group>` picks one), `editor.palette` (`id`,
+// `name`, `detail`, `held`), `editor.palette_more`, and `editor.search:<text>` with
+// `editor.search_shown`. `editor.add:<id>` takes one in hand, and a row dragged out
+// (`palette:<id>`) takes it to go where it is let go; `editor.has_parts` says whether the craft has
+// any.
 //
-// A click on a part picks it and opens its window (`editor_part.json5`), and handles drawn on it
-// shape it (`osp_editor::shaping`), or with the Move and Turn tools slide and turn it
-// (`osp_editor::moving`): `editor.tool:<shape|move|turn>` picks the tool, `editor.tool` is the one on. `editor.hint` says what the mouse does now. `editor.undo` and `editor.redo` go back over a change and do it again.
+// A click on a part picks it and shows its settings in the rail (`osp_editor::part_settings`):
+// `editor.part.name`, and `editor.part.rows`, each with a `kind`: `section` (a heading, `label`);
+// `number` (`label`, `value` as read, `set` to which what is typed is added, `down` and `up` a
+// step); `text` (`label`, `value`, `set`); `choice` (`label`, `value`, `expand`, `open`, and
+// `options`, each `label`, `selected` and the `action` that picks it); `toggle` (`label`, `value`,
+// `on`, `toggle`); `readout` (`label`, `value`). `editor.part.problem` says why the last change was
+// refused, and Remove takes the part off with what it holds. Handles drawn on the part shape it
+// (`osp_editor::shaping`), or with the Move and Turn tools slide and turn it
+// (`osp_editor::moving`): `editor.tool:<shape|move|turn>` picks the tool, `editor.tool` is the one
+// on. `editor.hint` says what the mouse does now. `editor.undo` and `editor.redo` go back over a
+// change and do it again.
 {
   id: "editor",
   visible: false,
@@ -39,7 +52,7 @@
         back: false,
         title: "{editor.heading}",
         title_if: "!editor.has_vessel",
-        visible: "editor.list_open",
+        visible: "editor.rail == vessels",
         children: [
           { widget: "menu_row", text: "New vessel", meta: "From nothing", action: "editor.new" },
           {
@@ -64,7 +77,7 @@
         class: "editor_rail",
         shade: false,
         back: false,
-        visible: "editor.palette_open",
+        visible: "editor.rail == parts",
         children: [
           { widget: "input", text: "{editor.search_shown}", action: "editor.search:$text", style: { width: 300, margin: [0, 0, 10, 0] } },
           {
@@ -86,6 +99,92 @@
           { widget: "label", class: "menu_subtitle", text: "{editor.palette_more}", visible: "editor.palette_more" },
         ],
       },
+      // The picked part's settings (osp_editor::part_settings), in place of the parts list.
+      {
+        widget: "column",
+        class: "menu_rail editor_rail",
+        visible: "editor.rail == part",
+        children: [
+          { widget: "button", class: "back editor_part_back", text: "‹ Parts", action: "editor.parts", tooltip: "Back to the parts (Esc)" },
+          { widget: "label", class: "menu_heading", text: "{editor.part.name}" },
+          {
+            widget: "column",
+            class: "menu_body editor_part_body",
+            children: [
+              {
+                widget: "column",
+                repeat: "editor.part.rows",
+                children: [
+                  { widget: "label", class: "menu_section editor_part_section", text: "{item.label}", visible: "item.kind == section" },
+                  {
+                    widget: "row",
+                    class: "setting_row editor_setting",
+                    visible: "item.kind == number",
+                    children: [
+                      { widget: "label", class: "setting_label editor_setting_label", text: "{item.label}" },
+                      { widget: "button", class: "btn editor_step", text: "-", action: "{item.down}" },
+                      { widget: "input", class: "value_input", text: "{item.value}", action: "{item.set}$text", numeric: true },
+                      { widget: "button", class: "btn editor_step", text: "+", action: "{item.up}" },
+                    ],
+                  },
+                  {
+                    widget: "row",
+                    class: "setting_row editor_setting",
+                    visible: "item.kind == text",
+                    children: [
+                      { widget: "label", class: "setting_label editor_setting_label", text: "{item.label}" },
+                      { widget: "input", class: "editor_part_text", text: "{item.value}", action: "{item.set}$text" },
+                    ],
+                  },
+                  {
+                    widget: "row",
+                    class: "setting_row editor_setting",
+                    visible: "item.kind == choice",
+                    children: [
+                      { widget: "label", class: "setting_label editor_setting_label", text: "{item.label}" },
+                      { widget: "button", class: "btn editor_part_wide", text: "{item.value}", action: "{item.expand}", active: "item.open" },
+                    ],
+                  },
+                  {
+                    widget: "column",
+                    visible: "item.open",
+                    children: [
+                      {
+                        widget: "column",
+                        class: "editor_options",
+                        repeat: "item.options",
+                        children: [
+                          { widget: "button", class: "btn editor_option", text: "{item.label}", active: "item.selected", action: "{item.action}" },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    widget: "row",
+                    class: "setting_row editor_setting",
+                    visible: "item.kind == toggle",
+                    children: [
+                      { widget: "label", class: "setting_label editor_setting_label", text: "{item.label}" },
+                      { widget: "button", class: "btn editor_part_wide", text: "{item.value}", active: "item.on", action: "{item.toggle}" },
+                    ],
+                  },
+                  {
+                    widget: "row",
+                    class: "setting_row editor_setting",
+                    visible: "item.kind == readout",
+                    children: [
+                      { widget: "label", class: "setting_label editor_setting_label", text: "{item.label}" },
+                      { widget: "label", class: "menu_row_value", text: "{item.value}" },
+                    ],
+                  },
+                ],
+              },
+              { widget: "label", class: "menu_warning editor_part_problem", text: "{editor.part.problem}", visible: "editor.part.problem" },
+              { widget: "button", class: "btn btn_danger editor_part_remove", text: "Remove", tooltip: "Take it off, with what it holds (Delete)", action: "editor.remove" },
+            ],
+          },
+        ],
+      },
       { id: "editor_staging", widget: "dock", class: "editor_staging" },
       {
         id: "editor_bar",
@@ -94,7 +193,7 @@
         children: [
           { widget: "button", class: "back editor_back", text: "‹ Back", action: "menu.back" },
           { widget: "button", class: "btn", text: "Vessels", action: "editor.list", active: "editor.list_open" },
-          { widget: "button", class: "btn", text: "Parts", action: "editor.parts", active: "editor.palette_open", visible: "editor.has_vessel" },
+          { widget: "button", class: "btn", text: "Parts", action: "editor.parts", active: "editor.rail == parts", visible: "editor.has_vessel" },
           // What the pointer does to a picked part (osp_editor::moving).
           {
             widget: "row",

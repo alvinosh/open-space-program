@@ -2,7 +2,7 @@
   "id": "T207",
   "title": "Part settings in the left panel, not a popup",
   "kind": "feature",
-  "status": "todo",
+  "status": "in_progress",
   "area": "editor",
   "size": "M",
   "parent": "T002",

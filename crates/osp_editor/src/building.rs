@@ -14,8 +14,8 @@
 //! through 1, 2, 3, 4, 6 and 8, Shift+X back). Q and E turn it about the joint, 15° a press or 5°
 //! with Shift; with nothing in hand they turn the picked part. The builder's rules are checked on
 //! the same thread: where it may not go it shows red and the hint says why. Dragged, it goes where
-//! it is let go; taken by a click, where the next click is. Then it is picked, its window opens,
-//! and it can be shaped. Esc, a right click or `editor.drop` puts it back. Delete or Backspace, or
+//! it is let go; taken by a click, where the next click is. The parts list stays out for the next
+//! one; a click on the part picks it to shape it. Esc, a right click or `editor.drop` puts it back. Delete or Backspace, or
 //! `editor.remove`, takes the picked part off with everything held by it. All of it can be undone.
 //!
 //! Publishes `editor.palette_open`, `editor.group`, `editor.palette` (each `id`, `name`, `detail`,
@@ -220,6 +220,11 @@ impl Default for Placing {
 }
 
 impl Placing {
+    /// Whether the parts list is out (it shows unless a part is picked).
+    pub fn is_open(&self) -> bool {
+        self.open
+    }
+
     /// Something is in hand: the pointer is for putting it somewhere.
     pub fn is_holding(&self) -> bool {
         self.held.is_some()
@@ -554,8 +559,10 @@ pub(crate) fn place_parts(
                 placing.held = None;
                 placing.open = true;
             }
+            // With a part's settings in the rail, the list comes back in their place.
             "editor.parts" => {
-                placing.open = !placing.open;
+                placing.open = !placing.open || shaping.picked().is_some();
+                shaping.pick(None);
                 if placing.open {
                     editor.set_list_open(false);
                 }
@@ -688,10 +695,9 @@ pub(crate) fn place_parts(
         let now = !placing.dropping || (went_up[0] && cursor.is_some());
         if now {
             match put(&mut editor, catalog, &held, entries, &Spot::Root, 1, 0.0) {
-                Ok(added) => {
+                Ok(_) => {
                     redraw_draft(&mut editor, catalog, &mut sim, &mut ui);
                     editor.frame_view(&mut sim);
-                    shaping.pick(added.first().cloned());
                 }
                 Err(e) => editor.set_notice(format!("Cannot start with it: {e}")),
             }
@@ -868,7 +874,7 @@ pub(crate) fn place_parts(
             1
         };
         match put(&mut editor, catalog, &held, entries, &spot, symmetry, roll) {
-            Ok(added) => {
+            Ok(_) => {
                 // What is on show is already this, if the preview was of it.
                 let matched =
                     placing.shown == Some((spot, symmetry, roll)) && placing.refused.is_none();
@@ -885,7 +891,8 @@ pub(crate) fn place_parts(
                     was_down: placing.was_down,
                     ..default()
                 };
-                shaping.pick(added.first().cloned());
+                // Not picked: the parts list stays for the next one, and a click on the part shows
+                // its settings in its place.
                 marks.set_ghost(None);
                 return;
             }

@@ -600,8 +600,10 @@ const EDITOR_VIEW_SCRIPT: &[(f64, Action)] = &[
 
 /// `OSP_CAPTURE_EDITOR_BUILD=1`: a rocket built from nothing with the pointer, as a player would.
 /// A new vessel; a capsule from the list, which goes straight on; a decoupler, a tank and an engine
-/// each taken from the list and put on the free node under the last; four fins round the tank's
-/// side; one taken off and put back with undo; then it is launched and flown.
+/// each taken from the list and put on the free node under the last, the list staying out; the tank
+/// picked, its settings shown in the rail in place of the list and set there, and the list brought
+/// back with Parts; four fins round the tank's side; one taken off and put back with undo; then it
+/// is launched and flown.
 const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
@@ -612,7 +614,7 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (2.5, Action::Ui("editor.group:pods")),
     (2.6, Action::Ui("editor.add:pod:C-1 Capsule")),
     (3.4, Action::ExpectPartCount(1)),
-    (3.45, Action::ExpectShown("editor_part", true)),
+    (3.45, Action::ExpectData("editor.rail == parts")),
     (3.5, Action::Capture("build_pod.png")),
     (3.6, Action::Ui("editor.group:procedural")),
     // The decoupler dragged from its row onto the ring under the capsule.
@@ -630,9 +632,11 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (7.0, Action::Press(MouseButton::Left)),
     (7.1, Action::Release(MouseButton::Left)),
     (7.7, Action::ExpectPartCount(3)),
-    (7.75, Action::ExpectShown("editor_part", true)),
-    (7.8, Action::Capture("build_part_window.png")),
-    // Everything about the tank, set in its window.
+    (7.72, Action::ExpectData("editor.rail == parts")),
+    (7.74, Action::Ui("editor.pick:tank")),
+    (7.82, Action::ExpectData("editor.rail == part")),
+    (7.86, Action::Capture("build_part_settings.png")),
+    // Everything about the tank, set in the rail.
     (7.9, Action::Ui("editor.set:shape:cone")),
     (8.4, Action::ExpectField("tank", "shape", "cone")),
     (8.5, Action::Ui("editor.set:top_diameter:1.2")),
@@ -648,7 +652,11 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (12.3, Action::ExpectField("tank", "contents", "kerolox")),
     (12.35, Action::ExpectField("tank", "shape", "cylinder")),
     (12.4, Action::Capture("build_tank_set.png")),
-    (12.5, Action::Ui("editor.group:engines")),
+    // Parts brings the list back in place of the settings, and lets go of the tank.
+    (12.42, Action::Ui("editor.parts")),
+    (12.52, Action::ExpectData("editor.rail == parts")),
+    (12.53, Action::ExpectPicked("")),
+    (12.55, Action::Ui("editor.group:engines")),
     (12.6, Action::Ui("editor.add:engine:K-1 Booster")),
     (13.0, Action::EditorPointAtNode("tank", "bottom")),
     (13.7, Action::Press(MouseButton::Left)),
@@ -667,7 +675,8 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (16.0, Action::Press(MouseButton::Left)),
     (16.1, Action::Release(MouseButton::Left)),
     (16.7, Action::ExpectPartCount(8)),
-    // A fin turned in its window, then picked up by dragging it and put further up the tank.
+    // A fin turned in its settings, then picked up by dragging it and put further up the tank.
+    (16.75, Action::Ui("editor.pick:fin_1")),
     (16.8, Action::Ui("editor.set:roll:30")),
     (17.3, Action::ExpectField("fin_1", "roll", "30")),
     (17.4, Action::Ui("editor.set:roll:0")),
@@ -686,6 +695,7 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (20.8, Action::ExpectPartCount(8)),
     (20.9, Action::ClearPointer),
     (21.0, Action::Ui("editor.pick:")),
+    (21.1, Action::ExpectData("editor.rail == parts")),
     (21.2, Action::Capture("build_rocket.png")),
     (21.3, Action::Ui("editor.pick:fin_1")),
     (21.4, Action::Ui("editor.remove")),

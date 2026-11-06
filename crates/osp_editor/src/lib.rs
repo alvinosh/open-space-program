@@ -8,14 +8,14 @@
 //! - [`building`]: the parts list, taking a part in hand and putting it on.
 //! - [`shaping`]: picking a part, and the handles that size it.
 //! - [`moving`]: the move and turn tools.
-//! - [`part_window`]: everything that can be set on the picked part.
+//! - [`part_settings`]: everything that can be set on the picked part, in the rail.
 //! - [`capture`]: the steps of the game's scripted captures that look inside the editor.
 
 mod building;
 mod capture;
 mod hangar;
 mod moving;
-mod part_window;
+mod part_settings;
 mod shaping;
 
 use bevy::prelude::*;
@@ -29,7 +29,7 @@ impl Plugin for EditorPlugin {
             shaping::ShapingPlugin,
             building::BuildingPlugin,
             moving::MovingPlugin,
-            part_window::PartWindowPlugin,
+            part_settings::PartSettingsPlugin,
             capture::CapturePlugin,
         ));
     }

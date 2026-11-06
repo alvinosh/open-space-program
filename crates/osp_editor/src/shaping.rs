@@ -188,8 +188,6 @@ pub struct Shaping {
     /// Where the left button went down off the UI and off a handle, to tell a click from a drag of
     /// the view.
     press: Option<Vec2>,
-    /// A click picked a part this frame (`take_click`).
-    clicked: bool,
     /// The left button was down last frame: a press is told by its change, so a script that presses
     /// it at any point in a frame is seen.
     was_down: bool,
@@ -224,11 +222,6 @@ impl Shaping {
     /// The id of the part picked, if one is.
     pub fn picked(&self) -> Option<&str> {
         self.picked.as_deref()
-    }
-
-    /// Whether a click picked a part since this was last asked.
-    pub(crate) fn take_click(&mut self) -> bool {
-        std::mem::take(&mut self.clicked)
     }
 
     /// The sizes a handle in hand has made, as they are on show.
@@ -620,7 +613,6 @@ pub(crate) fn shape_parts(
         && from.distance(at) < CLICK_SLOP
     {
         shaping.picked = under(&mut ray_cast).map(|part| draft.parts[part].id.clone());
-        shaping.clicked = shaping.picked.is_some();
     }
     // What is under the pointer, looked for again when it moves.
     let looking = !down && !buttons.pressed(MouseButton::Right);
@@ -1017,10 +1009,10 @@ fn publish_shaping(
         (Tool::Turn, None) if !empty => "Click a part to turn it. 1 shapes it, 2 slides it.",
         (_, part) => match part {
             Some(_) if shaped => {
-                "Set it in its window, or drag a handle on it. 2 slides it, 3 turns it. Delete takes it off."
+                "Set it on the left, or drag a handle on it. 2 slides it, 3 turns it. Delete takes it off."
             }
             Some(_) => {
-                "Set it in its window. 2 slides it, 3 turns it. Delete takes it off. Esc lets go."
+                "Set it on the left. 2 slides it, 3 turns it. Delete takes it off. Esc lets go."
             }
             None if empty => "Pick a part from the list to start the vessel with.",
             None if draft.is_some() => {

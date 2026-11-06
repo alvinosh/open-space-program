@@ -33,3 +33,18 @@ where it covers the left panel and half of the Shape / Move / Turn buttons (see 
 - Picking a part shows its settings in the left panel, nothing covers the craft or the editor bar,
   and letting go brings the parts list back; `OSP_CAPTURE_EDITOR_BUILD` shows both states, at the
   default size and at 1280x720.
+
+## Done so far
+
+- 2026-11-06: the popup (`editor_part` layout) is gone. The rail on the left shows one screen at a
+  time, named by `editor.rail` (`vessels`, `part`, `parts`): a picked part's settings replace the
+  parts list, with "‹ Parts" over the part's name, and letting go (click on nothing, Esc, ‹ Parts or
+  the bar's Parts) brings the list back. `osp_editor::part_window` became `part_settings`.
+- Built from the menu's pieces, as the editor layout has to be (`osp_ui` rule test: menu controls,
+  the 12/15/20/28 type scale, no images). The part icon in the header waits for T212, which has to
+  let icons into the editor's rules.
+- Changed on the way: putting a part on no longer picks it, so the parts list stays out while
+  building and a click on a part shows its settings. Before, every part put on opened its window;
+  in the rail that would have swapped the list away after each part.
+- `OSP_CAPTURE_EDITOR_BUILD` checks `editor.rail` through both states and passes at 1600x900 and
+  1280x720 (the settings scroll there). `_MOVE` and `_SHAPE` pass.
