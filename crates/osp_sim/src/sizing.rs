@@ -684,6 +684,7 @@ impl SeparationMotorRequirement {
                     tank_type: TANK.into(),
                     contents: [(GRAIN.to_string(), 1.0)].into_iter().collect(),
                     design_load: None,
+                    utilization: None,
                 }),
                 ComponentDef::SolidMotor(SolidMotorDef {
                     thrust: self.impulse / self.burn_time,

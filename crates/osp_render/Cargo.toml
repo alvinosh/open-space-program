@@ -1,0 +1,21 @@
+[package]
+name = "osp_render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+osp_sim = { workspace = true }
+osp_mods = { workspace = true }
+osp_ui = { workspace = true }
+osp_terrain = { workspace = true }
+osp_game = { path = "../osp_game" }
+half = "2"
+ab_glyph = "0.2"
+resvg = { version = "0.47", default-features = false }
+
+[lints]
+workspace = true

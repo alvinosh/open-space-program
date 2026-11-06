@@ -292,6 +292,27 @@ impl Geometry {
         None
     }
 
+    /// The point of a surface nearest `point` (in the part's frame), as the surface's name and its
+    /// coordinates `u` and `v` there (see [`Geometry::surface_point`]), and how far off it `point`
+    /// is, m: the inverse of `surface_point`, for what a pointer touches. Only revolved walls are
+    /// looked at for now.
+    pub fn surface_near(&self, point: DVec3) -> Option<(String, f64, f64, f64)> {
+        let mut best: Option<(String, f64, f64, f64)> = None;
+        for sub in &self.subparts {
+            let Kind::Revolved(r) = &sub.kind else {
+                continue;
+            };
+            let local = sub.rotation.inverse() * (point - sub.position);
+            for (i, wall) in r.walls().iter().enumerate() {
+                let (u, v, off) = r.wall_coordinates(i, local);
+                if best.as_ref().is_none_or(|b| off < b.3) {
+                    best = Some((sub.named(&wall.name), u, v, off));
+                }
+            }
+        }
+        best
+    }
+
     /// `volume` of liquid settled in the region or loft named `name` under an acceleration
     /// that pushes it away from `up` (a direction in the part's frame): it fills the space
     /// up to a flat surface square to `up`. Along a revolved region's own axis this is

@@ -8,6 +8,10 @@
 //! number) the pointer is over (white would vanish on a white rocket), and a steady teal on
 //! the engines the next sequence lights, while the staging window is open. A window's colour
 //! wins over teal, blue over both.
+//!
+//! In the editor the part under the pointer is a steady, faint blue, and the part picked to be
+//! shaped wears the accent, pulsing; while one is picked the next engines are not marked, as they would
+//! wear the same colour.
 
 use std::collections::HashMap;
 
@@ -19,7 +23,6 @@ use crate::{
     FrameSet,
     part_info::{ShowsPart, parse_group},
     sim::Sim,
-    vessel_material::VesselMaterial,
 };
 
 /// The layout group the part windows are in: hidden with the rest of the flight UI, the
@@ -36,9 +39,22 @@ pub const MARK_COLORS: [&str; 6] = [
 /// teal, as the next row of the staging window). Neither is a window colour.
 const HOVER_COLOR: &str = "#2f6bff";
 const NEXT_COLOR: &str = "#38e0c4";
+/// The colour of the part picked in the editor: the HUD's accent.
+const PICKED_COLOR: &str = "#38e0c4";
 /// Their places in the palette, after the window colours.
 const HOVER: usize = MARK_COLORS.len();
 const NEXT: usize = MARK_COLORS.len() + 1;
+const PICKED: usize = MARK_COLORS.len() + 2;
+/// The editor's part under the pointer: blue too, but steady and faint, as it changes whenever the
+/// mouse moves.
+const POINTED: usize = MARK_COLORS.len() + 3;
+const POINTED_ALPHA: f32 = 0.22;
+/// A part in hand in the editor, shown where it would go: the accent, steady, or red where it may
+/// not go.
+const GHOST: usize = MARK_COLORS.len() + 4;
+const REFUSED: usize = MARK_COLORS.len() + 5;
+const REFUSED_COLOR: &str = "#ff4d4d";
+const GHOST_ALPHA: f32 = 0.45;
 
 /// How opaque the tint is, at the dimmest and brightest of its slow pulse.
 const TINT_ALPHA: (f32, f32) = (0.38, 0.62);
@@ -87,12 +103,32 @@ pub struct PartMarks {
     scripted: Option<Parts>,
     /// The engines the next sequence lights.
     next: Option<Parts>,
+    /// In the editor: the vessel on show, the part under the pointer and the part picked.
+    editor: Option<(VesselId, Option<PartId>, Option<PartId>)>,
+    /// In the editor: the parts of a part in hand, shown where they would go, and whether they
+    /// may not go there.
+    ghost: Option<(VesselId, Vec<PartId>, bool)>,
 }
 
 impl PartMarks {
     /// The window `key` is about to open for a tile's parts, not just its own.
     pub fn open_for_tile(&mut self, key: &str, vessel: VesselId, parts: Vec<PartId>) {
         self.tiles.insert(key.to_owned(), (vessel, parts));
+    }
+
+    /// What the editor points at and has picked, on the vessel on show; none outside it.
+    pub fn set_editor(&mut self, editor: Option<(VesselId, Option<PartId>, Option<PartId>)>) {
+        if self.editor != editor {
+            self.editor = editor;
+        }
+    }
+
+    /// The parts of what is in hand in the editor, on the vessel on show, and whether they may not
+    /// go where they are; none when nothing is.
+    pub fn set_ghost(&mut self, ghost: Option<(VesselId, Vec<PartId>, bool)>) {
+        if self.ghost != ghost {
+            self.ghost = ghost;
+        }
     }
 
     /// The colour (hex) of window `key`, if it has one.
@@ -115,18 +151,37 @@ impl PartMarks {
         Some(mark.color)
     }
 
-    /// The tint of `part` in the palette: hover, then its window's colour, then next.
+    /// The tint of `part` in the palette: hover, then its window's colour, then the editor's pick,
+    /// then next.
     fn look(&self, vessel: VesselId, part: PartId) -> Option<usize> {
         let marks = |parts: &Option<Parts>| {
             parts
                 .as_ref()
                 .is_some_and(|(v, parts)| *v == vessel && parts.contains(&part))
         };
+        let (pointed, picked) = match self.editor {
+            Some((v, pointed, picked)) if v == vessel => (pointed, picked),
+            _ => (None, None),
+        };
+        if let Some((v, parts, refused)) = &self.ghost
+            && *v == vessel
+            && parts.contains(&part)
+        {
+            return Some(if *refused { REFUSED } else { GHOST });
+        }
         if marks(&self.hover) {
             return Some(HOVER);
         }
-        self.color_index(vessel, part)
-            .or_else(|| marks(&self.next).then_some(NEXT))
+        if pointed == Some(part) {
+            return Some(POINTED);
+        }
+        if let Some(color) = self.color_index(vessel, part) {
+            return Some(color);
+        }
+        if picked.is_some() {
+            return (picked == Some(part)).then_some(PICKED);
+        }
+        marks(&self.next).then_some(NEXT)
     }
 
     /// Marks for the windows `open`, in the colours they had; a new window takes the
@@ -242,26 +297,30 @@ fn tint_parts(
     time: Res<Time>,
     parts: Query<(Entity, &ShowsPart)>,
     children: Query<&Children>,
-    meshes: Query<
-        &Mesh3d,
-        (
-            Without<Tint>,
-            Or<(
-                With<MeshMaterial3d<VesselMaterial>>,
-                With<MeshMaterial3d<StandardMaterial>>,
-            )>,
-        ),
-    >,
+    // Every mesh drawn for a part, whatever the renderer draws it with.
+    meshes: Query<&Mesh3d, Without<Tint>>,
     tints: Query<(Entity, &Tint, &ChildOf)>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut palette: Local<Vec<Handle<StandardMaterial>>>,
 ) {
-    let nothing = marks.marks.is_empty() && marks.hover.is_none() && marks.next.is_none();
+    let editing = marks
+        .editor
+        .is_some_and(|(_, a, b)| a.is_some() || b.is_some())
+        || marks.ghost.is_some();
+    let nothing =
+        marks.marks.is_empty() && marks.hover.is_none() && marks.next.is_none() && !editing;
     if nothing && tints.is_empty() {
         return;
     }
     if palette.is_empty() {
-        let colors = MARK_COLORS.iter().copied().chain([HOVER_COLOR, NEXT_COLOR]);
+        let colors = (MARK_COLORS.iter().copied()).chain([
+            HOVER_COLOR,
+            NEXT_COLOR,
+            PICKED_COLOR,
+            HOVER_COLOR,
+            PICKED_COLOR,
+            REFUSED_COLOR,
+        ]);
         palette.extend(colors.map(|hex| {
             let color = Srgba::hex(hex).unwrap_or(Srgba::WHITE);
             materials.add(StandardMaterial {
@@ -279,9 +338,12 @@ fn tint_parts(
     let alpha = low + (high - low) * pulse;
     for (i, handle) in palette.iter().enumerate() {
         if let Some(mut material) = materials.get_mut(handle) {
-            material
-                .base_color
-                .set_alpha(if i == NEXT { NEXT_ALPHA } else { alpha });
+            material.base_color.set_alpha(match i {
+                NEXT => NEXT_ALPHA,
+                POINTED => POINTED_ALPHA,
+                GHOST | REFUSED => GHOST_ALPHA,
+                _ => alpha,
+            });
         }
     }
 
@@ -445,6 +507,23 @@ mod tests {
         // A sequence that only lets go lights nothing.
         assert!(next_engines(&[vec![decoupler(PartId(9))]]).is_empty());
         assert!(next_engines(&[]).is_empty());
+    }
+
+    #[test]
+    fn in_the_editor_the_pointer_beats_the_pick_which_hides_the_next_engines() {
+        let mut marks = PartMarks::default();
+        let v = VesselId(1);
+        marks.next = Some((v, vec![PartId(3), PartId(4)]));
+        marks.set_editor(Some((v, Some(PartId(4)), Some(PartId(5)))));
+        assert_eq!(marks.look(v, PartId(4)), Some(POINTED));
+        assert_eq!(marks.look(v, PartId(5)), Some(PICKED));
+        assert_eq!(marks.look(v, PartId(3)), None);
+        // Nothing picked: the next engines show again.
+        marks.set_editor(Some((v, None, None)));
+        assert_eq!(marks.look(v, PartId(3)), Some(NEXT));
+        // Another vessel's parts are not the editor's.
+        marks.set_editor(Some((VesselId(2), Some(PartId(3)), None)));
+        assert_eq!(marks.look(v, PartId(3)), Some(NEXT));
     }
 
     #[test]

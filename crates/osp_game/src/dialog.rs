@@ -21,7 +21,7 @@ use osp_ui::{LayoutVisibility, UiAction, UiData, record};
 
 use crate::{
     FrameSet,
-    editor::editor_actions,
+    editing::EditorActions,
     menu::{Menu, menu_actions},
     saves::Saves,
     sim::Sim,
@@ -40,7 +40,7 @@ impl Plugin for DialogPlugin {
                 dialog_actions
                     .in_set(FrameSet::Input)
                     .after(menu_actions)
-                    .after(editor_actions),
+                    .after(EditorActions),
                 publish_dialog,
             ),
         );

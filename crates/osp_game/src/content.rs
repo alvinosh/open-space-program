@@ -293,7 +293,7 @@ pub fn restart_tutorial(
     Ok(())
 }
 
-pub(crate) fn catalog(registry: &Registry, diagnostics: &mut Vec<Diagnostic>) -> PartCatalog {
+pub fn catalog(registry: &Registry, diagnostics: &mut Vec<Diagnostic>) -> PartCatalog {
     PartCatalog {
         engines: registry.all::<EngineDef>("engines", diagnostics),
         resources: registry.all::<ResourceDef>("resources", diagnostics),

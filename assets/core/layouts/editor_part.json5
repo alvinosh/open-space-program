@@ -1,0 +1,100 @@
+// The part window in the editor (osp_editor::part_window): a click on a part opens it beside the
+// pointer, with everything that can be set on the part (osp_sim::properties), as KSP's part
+// menu with its procedural parts. A click elsewhere closes it unless it is pinned.
+//
+// `editor.part.name` names the part; `editor.part.rows` are its rows, each with a `kind`:
+// `section` (a heading, `label`); `number` (`label`, `value` as read, `set` to which what is typed
+// is added, `down` and `up` a step); `text` (`label`, `value`, `set`); `choice` (`label`, `value`,
+// `expand`, `open`, and `options`, each `label`, `selected` and the `action` that picks it);
+// `toggle` (`label`, `value`, `on`, `toggle`); `readout` (`label`, `value`). `editor.part.problem`
+// says why the last change was refused. Remove takes the part off with what it holds.
+{
+  id: "editor_part",
+  visible: false,
+  popup: true,
+  root: {
+    widget: "window",
+    icon: "icons/part.svg",
+    title: "{editor.part.name}",
+    // Solid: it opens over the parts list as often as over the hangar.
+    style: { width: 330, gradient: ["#16263a", "#0b1520"] },
+    children: [
+      {
+        widget: "column",
+        repeat: "editor.part.rows",
+        style: { gap: 2 },
+        children: [
+          { widget: "label", class: "section", text: "{item.label}", visible: "item.kind == section" },
+          {
+            widget: "row",
+            class: "kv",
+            visible: "item.kind == number",
+            style: { gap: 4 },
+            children: [
+              { widget: "label", class: "key", text: "{item.label}" },
+              { widget: "button", class: "step_button", text: "-", action: "{item.down}" },
+              { widget: "input", class: "value_input", text: "{item.value}", action: "{item.set}$text", numeric: true },
+              { widget: "button", class: "step_button", text: "+", action: "{item.up}" },
+            ],
+          },
+          {
+            widget: "row",
+            class: "kv",
+            visible: "item.kind == text",
+            style: { gap: 4 },
+            children: [
+              { widget: "label", class: "key", text: "{item.label}" },
+              { widget: "input", text: "{item.value}", action: "{item.set}$text", style: { min_width: 180 } },
+            ],
+          },
+          {
+            widget: "row",
+            class: "kv",
+            visible: "item.kind == choice",
+            style: { gap: 4 },
+            children: [
+              { widget: "label", class: "key", text: "{item.label}" },
+              { widget: "button", class: "btn", text: "{item.value}", action: "{item.expand}", active: "item.open", style: { min_width: 180 } },
+            ],
+          },
+          {
+            widget: "column",
+            visible: "item.open",
+            style: { margin: [0, 0, 4, 0] },
+            children: [
+              {
+                widget: "column",
+                repeat: "item.options",
+                style: { gap: 1, max_height: 240, scroll: true },
+                children: [
+                  { widget: "button", class: "stage_row", text: "{item.label}", active: "item.selected", action: "{item.action}" },
+                ],
+              },
+            ],
+          },
+          {
+            widget: "row",
+            class: "kv",
+            visible: "item.kind == toggle",
+            style: { gap: 4 },
+            children: [
+              { widget: "label", class: "key", text: "{item.label}" },
+              { widget: "button", class: "btn", text: "{item.value}", active: "item.on", action: "{item.toggle}", style: { min_width: 180 } },
+            ],
+          },
+          {
+            widget: "row",
+            class: "kv",
+            visible: "item.kind == readout",
+            children: [
+              { widget: "label", class: "key", text: "{item.label}" },
+              { widget: "label", text: "{item.value}" },
+            ],
+          },
+        ],
+      },
+      { widget: "label", class: "dim", text: "{editor.part.problem}", visible: "editor.part.problem", style: { margin: [6, 0, 0, 0] } },
+      { widget: "button", class: "btn btn_danger", text: "Remove", action: "editor.remove", style: { margin: [8, 0, 0, 0] } },
+    ],
+  },
+}

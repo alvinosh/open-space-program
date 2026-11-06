@@ -1,0 +1,18 @@
+[package]
+name = "osp_editor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy = { workspace = true }
+osp_sim = { workspace = true }
+osp_mods = { workspace = true }
+osp_ui = { workspace = true }
+osp_game = { path = "../osp_game" }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,21 @@
+[package]
+name = "osp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy = { workspace = true }
+osp_ui = { workspace = true }
+osp_game = { path = "../osp_game" }
+osp_render = { path = "../osp_render" }
+osp_editor = { path = "../osp_editor" }
+
+[features]
+# Faster incremental builds during development: `cargo run --features dev`
+dev = ["bevy/dynamic_linking"]
+# Time every system and schedule for the profiler (F10, `OSP_PROFILE`); costs a little.
+profile = ["osp_game/profile"]
+
+[lints]
+workspace = true

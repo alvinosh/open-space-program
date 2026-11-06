@@ -26,7 +26,7 @@ use crate::{
     camera::CameraRig,
     content::GameContent,
     dialog::Dialog,
-    editor::{Editor, LastLaunch},
+    editing::{EditorStatus, LastLaunch},
     saves::{SaveEntry, Saves, ago, now},
     sim::{DEFAULT_SCENARIO, Sim, SimRestarted, TimeWarp},
     ui_data::format_date,
@@ -318,7 +318,7 @@ fn publish_menu(
 /// Leave the game for the title screen, with the default scenario standing still behind it. If that
 /// cannot start nothing changes, and the menu says why.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn go_to_title(
+pub fn go_to_title(
     menu: &mut Menu,
     sim: &mut Sim,
     warp: &mut TimeWarp,
@@ -351,7 +351,7 @@ pub(crate) fn go_to_title(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn menu_actions(
+pub fn menu_actions(
     mut actions: MessageReader<UiAction>,
     mut menu: ResMut<Menu>,
     mut sim: ResMut<Sim>,
@@ -362,7 +362,7 @@ pub(crate) fn menu_actions(
     mut ui: ResMut<LayoutVisibility>,
     mut saves: ResMut<Saves>,
     mut last_launch: ResMut<LastLaunch>,
-    editor: Res<Editor>,
+    editor: Res<EditorStatus>,
     dialog: Res<Dialog>,
     mut restarted: MessageWriter<SimRestarted>,
     mut exit: MessageWriter<AppExit>,

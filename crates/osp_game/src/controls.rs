@@ -42,7 +42,7 @@ use osp_ui::{ActionState, LayoutVisibility, UiAction};
 use crate::{
     FrameSet,
     camera::CameraRig,
-    editor::Editor,
+    editing::EditorStatus,
     menu::Menu,
     sim::{Sim, TimeWarp},
 };
@@ -98,7 +98,7 @@ fn apply_actions(
     mut rig: ResMut<CameraRig>,
     locked: Res<InputLocked>,
     menu: Res<Menu>,
-    editor: Res<Editor>,
+    editor: Res<EditorStatus>,
     mut edits: ResMut<SequenceEdits>,
     mut layouts: ResMut<LayoutVisibility>,
 ) {

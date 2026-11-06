@@ -4742,6 +4742,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "osp"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "osp_editor",
+ "osp_game",
+ "osp_render",
+ "osp_ui",
+]
+
+[[package]]
 name = "osp_bake"
 version = "0.1.0"
 dependencies = [
@@ -4756,17 +4767,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "osp_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "osp_game",
+ "osp_mods",
+ "osp_sim",
+ "osp_ui",
+ "serde_json",
+]
+
+[[package]]
 name = "osp_game"
 version = "0.1.0"
 dependencies = [
- "ab_glyph",
  "bevy",
- "half",
  "osp_mods",
  "osp_sim",
  "osp_terrain",
  "osp_ui",
- "resvg",
  "serde",
  "serde_json",
 ]
@@ -4780,6 +4800,23 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "osp_render"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "bevy",
+ "half",
+ "osp_game",
+ "osp_mods",
+ "osp_sim",
+ "osp_terrain",
+ "osp_ui",
+ "resvg",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

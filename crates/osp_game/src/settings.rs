@@ -11,7 +11,9 @@
 //! `settings.json` in the platform's config directory (`OSP_SETTINGS=<file>` overrides it).
 //! `OSP_GRAPHICS=<preset>[,<key>=<value>...]` (e.g. `low` or `high,shadows=off,trees=low`)
 //! starts with those settings without saving them; scripted captures (`OSP_CAPTURE`) use it
-//! or High and never touch the file, so they stay reproducible.
+//! or High and never touch the file, so they stay reproducible. The dev version
+//! ([`dev_version`], drawn by `osp_render::dev_graphics`) starts from
+//! [`GraphicsSettings::dev`] instead, and saves everything but its graphics.
 
 use std::{collections::BTreeMap, path::PathBuf, time::Instant};
 
@@ -277,6 +279,24 @@ impl GraphicsSettings {
         }
     }
 
+    /// The dev version's (see `dev_graphics`): full resolution with its edges softened, and
+    /// sun shadows near the vessel, which help to judge a landing; the rest left out.
+    pub fn dev() -> Self {
+        Self {
+            render_scale: 100,
+            antialiasing: Antialiasing::Fxaa,
+            shadows: Quality::Low,
+            ambient_occlusion: Quality::Off,
+            terrain: Quality::Medium,
+            trees: Quality::Off,
+            effects: Quality::Low,
+            clouds: Quality::Off,
+            bloom: false,
+            vsync: true,
+            fps_limit: 0,
+        }
+    }
+
     /// The preset these settings match, ignoring vsync and the frame cap.
     pub fn matching_preset(&self) -> Option<Quality> {
         PRESETS.into_iter().find(|&p| {
@@ -362,6 +382,19 @@ struct SettingsSource {
     detect: bool,
     /// What the file holds.
     saved: Settings,
+    /// The dev version: its graphics are its own (see [`GraphicsSettings::dev`]), and
+    /// changes to them are not saved, so the file keeps the full version's.
+    dev: bool,
+}
+
+/// Whether this is the dev version, drawn plainly: `--dev` on the command line, or `OSP_DEV`
+/// set (to anything but `0`).
+pub fn dev_version() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        std::env::args().skip(1).any(|a| a == "--dev")
+            || std::env::var_os("OSP_DEV").is_some_and(|v| !v.is_empty() && v != "0")
+    })
 }
 
 pub fn settings_file() -> Option<PathBuf> {
@@ -382,8 +415,14 @@ pub fn settings_file() -> Option<PathBuf> {
 
 fn load() -> (Settings, SettingsSource) {
     let capture = std::env::var_os("OSP_CAPTURE").is_some();
+    let dev = dev_version();
+    let start = if dev {
+        GraphicsSettings::dev()
+    } else {
+        GraphicsSettings::default()
+    };
     if let Ok(spec) = std::env::var("OSP_GRAPHICS") {
-        let mut settings = GraphicsSettings::default();
+        let mut settings = start;
         for (i, part) in spec.split(',').map(str::trim).enumerate() {
             let result = match (i, part.split_once('=')) {
                 (_, Some((key, value))) => settings.set(key.trim(), value.trim()),
@@ -409,16 +448,22 @@ fn load() -> (Settings, SettingsSource) {
             file: None,
             detect: false,
             saved: settings.clone(),
+            dev,
         };
         return (settings, source);
     }
     if capture {
+        let settings = Settings {
+            graphics: start,
+            ..default()
+        };
         let source = SettingsSource {
             file: None,
             detect: false,
-            saved: Settings::default(),
+            saved: settings.clone(),
+            dev,
         };
-        return (Settings::default(), source);
+        return (settings, source);
     }
     let file = settings_file();
     let saved = file.as_ref().and_then(|f| {
@@ -432,15 +477,22 @@ fn load() -> (Settings, SettingsSource) {
         }
     });
     let detect = saved.is_none();
-    let settings = saved.unwrap_or_default();
-    if !detect {
-        info!("graphics: {}", settings.graphics.describe());
-    }
+    let mut settings = saved.unwrap_or_default();
     let source = SettingsSource {
         file,
         detect,
         saved: settings.clone(),
+        dev,
     };
+    if dev {
+        settings.graphics = start;
+        info!(
+            "graphics for the dev version: {}",
+            settings.graphics.describe()
+        );
+    } else if !detect {
+        info!("graphics: {}", settings.graphics.describe());
+    }
     (settings, source)
 }
 
@@ -499,14 +551,18 @@ fn detect(
         return;
     }
     source.detect = false;
-    *settings = GraphicsSettings::preset(recommended);
+    // The full version's, for the file; the dev version goes on with its own.
+    let picked = GraphicsSettings::preset(recommended);
     info!(
         "graphics: first run on {}, picked {}",
         adapter.name,
-        settings.describe()
+        picked.describe()
     );
-    source.saved.graphics = settings.clone();
+    source.saved.graphics = picked.clone();
     save(&source);
+    if !source.dev {
+        *settings = picked;
+    }
 }
 
 /// `graphics.preset:<low|medium|high|ultra>`, `graphics.set:<key>:<value>`, and
@@ -551,8 +607,10 @@ fn actions(
         }
         if next != *settings {
             info!("graphics: {}", next.describe());
-            source.saved.graphics = next.clone();
-            save(&source);
+            if !source.dev {
+                source.saved.graphics = next.clone();
+                save(&source);
+            }
             *settings = next;
         }
     }

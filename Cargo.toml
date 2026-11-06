@@ -7,8 +7,11 @@ members = [
   "crates/osp_terrain",
   "crates/osp_bake",
   "crates/osp_game",
+  "crates/osp_render",
+  "crates/osp_editor",
+  "crates/osp",
 ]
-default-members = ["crates/osp_game"]
+default-members = ["crates/osp"]
 
 [workspace.package]
 version = "0.1.0"

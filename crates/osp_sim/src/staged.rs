@@ -184,6 +184,7 @@ pub fn convert(
                         tank_type: tank_def.tank_type.clone(),
                         contents: tank_def.propellants.clone(),
                         design_load: tank_def.design_load,
+                        utilization: None,
                     })];
                     mounted.push(
                         body.mount(child, &shape, "bottom", at, &node)

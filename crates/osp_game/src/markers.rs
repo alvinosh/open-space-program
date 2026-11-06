@@ -26,7 +26,7 @@ use osp_ui::{LayoutVisibility, Tooltip, UiAction, UiData, UiDocuments, ViewOverl
 use crate::{
     FrameSet,
     camera::{CameraRig, Follow, MainCamera},
-    editor::Editor,
+    editing::EditorStatus,
     frame::{RenderFrame, to_render},
     map_labels::{MapLabels, hidden},
     menu::Menu,
@@ -480,7 +480,7 @@ fn place(
     frame: Res<RenderFrame>,
     rig: Res<CameraRig>,
     docs: Res<UiDocuments>,
-    (menu, editor, layouts): (Res<Menu>, Res<Editor>, Res<LayoutVisibility>),
+    (menu, editor, layouts): (Res<Menu>, Res<EditorStatus>, Res<LayoutVisibility>),
     mut labels: ResMut<MapLabels>,
     camera: Single<(&Camera, &Projection, &Transform), With<MainCamera>>,
     mut markers: Query<(Entity, &Marker, &mut Node, &mut Visibility)>,

@@ -284,6 +284,8 @@
     // Always there, over the rail while that is out and on the hangar when it is not.
     editor_bar: { position: "absolute", left: 36, top: 45, gap: 8 },
     editor_back: { align_self: "center", margin: [0, 0, 0, 2] },
+    // The tools, Shape, Move and Turn, after the bar's buttons.
+    editor_tools: { width: 216, align_self: "center", margin: [0, 0, 0, 8] },
     // Beside the rail, or at the window's edge with the rail away.
     editor_staging: { align_self: "end", margin: [0, 0, 12, 12] },
     editor_panel: {

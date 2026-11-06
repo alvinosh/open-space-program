@@ -528,13 +528,30 @@ impl Vessel {
         system: &SolarSystem,
         time: SimTime,
     ) -> Result<Self, VesselError> {
+        let propulsion = Propulsion::from_craft(craft, catalog)?;
+        Ok(Self::on_display_built(craft, propulsion, system, time))
+    }
+
+    /// [`Vessel::on_display`] with its parts built already, from `craft`: the slow part, which can
+    /// be done elsewhere, such as on another thread while the editor goes on.
+    pub fn on_display_built(
+        craft: &CraftDef,
+        propulsion: Propulsion,
+        system: &SolarSystem,
+        time: SimTime,
+    ) -> Self {
         let (parent, motion) = Self::display_spot(system, time);
-        let mut vessel = Self::new(craft, catalog, parent, motion, DQuat::IDENTITY, time)?;
+        let name = if craft.name.is_empty() {
+            craft.id.clone()
+        } else {
+            craft.name.clone()
+        };
+        let mut vessel = Self::assemble(name, propulsion, parent, motion, DQuat::IDENTITY, time);
         if gear::legs(&vessel.propulsion).iter().any(|leg| !leg.foot) {
             vessel.attitude.state.orientation =
                 DQuat::from_mat3(&DMat3::from_cols(DVec3::NEG_Y, DVec3::NEG_Z, DVec3::X));
         }
-        Ok(vessel)
+        vessel
     }
 
     /// Nothing, in the place a craft is shown: a vessel with no parts, for a hangar with nothing

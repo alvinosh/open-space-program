@@ -291,6 +291,43 @@ impl Revolved {
 
     /// The point of wall `i` `u` of the way around its span and `v` of the way along its
     /// curve by length.
+    /// Where on wall `i` the point `p` (in its frame) is nearest: its coordinates `u` and `v` there,
+    /// as [`Revolved::wall_point`] takes them, and how far `p` is from that point, m.
+    pub fn wall_coordinates(&self, i: usize, p: DVec3) -> (f64, f64, f64) {
+        let curve = &self.walls[i].curve;
+        // As `Curve::at_share` measures its length, so that `v` comes back to the same point.
+        let points = curve.tessellate(1e-5 * curve.size());
+        let at = DVec2::new(p.truncate().length(), p.z);
+        let mut walked = 0.0;
+        let mut best = (f64::INFINITY, 0.0);
+        for pair in points.windows(2) {
+            let (a, b) = (pair[0].point, pair[1].point);
+            let step = (b - a).length();
+            let t = if step > 0.0 {
+                ((at - a).dot(b - a) / (step * step)).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let off = (a + (b - a) * t).distance(at);
+            if off < best.0 {
+                best = (off, walked + step * t);
+            }
+            walked += step;
+        }
+        let v = if walked > 0.0 { best.1 / walked } else { 0.0 };
+        // Round the axis from where its turn starts, kept within it.
+        let angle = (p.y.atan2(p.x) - self.turn.from).rem_euclid(TAU);
+        let (u, out_of_turn) = if self.turn.full || angle <= self.turn.span {
+            (angle / self.turn.span, 0.0)
+        } else if angle - self.turn.span < TAU - angle {
+            (1.0, angle - self.turn.span)
+        } else {
+            (0.0, TAU - angle)
+        };
+        let across = at.x * out_of_turn;
+        (u, v, (best.0 * best.0 + across * across).sqrt())
+    }
+
     pub fn wall_point(&self, i: usize, u: f64, v: f64) -> SurfacePoint {
         let (p, along) = self.walls[i].curve.at_share(v);
         let angle = self.turn.from + self.turn.span * u.clamp(0.0, 1.0);

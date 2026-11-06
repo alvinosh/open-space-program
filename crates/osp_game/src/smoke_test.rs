@@ -3,6 +3,9 @@
 //!
 //! The camera renders into an offscreen image so captures work even when the window is
 //! hidden or occluded (macOS stops presenting occluded windows).
+//!
+//! The steps that look inside the editor are the editor's to take (`osp_editor`'s `capture`): the
+//! script sends them on as [`EditorStep`]s.
 
 use std::path::PathBuf;
 
@@ -13,7 +16,7 @@ use bevy::{
         ButtonState,
         keyboard::{Key, KeyboardInput, NativeKey, NativeKeyCode},
     },
-    math::{DVec2, DVec3},
+    math::DVec3,
     picking::{
         backend::prelude::PointerId,
         pointer::{Location, PointerAction, PointerButton, PointerInput},
@@ -40,7 +43,7 @@ use crate::{
     camera::{CameraRig, MainCamera, ViewOutput},
     controls::InputLocked,
     dialog::Dialog,
-    editor::{Editor, LastLaunch},
+    editing::LastLaunch,
     frame::{RenderFrame, to_render},
     map_labels::{body_spheres, hidden},
     markers::MarkerBox,
@@ -66,8 +69,30 @@ fn capture_size() -> (u32, u32) {
 
 pub struct SmokeTestPlugin;
 
+/// A capture's steps: the script's, then the editor's ([`EditorStep`]), then the UI's pointer goes
+/// where they put the view's. All after the frame's input and before the simulation.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CaptureSet {
+    Script,
+    Editor,
+    Pointer,
+}
+
+/// A step of a script that only the editor (`osp_editor`) can take, as it looks inside it. Taken
+/// in [`CaptureSet::Editor`] the frame it is sent; a step that fails ends the capture with an
+/// error.
+#[derive(Message, Clone, Copy)]
+pub struct EditorStep(pub Action);
+
 impl Plugin for SmokeTestPlugin {
     fn build(&self, app: &mut App) {
+        app.add_message::<EditorStep>().configure_sets(
+            Update,
+            (CaptureSet::Script, CaptureSet::Editor, CaptureSet::Pointer)
+                .chain()
+                .after(FrameSet::Input)
+                .before(FrameSet::Simulate),
+        );
         if let Some(dir) = std::env::var_os("OSP_CAPTURE") {
             let in_orbit = std::env::var("OSP_SCENARIO").is_ok_and(|s| s != "pad");
             let times: Vec<f64> = std::env::var("OSP_CAPTURE_AT")
@@ -134,6 +159,12 @@ impl Plugin for SmokeTestPlugin {
                 CLEAR_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_EDITOR_VIEW").is_some() {
                 EDITOR_VIEW_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_EDITOR_SHAPE").is_some() {
+                EDITOR_SHAPE_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_EDITOR_BUILD").is_some() {
+                EDITOR_BUILD_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_EDITOR_MOVE").is_some() {
+                EDITOR_MOVE_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_SATURN_PAD").is_some() {
                 SATURN_PAD_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_CHUTES").is_some() {
@@ -213,11 +244,15 @@ impl Plugin for SmokeTestPlugin {
                 target: Handle::default(),
                 actions,
                 ui_pointer: Vec2::ZERO,
+                move_ui_pointer: false,
             })
             .add_systems(PostStartup, render_offscreen)
             .add_systems(
                 Update,
-                run_script.after(FrameSet::Input).before(FrameSet::Simulate),
+                (
+                    run_script.in_set(CaptureSet::Script),
+                    move_ui_pointer.in_set(CaptureSet::Pointer),
+                ),
             );
         }
     }
@@ -231,6 +266,8 @@ struct Script {
     actions: Vec<(f64, Action)>,
     /// Where the pointer the UI sees is, physical px.
     ui_pointer: Vec2,
+    /// The step taken this frame moved the view's pointer, so the UI's goes there too.
+    move_ui_pointer: bool,
 }
 
 fn render_offscreen(
@@ -248,8 +285,9 @@ fn render_offscreen(
     commands.insert_resource(ViewOutput(Some(script.target.clone())));
 }
 
+/// What a capture's script does at a moment: each is taken in one frame.
 #[derive(Clone, Copy)]
-enum Action {
+pub enum Action {
     Capture(&'static str),
     /// Throttle up, brakes off, SAS on and stage.
     Launch,
@@ -356,7 +394,67 @@ enum Action {
     /// Stop the capture with a failure unless the editor is open with this craft on show, "" for
     /// an empty hangar, or closed for `None`.
     ExpectEditor(Option<&'static str>),
+    /// Put the view's scripted pointer this many pixels right and down of where the handle for this
+    /// size of the part picked in the editor was drawn.
+    EditorPointAtGrip(&'static str, f32, f32),
+    /// Stop the capture with a failure unless this size of this part of the craft in the editor is
+    /// between these, m.
+    ExpectSize(&'static str, &'static str, f64, f64),
+    /// Put the view's scripted pointer here, px from the top left.
+    PointerAt(f32, f32),
+    /// Put the view's scripted pointer on the ring of this free node of this part of the craft in
+    /// the editor, as drawn last.
+    EditorPointAtNode(&'static str, &'static str),
+    /// Put the view's scripted pointer on this surface of this part of the craft in the editor, at
+    /// these coordinates (u round it, v along it).
+    EditorPointAtSurface(&'static str, &'static str, f64, f64),
+    /// Stop the capture with a failure unless the craft in the editor has this many parts.
+    ExpectPartCount(usize),
+    /// Put the view's scripted pointer on the middle of this part of the craft in the editor.
+    EditorPointAtPart(&'static str),
+    /// Stop the capture with a failure unless this field (`osp_sim::properties`) of this part of
+    /// the craft in the editor is this: a number, a choice's id, `true` or `false`, or text.
+    ExpectField(&'static str, &'static str, &'static str),
+    /// Stop the capture with a failure unless this layout is open, or is not.
+    ExpectShown(&'static str, bool),
+    /// Stop the capture with a failure unless the editor has this part picked, "" for none.
+    ExpectPicked(&'static str),
+    /// Put the view's scripted pointer on the editor's move or turn handle on this axis (0 to 2) of
+    /// the part picked, as drawn last: along an arrow from -1 to 1, or this share of a turn round a
+    /// ring.
+    EditorPointAtHandle(usize, f32),
+    /// Move the view's scripted pointer this many pixels right and down.
+    PointerBy(f32, f32),
+    /// Stop the capture with a failure unless this part of the craft in the editor is held by this
+    /// node of its own.
+    ExpectHeldBy(&'static str, &'static str),
+    /// Stop the capture with a failure unless this part of the craft in the editor is held on a
+    /// surface between these shares of the way along it.
+    ExpectAlong(&'static str, f64, f64),
     Exit,
+}
+
+impl Action {
+    /// Whether this looks inside the editor, so that only it can take it ([`EditorStep`]).
+    pub fn in_the_editor(&self) -> bool {
+        matches!(
+            self,
+            Self::EditorLook(..)
+                | Self::ExpectList(..)
+                | Self::ExpectEditor(..)
+                | Self::EditorPointAtGrip(..)
+                | Self::ExpectSize(..)
+                | Self::EditorPointAtNode(..)
+                | Self::EditorPointAtSurface(..)
+                | Self::ExpectPartCount(..)
+                | Self::EditorPointAtPart(..)
+                | Self::ExpectField(..)
+                | Self::ExpectPicked(..)
+                | Self::EditorPointAtHandle(..)
+                | Self::ExpectHeldBy(..)
+                | Self::ExpectAlong(..)
+        )
+    }
 }
 
 /// (real seconds since start, action)
@@ -498,6 +596,280 @@ const EDITOR_VIEW_SCRIPT: &[(f64, Action)] = &[
     (8.7, Action::EditorLook(0.0, 500.0, -100.0)),
     (9.2, Action::Capture("saturn_far_top.png")),
     (9.5, Action::Exit),
+];
+
+/// `OSP_CAPTURE_EDITOR_BUILD=1`: a rocket built from nothing with the pointer, as a player would.
+/// A new vessel; a capsule from the list, which goes straight on; a decoupler, a tank and an engine
+/// each taken from the list and put on the free node under the last; four fins round the tank's
+/// side; one taken off and put back with undo; then it is launched and flown.
+const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.new")),
+    (2.2, Action::Capture("build_new.png")),
+    (2.3, Action::ExpectPartCount(0)),
+    (2.4, Action::Unlock),
+    (2.5, Action::Ui("editor.group:pods")),
+    (2.6, Action::Ui("editor.add:pod:C-1 Capsule")),
+    (3.4, Action::ExpectPartCount(1)),
+    (3.45, Action::ExpectShown("editor_part", true)),
+    (3.5, Action::Capture("build_pod.png")),
+    (3.6, Action::Ui("editor.group:procedural")),
+    // The decoupler dragged from its row onto the ring under the capsule.
+    (3.7, Action::UiPointAt("editor.add:decoupler")),
+    (3.8, Action::UiPress(PointerButton::Primary)),
+    (3.81, Action::Press(MouseButton::Left)),
+    (3.9, Action::PointerAt(800.0, 600.0)),
+    (4.3, Action::EditorPointAtNode("pod", "bottom")),
+    (5.0, Action::Capture("build_drag_preview.png")),
+    (5.1, Action::UiRelease(PointerButton::Primary)),
+    (5.11, Action::Release(MouseButton::Left)),
+    (5.8, Action::ExpectPartCount(2)),
+    (5.9, Action::Ui("editor.add:tank")),
+    (6.3, Action::EditorPointAtNode("decoupler", "bottom")),
+    (7.0, Action::Press(MouseButton::Left)),
+    (7.1, Action::Release(MouseButton::Left)),
+    (7.7, Action::ExpectPartCount(3)),
+    (7.75, Action::ExpectShown("editor_part", true)),
+    (7.8, Action::Capture("build_part_window.png")),
+    // Everything about the tank, set in its window.
+    (7.9, Action::Ui("editor.set:shape:cone")),
+    (8.4, Action::ExpectField("tank", "shape", "cone")),
+    (8.5, Action::Ui("editor.set:top_diameter:1.2")),
+    (9.0, Action::Ui("editor.set:contents:hydrolox")),
+    (9.5, Action::ExpectField("tank", "contents", "hydrolox")),
+    (9.6, Action::Ui("editor.set:utilization:50")),
+    (10.1, Action::ExpectField("tank", "utilization", "50")),
+    (10.2, Action::Ui("editor.expand:tank_type")),
+    (10.7, Action::Capture("build_tank_types.png")),
+    (10.8, Action::Ui("editor.set:shape:cylinder")),
+    (11.3, Action::Ui("editor.set:contents:kerolox")),
+    (11.8, Action::Ui("editor.set:utilization:90")),
+    (12.3, Action::ExpectField("tank", "contents", "kerolox")),
+    (12.35, Action::ExpectField("tank", "shape", "cylinder")),
+    (12.4, Action::Capture("build_tank_set.png")),
+    (12.5, Action::Ui("editor.group:engines")),
+    (12.6, Action::Ui("editor.add:engine:K-1 Booster")),
+    (13.0, Action::EditorPointAtNode("tank", "bottom")),
+    (13.7, Action::Press(MouseButton::Left)),
+    (13.8, Action::Release(MouseButton::Left)),
+    (14.4, Action::ExpectPartCount(4)),
+    (14.5, Action::Ui("editor.group:procedural")),
+    (14.6, Action::Ui("editor.add:fin")),
+    (14.7, Action::Ui("editor.symmetry")),
+    (14.75, Action::Ui("editor.symmetry")),
+    (14.8, Action::Ui("editor.symmetry")),
+    (
+        15.0,
+        Action::EditorPointAtSurface("tank", "barrel", 0.625, 0.12),
+    ),
+    (15.9, Action::Capture("build_fins_preview.png")),
+    (16.0, Action::Press(MouseButton::Left)),
+    (16.1, Action::Release(MouseButton::Left)),
+    (16.7, Action::ExpectPartCount(8)),
+    // A fin turned in its window, then picked up by dragging it and put further up the tank.
+    (16.8, Action::Ui("editor.set:roll:30")),
+    (17.3, Action::ExpectField("fin_1", "roll", "30")),
+    (17.4, Action::Ui("editor.set:roll:0")),
+    (17.9, Action::Ui("editor.pick:")),
+    (18.0, Action::EditorPointAtPart("fin_1")),
+    (18.3, Action::Press(MouseButton::Left)),
+    (
+        18.5,
+        Action::EditorPointAtSurface("tank", "barrel", 0.55, 0.6),
+    ),
+    (19.3, Action::Capture("build_move_preview.png")),
+    (19.4, Action::Release(MouseButton::Left)),
+    (20.0, Action::ExpectPartCount(8)),
+    (20.1, Action::Capture("build_moved.png")),
+    (20.2, Action::Ui("editor.undo")),
+    (20.8, Action::ExpectPartCount(8)),
+    (20.9, Action::ClearPointer),
+    (21.0, Action::Ui("editor.pick:")),
+    (21.2, Action::Capture("build_rocket.png")),
+    (21.3, Action::Ui("editor.pick:fin_1")),
+    (21.4, Action::Ui("editor.remove")),
+    (22.0, Action::ExpectPartCount(7)),
+    (22.1, Action::Ui("editor.undo")),
+    (22.7, Action::ExpectPartCount(8)),
+    (22.8, Action::Ui("editor.pick:")),
+    (23.0, Action::Ui("editor.launch")),
+    (24.0, Action::ExpectEditor(None)),
+    (25.0, Action::Launch),
+    (33.0, Action::Capture("build_flying.png")),
+    (33.5, Action::Exit),
+];
+
+/// `OSP_CAPTURE_EDITOR_MOVE=1`: sliding and turning parts with the Move and Turn tools. A tank,
+/// another under it and four fins round the first, built with the pointer; a fin picked, slid up
+/// the tank by its arrow with the other three going along, and turned by a ring; both undone. The
+/// lower tank turned about the stack by going across its ring, seen edge on, then slid down off
+/// its joint, which is refused. Then it is launched as built.
+const EDITOR_MOVE_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.new")),
+    (2.0, Action::Unlock),
+    (2.1, Action::Ui("editor.group:procedural")),
+    (2.2, Action::Ui("editor.add:tank")),
+    (3.0, Action::ExpectPartCount(1)),
+    (3.1, Action::Ui("editor.add:tank")),
+    (3.5, Action::EditorPointAtNode("tank", "bottom")),
+    (4.2, Action::Press(MouseButton::Left)),
+    (4.3, Action::Release(MouseButton::Left)),
+    (5.0, Action::ExpectPartCount(2)),
+    (5.1, Action::Ui("editor.add:fin")),
+    (5.2, Action::Ui("editor.symmetry")),
+    (5.25, Action::Ui("editor.symmetry")),
+    (5.3, Action::Ui("editor.symmetry")),
+    (
+        5.5,
+        Action::EditorPointAtSurface("tank", "barrel", 0.625, 0.5),
+    ),
+    (6.4, Action::Press(MouseButton::Left)),
+    (6.5, Action::Release(MouseButton::Left)),
+    (7.2, Action::ExpectPartCount(6)),
+    (7.25, Action::EditorLook(0.0, 0.0, -6.0)),
+    (7.3, Action::ClearPointer),
+    (7.4, Action::Ui("editor.pick:fin_1")),
+    (7.5, Action::Ui("editor.tool:move")),
+    (7.6, Action::ExpectData("editor.tool == move")),
+    (8.0, Action::Capture("move_arrows.png")),
+    (8.1, Action::EditorPointAtHandle(1, 0.8)),
+    (8.4, Action::Capture("move_pointed.png")),
+    (8.5, Action::Press(MouseButton::Left)),
+    (8.6, Action::PointerBy(0.0, -40.0)),
+    (9.4, Action::Capture("move_dragging.png")),
+    (9.5, Action::Release(MouseButton::Left)),
+    (10.2, Action::ExpectAlong("fin_1", 0.55, 1.0)),
+    (10.25, Action::ExpectAlong("fin_3", 0.55, 1.0)),
+    (10.27, Action::ExpectHeldBy("fin_1", "root")),
+    (10.3, Action::ClearPointer),
+    (10.4, Action::Capture("move_moved.png")),
+    (10.5, Action::Ui("editor.tool:turn")),
+    (11.0, Action::Capture("turn_rings.png")),
+    (11.1, Action::EditorPointAtHandle(2, 0.25)),
+    (11.2, Action::Press(MouseButton::Left)),
+    (11.3, Action::EditorPointAtHandle(2, 0.375)),
+    (12.1, Action::Capture("turn_dragging.png")),
+    (12.2, Action::Release(MouseButton::Left)),
+    (12.9, Action::ClearPointer),
+    (13.0, Action::Capture("turn_turned.png")),
+    // Undone, the turn and then the slide.
+    (13.05, Action::ExpectHeldBy("fin_4", "held_root")),
+    (13.1, Action::Ui("editor.undo")),
+    (13.5, Action::ExpectHeldBy("fin_1", "root")),
+    (13.55, Action::ExpectAlong("fin_1", 0.55, 1.0)),
+    (13.6, Action::Ui("editor.undo")),
+    (14.1, Action::ExpectAlong("fin_1", 0.49, 0.51)),
+    (14.2, Action::ExpectAlong("fin_4", 0.49, 0.51)),
+    // The lower tank turned about the stack, then slid off its joint, which is refused.
+    (14.3, Action::Ui("editor.pick:tank_2")),
+    (14.4, Action::Ui("editor.tool:turn")),
+    (14.9, Action::Capture("turn_tank.png")),
+    // Seen edge on, the ring turns as the pointer goes across it.
+    (15.0, Action::EditorPointAtHandle(2, 0.125)),
+    (15.1, Action::Press(MouseButton::Left)),
+    (15.2, Action::PointerBy(40.0, 0.0)),
+    (16.0, Action::Capture("turn_tank_dragging.png")),
+    (16.1, Action::Release(MouseButton::Left)),
+    (16.8, Action::ExpectHeldBy("tank_2", "held_top")),
+    (16.9, Action::Ui("editor.tool:move")),
+    (17.0, Action::EditorPointAtHandle(2, 0.5)),
+    (17.2, Action::Press(MouseButton::Left)),
+    (17.3, Action::PointerBy(0.0, 60.0)),
+    (18.0, Action::Capture("move_tank_dragging.png")),
+    (18.1, Action::Release(MouseButton::Left)),
+    (18.8, Action::ClearPointer),
+    (18.9, Action::Capture("move_tank_refused.png")),
+    (19.0, Action::ExpectData("editor.notice")),
+    (19.1, Action::Ui("editor.pick:")),
+    (19.2, Action::Ui("editor.tool:shape")),
+    (19.3, Action::Ui("editor.launch")),
+    (20.5, Action::ExpectEditor(None)),
+    (24.0, Action::Capture("move_launched.png")),
+    (24.5, Action::Exit),
+];
+
+/// `OSP_CAPTURE_EDITOR_SHAPE=1`: shaping parts in the editor with the mouse. The S-II lit under the
+/// pointer and picked with a click, and let go with a click on nothing. The Saturn V's S-IVB
+/// picked, its length handle pointed at and dragged up, then let go; undone and done again, then
+/// undone. Its diameter dragged out and let go; undone; dragged a little, so it keeps the Instrument
+/// Unit's width; dragged as far as it goes, and undone. An S-IC fin, too small from far off for more
+/// than one handle; then the Sounder, a fin's tip dragged out and back, and Esc to let go of it.
+const EDITOR_SHAPE_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.show:saturn_v")),
+    (5.0, Action::EditorLook(0.0, 0.0, 4.0)),
+    (5.1, Action::Unlock),
+    (5.2, Action::PointerAt(800.0, 500.0)),
+    (5.6, Action::Capture("shape_hover.png")),
+    (5.65, Action::Press(MouseButton::Left)),
+    (5.7, Action::Release(MouseButton::Left)),
+    (5.8, Action::ExpectPicked("s_ii")),
+    (5.9, Action::PointerAt(1100.0, 250.0)),
+    (5.95, Action::Press(MouseButton::Left)),
+    (6.0, Action::Release(MouseButton::Left)),
+    (6.05, Action::ExpectPicked("")),
+    (6.1, Action::Ui("editor.pick:s_ivb")),
+    (6.4, Action::Capture("shape_picked.png")),
+    (6.45, Action::EditorPointAtGrip("length", 0.0, 0.0)),
+    (6.8, Action::Capture("shape_pointed.png")),
+    (6.9, Action::Press(MouseButton::Left)),
+    (7.1, Action::EditorPointAtGrip("length", 0.0, -40.0)),
+    (7.6, Action::Capture("shape_dragging.png")),
+    (7.7, Action::EditorPointAtGrip("length", 0.0, -40.0)),
+    (8.3, Action::Capture("shape_dragged.png")),
+    (8.4, Action::Release(MouseButton::Left)),
+    (9.2, Action::Capture("shape_longer.png")),
+    (9.3, Action::ExpectSize("s_ivb", "length", 12.0, 40.0)),
+    (9.4, Action::Ui("editor.undo")),
+    (10.0, Action::Capture("shape_undone.png")),
+    (10.1, Action::ExpectSize("s_ivb", "length", 11.34, 11.35)),
+    (10.2, Action::Ui("editor.redo")),
+    (10.8, Action::ExpectSize("s_ivb", "length", 12.0, 40.0)),
+    (10.9, Action::Ui("editor.undo")),
+    (11.5, Action::EditorPointAtGrip("diameter", 0.0, 0.0)),
+    (12.0, Action::Press(MouseButton::Left)),
+    (12.2, Action::EditorPointAtGrip("diameter", 25.0, 0.0)),
+    (12.8, Action::Capture("shape_wider.png")),
+    (12.9, Action::Release(MouseButton::Left)),
+    (13.6, Action::ExpectSize("s_ivb", "diameter", 7.0, 16.0)),
+    (13.7, Action::Ui("editor.undo")),
+    (14.3, Action::EditorPointAtGrip("diameter", 0.0, 0.0)),
+    (14.4, Action::Press(MouseButton::Left)),
+    (14.6, Action::EditorPointAtGrip("diameter", 4.0, 0.0)),
+    (15.0, Action::Capture("shape_matched.png")),
+    (15.1, Action::Release(MouseButton::Left)),
+    (15.8, Action::ExpectSize("s_ivb", "diameter", 6.6, 6.6)),
+    (15.9, Action::EditorPointAtGrip("diameter", 0.0, 0.0)),
+    (16.0, Action::Press(MouseButton::Left)),
+    (16.2, Action::EditorPointAtGrip("diameter", 1000.0, 0.0)),
+    (16.8, Action::Capture("shape_as_wide_as_it_goes.png")),
+    (16.9, Action::Release(MouseButton::Left)),
+    (17.6, Action::ExpectSize("s_ivb", "diameter", 16.0, 16.1)),
+    (17.7, Action::Ui("editor.undo")),
+    (18.3, Action::Ui("editor.pick:s_ic_fin_3")),
+    (18.4, Action::EditorLook(0.0, 0.0, -10.0)),
+    (19.0, Action::Capture("shape_fin_far.png")),
+    (19.1, Action::Ui("editor.show:sounder")),
+    (20.5, Action::Ui("editor.pick:sounder_fin_1")),
+    (21.0, Action::Capture("shape_fin.png")),
+    (21.1, Action::EditorPointAtGrip("span", 0.0, 0.0)),
+    (21.3, Action::Press(MouseButton::Left)),
+    (21.5, Action::EditorPointAtGrip("span", 30.0, 20.0)),
+    (22.2, Action::Capture("shape_fin_dragging.png")),
+    (22.3, Action::Release(MouseButton::Left)),
+    (
+        23.0,
+        Action::ExpectSize("sounder_fin_1", "span", 1.15, 20.0),
+    ),
+    (23.1, Action::Capture("shape_fin_dragged.png")),
+    (23.2, Action::Ui("game.menu")),
+    (23.7, Action::Capture("shape_let_go.png")),
+    (23.8, Action::ExpectEditor(Some("sounder"))),
+    (24.0, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_CLEAR=1`: the pad is taken, so a launch is refused until it is cleared; then the
@@ -2052,7 +2424,7 @@ fn run_script(
     mut ui_pointer: UiPointer,
     mut locked: ResMut<InputLocked>,
     (menu, dialog, saves, last_launch): (Res<Menu>, Res<Dialog>, Res<Saves>, Res<LastLaunch>),
-    mut editor: ResMut<Editor>,
+    mut editor_steps: MessageWriter<EditorStep>,
     shown: Res<LayoutVisibility>,
 ) {
     let Some(&(at, action)) = script.actions.get(script.step) else {
@@ -2062,7 +2434,36 @@ fn run_script(
         return;
     }
     script.step += 1;
+    // The editor's pointer actions move the UI's pointer too, once the editor has taken them: one
+    // mouse.
+    script.move_ui_pointer = matches!(
+        action,
+        Action::EditorPointAtGrip(..)
+            | Action::EditorPointAtHandle(..)
+            | Action::PointerBy(..)
+            | Action::PointerAt(..)
+            | Action::EditorPointAtNode(..)
+            | Action::EditorPointAtSurface(..)
+            | Action::EditorPointAtPart(..)
+    );
     match action {
+        // What only the editor can look at, which it does as soon as this has run.
+        Action::EditorLook(..)
+        | Action::ExpectList(..)
+        | Action::ExpectEditor(..)
+        | Action::EditorPointAtGrip(..)
+        | Action::ExpectSize(..)
+        | Action::EditorPointAtNode(..)
+        | Action::EditorPointAtSurface(..)
+        | Action::ExpectPartCount(..)
+        | Action::EditorPointAtPart(..)
+        | Action::ExpectField(..)
+        | Action::ExpectPicked(..)
+        | Action::EditorPointAtHandle(..)
+        | Action::ExpectHeldBy(..)
+        | Action::ExpectAlong(..) => {
+            editor_steps.write(EditorStep(action));
+        }
         Action::Capture(name) => {
             let path = script.dir.join(name);
             info!("smoke test: capturing {}", path.display());
@@ -2198,19 +2599,11 @@ fn run_script(
                 exit.write(AppExit::error());
             }
         }
-        Action::EditorLook(x, y, zoom) => {
-            editor.look(DVec2::new(x as f64, y as f64), zoom as f64);
-        }
-        Action::ExpectList(wanted) => {
-            if editor.list_open() != wanted {
-                error!("smoke test: the list of vessels should be open: {wanted}");
-                exit.write(AppExit::error());
-            }
-        }
-        Action::ExpectEditor(wanted) => {
-            let found = editor.craft();
-            if found != wanted {
-                error!("smoke test: the editor has {found:?}, wanted {wanted:?}");
+        Action::PointerAt(x, y) => pointer.0 = Some(Vec2::new(x, y)),
+        Action::PointerBy(x, y) => pointer.0 = pointer.0.map(|at| at + Vec2::new(x, y)),
+        Action::ExpectShown(layout, wanted) => {
+            if shown.shown(layout) != wanted {
+                error!("smoke test: `{layout}` should be open: {wanted}");
                 exit.write(AppExit::error());
             }
         }
@@ -2424,5 +2817,22 @@ fn run_script(
             );
             exit.write(AppExit::Success);
         }
+    }
+}
+
+/// The UI's pointer goes where a step of the script, or of the editor's, put the view's.
+fn move_ui_pointer(
+    mut script: ResMut<Script>,
+    pointer: Res<ScriptedPointer>,
+    mut ui_pointer: UiPointer,
+) {
+    if !std::mem::take(&mut script.move_ui_pointer) {
+        return;
+    }
+    if let Some(to) = pointer.0 {
+        let delta = to - script.ui_pointer;
+        script.ui_pointer = to;
+        let target = script.target.clone();
+        ui_pointer.send(&target, to, PointerAction::Move { delta });
     }
 }

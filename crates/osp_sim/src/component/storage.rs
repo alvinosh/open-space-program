@@ -56,6 +56,10 @@ pub struct StorageDef {
     /// with full tanks, so it needs more than a first stage, which is only full at liftoff.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub design_load: Option<f64>,
+    /// Share of its volume that holds resources, if not its tank type's: the rest is ullage,
+    /// baffles and plumbing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub utilization: Option<f64>,
 }
 
 /// One resource a tank holds.
@@ -249,7 +253,7 @@ impl StorageDef {
                 column: 0.0,
             });
         }
-        let utilization = kind.utilization.clamp(0.0, 1.0);
+        let utilization = self.utilization.unwrap_or(kind.utilization).clamp(0.0, 1.0);
         let usable = volume * utilization;
         let mass = usable / contents.iter().map(|c| c.capacity / c.density).sum::<f64>();
         let bottom = settled(geometry, &cell.name, 0.0);
@@ -605,7 +609,7 @@ pub(crate) fn material<'a>(
         .ok_or_else(|| CraftError::UnknownMaterial(id.into()))
 }
 
-fn cannot_hold(kind: &TankTypeDef, resource: &ResourceDef) -> Option<String> {
+pub(crate) fn cannot_hold(kind: &TankTypeDef, resource: &ResourceDef) -> Option<String> {
     if let Some(allowed) = &kind.propellants
         && !allowed.contains(&resource.id)
     {

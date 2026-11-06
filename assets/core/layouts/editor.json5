@@ -1,4 +1,4 @@
-// The editor (see `osp_game::editor`): where a vessel is chosen, looked over and launched. New game
+// The editor (see `osp_editor::hangar`): where a vessel is chosen, looked over and launched. New game
 // (`game.new`) and Fly a new vessel (`editor.open`) come here with the hangar empty. Nothing can be
 // placed yet. The list is `editor.vessels`, by mod: `name`, then in `craft` each one's `id`, `name`,
 // `parts` and `selected`; `editor.show:<id>` puts one on show and puts the list away, and
@@ -13,7 +13,18 @@
 // a pad or runway with a vessel on it. `editor.occupied` says what is there and `editor.clear`
 // removes it, once `editor.clearing` has asked (`editor.clear_label`, `editor.clear_question`). `editor.heading` says what the player came for, `editor.has_vessel` whether
 // one is on show, `editor.name`, `editor.height`, `editor.mass` and `editor.parts` describe it, and
-// `editor.notice` says why a launch failed.
+// `editor.notice` says why a launch or a change failed.
+//
+// `editor.new` starts a vessel from nothing, and `editor.parts` shows the parts it is built from
+// (`osp_editor::building`): `editor.palette_open`, `editor.group` (`editor.group:<group>` picks
+// one), `editor.palette` (`id`, `name`, `detail`, `held`), `editor.palette_more`, and
+// `editor.search:<text>` with `editor.search_shown`. `editor.add:<id>` takes one in hand, and a row
+// dragged out (`palette:<id>`) takes it to go where it is let go;
+// `editor.has_parts` says whether the craft has any.
+//
+// A click on a part picks it and opens its window (`editor_part.json5`), and handles drawn on it
+// shape it (`osp_editor::shaping`), or with the Move and Turn tools slide and turn it
+// (`osp_editor::moving`): `editor.tool:<shape|move|turn>` picks the tool, `editor.tool` is the one on. `editor.hint` says what the mouse does now. `editor.undo` and `editor.redo` go back over a change and do it again.
 {
   id: "editor",
   visible: false,
@@ -29,16 +40,50 @@
         title: "{editor.heading}",
         title_if: "!editor.has_vessel",
         visible: "editor.list_open",
-        repeat: "editor.vessels",
         children: [
-          { widget: "label", class: "menu_section", text: "{item.name}" },
+          { widget: "menu_row", text: "New vessel", meta: "From nothing", action: "editor.new" },
           {
             widget: "column",
-            repeat: "item.craft",
+            repeat: "editor.vessels",
             children: [
-              { widget: "menu_row", text: "{item.name}", meta: "{item.parts|int} parts", active: "item.selected", action: "editor.show:{item.id}" },
+              { widget: "label", class: "menu_section", text: "{item.name}" },
+              {
+                widget: "column",
+                repeat: "item.craft",
+                children: [
+                  { widget: "menu_row", text: "{item.name}", meta: "{item.parts|int} parts", active: "item.selected", action: "editor.show:{item.id}" },
+                ],
+              },
             ],
           },
+        ],
+      },
+      // The parts a craft is built from (osp_editor::building).
+      {
+        widget: "screen",
+        class: "editor_rail",
+        shade: false,
+        back: false,
+        visible: "editor.palette_open",
+        children: [
+          { widget: "input", text: "{editor.search_shown}", action: "editor.search:$text", style: { width: 300, margin: [0, 0, 10, 0] } },
+          {
+            widget: "row",
+            children: [
+              { widget: "button", class: "tab", text: "Procedural", action: "editor.group:procedural", active: "editor.group == procedural" },
+              { widget: "button", class: "tab", text: "Pods", action: "editor.group:pods", active: "editor.group == pods" },
+              { widget: "button", class: "tab", text: "Engines", action: "editor.group:engines", active: "editor.group == engines" },
+              { widget: "button", class: "tab", text: "Control", action: "editor.group:control", active: "editor.group == control" },
+            ],
+          },
+          {
+            widget: "column",
+            repeat: "editor.palette",
+            children: [
+              { widget: "menu_row", text: "{item.name}", meta: "{item.detail}", active: "item.held", action: "editor.add:{item.id}", drag: "palette:{item.id}" },
+            ],
+          },
+          { widget: "label", class: "menu_subtitle", text: "{editor.palette_more}", visible: "editor.palette_more" },
         ],
       },
       { id: "editor_staging", widget: "dock", class: "editor_staging" },
@@ -49,6 +94,18 @@
         children: [
           { widget: "button", class: "back editor_back", text: "‹ Back", action: "menu.back" },
           { widget: "button", class: "btn", text: "Vessels", action: "editor.list", active: "editor.list_open" },
+          { widget: "button", class: "btn", text: "Parts", action: "editor.parts", active: "editor.palette_open", visible: "editor.has_vessel" },
+          // What the pointer does to a picked part (osp_editor::moving).
+          {
+            widget: "row",
+            class: "choice editor_tools",
+            visible: "editor.has_parts",
+            children: [
+              { widget: "button", class: "choice_item", text: "Shape", action: "editor.tool:shape", active: "editor.tool == shape", tooltip: "Size it by the handles on it (1)" },
+              { widget: "button", class: "choice_item", text: "Move", action: "editor.tool:move", active: "editor.tool == move", tooltip: "Slide it by its arrows (2)" },
+              { widget: "button", class: "choice_item", text: "Turn", action: "editor.tool:turn", active: "editor.tool == turn", tooltip: "Turn it by its rings (3)" },
+            ],
+          },
         ],
       },
       {
@@ -60,7 +117,8 @@
             visible: "!editor.has_vessel",
             children: [
               { widget: "label", class: "menu_heading", text: "No vessel chosen" },
-              { widget: "label", class: "menu_subtitle", text: "Choose one from the Vessels list to see it here." },
+              { widget: "label", class: "menu_subtitle", text: "Choose one from the Vessels list, or build a new one." },
+              { widget: "button", class: "btn btn_wide", text: "New vessel", action: "editor.new" },
             ],
           },
           {
@@ -96,7 +154,7 @@
           },
           { widget: "spacer" },
           { widget: "label", class: "menu_warning editor_notice", text: "{editor.notice}", visible: "editor.notice" },
-          { widget: "label", class: "menu_subtitle editor_hint", text: "Drag to look around, middle drag or WASD, Q and E to move, wheel to zoom." },
+          { widget: "label", class: "menu_subtitle editor_hint", text: "{editor.hint}" },
           { widget: "button", class: "btn btn_primary btn_wide", text: "Launch", action: "editor.launch", visible: "editor.can_launch" },
           { widget: "button", class: "btn btn_off btn_wide", text: "Launch", action: "editor.launch", visible: "!editor.can_launch" },
         ],

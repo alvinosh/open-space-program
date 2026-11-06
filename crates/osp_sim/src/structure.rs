@@ -133,6 +133,7 @@ impl Tank {
                 tank_type: def.tank_type.clone(),
                 contents: def.propellants.clone(),
                 design_load: def.design_load,
+                utilization: None,
             })],
             nodes: Vec::new(),
             paint: Default::default(),

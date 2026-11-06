@@ -29,7 +29,7 @@ use osp_ui::{ActionState, LayoutVisibility, UiAction, UiData};
 use crate::{
     FrameSet,
     camera::CameraRig,
-    editor::{Editor, LastLaunch},
+    editing::{EditorStatus, LastLaunch},
     menu::Menu,
     sim::{Sim, SimRestarted, TimeWarp},
 };
@@ -479,7 +479,7 @@ impl Hold {
 }
 
 /// Why quicksaves cannot be made or loaded now, if they cannot: only in flight, in a game.
-fn not_quick(menu: &Menu, editor: &Editor, sim: &Sim) -> Option<&'static str> {
+fn not_quick(menu: &Menu, editor: &EditorStatus, sim: &Sim) -> Option<&'static str> {
     let tutorial = (sim.universe.tutorial.as_ref()).is_some_and(|tutorial| tutorial.is_running());
     if !menu.playing || menu.open || editor.is_open() {
         Some("")
@@ -496,7 +496,7 @@ fn save_actions(
     mut saves: ResMut<Saves>,
     mut sim: ResMut<Sim>,
     mut carry: Carry,
-    editor: Res<Editor>,
+    editor: Res<EditorStatus>,
     keys: Res<ActionState>,
     real: Res<Time<Real>>,
     mut hold: Local<Hold>,
@@ -570,7 +570,7 @@ fn save_actions(
 }
 
 /// Carry on from the newest quicksave of the game in progress, saying so over the flight.
-fn quickload(saves: &mut Saves, carry: &mut Carry, editor: &Editor, sim: &mut Sim, now: f64) {
+fn quickload(saves: &mut Saves, carry: &mut Carry, editor: &EditorStatus, sim: &mut Sim, now: f64) {
     match not_quick(&carry.menu, editor, sim) {
         Some("") => return,
         Some(why) => return saves.flash(format!("Cannot quickload {why}"), now),

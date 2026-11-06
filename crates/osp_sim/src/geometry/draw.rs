@@ -11,6 +11,12 @@
 //! fairing half its cut. A solid is drawn by its surface, a cell not at all (its walls
 //! are). Models are drawn from their own files, and their proxies and what is unseen
 //! inside a part not at all.
+//!
+//! The physics is built from these meshes (collision hulls, the air's voxels, solids'
+//! volumes) always at [`Detail::PHYSICS`]: [`Geometry::draw`], [`Geometry::outer`] and
+//! [`Geometry::solids`] take no other. A renderer picks its own detail for how parts look
+//! ([`Geometry::draw_with`], [`Geometry::draw_loft`]), and nothing it picks reaches the
+//! physics.
 
 use std::f64::consts::PI;
 
@@ -25,18 +31,38 @@ use super::{
     revolved::Revolved,
 };
 
-/// Most a tessellated curve strays from the curve, as a share of its size and at most in
-/// metres.
-const CURVE_SHARE: f64 = 2e-3;
-const CURVE_TOLERANCE: f64 = 2e-3;
-/// Most the drawing turns between neighbouring columns around a wall, rad.
-const ANGLE_STEP: f64 = 5.0 * PI / 180.0;
-/// Most a loft's section twists between neighbouring rings, rad.
-const TWIST_STEP: f64 = 2.0 * PI / 180.0;
-/// Turns sharper than this, along a curve or round a section, are drawn as creases.
+/// Turns sharper than this, along a curve or round a section, are drawn as creases. Part of
+/// the shape, not of how finely it is cut, so the same at every [`Detail`].
 const CREASE: f64 = 35.0 * PI / 180.0;
-/// Sides round a lattice member.
-const MEMBER_SIDES: usize = 8;
+
+/// How finely a part's shape is cut into triangles.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Detail {
+    /// Most a tessellated curve strays from the curve, as a share of its size and at most
+    /// in metres.
+    pub curve_share: f64,
+    pub curve_tolerance: f64,
+    /// Most the mesh turns between neighbouring columns round a wall of revolution, rad.
+    pub angle_step: f64,
+    /// Most a loft's section twists between neighbouring rings, rad.
+    pub twist_step: f64,
+    /// Sides round a lattice member.
+    pub member_sides: usize,
+}
+
+impl Detail {
+    /// What the physics is built from: collision hulls, the air's voxels and solids' volumes.
+    /// Fixed, and never changed for looks: change it and vessels collide, fly and weigh
+    /// differently (run `cargo smoke` before and after). How parts look is up to the renderer,
+    /// at a detail of its own.
+    pub const PHYSICS: Detail = Detail {
+        curve_share: 2e-3,
+        curve_tolerance: 2e-3,
+        angle_step: 5.0 * PI / 180.0,
+        twist_step: 2.0 * PI / 180.0,
+        member_sides: 8,
+    };
+}
 
 /// A triangle mesh, its vertices each with a normal, surface coordinates (m) and a
 /// tangent along `u` (`w` the handedness of tangent, bitangent along `v` and normal).
@@ -126,31 +152,44 @@ impl DrawMesh {
 }
 
 impl Geometry {
-    /// Meshes for each piece to draw: walls `thickness(element)` thick, lattice members
-    /// `member` metres across.
+    /// Meshes for each piece, at the physics' detail (what collision is built from): walls
+    /// `thickness(element)` thick, lattice members `member` metres across.
     pub fn draw(&self, thickness: impl Fn(&str) -> f64, member: f64) -> Vec<DrawPiece> {
-        self.pieces(thickness, member, false)
+        self.pieces(thickness, member, false, Detail::PHYSICS)
     }
 
-    /// The surfaces the air meets, as [`Geometry::draw`] draws them, with the proxies
-    /// standing in for models.
+    /// As [`Geometry::draw`], but at `detail`: how a renderer draws parts.
+    pub fn draw_with(
+        &self,
+        detail: Detail,
+        thickness: impl Fn(&str) -> f64,
+        member: f64,
+    ) -> Vec<DrawPiece> {
+        self.pieces(thickness, member, false, detail)
+    }
+
+    /// The surfaces the air meets, as [`Geometry::draw`] draws them (at the physics' detail),
+    /// with the proxies standing in for models.
     pub fn outer(&self, thickness: impl Fn(&str) -> f64, member: f64) -> Vec<DrawPiece> {
-        self.pieces(thickness, member, true)
+        self.pieces(thickness, member, true, Detail::PHYSICS)
     }
 
-    /// The surfaces of what fills space, the proxies standing in for models: cells, solids and
-    /// lofts. A wall and a lattice fill none, so things can stand in a shell.
+    /// The surfaces of what fills space, at the physics' detail, the proxies standing in for
+    /// models: cells, solids and lofts. A wall and a lattice fill none, so things can stand in
+    /// a shell.
     pub fn solids(&self) -> Vec<DrawMesh> {
+        let detail = Detail::PHYSICS;
         let mut out = Vec::new();
         for sub in self.subparts.iter().filter(|s| !s.unseen) {
             match &sub.kind {
                 Kind::Revolved(r) => out.extend(
                     (r.regions().iter())
-                        .map(|region| solid_mesh(&region.boundary, r))
+                        .map(|region| solid_mesh(&region.boundary, r, detail))
                         .map(|mesh| mesh.placed(sub.position, sub.rotation)),
                 ),
                 Kind::Lofted(l) => {
-                    out.push(loft_mesh(l, [0.0, 1.0], None).placed(sub.position, sub.rotation));
+                    let mesh = loft_mesh(l, [0.0, 1.0], None, detail);
+                    out.push(mesh.placed(sub.position, sub.rotation));
                 }
                 Kind::Lattice(_) | Kind::Model(_) => {}
             }
@@ -163,6 +202,7 @@ impl Geometry {
         thickness: impl Fn(&str) -> f64,
         member: f64,
         proxies: bool,
+        detail: Detail,
     ) -> Vec<DrawPiece> {
         let mut out = Vec::new();
         for sub in (self.subparts.iter()).filter(|s| (proxies || !s.proxy) && !s.unseen) {
@@ -182,22 +222,28 @@ impl Geometry {
                     for wall in r.walls() {
                         let element = sub.named(&wall.name);
                         let thick = thickness(&element).max(0.0);
-                        push(element, wall_mesh(&wall.curve, from, to, thick));
+                        push(element, wall_mesh(&wall.curve, from, to, thick, detail));
                     }
                     for region in r.regions() {
                         if region.fill == super::Fill::Solid {
                             push(
                                 sub.named(&region.name),
-                                front(solid_mesh(&region.boundary, r)),
+                                front(solid_mesh(&region.boundary, r, detail)),
                             );
                         }
                     }
                 }
                 Kind::Lofted(l) => {
-                    push(sub.named(&l.name), front(loft_mesh(l, [0.0, 1.0], None)));
+                    push(
+                        sub.named(&l.name),
+                        front(loft_mesh(l, [0.0, 1.0], None, detail)),
+                    );
                 }
                 Kind::Lattice(l) => {
-                    push(sub.named(&l.name), front(lattice_mesh(l, member / 2.0)));
+                    push(
+                        sub.named(&l.name),
+                        front(lattice_mesh(l, member / 2.0, detail)),
+                    );
                 }
                 Kind::Model(_) => {}
             }
@@ -207,13 +253,20 @@ impl Geometry {
 
     /// The loft named `name` between shares `span` of its length and shares `chord` of its
     /// section's extent along x, in the part's frame: the fixed part of a wing and its
-    /// control surface. `None` without such a loft.
-    pub fn draw_loft(&self, name: &str, span: [f64; 2], chord: [f64; 2]) -> Option<DrawMesh> {
+    /// control surface, drawn at `detail`. `None` without such a loft.
+    pub fn draw_loft(
+        &self,
+        detail: Detail,
+        name: &str,
+        span: [f64; 2],
+        chord: [f64; 2],
+    ) -> Option<DrawMesh> {
         let (sub, loft) = self.subparts.iter().find_map(|s| match &s.kind {
             Kind::Lofted(l) if s.named(&l.name) == name => Some((s, l)),
             _ => None,
         })?;
-        Some(loft_mesh(loft, span, Some(chord)).placed(sub.position, sub.rotation))
+        let mesh = loft_mesh(loft, span, Some(chord), detail);
+        Some(mesh.placed(sub.position, sub.rotation))
     }
 }
 
@@ -251,8 +304,8 @@ struct Along {
 
 /// `curve` as points along it, a point twice where it turns a corner (once for each way
 /// it runs).
-fn along(curve: &Curve) -> Vec<Along> {
-    let tolerance = (CURVE_SHARE * curve.size()).min(CURVE_TOLERANCE);
+fn along(curve: &Curve, detail: Detail) -> Vec<Along> {
+    let tolerance = (detail.curve_share * curve.size()).min(detail.curve_tolerance);
     let points = curve.tessellate(tolerance);
     let segments = curve.segments();
     let direction = |segment: usize, t: f64| {
@@ -290,11 +343,11 @@ fn along(curve: &Curve) -> Vec<Along> {
     out
 }
 
-/// Columns round a span from `from` to `to`, rad: their angles.
-fn columns(from: f64, to: f64) -> Vec<f64> {
+/// Columns round a span from `from` to `to`, rad, at most `step` apart: their angles.
+fn columns(from: f64, to: f64, step: f64) -> Vec<f64> {
     let span = to - from;
     let full = (span - 2.0 * PI).abs() < 1e-9;
-    let steps = (span / ANGLE_STEP).ceil().max(if full { 3.0 } else { 1.0 }) as usize;
+    let steps = (span / step).ceil().max(if full { 3.0 } else { 1.0 }) as usize;
     (0..=steps)
         .map(|j| from + span * j as f64 / steps as f64)
         .collect()
@@ -333,9 +386,15 @@ fn quads(mesh: &mut DrawMesh, grid: &[Vec<u32>], flip: bool) {
 /// A wall along `curve` revolved from `from` to `to`: its front out of the right of the
 /// way the curve runs, and its back `thick` behind with the edges between them where it is
 /// open.
-fn wall_mesh(curve: &Curve, from: f64, to: f64, thick: f64) -> (DrawMesh, DrawMesh) {
-    let points = along(curve);
-    let angles = columns(from, to);
+fn wall_mesh(
+    curve: &Curve,
+    from: f64,
+    to: f64,
+    thick: f64,
+    detail: Detail,
+) -> (DrawMesh, DrawMesh) {
+    let points = along(curve, detail);
+    let angles = columns(from, to, detail.angle_step);
     let (mut front_mesh, mut mesh) = (DrawMesh::default(), DrawMesh::default());
     let near_axis = 1e-9 * curve.size();
     // The front on the curve, the back behind it.
@@ -415,9 +474,9 @@ fn wall_mesh(curve: &Curve, from: f64, to: f64, thick: f64) -> (DrawMesh, DrawMe
 
 /// The surface of a solid region of `r`: its boundary revolved, and its flat sides over
 /// part of a turn.
-fn solid_mesh(boundary: &Curve, r: &Revolved) -> DrawMesh {
+fn solid_mesh(boundary: &Curve, r: &Revolved, detail: Detail) -> DrawMesh {
     let (from, to) = r.span();
-    let mut points = along(boundary);
+    let mut points = along(boundary, detail);
     let outline: Vec<DVec2> = points.iter().map(|p| p.point).collect();
     // Faces out of the right of the way it runs, so run it counter-clockwise.
     if signed_area(&outline) < 0.0 {
@@ -428,7 +487,7 @@ fn solid_mesh(boundary: &Curve, r: &Revolved) -> DrawMesh {
             p.length = total - p.length;
         }
     }
-    let angles = columns(from, to);
+    let angles = columns(from, to, detail.angle_step);
     let mut mesh = DrawMesh::default();
     let grid: Vec<Vec<u32>> = points
         .iter()
@@ -508,7 +567,7 @@ fn clip(polygon: &[DVec2], lo: f64, hi: f64) -> Vec<DVec2> {
 /// A loft between shares `span` of its length, its section cut to shares `chord` of its
 /// extent along x if given: the skin through rings at each station (and between them
 /// where it twists), sharp at the section's corners, and flat ends.
-fn loft_mesh(loft: &Lofted, span: [f64; 2], chord: Option<[f64; 2]>) -> DrawMesh {
+fn loft_mesh(loft: &Lofted, span: [f64; 2], chord: Option<[f64; 2]>, detail: Detail) -> DrawMesh {
     let stations = loft.stations();
     let (z0, z1) = (stations[0].z, stations[stations.len() - 1].z);
     let (from, to) = (z0 + (z1 - z0) * span[0], z0 + (z1 - z0) * span[1]);
@@ -533,7 +592,9 @@ fn loft_mesh(loft: &Lofted, span: [f64; 2], chord: Option<[f64; 2]>) -> DrawMesh
     let mut rings = Vec::new();
     for w in heights.windows(2) {
         let (a, b) = (loft.at(w[0]), loft.at(w[1]));
-        let steps = ((b.twist - a.twist).abs() / TWIST_STEP).ceil().max(1.0) as usize;
+        let steps = ((b.twist - a.twist).abs() / detail.twist_step)
+            .ceil()
+            .max(1.0) as usize;
         if rings.is_empty() {
             rings.push(a);
         }
@@ -646,7 +707,8 @@ fn loft_mesh(loft: &Lofted, span: [f64; 2], chord: Option<[f64; 2]>) -> DrawMesh
 }
 
 /// Each member of `l` as a tube `radius` round.
-fn lattice_mesh(l: &Lattice, radius: f64) -> DrawMesh {
+fn lattice_mesh(l: &Lattice, radius: f64, detail: Detail) -> DrawMesh {
+    let sides = detail.member_sides.max(3);
     let mut mesh = DrawMesh::default();
     if radius <= 0.0 {
         return mesh;
@@ -661,9 +723,9 @@ fn lattice_mesh(l: &Lattice, radius: f64) -> DrawMesh {
         let grid: Vec<Vec<u32>> = [0.0, 1.0]
             .iter()
             .map(|&t| {
-                (0..=MEMBER_SIDES)
+                (0..=sides)
                     .map(|k| {
-                        let a = 2.0 * PI * k as f64 / MEMBER_SIDES as f64;
+                        let a = 2.0 * PI * k as f64 / sides as f64;
                         let out = side * a.cos() + other * a.sin();
                         let point = p + (q - p) * t + out * radius;
                         let tangent = other * a.cos() - side * a.sin();
@@ -711,6 +773,78 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn a_coarse_drawing_is_blocky_but_whole() {
+        let coarse_detail = Detail {
+            curve_share: 0.04,
+            curve_tolerance: 0.3,
+            angle_step: PI / 6.0,
+            twist_step: PI / 18.0,
+            member_sides: 4,
+        };
+        for text in [
+            "{ cylinder_tank: { diameter: 3, length: 9, aft_skirt: 2 } }",
+            "{ truss: { bottom_diameter: 2, length: 1, around: 6 } }",
+        ] {
+            let g = shape(text);
+            let draw = |detail| g.draw_with(detail, |_| 0.004, 0.05);
+            let (coarse, fine) = (draw(coarse_detail), draw(Detail::PHYSICS));
+            assert_eq!(coarse.len(), fine.len());
+            for piece in &coarse {
+                assert_well_formed(&piece.mesh);
+                assert_well_formed(&piece.back);
+            }
+            let (coarse, fine) = (triangles(&coarse), triangles(&fine));
+            assert!(coarse * 2 <= fine, "{text}: {coarse} against {fine}");
+        }
+    }
+
+    fn triangles(pieces: &[DrawPiece]) -> usize {
+        (pieces.iter())
+            .map(|p| (p.mesh.indices.len() + p.back.indices.len()) / 3)
+            .sum()
+    }
+
+    /// Collision hulls, the air's voxels and solids' volumes are cut from these meshes. A
+    /// failure here means the physics' geometry changed: if that was meant, run `cargo smoke`
+    /// before and after and update the numbers; if it was for looks, draw at a renderer's own
+    /// detail (`draw_with`) instead.
+    #[test]
+    fn what_the_physics_is_built_from_is_pinned() {
+        assert_eq!(
+            Detail::PHYSICS,
+            Detail {
+                curve_share: 2e-3,
+                curve_tolerance: 2e-3,
+                angle_step: 5.0 * PI / 180.0,
+                twist_step: 2.0 * PI / 180.0,
+                member_sides: 8,
+            }
+        );
+        let solid_triangles =
+            |g: &Geometry| -> usize { (g.solids().iter()).map(|m| m.indices.len() / 3).sum() };
+        let counts: Vec<(usize, usize, usize)> = [
+            "{ cylinder_tank: { diameter: 3, length: 9, aft_skirt: 2 } }",
+            "{ wing: { root_chord: 2, tip_chord: 1, span: 4 } }",
+            "{ truss: { bottom_diameter: 2, length: 1, around: 6 } }",
+        ]
+        .iter()
+        .map(|text| {
+            let g = shape(text);
+            let drawn = g.draw(|_| 0.004, 0.05);
+            assert_eq!(drawn, g.draw_with(Detail::PHYSICS, |_| 0.004, 0.05));
+            let outer = triangles(&g.outer(|_| 0.004, 0.05));
+            (triangles(&drawn), outer, solid_triangles(&g))
+        })
+        .collect();
+        assert_eq!(counts, PINNED_COUNTS);
+    }
+
+    /// Triangles drawn, met by the air and filling space, for the shapes in
+    /// [`what_the_physics_is_built_from_is_pinned`].
+    const PINNED_COUNTS: [(usize, usize, usize); 3] =
+        [(14400, 14400, 6624), (252, 252, 252), (480, 480, 0)];
 
     #[test]
     fn a_tank_draws_its_walls_both_sides() {
@@ -818,8 +952,8 @@ mod tests {
     #[test]
     fn a_wing_parts_at_its_hinge() {
         let g = shape("{ wing: { root_chord: 2, tip_chord: 1, span: 4 } }");
-        let fixed = g.draw_loft("wing", [0.2, 0.8], [0.0, 0.75]).unwrap();
-        let flap = g.draw_loft("wing", [0.2, 0.8], [0.75, 1.0]).unwrap();
+        let part = |chord| g.draw_loft(Detail::PHYSICS, "wing", [0.2, 0.8], chord);
+        let (fixed, flap) = (part([0.0, 0.75]).unwrap(), part([0.75, 1.0]).unwrap());
         assert_well_formed(&fixed);
         assert_well_formed(&flap);
         // The wing's chord runs back down −Z from its leading edge: the flap is the aft

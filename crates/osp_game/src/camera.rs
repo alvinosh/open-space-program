@@ -441,7 +441,7 @@ fn apply_render_scale(
     }
 }
 
-pub(crate) fn update_camera(
+pub fn update_camera(
     mut rig: ResMut<CameraRig>,
     buttons: Res<ButtonInput<MouseButton>>,
     motion: Res<AccumulatedMouseMotion>,
