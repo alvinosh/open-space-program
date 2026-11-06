@@ -2,7 +2,7 @@
   "id": "T080",
   "title": "Warp to any point on the orbit; warp up to 100 years per second",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "orbit",
   "size": "S",
   "parent": "T061",
@@ -11,8 +11,8 @@
     "Early feature checklist (since removed), Phase 1"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
-  "done": null,
+  "updated": "2026-11-06",
+  "done": "2026-11-06",
   "milestone": "M4",
   "priority": 72
 }

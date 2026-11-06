@@ -1387,15 +1387,21 @@ impl Propulsion {
     }
 
     /// Move the systems on `dt` seconds under `environment`, and take what they burned out of
-    /// the tanks their parts can reach.
-    pub fn step_systems(&mut self, environment: &Environment, dt: f64) {
-        self.systems.step(environment, dt);
+    /// the tanks their parts can reach. `supplied`, the vessel is on its ground support at a
+    /// launch site, which powers it and feeds what its systems burn: nothing comes out of its
+    /// stores or its tanks.
+    pub fn step_systems(&mut self, environment: &Environment, dt: f64, supplied: bool) {
+        self.systems.step(environment, dt, supplied);
         for part in self.systems.consumers() {
             for k in 0..self.systems.on(part).len() {
                 if !self.systems.on(part)[k].consumes() {
                     continue;
                 }
                 let burned = self.systems.on_mut(part)[k].take_consumption();
+                if supplied {
+                    self.systems.on_mut(part)[k].fed_for(true, dt);
+                    continue;
+                }
                 // What it can go without is taken if it is there, and does not matter if not.
                 let (spare, needed): (Vec<_>, Vec<_>) = burned
                     .into_iter()
@@ -1410,9 +1416,14 @@ impl Propulsion {
     }
 
     /// Seconds until a system needs attention: it says so, or its tanks will run dry at the
-    /// rate it burns them.
-    pub fn next_system_event(&self, environment: &Environment) -> Option<f64> {
-        let dry = self.systems.consumers().into_iter().flat_map(|part| {
+    /// rate it burns them. Nothing runs dry while `supplied`.
+    pub fn next_system_event(&self, environment: &Environment, supplied: bool) -> Option<f64> {
+        let consumers = if supplied {
+            Vec::new()
+        } else {
+            self.systems.consumers()
+        };
+        let dry = consumers.into_iter().flat_map(|part| {
             let systems = self.systems.on(part);
             let rates: Vec<(&str, f64)> = (systems.iter())
                 .flat_map(|s| {
@@ -1427,7 +1438,7 @@ impl Propulsion {
             })
         });
         self.systems
-            .next_event(environment)
+            .next_event(environment, supplied)
             .into_iter()
             .chain(dry)
             .reduce(f64::min)

@@ -8,6 +8,7 @@
 //! | `menu_row` | `text`, `action`, `meta`, `meta_class`, `detail`, `detail_if`, `detail_class` | A full-width row to click: its text, a value at the right and a line under it, shown while `detail_if` holds if there is one |
 //! | `setting_row` | `label`, `children` | One line of a settings page: a label and what sets it |
 //! | `setting_choice` | `label`, `key`, `action`, `options` | A `setting_row` with a `choice`, each option firing `<action>:<value>` and lit while `<key> == <value>` |
+//! | `setting_slider` | `label`, `key`, `action`, `min`, `max`, `step`, `unit` | A `setting_row` with a `slider` firing `<action>:<value>` as it is dragged, and `<key>` and `unit` beside it (`%`, say) |
 //!
 //! An option is a string (shown with a capital), a number, or `{ value, label }`.
 
@@ -62,6 +63,7 @@ pub fn expand(mut def: NodeDef, problems: &mut Vec<String>) -> NodeDef {
         "menu_row" => menu_row(def),
         "setting_row" => setting_row(def),
         "setting_choice" => setting_choice(def, problems),
+        "setting_slider" => setting_slider(def, problems),
         _ => def,
     }
 }
@@ -192,6 +194,30 @@ fn setting_choice(mut def: NodeDef, problems: &mut Vec<String>) -> NodeDef {
     setting_row(def)
 }
 
+fn setting_slider(mut def: NodeDef, problems: &mut Vec<String>) -> NodeDef {
+    let key = take_text(&mut def, "key");
+    let unit = take_text(&mut def, "unit").unwrap_or_default();
+    let name = (def.extra.get("label").and_then(Value::as_str)).unwrap_or("?");
+    let (Some(key), Some(action)) = (key, def.action.take()) else {
+        problems.push(format!("setting `{name}` needs `key` and `action`"));
+        return setting_row(def);
+    };
+    let mut slider = NodeDef {
+        value: Some(key.clone()),
+        action: Some(action),
+        ..node("slider", "")
+    };
+    for bound in ["min", "max", "step"] {
+        if let Some(value) = def.extra.remove(bound) {
+            slider.extra.insert(bound.into(), value);
+        }
+    }
+    let value = label("slider_value", format!("{{{key}}}{unit}"));
+    let control = with_children(node("row", "slider_row"), vec![slider, value]);
+    def.children = vec![control];
+    setting_row(def)
+}
+
 /// An option's value and what it shows.
 fn parse_option(option: &Value) -> Option<(String, String)> {
     match option {
@@ -232,7 +258,7 @@ mod tests {
     /// What can be clicked in a menu.
     const CONTROLS: [&str; 5] = ["back", "menu_row", "btn", "choice_item", "tab"];
     /// The classes the components and controls are made of.
-    const MENU_CLASSES: [&str; 22] = [
+    const MENU_CLASSES: [&str; 29] = [
         "menu_shade",
         "menu_rail",
         "menu_body",
@@ -247,6 +273,7 @@ mod tests {
         "menu_tabs",
         "back",
         "menu_row",
+        "menu_row_current",
         "menu_row_head",
         "menu_row_text",
         "menu_row_meta",
@@ -255,6 +282,12 @@ mod tests {
         "setting_label",
         "choice_item",
         "tab",
+        "slider_row",
+        "slider",
+        "slider_track",
+        "slider_fill",
+        "slider_thumb",
+        "slider_value",
     ];
 
     /// What a menu layout does against the rules in T185.
@@ -471,6 +504,30 @@ mod tests {
     }
 
     #[test]
+    fn a_setting_slider_drags_a_value_and_shows_it() {
+        let row = built(json!({
+            "widget": "setting_slider",
+            "label": "Volume",
+            "key": "audio.master",
+            "action": "audio.set:master",
+            "min": 0, "max": 100, "step": 5,
+            "unit": "%",
+        }));
+        assert_eq!(row.widget, "row");
+        assert_eq!(row.action, None);
+        assert!(row.extra.get("min").is_none(), "{:?}", row.extra);
+        assert_eq!(row.children[0].text.as_deref(), Some("Volume"));
+        let control = &row.children[1];
+        assert_eq!(control.class, "slider_row");
+        let slider = &control.children[0];
+        assert_eq!(slider.widget, "slider");
+        assert_eq!(slider.value.as_deref(), Some("audio.master"));
+        assert_eq!(slider.action.as_deref(), Some("audio.set:master"));
+        assert_eq!(slider.extra.get("step"), Some(&json!(5)));
+        assert_eq!(control.children[1].text.as_deref(), Some("{audio.master}%"));
+    }
+
+    #[test]
     fn a_setting_choice_missing_something_is_reported() {
         let mut problems = Vec::new();
         let node = serde_json::from_value(json!({ "widget": "setting_choice", "label": "Bloom" }));
@@ -493,6 +550,7 @@ mod tests {
                 { "widget": "menu_row", "text": "Row", "meta": "12", "detail": "Line", "action": "a" },
                 { "widget": "menu_divider" },
                 { "widget": "setting_choice", "label": "Setting", "key": "k", "action": "a", "options": ["one", "two"] },
+                { "widget": "setting_slider", "label": "Setting", "key": "k", "action": "a", "unit": "%" },
                 { "widget": "setting_row", "label": "Setting", "children": [
                     { "widget": "button", "class": "btn", "text": "Plain", "action": "a" },
                 ]},

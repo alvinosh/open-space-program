@@ -2,9 +2,9 @@
 //!
 //! Any widget name not in the registry is a plain container: `column`, `row`, `panel`,
 //! `spacer` and friends differ only by their default theme class. Built-ins with behaviour:
-//! `label`, `button`, `bar`, `gauge` (an arc), `window`, `dock` (a container that lets clicks
-//! through to the scene; with an id, layouts with that `dock` stack into it) and `image` (a
-//! picture from a mod, PNG or SVG: `image: "icons/engine.svg"`). Rust code can register
+//! `label`, `button`, `bar`, `gauge` (an arc), `slider` (a value dragged along a track), `window`,
+//! `dock` (a container that lets clicks through to the scene; with an id, layouts with that `dock`
+//! stack into it) and `image` (a picture from a mod, PNG or SVG: `image: "icons/engine.svg"`). Rust code can register
 //! more widgets with [`WidgetRegistry::register`]; data-only mods compose these.
 //!
 //! A `window` has a title bar to drag it by and a close button; a popup's window also has
@@ -22,8 +22,9 @@ use crate::{
     format::Template,
     layout::NodeDef,
     runtime::{
-        ActionSource, ActiveText, ActiveTint, BoundActive, BoundBar, BoundGauge, BoundText, Dock,
-        UiImage, Uppercase, WindowDrag, click_action, drag_window, insert_state_colors, spawn_box,
+        ActionSource, ActiveText, ActiveTint, BoundActive, BoundBar, BoundGauge, BoundText,
+        BoundThumb, Dock, Slider, UiImage, Uppercase, WindowDrag, click_action, drag_window,
+        insert_state_colors, slide_drag, slide_press, spawn_box,
     },
     style::{StyleDef, ThemeDef},
 };
@@ -98,6 +99,7 @@ impl Default for WidgetRegistry {
         registry.register("window", window);
         registry.register("dock", dock);
         registry.register("image", image);
+        registry.register("slider", slider);
         registry
     }
 }
@@ -197,6 +199,60 @@ fn bar(ctx: &mut WidgetContext) -> Entity {
     if let Some(bound) = bound {
         e.insert(bound);
     }
+    ctx.entity
+}
+
+/// A value set by pressing or dragging along a track: `value` is the data key it shows, between
+/// `min` and `max` (default 0 and 100) in steps of `step` (default 1), and each step it is moved to
+/// fires `<action>:<value>`. Classes: `slider` (the node, what takes the pointer), `slider_track`,
+/// `slider_fill` and `slider_thumb`.
+fn slider(ctx: &mut WidgetContext) -> Entity {
+    let number = |key: &str, default: f64| {
+        let value = ctx.def.extra.get(key).and_then(|v| v.as_f64());
+        value.unwrap_or(default)
+    };
+    let (min, max) = (number("min", 0.0), number("max", 100.0));
+    let step = number("step", 1.0);
+    let key = ctx.def.value.clone().unwrap_or_default();
+    let (track, _) = ctx.child(ctx.entity, "slider_track", "");
+    let (fill, _) = ctx.child(track, "slider_fill", "");
+    let (thumb, _) = ctx.child(ctx.entity, "slider_thumb", "");
+    ctx.commands.entity(track).insert(Pickable::IGNORE);
+    let mut e = ctx.commands.entity(fill);
+    e.entry::<Node>().and_modify(|mut node| {
+        node.position_type = PositionType::Absolute;
+        node.width = Val::Percent(0.0);
+        node.height = Val::Percent(100.0);
+    });
+    e.insert((
+        Pickable::IGNORE,
+        BoundBar {
+            key: key.clone(),
+            min,
+            max,
+            vertical: false,
+            color: None,
+        },
+    ));
+    let mut e = ctx.commands.entity(thumb);
+    e.entry::<Node>()
+        .and_modify(|mut node| node.position_type = PositionType::Absolute);
+    e.insert((Pickable::IGNORE, BoundThumb { key, min, max }));
+    let action = ctx.def.action.as_deref().unwrap_or_default();
+    ctx.commands
+        .entity(ctx.entity)
+        .insert((
+            Slider {
+                action: Template::parse(action),
+                min,
+                max,
+                step,
+                last: None,
+            },
+            Hovered::default(),
+        ))
+        .observe(slide_press)
+        .observe(slide_drag);
     ctx.entity
 }
 

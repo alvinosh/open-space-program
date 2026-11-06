@@ -1,6 +1,21 @@
 # T176: Decide how the project earns
 
-Decided 2026-11-01: the game stays free; there is no per-build price. Write the plan down and keep to it.
+Changed 2026-11-06. The user: "it will either cost like $20 or it will be a subscription based system for multiplayer". So a game paid for by donations alone, as below, is no longer the plan. One of two:
+
+- A one-off price of about $20.
+- A subscription for multiplayer.
+
+Which of the two is still open. What follows is the plan of 2026-11-01, kept until that choice is made: the supporters and the managed servers fit the subscription, not the $20.
+
+## Before either
+
+- `mods/realism` holds records from CC BY-NC (and -ND / -SA) sources and `release.yml` copies `mods/` into every release (T177). A paid game, or paid servers, cannot ship them without written permission.
+- The engine recordings in `assets/core/sounds` are by newlocknew on Freesound, CC BY-NC 4.0 (`CREDITS.md`), so they have the same problem in a paid build.
+- The website and `website/donate.html` say the game is free to download and play.
+
+## The plan of 2026-11-01
+
+Decided 2026-11-01: the game stays free; there is no per-build price.
 
 ## The plan
 
@@ -22,7 +37,7 @@ Decided 2026-11-01: the game stays free; there is no per-build price. Write the 
 
 ## Done when
 
-- This plan is accepted or changed, and the donate page and the website roadmap say the same thing.
+- One of the two is chosen, and the website says the same thing.
 
 ## Where it comes from
 

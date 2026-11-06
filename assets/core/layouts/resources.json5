@@ -26,6 +26,7 @@
           { widget: "label", class: "caption", text: "POWER" },
           { widget: "label", visible: "vessel.power_draining", text: "{vessel.power_left|duration} left" },
           { widget: "label", visible: "vessel.power_steady", text: "Not running down" },
+          { widget: "label", visible: "vessel.power_supplied", text: "On ground power" },
           { widget: "label", class: "warning", visible: "vessel.power_flat", text: "Batteries flat" },
           { widget: "label", class: "warning", visible: "vessel.power_shedding", text: "Loads off" },
           { widget: "label", class: "warning", visible: "vessel.power_out", text: "Out of power" },

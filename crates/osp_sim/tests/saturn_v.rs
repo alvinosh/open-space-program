@@ -6,10 +6,11 @@ use std::path::Path;
 
 use osp_sim::{
     DVec3,
-    data::{BodyDef, CraftDef, LaunchSiteDef, SystemDef},
+    data::{BodyDef, CraftDef, LaunchSiteDef, OrbitStartDef, PartCatalog, SystemDef},
     propulsion::Propulsion,
     system::SolarSystem,
     time::{SimTime, Ticks},
+    universe::Universe,
     vessel::Vessel,
 };
 
@@ -320,7 +321,8 @@ struct Stack {
     time: SimTime,
 }
 
-fn on_the_pad() -> Stack {
+/// The Saturn V's record, what it is made of, the Solar System and the Cape.
+fn saturn_v() -> (CraftDef, PartCatalog, SolarSystem, LaunchSiteDef) {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let content = osp_mods::load(&root.join("assets/core"), Some(&root.join("mods")));
     let registry = &content.registry;
@@ -331,15 +333,70 @@ fn on_the_pad() -> Stack {
     })
     .unwrap();
     let sites = registry.all::<LaunchSiteDef>("launch_sites", &mut diagnostics);
-    let site = sites.iter().find(|s| s.id == "cape_canaveral").unwrap();
+    let site = sites
+        .into_iter()
+        .find(|s| s.id == "cape_canaveral")
+        .unwrap();
     let def: CraftDef = registry.get("craft", "saturn_v").unwrap();
+    (def, catalog, system, site)
+}
+
+fn on_the_pad() -> Stack {
+    let (def, catalog, system, site) = saturn_v();
     let time = SimTime::J2000;
-    let vessel = Vessel::on_launch_site(&def, &catalog, &system, site, time).unwrap();
+    let vessel = Vessel::on_launch_site(&def, &catalog, &system, &site, time).unwrap();
     Stack {
         system,
         vessel,
         time,
     }
+}
+
+/// What its batteries hold, kJ, and what it weighs, kg.
+fn stores(vessel: &Vessel) -> (f64, f64) {
+    let charge = (vessel.propulsion.systems.stores()).map(|(_, held, _)| held);
+    (charge.sum(), vessel.propulsion.mass())
+}
+
+/// A day on the pad runs nothing down: the pad powers it and feeds its fuel cells and its crew, and
+/// time warp does not stop for a battery going flat. The same stack in orbit draws on its own.
+#[test]
+fn the_pad_keeps_it_topped_up() {
+    let stack = on_the_pad();
+    assert!(stack.vessel.on_ground_support());
+    let before = stores(&stack.vessel);
+    let start = stack.time;
+    let mut pad = Universe::new(stack.system, vec![stack.vessel], start);
+    let outcome = pad.advance_rails(start.add_seconds(86_400.0));
+    assert!(!outcome.interrupted, "{:?}", outcome.events);
+    assert_eq!(pad.time(), start.add_seconds(86_400.0));
+    let vessel = &pad.vessels[0];
+    assert_eq!(stores(vessel), before);
+    let power = vessel.power_state(&pad.system, pad.time());
+    assert!(power.supplied && power.runs_out_in.is_none() && !power.browned_out);
+
+    let (def, catalog, system, _) = saturn_v();
+    let low = OrbitStartDef {
+        body: "Earth".into(),
+        periapsis_altitude: 190e3,
+        apoapsis_altitude: 190e3,
+        inclination: 32.5,
+        longitude_of_ascending_node: 0.0,
+        plane: None,
+        argument_of_periapsis: 0.0,
+        mean_anomaly: 0.0,
+        spin: [0.0; 3],
+    };
+    let flying = Vessel::in_orbit(&def, &catalog, &system, &low, start).unwrap();
+    assert!(!flying.on_ground_support());
+    let before = stores(&flying);
+    let mut orbit = Universe::new(system, vec![flying], start);
+    orbit.advance_rails(start.add_seconds(3_600.0));
+    let (charge, mass) = stores(&orbit.vessels[0]);
+    assert!(
+        charge < before.0 || mass < before.1,
+        "nothing drawn in orbit: {before:?}"
+    );
 }
 
 impl Stack {

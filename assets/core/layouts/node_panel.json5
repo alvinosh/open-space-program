@@ -42,6 +42,7 @@
           { widget: "button", class: "step_button nowrap", text: "+1 orbit", action: "plan.orbit:1" },
           { widget: "spacer" },
           { widget: "button", class: "step_button nowrap", text: "Warp", action: "warp.to:burn", visible: "burn.is_next", tooltip: "Warp to the burn" },
+          { widget: "button", class: "step_button nowrap", text: "Alarm", action: "plan.alarm", tooltip: "An alarm just before this burn starts, wherever it is moved" },
           { widget: "button", class: "step_button danger_button nowrap", text: "Delete", action: "plan.delete" },
         ],
       },

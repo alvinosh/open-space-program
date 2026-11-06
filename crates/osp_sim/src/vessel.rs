@@ -258,6 +258,10 @@ pub struct Vessel {
     browned_out: bool,
     /// When it left the ground.
     lifted_off: Option<SimTime>,
+    /// On its ground support: put on a pad or a runway and not moved since. The launch site powers
+    /// it and feeds its systems, so nothing runs down while it waits. Saves from before have none.
+    #[serde(default)]
+    ground_support: bool,
     /// Its link to the ground, as last worked out.
     link: Option<Link>,
     /// Burns sent up and not there yet, with when they arrive.
@@ -355,6 +359,7 @@ impl Vessel {
             near_surface: true,
             browned_out: false,
             lifted_off: None,
+            ground_support: false,
             link: None,
             uplink: Vec::new(),
             flight: FlightData {
@@ -440,6 +445,7 @@ impl Vessel {
             };
             vessel.wheels_down = true;
         }
+        vessel.ground_support = true;
         vessel.record(
             time,
             format!("{} on the pad at {}", vessel.name, site.display_name()),
@@ -502,6 +508,7 @@ impl Vessel {
         vessel.gear = contact.compression;
         vessel.brakes = true;
         vessel.propellant_settled = true;
+        vessel.ground_support = true;
         vessel.record(
             time,
             format!("{} on the runway at {}", vessel.name, site.display_name()),
@@ -718,6 +725,12 @@ impl Vessel {
     /// When it left the ground, if it has.
     pub fn lifted_off(&self) -> Option<SimTime> {
         self.lifted_off
+    }
+
+    /// Whether the launch site it stands at powers it and feeds its systems: it was put on a pad
+    /// or a runway and has not moved since. Rolling away or lifting off ends it for good.
+    pub fn on_ground_support(&self) -> bool {
+        self.ground_support && self.is_landed()
     }
 
     pub fn is_coasting(&self) -> bool {
@@ -1405,7 +1418,8 @@ impl Vessel {
     /// How its power stands at `time`.
     pub fn power_state(&self, system: &SolarSystem, time: SimTime) -> crate::systems::PowerState {
         let environment = self.system_environment(system, time);
-        self.propulsion.systems.power_state(&environment)
+        let supplied = self.on_ground_support();
+        self.propulsion.systems.power_state(&environment, supplied)
     }
 
     /// How it stands as seen from the part it is flown from: what the navball shows.
@@ -1495,10 +1509,15 @@ impl Vessel {
         self.propulsion.controlled(near_earth)
     }
 
-    /// Move the vessel's systems on `dt` seconds from `time`. A brownout takes SAS with it.
+    /// Move the vessel's systems on `dt` seconds from `time`. A brownout takes SAS with it. On
+    /// ground support nothing comes out of its stores or tanks.
     pub(crate) fn step_systems(&mut self, system: &SolarSystem, time: SimTime, dt: f64) {
+        if !self.is_landed() {
+            self.ground_support = false;
+        }
         let environment = self.system_environment(system, time);
-        self.propulsion.step_systems(&environment, dt);
+        let supplied = self.ground_support;
+        self.propulsion.step_systems(&environment, dt, supplied);
         let brownout = self.propulsion.systems.brownout();
         if brownout && !self.browned_out {
             self.record(time, "Brownout: no power for the vessel's control".into());
@@ -1521,7 +1540,7 @@ impl Vessel {
         let environment = self.system_environment(system, after);
         let own = self
             .propulsion
-            .next_system_event(&environment)
+            .next_system_event(&environment, self.on_ground_support())
             // A second or less away is now: whatever is left of a store or a tank is not
             // worth holding up time warp for.
             .filter(|&seconds| seconds > 1.0)

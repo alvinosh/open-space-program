@@ -5,6 +5,7 @@
 //! together: it loads content, steps the universe, renders it relative to a floating
 //! origin and publishes state for the UI.
 
+mod alarm_clock;
 mod alerts;
 mod atmosphere;
 mod camera;
@@ -191,6 +192,7 @@ fn main() -> AppExit {
             docking_view::DockingViewPlugin,
             manifest::ManifestPlugin,
             transfer_planner::TransferPlannerPlugin,
+            alarm_clock::AlarmClockPlugin,
         ))
         .add_plugins(diagnostics)
         .run()

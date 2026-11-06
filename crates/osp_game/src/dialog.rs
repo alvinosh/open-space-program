@@ -6,7 +6,8 @@
 //!
 //! - `ask.leave:<action>` does the action, asking first to save a game that would lose something:
 //!   Save and continue, Don't save, Cancel.
-//! - `ask.delete_save:<file>` and `ask.destroy:<vessel>` ask whether to. `ask.clear` and
+//! - `ask.delete_save:<file>` and `ask.destroy:<vessel>` ask whether to. `ask.overwrite:<file>`
+//!   saves over `file` at once if it is this game's save, and asks first if it is another's. `ask.clear` and
 //!   `ask.revert:<launch|hangar>` are the editor's (see `editor`), which knows what stands in the way
 //!   and what was launched.
 //!
@@ -183,6 +184,20 @@ fn dialog_actions(
                     "Delete",
                     format!("game.delete_save:{file}"),
                 ));
+            }
+            "ask.overwrite" => {
+                let Some(file) = action.arg() else { continue };
+                let then = format!("game.save_to:{file}");
+                if saves.current_file() == Some(file) {
+                    commands.write_message(UiAction(then));
+                } else {
+                    dialog.ask(Question::destructive(
+                        format!("Save over {}?", saves.name_of(file)),
+                        "The game it holds now will be lost.",
+                        "Save over it",
+                        then,
+                    ));
+                }
             }
             "ask.destroy" => {
                 let id = action.arg().and_then(|id| id.parse().ok()).map(VesselId);

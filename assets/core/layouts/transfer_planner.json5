@@ -1,7 +1,8 @@
 // Transfer planner (F4): delta-v to the target for every departure time (across) and
 // flight time (up). Blue is cheap, red is four times the cheapest, black is impossible
 // (through the planet). Click the plot to pick a transfer, then make its burn. On the ground, for a
-// target around the same body, Compute lists when to launch and which way to fly instead.
+// target around the same body, Compute lists when to launch and which way to fly instead. Alarm puts
+// a departure or a launch time on the alarm clock, which is where warping to it is done.
 {
   id: "transfer_planner",
   visible: false,
@@ -19,6 +20,7 @@
           { widget: "button", class: "step_button", text: "Compute", action: "transfer.compute" },
           { widget: "button", class: "step_button", text: "Cheapest", action: "transfer.best", visible: "transfer.has" },
           { widget: "button", class: "step_button", text: "Create burn", action: "transfer.create", visible: "transfer.picked" },
+          { widget: "button", class: "step_button", text: "Alarm", action: "transfer.alarm", visible: "transfer.picked", tooltip: "An alarm just before the departure burn starts" },
           { widget: "spacer" },
           { widget: "label", class: "warning", visible: "transfer.computing", text: "Computing..." },
           { widget: "label", class: "dim", visible: "transfer.has", text: "{transfer.kind}" },
@@ -54,7 +56,7 @@
                   { widget: "label", class: "dim", text: "Heading {item.heading}°, inclination {item.inclination}°", style: { margin: [0, 0, 0, 8] } },
                   { widget: "label", class: "warning", visible: "item.misses", text: "off by {item.miss}°", style: { margin: [0, 0, 0, 8] } },
                   { widget: "spacer" },
-                  { widget: "button", class: "step_button", text: "Warp", action: "transfer.warp_launch:{item.index}" },
+                  { widget: "button", class: "step_button", text: "Alarm", action: "transfer.alarm_launch:{item.index}", tooltip: "An alarm a minute before this launch time" },
                 ],
               },
             ],

@@ -1120,7 +1120,7 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 
 | Field | Meaning |
 | --- | --- |
-| `widget` | `column` (default), `row`, `panel`, `spacer`, `label`, `button`, `bar`, `gauge`, `window`, `dock`, `image`, `navball`. Unknown names act as containers. |
+| `widget` | `column` (default), `row`, `panel`, `spacer`, `label`, `button`, `bar`, `gauge`, `slider`, `window`, `dock`, `image`, `navball`. Unknown names act as containers. |
 | `image` | `image` only: a PNG or SVG relative to the mod root (`"icons/engine.svg"`), from the highest-priority mod that has it, tinted with the style's `color` (`active_color` while its `active` condition holds); size it with `width` and `height`. SVGs are rasterised at load, well above their size and with mipmaps, so they stay sharp at any size; draw what the theme should tint in white. Text in an SVG is not drawn: convert it to paths. |
 | `icon` | `window` only: an image shown before the title (class `window_icon`). |
 | `pin` | `window` only: a pin button in the title bar (classes `window_pin`, `window_pin_icon`). Popup windows have one unless `pin: false`. |
@@ -1133,8 +1133,9 @@ The UI is built from `layouts` records using `bevy_ui`. A layout is a tree of no
 | `text` | Text template (`label`, `button`). |
 | `title` | Window title template. |
 | `action` | Action fired on click (`button`); may contain `{bindings}`. |
-| `value` | Data key for the fill (`bar`), 0..1 unless `min` / `max` say otherwise. |
+| `value` | Data key for the fill (`bar`), 0..1 unless `min` / `max` say otherwise; for a `slider`, the value it shows. |
 | `min`, `max`, `vertical`, `color` | `bar` only: the value range (with `min` below zero the bar fills either way from zero, for −1..1 inputs), filling upwards instead of across, and a data key holding the fill colour (`"#rrggbb"`; empty keeps the theme's). |
+| `min`, `max`, `step` | `slider`: the range (default 0 to 100) and the steps it lands on (default 1). Pressing or dragging on it fires `<action>:<value>` once for each step it is moved to. Classes `slider`, `slider_track`, `slider_fill`, `slider_thumb`. |
 | `min`, `max`, `start`, `end` | `gauge` only: an arc of a ring from `start` to `end` degrees (0 at the top, clockwise; an `end` below `start` runs anticlockwise), filled from `start` by `value` between `min` and `max`. The node is the ring's square: its `border` is the thickness, `border_color` the empty track and `color` the fill. |
 | `visible` | Condition (below); the node shows while it holds. |
 | `active` | Condition for the node's active look (`active_background`, `active_color`, `active_border_color`): a selected mode, a toggle that is on, an open window. |
@@ -1156,7 +1157,7 @@ A dock styled `scroll: true` (the `dock_scroll` class) scrolls with the mouse wh
 its windows do not fit, with a thin indicator at its edge.
 
 The base game's docks are in `layouts/docks.json5`: `left_top` (clocks), `left` (Flight,
-Vessel, Target), `left_bottom` (the stage stack) and `right` (Orbit, Flight plan, Attitude),
+Vessel, Target), `left_bottom` (the stage stack) and `right` (Orbit, Alarm clock, Flight plan, Attitude),
 beside the launcher. Windows that are opened now and then and are large (Structure, Log,
 Manifest, Transfer planner, Mods, Help) float in the middle. To put a mod's window in a
 dock, give its layout a `dock`; to move a base window, patch its `dock` or `dock_order`.
@@ -1270,6 +1271,7 @@ The flight UI is a set of modules, each its own layout in the `flight` group:
 | `target_info` | Target distance, relative speed, closest approaches, plane crossings | `#target` |
 | `manifest` | Universe Manifest (F11): every body and vessel, filtered by kind, with Follow, Target, Fly, Recover or Destroy, and Clear debris | `#items` |
 | `transfer_planner` | Transfer planner (F4): porkchop plot (`widget: "porkchop"`) and the picked transfer | `#plot` |
+| `alarm_clock` | Alarm clock (F6): the alarms set, soonest first, and a timer to set | `#alarms`, `#new` |
 | `vessel_info` | Thrust, TWR, mass, delta-v | `#propulsion` |
 | `attitude_info` | Centre of mass, inertia, control authority, rates | `#attitude` |
 | `structure_info` | Every tank and fin set: make-up, strength, current load | `#parts` |
@@ -1307,9 +1309,12 @@ changes what the layout wrote. A mod's screen uses them too and gets the game's 
 | `menu_divider` | | A line between groups of rows |
 | `setting_row` | `label`, `children` | One line of a settings page: a label and what sets it |
 | `setting_choice` | `label`, `key`, `action`, `options` | A `setting_row` with a choice. Each option fires `<action>:<value>` and is lit while `<key> == <value>`. An option is a string (shown with a capital), a number, or `{ value, label }` |
+| `setting_slider` | `label`, `key`, `action`, `min`, `max`, `step`, `unit` | A `setting_row` with a `slider` for a percentage, and `<key>` with `unit` after it beside it. Dragged, it fires `<action>:<value>` |
 
 The rest are classes: `btn` for a button, with `btn_primary` (at most one per screen) or `btn_danger`
-added to it, `tab` for a tab, and `menu_text`, `menu_section` for text.
+added to it, `tab` for a tab, `menu_row_current` on a `menu_row` with no `action` for what is current
+(it looks selected and does nothing when clicked, like the vessel being flown), and `menu_text`,
+`menu_section` for text.
 
 ```json5
 {
@@ -1345,8 +1350,10 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | Key | Meaning |
 | --- | --- |
 | `time.ut` | Seconds since J2000 (format with `date` / `clock`) |
-| `time.warp`, `time.warp_mode` | Warp rate; `"physics"` or `"rails"` |
+| `time.warp`, `time.warp_label`, `time.warp_mode` | Warp rate (×), up to 100 years a second; how it reads (`100000x`, `11.6 d/s`, `100 y/s`); `"physics"` or `"rails"` |
 | `time.lagging`, `time.notice` | Simulation behind real time; last warp notice |
+| `alarms.has`, `alarms.count`, `alarms.list[]` (`id`, `title`, `in`, `other`, `vessel`) | The alarms set, soonest first, with `in` in seconds from now; `other` when one is about a vessel other than the one flown, called `vessel`. Time warp stops at each, which then comes off the clock and says its title in the flight log |
+| `alarms.next_in`, `alarms.next_title`, `alarms.new_in` | The next alarm (s) and what it is for; the wait a timer is set for, as it reads |
 | `view.map` | Map view active |
 | `sim.last_event`, `sim.last_event_time` | Latest simulation event message and time |
 | `vessel.name`, `vessel.body`, `vessel.situation`, `vessel.motion` | Identity and state (`landed`, `coasting`, `integrated`) |
@@ -1381,7 +1388,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.next_caption`, `vessel.armed_lines[]` | What the stage key does next; the lit engines in lines of four (`tiles[]`) |
 | `vessel.sequence_count`, `vessel.stage_twr` | How many sequences are left; thrust-to-weight of the bottom stage at full throttle here |
 | `vessel.armed[]`, `vessel.armed_count`, `vessel.armed_number` | Stages whose engines are lit (their sequence fired), bottom first: `stage`, `count`, `multiple`, `fuel` (0..1), `has_fuel`, `color`; how many; the number of the last sequence fired |
-| `vessel.has_power`, `vessel.power_draining`, `vessel.power_left`, `vessel.power_steady`, `vessel.power_flat`, `vessel.power_shedding`, `vessel.power_out`, `vessel.power_fraction` | It has batteries, or a load with no power; the first power network to run down, and how long its batteries last at what it draws now (s); nothing is running down; its batteries are flat and everything is still running on what it makes; some load is off for want of power; its avionics or another load it cannot do without have no power; share of its charge left (0..1) |
+| `vessel.has_power`, `vessel.power_draining`, `vessel.power_left`, `vessel.power_steady`, `vessel.power_supplied`, `vessel.power_flat`, `vessel.power_shedding`, `vessel.power_out`, `vessel.power_fraction` | It has batteries, or a load with no power; the first power network to run down, and how long its batteries last at what it draws now (s); nothing is running down; it stands on a pad or runway it has not moved from, which powers it and feeds its systems until it leaves; its batteries are flat and everything is still running on what it makes; some load is off for want of power; its avionics or another load it cannot do without have no power; share of its charge left (0..1) |
 | `vessel.resources[]`, `vessel.resource_count` | Every propellant on board and the charge in its batteries (`charge` true, `name` `Charge`, `amount` and `capacity` in joules, for `\|energy`), a row per stage that holds it, top of the stack first: `name`, `stage`, `color` (the stage's, `"#rrggbb"`; a stage keeps its colour as the ones below fall away), `bottom` (on the bottom stage), `amount` and `capacity` (kg), `fraction`, `engines` and `rcs` (whether the stage's engines or RCS burn it), `tag` (`"RCS"` if only the RCS does); how many rows |
 | `vessel.parts[]` | Tanks and fin sets: `stage`, `name`, `tank` (bool), `size`, `material`, `mass` (kg, empty), `load` (0..1+), `mode` (`buckling`, `pressure`, `bending`); tanks also `volume` (m³), `utilization`, `contents`, `wall` (mm), `max_pressure` (bar), `max_axial_load` (N, cylinders); fins `max_fin_force` (N per fin) |
 | `vessel.log[]` | `time`, `message` (newest first) |
@@ -1422,7 +1429,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `mods.problems[]` | `error` (bool), `text` |
 | `menu.screen`, `menu.playing`, `menu.tutorials[]` | The screen showing; a game is in progress; the tutorials: `id`, `name`, `description`, `steps` |
 | `menu.new_game`, `menu.vessels[]`, `menu.vessel_line`, `menu.game_line` | New game was picked and has not started; the vessels in the game to fly (`id`, `name`, `where`, `flying`, `state`, `destroying`: asked once), debris left out; how many, in words; the line under Paused |
-| `menu.saves[]`, `menu.has_saves`, `menu.save_name`, `menu.notice` | The saves, newest first: `file`, `name`, `saved` (how long ago), `time` (the game's date), `flying`, `vessels`, `problem` (why it cannot be loaded), `detail` (the line to show: the problem, or what is flying, the date and the vessels); whether there are any; the save the game in progress goes to; what just happened |
+| `menu.saves[]`, `menu.has_saves`, `menu.save_name`, `menu.next_save`, `menu.notice` | The saves, newest first: `file`, `current` (the one the game in progress goes to), `name`, `saved` (how long ago), `time` (the game's date), `flying`, `vessels`, `problem` (why it cannot be loaded), `detail` (the line to show: the problem, or what is flying, the date and the vessels); whether there are any; the save the game in progress goes to; what a new save would be called; what just happened |
 | `menu.can_continue`, `menu.continue_line` | There is a save this game can read; the newest one's name and what it was flying |
 | `menu.can_revert`, `menu.revert_line` | The game in progress launched something it can go back to; what it was called. A game loaded from a save has none until its next launch |
 | `marker.name`, `marker.key`, `marker.distance`, `marker.is_vessel`, `marker.targeted`, `marker.target_vessel`, `marker.target_body`, `marker.centre_vessel`, `marker.centre_body` | What the `marker_menu` is open on: a box round a vessel or a body. `key` goes in the actions (`target.vessel`, `target.body`, `vessel.fly`, `manifest.follow`, `manifest.follow_body`), `distance` is from the vessel flown (to a body's surface), and the rest say which items to show |
@@ -1465,7 +1472,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `target.body:<id>`, `target.vessel:<key>`, `target.clear` | Choose or drop the target (also Shift+click in map view) |
 | `target.part:<vessel>-<part>` | Target one part of another vessel: SAS and the navball's target markers point at it, at its docking port if it has one, and that port is the one to dock with. If the part leaves the vessel, the vessel is the target (a part window's Set as target) |
 | `plan.match_plane` | Plan a burn at the next plane crossing that matches the target's plane |
-| `warp.increase`, `warp.decrease`, `warp.stop` | |
+| `warp.increase`, `warp.decrease`, `warp.stop` | Fifteen levels: 1 to 4x run physics, 10x to 100 years a second are on rails. Above 30x no engine starts: raising the throttle, a sequence that lights one and lighting one from a part's window are refused (aborts are not) |
 | `warp.to:<ap|pe|soi|burn|approach>` | Warp to the next apoapsis, periapsis, SOI change, burn start or closest approach, slowing on the way in |
 | `plan.add:<ap|pe>`, `plan.circularize:<ap|pe>` | Plan a burn at the next apsis (after any planned burns); one that circularises there |
 | `plan.select:<index>`, `plan.zero`, `plan.delete`, `plan.clear` | Select a burn; zero, delete it; delete all |
@@ -1473,7 +1480,12 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `plan.time:<1|-1>`, `plan.orbit:<1|-1>`, `plan.time_step:<s>` | Move it by one time step or one orbit |
 | `plan.aim:<m>` | Adjust the selected burn for a periapsis this high above the targeted body |
 | `plan.execute` | Engage or disengage the burn executor (throttle and SAS commands also disengage it) |
-| `transfer.compute`, `transfer.best`, `transfer.create`, `transfer.warp_launch:<index>` | Plot transfers to the target, or on the ground list when to launch for a target around the same body; pick the cheapest; plan its departure burn; warp to just before a launch time |
+| `transfer.compute`, `transfer.best`, `transfer.create` | Plot transfers to the target, or on the ground list when to launch for a target around the same body; pick the cheapest; plan its departure burn |
+| `transfer.alarm`, `transfer.alarm_launch:<index>` | Set an alarm just before the picked transfer's departure burn starts, or a minute before a launch time |
+| `plan.alarm` | Set an alarm just before the selected burn starts; it follows the burn when it is moved, and goes when it is deleted |
+| `map.alarm_here`, `target.alarm_approach` | Set an alarm at the point the map's menu is for, or at the first closest approach |
+| `alarm.warp:<id>`, `alarm.delete:<id>` | Warp to an alarm (`id` from `alarms.list`), or take it off the clock |
+| `alarm.step:<1|-1>`, `alarm.add` | A longer or shorter wait for a timer; set one that long from now |
 | `view.toggle_map` | |
 | `ui.toggle:<layout>`, `ui.show:<layout>`, `ui.hide:<layout>` | For an instanced layout, `<layout>:<key>` names a copy |
 | `ui.pin:<layout>` | Pin or unpin a popup, so a click outside does not close it |
@@ -1482,13 +1494,13 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `game.menu` | Esc: closes an open popup, or opens the menu, or goes back as `menu.back` does. In the editor it goes back to the menu it came from |
 | `menu.open:<screen>`, `menu.back` | Go to the screen, the layout `menu_<screen>`; go back one. From the pause menu that resumes; from the title screen it does nothing |
 | `game.resume`, `game.exit`, `game.quit`, `game.start_tutorial:<tutorial>` | Back to the flight; leave the game for the title screen; close the game; start a tutorial's scenario with its steps. None of them asks: a button that leaves a game uses `ask.leave` |
-| `ask.leave:<action>`, `ask.delete_save:<file>`, `ask.destroy:<vessel>`, `ask.clear`, `ask.revert:<launch\|hangar>` | Ask, in the `dialog` layout, before something is lost. `ask.leave` does `<action>`, which can have an argument of its own (`ask.leave:game.load:game_2`), asking first to save a game that its save does not hold; the others ask whether to do `game.delete_save`, `vessel.destroy`, `editor.clear` or `game.revert` |
+| `ask.leave:<action>`, `ask.delete_save:<file>`, `ask.overwrite:<file>`, `ask.destroy:<vessel>`, `ask.clear`, `ask.revert:<launch\|hangar>` | Ask, in the `dialog` layout, before something is lost. `ask.leave` does `<action>`, which can have an argument of its own (`ask.leave:game.load:game_2`), asking first to save a game that its save does not hold; `ask.overwrite` saves over the game's own save at once and asks before saving over another's; the others ask whether to do `game.delete_save`, `vessel.destroy`, `editor.clear` or `game.revert` |
 | `game.revert:<launch\|hangar>` | Go back to the last launch: to the moment it left, or to the editor with the same craft, staging and place. Everything since goes, the vessels already in the game as they were then. Saves are not touched |
 | `vessel.abort` | Begin the craft's `abort`, if it has one |
 | `guidance.land`, `guidance.hover`, `guidance.hold:<m/s>`, `guidance.entry`, `guidance.off` | What its computer flies by itself: down to the ground from where it is on its engine, holding its height, sinking at a rate, or rolling its lift through an entry to hold about 4 g |
 | `dialog.answer:<index>`, `dialog.cancel` | Take an answer of the question being asked (`dialog.answers[]`); close it, as Esc and Back do |
 | `game.new` | Go to the editor to choose what to launch in a new game. Nothing changes until the launch; the game in progress goes on if the player goes back |
-| `game.save`, `game.save_as`, `game.load:<file>`, `game.continue`, `game.delete_save:<file>` | Save the game in progress to its save; to a new save, which it then goes to; carry on from a save; from the newest this game can read; delete one |
+| `game.save`, `game.save_as`, `game.save_to:<file>`, `game.load:<file>`, `game.continue`, `game.delete_save:<file>` | Save the game in progress to its save; to a new save, or over the save `file`, which it then goes to (from the Save screen, either goes back to Pause); carry on from a save; from the newest this game can read; delete one |
 | `editor.list`, `editor.clear`, `vessel.destroy:<vessel>` | Show or hide the editor's list of vessels (`editor.list_open`), which choosing one hides; destroy what stands on the pad or runway picked; destroy a vessel, flying another if it was the one being flown and going to the empty hangar if it was the last |
 | `editor.open`, `editor.show:<craft>`, `editor.back`, `editor.place:<pad|runway|orbit>`, `editor.launch` | Open the editor with the hangar empty; put a craft on show in place of what is there; go back to the menu; pick where it launches from; launch it, with the sequences it was left with, which also saves the game. With nothing on show `editor.launch` only says to choose a vessel |
 | `tutorial.next`, `tutorial.skip` | Move past the current step (Continue, or skip it); give the tutorial up |

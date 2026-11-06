@@ -93,6 +93,7 @@ fn publish_flight(
 
     data.set("time.ut", now.as_seconds());
     data.set("time.warp", warp.rate());
+    data.set("time.warp_label", warp_label(warp.rate()));
     // One entry per warp level, lit up to the current rate (the warp strip).
     let rate = warp.rate();
     data.set(
@@ -1011,7 +1012,11 @@ fn publish_power(data: &mut UiData, power: &osp_sim::systems::PowerState) {
     data.set("vessel.power_draining", draining.is_some());
     data.set("vessel.power_left", draining.unwrap_or(0.0));
     let holding = has_store && draining.is_none() && !power.shedding && !power.browned_out;
-    data.set("vessel.power_steady", holding && !power.is_flat());
+    data.set("vessel.power_supplied", power.supplied);
+    data.set(
+        "vessel.power_steady",
+        holding && !power.is_flat() && !power.supplied,
+    );
     data.set("vessel.power_flat", holding && power.is_flat());
     data.set(
         "vessel.power_fraction",
@@ -1019,9 +1024,41 @@ fn publish_power(data: &mut UiData, power: &osp_sim::systems::PowerState) {
     );
 }
 
+/// How a warp rate reads: times real time, or above a day a second, as time a second.
+pub fn warp_label(rate: f64) -> String {
+    const DAY: f64 = 86_400.0;
+    const YEAR: f64 = 365.25 * DAY;
+    let per_second = |amount: f64, unit: &str| {
+        let whole = (amount - amount.round()).abs() < 0.05;
+        if amount < 99.5 && !whole {
+            format!("{amount:.1} {unit}/s")
+        } else {
+            format!("{amount:.0} {unit}/s")
+        }
+    };
+    if rate >= 0.995 * YEAR {
+        per_second(rate / YEAR, "y")
+    } else if rate > 100_000.0 {
+        per_second(rate / DAY, "d")
+    } else {
+        format!("{rate:.0}x")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn warp_reads_as_times_and_then_as_time_a_second() {
+        assert_eq!(warp_label(1.0), "1x");
+        assert_eq!(warp_label(100_000.0), "100000x");
+        assert_eq!(warp_label(1e6), "11.6 d/s");
+        assert_eq!(warp_label(1e7), "116 d/s");
+        assert_eq!(warp_label(365.25 * 86_400.0), "1 y/s");
+        assert_eq!(warp_label(2.5 * 365.25 * 86_400.0), "2.5 y/s");
+        assert_eq!(warp_label(100.0 * 365.25 * 86_400.0), "100 y/s");
+    }
 
     #[test]
     fn a_group_says_what_it_does() {

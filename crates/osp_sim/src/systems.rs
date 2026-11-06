@@ -98,6 +98,8 @@ pub struct PowerState {
     pub shedding: bool,
     /// A load it cannot do without has no power, its avionics among them.
     pub browned_out: bool,
+    /// The pad powers it (see [`Systems::step`]): nothing runs down.
+    pub supplied: bool,
 }
 
 impl PowerState {
@@ -561,10 +563,17 @@ impl Systems {
     }
 
     /// Move every system on `dt` seconds: first the power networks, under `environment`.
-    pub fn step(&mut self, environment: &Environment, dt: f64) {
+    ///
+    /// `supplied`: the vessel stands at a launch site on its ground support, which powers every
+    /// load and keeps the stores full, so its fuel cells stand idle.
+    pub fn step(&mut self, environment: &Environment, dt: f64, supplied: bool) {
         for k in 0..self.networks.len() {
             let network = std::mem::take(&mut self.networks[k]);
-            self.solve_power(&network, environment, dt);
+            if supplied {
+                self.supply_power(&network, environment, dt);
+            } else {
+                self.solve_power(&network, environment, dt);
+            }
             self.networks[k] = network;
         }
         for system in self.parts.values_mut().flatten() {
@@ -635,6 +644,23 @@ impl Systems {
         }
     }
 
+    /// Run one power network for `dt` seconds on ground power: every load has it, the stores are
+    /// topped up, and what the vessel makes itself goes nowhere.
+    fn supply_power(&mut self, network: &[PartId], environment: &Environment, dt: f64) {
+        for flow in self.flows(network, environment) {
+            let system = &mut self.parts.get_mut(&flow.part).expect("its part")[flow.index];
+            if flow.load.is_some() {
+                system.powered(true);
+            }
+            if flow.source > 0.0 || flow.is_source {
+                system.deliver(flow.source * dt / 1e3, dt);
+            }
+            if flow.capacity > flow.charge {
+                system.charge(flow.capacity - flow.charge);
+            }
+        }
+    }
+
     fn flows(&self, network: &[PartId], environment: &Environment) -> Vec<Flow> {
         let mut flows = Vec::new();
         for &part in network {
@@ -668,9 +694,12 @@ impl Systems {
 
     /// Seconds until the first system needs attention, or a power network's stores run out with
     /// what it draws now.
-    pub fn next_event(&self, environment: &Environment) -> Option<f64> {
+    pub fn next_event(&self, environment: &Environment, supplied: bool) -> Option<f64> {
         let own = (self.parts.values().flatten()).filter_map(|s| s.next_event());
-        own.chain(self.first_run_out(environment)).reduce(f64::min)
+        let run_out = (!supplied)
+            .then(|| self.first_run_out(environment))
+            .flatten();
+        own.chain(run_out).reduce(f64::min)
     }
 
     /// Seconds until the first of the power networks runs out, with what each draws now.
@@ -691,8 +720,8 @@ impl Systems {
             .map(|(part, battery)| (part, battery.charge, battery.capacity))
     }
 
-    /// How the vessel's power stands under `environment`.
-    pub fn power_state(&self, environment: &Environment) -> PowerState {
+    /// How the vessel's power stands under `environment`, `supplied` from the ground or not.
+    pub fn power_state(&self, environment: &Environment, supplied: bool) -> PowerState {
         let (charge, capacity) = self
             .stores()
             .fold((0.0, 0.0), |(charge, capacity), (_, held, most)| {
@@ -704,9 +733,10 @@ impl Systems {
             capacity,
             // Already gone: the time to the end of a store that loads are being kept from says
             // nothing, and sits still.
-            runs_out_in: self.first_run_out(environment).filter(|_| !shedding),
+            runs_out_in: (self.first_run_out(environment)).filter(|_| !shedding && !supplied),
             shedding,
             browned_out: self.brownout() || self.all::<Avionics>().any(|(_, unit)| !unit.on),
+            supplied,
         }
     }
 
@@ -952,7 +982,7 @@ mod tests {
     }
 
     fn step(p: &mut Propulsion, environment: &Environment, dt: f64) {
-        p.systems.step(environment, dt);
+        p.systems.step(environment, dt, false);
     }
 
     fn charge(p: &Propulsion) -> f64 {
@@ -983,7 +1013,7 @@ mod tests {
     fn the_lowest_priority_is_shed_first() {
         let (mut p, _) = powered_stage();
         // All of it until the battery runs out, which the network can say beforehand.
-        let empty = p.systems.next_event(&light(1.0)).unwrap();
+        let empty = p.systems.next_event(&light(1.0), false).unwrap();
         assert!((empty - 3600.0 / 1.3).abs() < 1e-6, "{empty}");
         step(&mut p, &light(1.0), empty);
         assert!(charge(&p).abs() < 1e-6, "{}", charge(&p));
@@ -1006,7 +1036,7 @@ mod tests {
     #[test]
     fn a_jump_a_little_long_runs_the_store_out() {
         let (mut p, _) = powered_stage();
-        let empty = p.systems.next_event(&light(1.0)).unwrap();
+        let empty = p.systems.next_event(&light(1.0), false).unwrap();
         step(&mut p, &light(1.0), empty * (1.0 + 1e-7));
         assert_eq!(loads_on(&p), [(9, true), (1, true)]);
         assert!(charge(&p) < 1e-3, "{}", charge(&p));
@@ -1016,33 +1046,33 @@ mod tests {
     fn the_power_state_says_when_it_runs_out_and_is_right() {
         let (mut p, part) = powered_stage();
         // 3600 kJ, with 1500 W drawn and 200 W made in the light.
-        let state = p.systems.power_state(&light(1.0));
+        let state = p.systems.power_state(&light(1.0), false);
         assert_eq!((state.charge, state.capacity), (3600.0, 3600.0));
         assert!(!state.browned_out);
         let left = state.runs_out_in.unwrap();
         assert!((left - 3_600_000.0 / 1300.0).abs() < 1e-6, "{left}");
         // Half way there it says half as long.
         step(&mut p, &light(1.0), left / 2.0);
-        let later = p.systems.power_state(&light(1.0));
+        let later = p.systems.power_state(&light(1.0), false);
         assert!((later.charge - 1800.0).abs() < 1e-6, "{later:?}");
         assert!((later.runs_out_in.unwrap() - left / 2.0).abs() < 1e-6);
         assert!(!later.shedding);
         // At the time it gave, it is out, and what it told of is what happens.
         step(&mut p, &light(1.0), left / 2.0);
-        let empty = p.systems.power_state(&light(1.0));
+        let empty = p.systems.power_state(&light(1.0), false);
         assert!(empty.charge < 1e-6, "{empty:?}");
         assert!(empty.is_flat());
         assert!(!later.is_flat());
         assert_eq!(empty.runs_out_in, None);
         // Then the loads go, and what the source still makes does not start a countdown again.
         step(&mut p, &light(1.0), 1.0);
-        let out = p.systems.power_state(&light(1.0));
+        let out = p.systems.power_state(&light(1.0), false);
         assert!(out.shedding, "{out:?}");
         assert!(out.charge > 0.0, "{out:?}");
         assert_eq!(out.runs_out_in, None);
         // Making more than it draws, it is not running down.
         add(&mut p, part, Box::new(Source { watts: 2500.0 }));
-        assert_eq!(p.systems.power_state(&light(1.0)).runs_out_in, None);
+        assert_eq!(p.systems.power_state(&light(1.0), false).runs_out_in, None);
     }
 
     #[test]
@@ -1055,11 +1085,11 @@ mod tests {
             on: true,
         };
         add(&mut p, part, Box::new(unit));
-        assert!(!p.systems.power_state(&light(1.0)).browned_out);
+        assert!(!p.systems.power_state(&light(1.0), false).browned_out);
         // A step longer than the batteries last serves no load, and leaves the store as it was with
         // the avionics off: what the countdown stuck at under time warp.
         step(&mut p, &light(1.0), 1e5);
-        let out = p.systems.power_state(&light(1.0));
+        let out = p.systems.power_state(&light(1.0), false);
         assert!(out.browned_out && out.shedding, "{out:?}");
         assert_eq!(out.runs_out_in, None);
     }
@@ -1138,7 +1168,7 @@ mod tests {
         let mut p =
             powered(r#"{ fuel_cell: { power: 1500 } }, { electric_load: { watts: 1000 } }"#);
         let (h2, o2) = (held(&p, "LqdHydrogen"), held(&p, "LqdOxygen"));
-        p.step_systems(&light(1.0), 3600.0);
+        p.step_systems(&light(1.0), 3600.0, false);
         let (used_h2, used_o2) = (h2 - held(&p, "LqdHydrogen"), o2 - held(&p, "LqdOxygen"));
         assert!((used_h2 - 0.042).abs() < 1e-6, "{used_h2}");
         assert!((used_o2 - 8.0 * 0.042).abs() < 1e-5, "{used_o2}");
@@ -1155,15 +1185,15 @@ mod tests {
                { electric_load: { watts: 1000, essential: true } }"#,
         );
         assert!(!p.systems.brownout());
-        p.step_systems(&light(1.0), 1.0);
-        let to_dry = p.next_system_event(&light(1.0)).unwrap();
+        p.step_systems(&light(1.0), 1.0, false);
+        let to_dry = p.next_system_event(&light(1.0), false).unwrap();
         let hours = held(&p, "LqdOxygen").min(8.0 * held(&p, "LqdHydrogen")) / (8.0 * 0.042);
         assert!((to_dry - hours * 3600.0).abs() < 1.0, "{to_dry} {hours}");
         for tank in &mut p.tanks {
             tank.amounts.iter_mut().for_each(|a| *a = 0.0);
         }
-        p.step_systems(&light(1.0), 1.0);
-        p.step_systems(&light(1.0), 1.0);
+        p.step_systems(&light(1.0), 1.0, false);
+        p.step_systems(&light(1.0), 1.0, false);
         assert!(p.systems.brownout());
         let (_, load) = p.systems.all::<electric::Load>().next().unwrap();
         assert!(!load.on);
@@ -1180,7 +1210,7 @@ mod tests {
         // Run it down a little by hand, as a spell without the cell would.
         p.systems.on_mut(part)[2].charge(-1000.0);
         assert!((charge(&p) - 2600.0).abs() < 1e-9);
-        p.step_systems(&light(1.0), 100.0);
+        p.step_systems(&light(1.0), 100.0, false);
         // 1300 W over for 100 s: 130 kJ.
         assert!((charge(&p) - 2730.0).abs() < 1e-6, "{}", charge(&p));
     }
@@ -1194,10 +1224,10 @@ mod tests {
         // 1361 W/m² × 10 m² × 0.2 = 2722 W: all the load wants and more.
         let (_, array) = p.systems.all::<SolarArray>().next().unwrap();
         assert_eq!(array.area, 10.0);
-        p.step_systems(&light(1.0), 10.0);
+        p.step_systems(&light(1.0), 10.0, false);
         assert_eq!(charge(&p), 1000.0);
         // In the shadow it makes nothing, and the battery takes over.
-        p.step_systems(&light(0.0), 10.0);
+        p.step_systems(&light(0.0), 10.0, false);
         assert!((charge(&p) - 980.0).abs() < 1e-6, "{}", charge(&p));
         // A panel that does not track makes what it faces: edge on, nothing.
         let mut fixed = powered(
@@ -1206,7 +1236,7 @@ mod tests {
         );
         let mut edge = light(1.0);
         edge.sun_in_vessel = glam::DVec3::Y;
-        fixed.step_systems(&edge, 10.0);
+        fixed.step_systems(&edge, 10.0, false);
         assert!((charge(&fixed) - 999.0).abs() < 1e-6, "{}", charge(&fixed));
         assert!(fixed.systems.uses_light());
     }
@@ -1215,7 +1245,7 @@ mod tests {
     fn an_rtg_falls_with_its_half_life() {
         let mut p = powered(r#"{ rtg: { power: 158 } }"#);
         const YEAR: f64 = 365.25 * 86400.0;
-        p.step_systems(&light(0.0), 87.7 * YEAR);
+        p.step_systems(&light(0.0), 87.7 * YEAR, false);
         let (_, rtg) = p.systems.all::<Rtg>().next().unwrap();
         assert!((rtg.output() - 79.0).abs() < 1e-6, "{}", rtg.output());
     }

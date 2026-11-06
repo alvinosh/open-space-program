@@ -15,7 +15,10 @@
 //! | `transfer.compute` | Plot transfers to the current target, or from the ground list launch times |
 //! | `transfer.best` | Pick the cheapest |
 //! | `transfer.create` | Plan the departure burn of the picked transfer |
-//! | `transfer.warp_launch:<index>` | Warp to just before that launch time |
+//! | `transfer.alarm` | Set an alarm for just before the picked transfer's departure burn starts |
+//! | `transfer.alarm_launch:<index>` | Set an alarm for just before that launch time |
+//!
+//! It does not warp: its times go on the alarm clock (`crate::alarm_clock`), which warps to them.
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -27,8 +30,10 @@ use bevy::{
     ui::RelativeCursorPosition,
 };
 use osp_sim::{
+    alarm::AlarmTime,
     body::BodyId,
     orbit::Orbit,
+    plan::Burn,
     rendezvous::Target,
     transfer::{
         LaunchRequest, LaunchWindow, Porkchop, TransferRequest, departure_burn, ejection_burn,
@@ -40,8 +45,10 @@ use osp_ui::{UiAction, UiData, UiRecord, WidgetContext, WidgetRegistry, record};
 
 use crate::{
     FrameSet,
-    flight_plan::PlanUi,
+    alarm_clock::set_alarm,
+    flight_plan::{PlanUi, WARP_TO_BURN},
     sim::{Sim, SimRestarted, TimeWarp},
+    targeting::target_name,
 };
 
 const COLUMNS: usize = 72;
@@ -50,7 +57,7 @@ const ROWS: usize = 54;
 const MAX_WINDOW: f64 = 2.0 * 365.25 * 86_400.0;
 /// How many launch times are listed.
 const LAUNCH_TIMES: usize = 4;
-/// A warp to a launch time stops this long before it, s, to get ready.
+/// An alarm for a launch time rings this long before it, s, to get ready.
 const BEFORE_LAUNCH: f64 = 60.0;
 /// A plane is only said to be missed by more than this, rad.
 const WORTH_SAYING: f64 = 0.05 * std::f64::consts::PI / 180.0;
@@ -189,17 +196,44 @@ fn planner_actions(
                 }
                 Err(why) => warp.notice = Some((why.into(), real)),
             },
-            "transfer.warp_launch" => {
+            "transfer.alarm_launch" => {
                 let index: Option<usize> = action.arg().and_then(|index| index.parse().ok());
                 let times = planner.launch.as_ref();
-                let window = index.and_then(|index| times?.windows.get(index));
-                match window {
-                    Some(window) => {
-                        let time = window.time.add_seconds(-BEFORE_LAUNCH);
-                        warp.warp_to(time, "the launch time", &sim, real);
-                    }
-                    None => warn!("no launch time in `{}`", action.0),
-                }
+                let window =
+                    index.and_then(|index| Some((times?.windows.get(index)?, times?.target)));
+                let Some((window, target)) = window else {
+                    warn!("no launch time in `{}`", action.0);
+                    continue;
+                };
+                let time = window.time.add_seconds(-BEFORE_LAUNCH);
+                let title = for_target("Launch", &sim, target);
+                let vessel = Some(sim.active_id());
+                set_alarm(
+                    &mut sim,
+                    &mut warp,
+                    real,
+                    title,
+                    vessel,
+                    AlarmTime::At(time),
+                );
+            }
+            "transfer.alarm" => {
+                let Some((burn, target)) = picked_burn(&planner) else {
+                    continue;
+                };
+                let vessel = sim.active_vessel();
+                let start = (vessel.burn_timing(&burn, 0.0)).map_or(burn.time, |t| t.start);
+                let time = start.add_seconds(-WARP_TO_BURN);
+                let title = for_target("Departure", &sim, target);
+                let vessel = Some(vessel.id());
+                set_alarm(
+                    &mut sim,
+                    &mut warp,
+                    real,
+                    title,
+                    vessel,
+                    AlarmTime::At(time),
+                );
             }
             "transfer.best" => {
                 if let Some(plot) = &planner.chop {
@@ -208,22 +242,7 @@ fn planner_actions(
                 }
             }
             "transfer.create" => {
-                let Some(plot) = &planner.chop else { continue };
-                let Some(transfer) = planner
-                    .selected
-                    .and_then(|(c, r)| plot.chop.cell(c, r))
-                    .copied()
-                else {
-                    continue;
-                };
-                let meta = &plot.meta;
-                let burn = if meta.interplanetary {
-                    transfer
-                        .excess
-                        .and_then(|v| ejection_burn(&meta.vessel_orbit, v, transfer.departure))
-                } else {
-                    departure_burn(&meta.vessel_orbit, &transfer)
-                };
+                let burn = picked_burn(&planner).map(|(burn, _)| burn);
                 match burn.filter(|b| b.time > sim.universe.time()) {
                     Some(burn) => {
                         plan_ui.selected = Some(sim.active_vessel_mut().plan.add(burn));
@@ -235,6 +254,29 @@ fn planner_actions(
             }
             _ => {}
         }
+    }
+}
+
+/// The departure burn of the transfer picked on the plot, and the target it is for.
+fn picked_burn(planner: &Planner) -> Option<(Burn, Target)> {
+    let plot = planner.chop.as_ref()?;
+    let (column, row) = planner.selected?;
+    let transfer = plot.chop.cell(column, row)?;
+    let meta = &plot.meta;
+    let burn = if meta.interplanetary {
+        let excess = transfer.excess?;
+        ejection_burn(&meta.vessel_orbit, excess, transfer.departure)
+    } else {
+        departure_burn(&meta.vessel_orbit, transfer)
+    };
+    Some((burn?, meta.target))
+}
+
+/// "Launch for the Moon": an alarm's title, for what is done for a target.
+fn for_target(what: &str, sim: &Sim, target: Target) -> String {
+    match target_name(sim, target) {
+        Some(name) => format!("{what} for {name}"),
+        None => what.to_owned(),
     }
 }
 

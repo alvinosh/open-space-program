@@ -129,7 +129,7 @@ impl Menu {
     }
 
     /// One screen back. False when there is none to go back to.
-    fn pop(&mut self) -> bool {
+    pub(crate) fn pop(&mut self) -> bool {
         self.notice.clear();
         self.stack.pop().is_some()
     }
@@ -197,7 +197,8 @@ fn save_detail(flying: &str, time: &str, vessels: usize) -> String {
     shown.join(", ")
 }
 
-/// `menu.saves` (file, name, saved, time, flying, vessels, problem, detail), newest first.
+/// `menu.saves` (file, current, name, saved, time, flying, vessels, problem, detail), newest first;
+/// `current` is the one the game in progress goes to.
 fn save_list(saves: &Saves) -> Vec<UiRecord> {
     let now = now();
     (saves.list.iter())
@@ -213,8 +214,10 @@ fn save_list(saves: &Saves) -> Vec<UiRecord> {
                 "" => save_detail(flying, &time, vessels),
                 problem => problem.to_owned(),
             };
+            let current = saves.current_file() == Some(entry.file.as_str());
             record([
                 ("file", entry.file.as_str().into()),
+                ("current", current.into()),
                 ("name", name.into()),
                 ("saved", saved.into()),
                 ("time", time.into()),
@@ -229,7 +232,8 @@ fn save_list(saves: &Saves) -> Vec<UiRecord> {
 
 /// `menu.screen`, `menu.playing`, `menu.new_game`, `menu.tutorials`, `menu.vessels`,
 /// `menu.vessel_line`, `menu.saves`, `menu.has_saves`, `menu.can_continue`, `menu.continue_line`,
-/// `menu.save_name`, `menu.game_line`, `menu.notice`, `menu.can_revert` and `menu.revert_line`. See
+/// `menu.save_name`, `menu.next_save`, `menu.game_line`, `menu.notice`, `menu.can_revert` and
+/// `menu.revert_line`. See
 /// `docs/modding.md`.
 fn publish_menu(
     content: Res<GameContent>,
@@ -284,6 +288,7 @@ fn publish_menu(
         });
         data.set("menu.continue_line", line);
         data.set("menu.save_name", saves.current_name().unwrap_or(""));
+        data.set("menu.next_save", saves.next_name());
         let flying = &sim.active_vessel().name;
         let line = match saves.current_name() {
             Some(save) => format!("{save}, flying {flying}"),
@@ -384,7 +389,7 @@ pub(crate) fn menu_actions(
                     continue;
                 }
                 saves.notice.clear();
-                if screen == "load" {
+                if screen == "load" || screen == "save" {
                     saves.refresh();
                 }
                 menu.push(screen);

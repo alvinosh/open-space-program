@@ -33,6 +33,7 @@
             children: [
               { widget: "button", class: "step_button", text: "Match planes", action: "plan.match_plane", visible: "target.has_plane" },
               { widget: "button", class: "step_button", text: "Warp to CA", action: "warp.to:approach", visible: "target.has_approach" },
+              { widget: "button", class: "step_button", text: "Alarm", action: "target.alarm_approach", visible: "target.has_approach", tooltip: "An alarm at the closest approach" },
               { widget: "spacer" },
               { widget: "button", class: "step_button", text: "Clear", action: "target.clear" },
             ],

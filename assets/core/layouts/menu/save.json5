@@ -1,0 +1,24 @@
+// Save game: a new save, or over one of the saves (`menu.saves`, newest first), the one this game
+// goes to marked. That one is saved over at once and any other asks first (`ask.overwrite`). A save
+// done here goes back to Pause, which says what was saved.
+{
+  id: "menu_save",
+  group: "menu",
+  visible: false,
+  root: {
+    widget: "screen",
+    title: "Save game",
+    subtitle: "{menu.game_line}",
+    children: [
+      { widget: "menu_row", text: "New save", meta: "{menu.next_save}", action: "game.save_as" },
+      { widget: "menu_divider", visible: "menu.has_saves" },
+      {
+        widget: "column",
+        repeat: "menu.saves",
+        children: [
+          { widget: "menu_row", text: "{item.name}", meta: "{item.saved}", detail: "{item.detail}", active: "item.current", action: "ask.overwrite:{item.file}" },
+        ],
+      },
+    ],
+  },
+}

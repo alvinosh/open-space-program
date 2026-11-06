@@ -23,12 +23,31 @@ use osp_terrain::Dataset;
 
 use crate::{FrameSet, content::GameContent};
 
-/// Warp rates. Rates up to `MAX_PHYSICS_WARP` run physics ticks; above that the universe
-/// advances on rails, which requires every vessel to be coasting or landed.
-pub const WARP_RATES: [f64; 10] = [
-    1.0, 2.0, 3.0, 4.0, 10.0, 50.0, 100.0, 1_000.0, 10_000.0, 100_000.0,
+/// A year, s: the one a warp of years per second counts in.
+const YEAR: f64 = 365.25 * 86_400.0;
+/// Warp rates, up to 100 years a second. Rates up to `MAX_PHYSICS_WARP` run physics ticks; above
+/// that the universe advances on rails, which requires every vessel to be coasting or landed.
+pub const WARP_RATES: [f64; 15] = [
+    1.0,
+    2.0,
+    3.0,
+    4.0,
+    10.0,
+    50.0,
+    100.0,
+    1_000.0,
+    10_000.0,
+    100_000.0,
+    1_000_000.0,
+    10_000_000.0,
+    YEAR,
+    10.0 * YEAR,
+    100.0 * YEAR,
 ];
 pub const MAX_PHYSICS_WARP: f64 = 4.0;
+/// Above this warp no engine can be started: not by the throttle, a sequence or a part's window. The
+/// pilot slows down first.
+pub const ENGINE_START_WARP: f64 = 30.0;
 /// What `cargo run` shows behind the main menu without `OSP_SCENARIO`.
 pub const DEFAULT_SCENARIO: &str = "moon_plane";
 /// Longest real frame time we simulate; avoids huge catch-up after a hitch.
@@ -38,8 +57,8 @@ const MAX_TICKS_PER_FRAME: u32 = 64;
 /// Warping to a time, the rate is what would get there in this many real seconds, so the
 /// remaining time shrinks exponentially and the warp slows smoothly on the way in.
 const WARP_TO_LEAD: f64 = 0.6;
-/// Fastest automatic warp, ×.
-const MAX_AUTO_WARP: f64 = 1e8;
+/// Fastest automatic warp, ×: the fastest level.
+const MAX_AUTO_WARP: f64 = WARP_RATES[WARP_RATES.len() - 1];
 
 pub struct SimPlugin;
 
@@ -231,6 +250,19 @@ impl TimeWarp {
         self.rate() > MAX_PHYSICS_WARP
     }
 
+    /// Whether an engine may be started at this warp; if not, says so.
+    pub fn engines_may_start(&mut self, now: f64) -> bool {
+        let may = self.rate() <= ENGINE_START_WARP;
+        if !may {
+            let limit = ENGINE_START_WARP;
+            self.notify(
+                &format!("Engines cannot start above {limit}x: slow down first"),
+                now,
+            );
+        }
+        may
+    }
+
     /// Where an automatic warp is heading, if one is.
     pub fn target(&self) -> Option<&(SimTime, String)> {
         self.target.as_ref()
@@ -300,10 +332,15 @@ impl TimeWarp {
     }
 
     pub fn stop(&mut self, reason: &str, now: f64) {
+        self.halt();
+        self.notify(reason, now);
+    }
+
+    /// Back to normal speed, for something that says why itself.
+    pub fn halt(&mut self) {
         self.target = None;
         self.auto_rate = None;
         self.index = 0;
-        self.notify(reason, now);
     }
 
     fn notify(&mut self, message: &str, now: f64) {
@@ -331,6 +368,10 @@ fn advance_simulation(
             if let Some((end, _)) = warp.target() {
                 target = target.min(*end);
             }
+            // Never past an alarm.
+            if let Some(alarm) = sim.universe.next_alarm() {
+                target = target.min(alarm);
+            }
             let outcome = sim.universe.advance_rails(target);
             if outcome.interrupted {
                 warp.stop(&stop_reason(&outcome.events), now);
@@ -339,6 +380,7 @@ fn advance_simulation(
             sim.accumulator = 0.0;
             sim.render_time = sim.universe.time();
             sim.lagging = false;
+            ring_alarms(sim, &mut warp);
             return;
         }
         warp.stop("Warp stopped: physics required", now);
@@ -360,6 +402,14 @@ fn advance_simulation(
     }
     let offset = (sim.accumulator * TICKS_PER_SECOND as f64) as i64;
     sim.render_time = sim.universe.time().add_ticks(offset);
+    ring_alarms(sim, &mut warp);
+}
+
+/// Alarms that are due stop time warp. What they were for is in the flight log, which shows it.
+fn ring_alarms(sim: &mut Sim, warp: &mut TimeWarp) {
+    if !sim.universe.ring_alarms().is_empty() {
+        warp.halt();
+    }
 }
 
 fn stop_reason(events: &[SimEvent]) -> String {

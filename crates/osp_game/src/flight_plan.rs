@@ -25,11 +25,13 @@
 //! | `plan.zero`, `plan.delete`, `plan.clear` | Zero its Δv, delete it, delete all |
 //! | `plan.aim:<m>` | Adjust the selected burn for a periapsis this high above the target body |
 //! | `plan.execute` | Engage or disengage the burn executor |
-//! | `map.add_burn`, `map.warp_here` | From the map's menu: a burn at / warp to its point |
+//! | `plan.alarm` | Set an alarm for just before the selected burn starts, which follows it |
+//! | `map.add_burn`, `map.warp_here`, `map.alarm_here` | From the map's menu: a burn at / warp to / an alarm at its point |
 //! | `warp.to:<burn|ap|pe|soi>` | Warp there, slowing on the way in |
 
 use bevy::{input::mouse::MouseButton, math::DVec3, prelude::*};
 use osp_sim::{
+    alarm::AlarmTime,
     autopilot::{ULLAGE_LEAD, WARP_MARGIN},
     body::BodyId,
     orbit::{Orbit, StateVector},
@@ -44,6 +46,7 @@ use osp_ui::{CLICK_SLOP, LayoutVisibility, UiAction, UiData, record};
 
 use crate::{
     FrameSet,
+    alarm_clock::set_alarm,
     camera::{CameraRig, MainCamera},
     frame::{RenderFrame, to_render},
     map_labels::{MapLabels, Marker, body_spheres, hidden},
@@ -63,8 +66,8 @@ const SNAP_PX: f32 = 12.0;
 const HANDLE_SCALE: f64 = 0.055;
 /// Δv rate while dragging a handle `d` pixels out: (d / DRAG_PX)² m/s per second.
 const DRAG_PX: f32 = 12.0;
-/// Margin before a burn's start when warping to it, s.
-const WARP_TO_BURN: f64 = WARP_MARGIN + ULLAGE_LEAD + 2.0;
+/// Margin before a burn's start when warping to it, or for its alarm, s.
+pub(crate) const WARP_TO_BURN: f64 = WARP_MARGIN + ULLAGE_LEAD + 2.0;
 const AXES: [&str; 3] = ["prograde", "normal", "radial"];
 const AXIS_NAMES: [&str; 3] = ["Prograde", "Normal", "Radial"];
 /// Each axis's handles, the positive way first: the navball's own markers.
@@ -370,6 +373,41 @@ fn plan_actions(
                 if let Some(MenuOn::Point(point)) = ui.menu {
                     warp.warp_to(point.time, "the chosen point", &sim, real);
                 }
+            }
+            "map.alarm_here" => {
+                if let Some(MenuOn::Point(point)) = ui.menu {
+                    let vessel = Some(sim.active_id());
+                    let when = AlarmTime::At(point.time);
+                    set_alarm(
+                        &mut sim,
+                        &mut warp,
+                        real,
+                        "Chosen point".into(),
+                        vessel,
+                        when,
+                    );
+                }
+            }
+            "plan.alarm" => {
+                let vessel = sim.active_vessel();
+                let Some(burn) = ui.selected.and_then(|index| vessel.plan.id(index)) else {
+                    warp.notice = Some(("Select a manoeuvre first".into(), real));
+                    continue;
+                };
+                let vessel = vessel.id();
+                let when = AlarmTime::Burn {
+                    vessel,
+                    burn,
+                    before: WARP_TO_BURN,
+                };
+                set_alarm(
+                    &mut sim,
+                    &mut warp,
+                    real,
+                    "Manoeuvre".into(),
+                    Some(vessel),
+                    when,
+                );
             }
             "warp.to" => {
                 let target = match arg {

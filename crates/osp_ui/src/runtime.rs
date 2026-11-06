@@ -285,6 +285,48 @@ impl BoundGauge {
 #[derive(Component)]
 pub struct ActionSource(pub Template);
 
+/// A `slider`: what it fires, over what range, and the value it last fired, so a drag fires once
+/// for each step it crosses.
+#[derive(Component)]
+pub struct Slider {
+    pub action: Template,
+    pub min: f64,
+    pub max: f64,
+    pub step: f64,
+    pub last: Option<f64>,
+}
+
+impl Slider {
+    /// The value at `fraction` (0..1) of the way along, on a step.
+    pub fn value_at(&self, fraction: f64) -> f64 {
+        let raw = self.min + fraction.clamp(0.0, 1.0) * (self.max - self.min);
+        let stepped = if self.step > 0.0 {
+            self.min + ((raw - self.min) / self.step).round() * self.step
+        } else {
+            raw
+        };
+        stepped.clamp(self.min.min(self.max), self.max.max(self.min))
+    }
+}
+
+/// How a slider's value reads in its action: whole numbers without a point.
+pub fn slider_text(value: f64) -> String {
+    if value.fract() == 0.0 {
+        format!("{value:.0}")
+    } else {
+        let text = format!("{value:.6}");
+        text.trim_end_matches('0').trim_end_matches('.').to_owned()
+    }
+}
+
+/// A slider's thumb: placed along it at `key`'s value between `min` and `max`.
+#[derive(Component)]
+pub struct BoundThumb {
+    pub key: String,
+    pub min: f64,
+    pub max: f64,
+}
+
 /// What a right-click on a node does (`context`, an action template).
 #[derive(Component)]
 pub struct ContextAction(pub Template);
@@ -1111,6 +1153,85 @@ pub fn update_visibility(
     }
 }
 
+pub fn update_thumbs(data: Res<UiData>, mut thumbs: Query<(&BoundThumb, &mut Node)>) {
+    for (thumb, mut node) in &mut thumbs {
+        let value = data.get(&thumb.key).and_then(UiValue::as_number);
+        let range = thumb.max - thumb.min;
+        let fraction = match value {
+            Some(value) if range > 0.0 => ((value - thumb.min) / range).clamp(0.0, 1.0),
+            _ => 0.0,
+        };
+        let left = Val::Percent(fraction as f32 * 100.0);
+        if node.left != left {
+            node.left = left;
+        }
+    }
+}
+
+/// Pressing on a slider sets it where the pointer is.
+pub fn slide_press(
+    mut event: On<PointerPress>,
+    mut sliders: Query<(&mut Slider, &ComputedNode, &UiGlobalTransform)>,
+    data: Res<UiData>,
+    formatters: Res<Formatters>,
+    mut actions: MessageWriter<UiAction>,
+) {
+    if event.button != PointerButton::Primary {
+        return;
+    }
+    let (entity, at) = (event.entity, event.pointer.position);
+    if let Ok((mut slider, node, transform)) = sliders.get_mut(entity) {
+        event.propagate(false);
+        slider.last = None;
+        let at = (node, transform, at);
+        slide_to(&mut slider, at, &data, &formatters, &mut actions);
+    }
+}
+
+/// Dragging it, wherever the pointer goes, moves it along.
+pub fn slide_drag(
+    mut event: On<PointerDrag>,
+    mut sliders: Query<(&mut Slider, &ComputedNode, &UiGlobalTransform)>,
+    data: Res<UiData>,
+    formatters: Res<Formatters>,
+    mut actions: MessageWriter<UiAction>,
+) {
+    if event.button != PointerButton::Primary {
+        return;
+    }
+    let (entity, at) = (event.entity, event.pointer.position);
+    if let Ok((mut slider, node, transform)) = sliders.get_mut(entity) {
+        event.propagate(false);
+        let at = (node, transform, at);
+        slide_to(&mut slider, at, &data, &formatters, &mut actions);
+    }
+}
+
+/// Fire the value under `at` (logical px), if it is not the one fired last.
+fn slide_to(
+    slider: &mut Slider,
+    (node, transform, at): (&ComputedNode, &UiGlobalTransform, Vec2),
+    data: &UiData,
+    formatters: &Formatters,
+    actions: &mut MessageWriter<UiAction>,
+) {
+    let scale = node.inverse_scale_factor;
+    let width = node.size().x * scale;
+    if width <= 0.0 {
+        return;
+    }
+    let left = transform.translation.x * scale - width / 2.0;
+    let value = slider.value_at(f64::from((at.x - left) / width));
+    if slider.last == Some(value) {
+        return;
+    }
+    slider.last = Some(value);
+    let action = slider.action.render(data, formatters);
+    if !action.is_empty() {
+        actions.write(UiAction(format!("{action}:{}", slider_text(value))));
+    }
+}
+
 pub fn update_bars(
     data: Res<UiData>,
     mut bars: Query<(&BoundBar, &mut Node, Option<&mut BackgroundColor>)>,
@@ -1662,6 +1783,33 @@ pub fn publish_inspector(shown: Res<LayoutVisibility>, mut data: ResMut<UiData>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_slider_lands_on_its_steps_and_stays_in_range() {
+        let slider = Slider {
+            action: Template::parse("audio.set:master"),
+            min: 0.0,
+            max: 100.0,
+            step: 5.0,
+            last: None,
+        };
+        assert_eq!(slider.value_at(0.0), 0.0);
+        assert_eq!(slider.value_at(0.42), 40.0);
+        assert_eq!(slider.value_at(0.43), 45.0);
+        assert_eq!(slider.value_at(1.0), 100.0);
+        // Dragged past either end.
+        assert_eq!(slider.value_at(-0.3), 0.0);
+        assert_eq!(slider.value_at(1.7), 100.0);
+        let fine = Slider {
+            min: 0.5,
+            max: 2.0,
+            step: 0.25,
+            ..slider
+        };
+        assert_eq!(fine.value_at(0.5), 1.25);
+        assert_eq!(slider_text(75.0), "75");
+        assert_eq!(slider_text(1.25), "1.25");
+    }
 
     #[test]
     fn dismissing_closes_open_unpinned_popups_and_says_whether_there_were_any() {

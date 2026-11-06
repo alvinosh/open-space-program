@@ -18,6 +18,7 @@
           { widget: "label", class: "context_title", text: "{map.menu_time_to|countdown}  ·  {map.menu_altitude|distance}" },
           { widget: "button", class: "context_item", text: "Add manoeuvre", action: "map.add_burn" },
           { widget: "button", class: "context_item", text: "Warp to here", action: "map.warp_here" },
+          { widget: "button", class: "context_item", text: "Add alarm here", action: "map.alarm_here" },
           { widget: "button", class: "context_item", text: "Match target plane", action: "plan.match_plane", visible: "target.has_plane" },
         ],
       },
@@ -28,6 +29,7 @@
         children: [
           { widget: "label", class: "context_title", text: "Manoeuvre {burn.label}  ·  {burn.delta_v|speed}" },
           { widget: "button", class: "context_item", text: "Warp to manoeuvre", action: "warp.to:burn", visible: "burn.is_next" },
+          { widget: "button", class: "context_item", text: "Add alarm", action: "plan.alarm" },
           { widget: "button", class: "context_item", text: "Reset delta-v", action: "plan.zero" },
           { widget: "button", class: "context_item danger_button", text: "Delete", action: "plan.delete" },
         ],

@@ -4,7 +4,7 @@
 //
 // Graphics: a preset (`graphics.preset:<low|medium|high|ultra>`), the one recommended for the GPU
 // (`graphics.detect`), or each setting (`graphics.set:<key>:<value>`, current values in
-// `graphics.<key>`). Sound: how loud each part is (`audio.set:<key>:<percent>`). Controls: rebind
+// `graphics.<key>`). Sound: how loud each part is, on sliders (`audio.set:<key>:<percent>`). Controls: rebind
 // keys (`keys.listen:<id>`, `keys.reset`, the list in `keys.rows`). Interface: the rest
 // (`interface.set:<key>:<value>`).
 {
@@ -57,10 +57,10 @@
       widget: "column",
       visible: "ui.tab.settings == sound",
       children: [
-        { widget: "setting_choice", label: "Volume", key: "audio.master", action: "audio.set:master", options: [{ value: 0, label: "0%" }, { value: 25, label: "25%" }, { value: 50, label: "50%" }, { value: 75, label: "75%" }, { value: 100, label: "100%" }] },
-        { widget: "setting_choice", label: "Engines", key: "audio.engines", action: "audio.set:engines", options: [{ value: 0, label: "0%" }, { value: 25, label: "25%" }, { value: 50, label: "50%" }, { value: 75, label: "75%" }, { value: 100, label: "100%" }] },
-        { widget: "setting_choice", label: "Wind", key: "audio.wind", action: "audio.set:wind", options: [{ value: 0, label: "0%" }, { value: 25, label: "25%" }, { value: 50, label: "50%" }, { value: 75, label: "75%" }, { value: 100, label: "100%" }] },
-        { widget: "setting_choice", label: "Effects", key: "audio.effects", action: "audio.set:effects", options: [{ value: 0, label: "0%" }, { value: 25, label: "25%" }, { value: 50, label: "50%" }, { value: 75, label: "75%" }, { value: 100, label: "100%" }] },
+        { widget: "setting_slider", label: "Volume", key: "audio.master", action: "audio.set:master", min: 0, max: 100, step: 5, unit: "%" },
+        { widget: "setting_slider", label: "Engines", key: "audio.engines", action: "audio.set:engines", min: 0, max: 100, step: 5, unit: "%" },
+        { widget: "setting_slider", label: "Wind", key: "audio.wind", action: "audio.set:wind", min: 0, max: 100, step: 5, unit: "%" },
+        { widget: "setting_slider", label: "Effects", key: "audio.effects", action: "audio.set:effects", min: 0, max: 100, step: 5, unit: "%" },
       ],
     },
     {

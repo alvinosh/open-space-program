@@ -1,5 +1,6 @@
 // Time warp and clocks (top of the left dock). The chevrons are the warp levels, lit up to
-// the current one: teal while physics runs, amber on rails. The middle button stops warp.
+// the current one: teal while physics runs, amber on rails. The middle button stops warp. The rate
+// reads as times real time, and above a day a second as days or years a second, up to 100 y/s.
 {
   id: "time",
   group: "flight",
@@ -7,7 +8,7 @@
   root: {
     id: "time",
     widget: "panel",
-    style: { width: 216, gap: 5, padding: [6, 8, 7, 8] },
+    style: { width: 264, gap: 5, padding: [6, 8, 7, 8] },
     children: [
       {
         widget: "row",
@@ -19,14 +20,14 @@
           {
             widget: "row",
             repeat: "time.warp_levels",
-            style: { gap: 1.5, margin: [0, 6, 0, 8] },
+            style: { gap: 1, margin: [0, 4, 0, 6] },
             children: [
               { widget: "image", class: "warp_chevron", image: "icons/warp_chevron.svg", active: "item.lit", visible: "!item.rails" },
               { widget: "image", class: "warp_chevron warp_rails", image: "icons/warp_chevron.svg", active: "item.lit", visible: "item.rails" },
             ],
           },
           { widget: "spacer" },
-          { widget: "label", class: "warp_rate", tooltip: "Warp: {time.warp_mode}", text: "{time.warp}x" },
+          { widget: "label", class: "warp_rate", tooltip: "Warp: {time.warp_mode}", text: "{time.warp_label}" },
         ],
       },
       { widget: "column", style: { height: 1, background: [1, 1, 1, 0.07], margin: [0, -10, 0, -8] } },
@@ -45,6 +46,17 @@
         children: [
           { widget: "label", class: "caption", style: { min_width: 26, color: "#38e0c4" }, text: "MET" },
           { widget: "label", style: { font_weight: 600 }, text: "{time.met|duration}" },
+        ],
+      },
+      {
+        widget: "button",
+        class: "alarm_row",
+        visible: "alarms.has",
+        action: "ui.toggle:alarm_clock",
+        tooltip: "Next alarm: {alarms.next_title} (F6)",
+        children: [
+          { widget: "image", class: "alarm_icon", image: "icons/alarm.svg" },
+          { widget: "label", style: { font_weight: 600 }, text: "{alarms.next_in|countdown}" },
         ],
       },
     ],

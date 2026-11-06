@@ -37,11 +37,12 @@
 //! - **History** ([`tech`]): parts carry the year they first flew and the tech tree node
 //!   that unlocks them, so the game's date decides what is available.
 //! - **Planning**: burns ([`plan`]) are predicted as impulses with the same event code, and
-//!   flown as finite burns by the executor ([`autopilot`]).
+//!   flown as finite burns by the executor ([`autopilot`]). Alarms ([`alarm`]) say when to stop.
 //! - **Saves** ([`save`]): the state of a universe to bytes and back, bit for bit, so a game
 //!   carries on from a save exactly as it would have without one.
 
 pub mod aero;
+pub mod alarm;
 pub mod assembly;
 pub mod atmosphere;
 pub mod attitude;

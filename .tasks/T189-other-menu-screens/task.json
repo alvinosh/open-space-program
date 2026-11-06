@@ -2,7 +2,7 @@
   "id": "T189",
   "title": "Vessels, Save, Load, Tutorials and Settings screens",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "ui",
   "size": "M",
   "parent": "T185",
@@ -15,8 +15,8 @@
     "crates/osp_game/src/settings.rs"
   ],
   "created": "2026-11-04",
-  "updated": "2026-11-04",
-  "done": null,
+  "updated": "2026-11-06",
+  "done": "2026-11-06",
   "milestone": "M3",
   "priority": 57
 }

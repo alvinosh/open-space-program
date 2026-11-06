@@ -38,17 +38,68 @@ impl Burn {
     }
 }
 
+/// What a planned burn is known by for as long as it is planned: it keeps it when it is moved or
+/// reshaped, so what refers to it (an alarm) follows it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct BurnId(pub u64);
+
 /// The burns a vessel has planned, in time order.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(from = "SavedPlan")]
 pub struct FlightPlan {
     burns: Vec<Burn>,
     /// Bumped on every change, so caches of the predicted trajectory know to rebuild.
     revision: u64,
+    /// Each burn's id, in the same order as `burns`.
+    ids: Vec<BurnId>,
+    next_id: u64,
+}
+
+/// A plan as saved. Saves from before burns had ids have none, and get new ones.
+#[derive(Deserialize)]
+struct SavedPlan {
+    burns: Vec<Burn>,
+    revision: u64,
+    #[serde(default)]
+    ids: Vec<BurnId>,
+    #[serde(default)]
+    next_id: u64,
+}
+
+impl From<SavedPlan> for FlightPlan {
+    fn from(saved: SavedPlan) -> Self {
+        let mut plan = Self {
+            burns: saved.burns,
+            revision: saved.revision,
+            ids: saved.ids,
+            next_id: saved.next_id,
+        };
+        if plan.ids.len() != plan.burns.len() {
+            plan.ids = (0..plan.burns.len() as u64).map(BurnId).collect();
+            plan.next_id = plan.burns.len() as u64;
+        }
+        plan
+    }
 }
 
 impl FlightPlan {
     pub fn burns(&self) -> &[Burn] {
         &self.burns
+    }
+
+    /// The id of burn `index`.
+    pub fn id(&self, index: usize) -> Option<BurnId> {
+        self.ids.get(index).copied()
+    }
+
+    /// Where burn `id` is in the plan, if it is still planned.
+    pub fn index_of(&self, id: BurnId) -> Option<usize> {
+        self.ids.iter().position(|&i| i == id)
+    }
+
+    /// Burn `id`, if it is still planned.
+    pub fn burn(&self, id: BurnId) -> Option<&Burn> {
+        self.index_of(id).map(|index| &self.burns[index])
     }
 
     pub fn is_empty(&self) -> bool {
@@ -61,24 +112,34 @@ impl FlightPlan {
 
     /// Add a burn; returns its index in time order.
     pub fn add(&mut self, burn: Burn) -> usize {
+        let id = BurnId(self.next_id);
+        self.next_id += 1;
+        self.insert(id, burn)
+    }
+
+    fn insert(&mut self, id: BurnId, burn: Burn) -> usize {
         let index = self.burns.partition_point(|b| b.time <= burn.time);
         self.burns.insert(index, burn);
+        self.ids.insert(index, id);
         self.revision += 1;
         index
     }
 
-    /// Replace burn `index`; returns its new index, as a changed time can reorder it.
+    /// Replace burn `index`, which keeps its id; returns its new index, as a changed time can
+    /// reorder it.
     pub fn set(&mut self, index: usize, burn: Burn) -> usize {
         if index >= self.burns.len() {
             return self.add(burn);
         }
         self.burns.remove(index);
-        self.add(burn)
+        let id = self.ids.remove(index);
+        self.insert(id, burn)
     }
 
     pub fn remove(&mut self, index: usize) -> Option<Burn> {
         (index < self.burns.len()).then(|| {
             self.revision += 1;
+            self.ids.remove(index);
             self.burns.remove(index)
         })
     }
@@ -86,6 +147,7 @@ impl FlightPlan {
     pub fn clear(&mut self) {
         if !self.burns.is_empty() {
             self.burns.clear();
+            self.ids.clear();
             self.revision += 1;
         }
     }
@@ -132,5 +194,52 @@ mod tests {
         let revision = plan.revision();
         plan.remove(1);
         assert!(plan.revision() > revision);
+    }
+
+    #[test]
+    fn a_burn_keeps_its_id_when_moved() {
+        let mut plan = FlightPlan::default();
+        let at = |s: f64| Burn {
+            time: SimTime::from_seconds(s),
+            delta_v: DVec3::X,
+        };
+        plan.add(at(100.0));
+        plan.add(at(200.0));
+        let first = plan.id(0).unwrap();
+        let second = plan.id(1).unwrap();
+        assert_ne!(first, second);
+        // Moved past the other one, it is still itself.
+        let moved = plan.set(0, at(300.0));
+        assert_eq!(plan.id(moved), Some(first));
+        assert_eq!(plan.index_of(second), Some(0));
+        assert_eq!(plan.burn(first).unwrap().time, SimTime::from_seconds(300.0));
+        plan.remove(plan.index_of(first).unwrap());
+        assert_eq!(plan.index_of(first), None);
+        // A new burn never takes a gone one's id.
+        plan.add(at(400.0));
+        assert_ne!(plan.id(1), Some(first));
+    }
+
+    #[test]
+    fn a_plan_saved_without_ids_gets_them() {
+        #[derive(Serialize)]
+        struct Old {
+            burns: Vec<Burn>,
+            revision: u64,
+        }
+        let burn = Burn {
+            time: SimTime::from_seconds(100.0),
+            delta_v: DVec3::X,
+        };
+        let old = Old {
+            burns: vec![burn, burn],
+            revision: 3,
+        };
+        let text = serde_json::to_string(&old).unwrap();
+        let mut plan: FlightPlan = serde_json::from_str(&text).unwrap();
+        let (a, b) = (plan.id(0).unwrap(), plan.id(1).unwrap());
+        assert_ne!(a, b);
+        plan.add(burn);
+        assert!(plan.id(2).is_some_and(|c| c != a && c != b));
     }
 }

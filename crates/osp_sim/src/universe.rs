@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
+    alarm::AlarmClock,
     attitude::SasMode,
     body::BodyId,
     collision::Colliders,
@@ -136,6 +137,8 @@ pub struct Universe {
     contacts: Contacts,
     /// Ports that have caught and are closing.
     captures: Vec<SoftCapture>,
+    /// What the player wants to be stopped for (see [`crate::alarm`]).
+    pub alarms: AlarmClock,
     time: SimTime,
     next_id: u64,
 }
@@ -182,6 +185,9 @@ pub struct Snapshot {
     tutorial: Option<Tutorial>,
     clear_of: BTreeSet<(VesselId, VesselId)>,
     captures: Vec<SoftCapture>,
+    /// Saves from before the alarm clock have none.
+    #[serde(default)]
+    alarms: AlarmClock,
 }
 
 impl Universe {
@@ -199,6 +205,7 @@ impl Universe {
             colliders: Colliders::default(),
             contacts: Contacts::default(),
             captures: Vec::new(),
+            alarms: AlarmClock::default(),
             time,
             next_id: 0,
         };
@@ -829,6 +836,7 @@ impl Universe {
         self.clear_of.clear();
         self.contacts.clear();
         self.captures.clear();
+        self.alarms = AlarmClock::default();
         self.time = time;
         for mut vessel in vessels {
             // In a game, nothing flies without avionics or a crew to fly it.
@@ -880,6 +888,7 @@ impl Universe {
             self.contacts.clear();
             self.contacts.clear();
             self.captures.clear();
+            self.alarms = AlarmClock::default();
             self.mission = None;
             self.tutorial = None;
             self.time = time;
@@ -907,6 +916,7 @@ impl Universe {
             tutorial: self.tutorial.clone(),
             clear_of: self.clear_of.clone(),
             captures: self.captures.clone(),
+            alarms: self.alarms.clone(),
         }
     }
 
@@ -929,6 +939,7 @@ impl Universe {
         self.clear_of = snapshot.clear_of;
         self.contacts.clear();
         self.captures = snapshot.captures;
+        self.alarms = snapshot.alarms;
         Ok(())
     }
 

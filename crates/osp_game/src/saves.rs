@@ -1,6 +1,8 @@
 //! Saved games on disk, and the actions on them: `game.save` writes the game in progress to its
-//! save, `game.save_as` to a new one, `game.load:<file>` carries on from one, `game.continue` from
-//! the newest, and `game.delete_save:<file>` deletes one (`dialog` is what asks first). A save starts
+//! save, `game.save_as` to a new one, `game.save_to:<file>` over the save `file`, `game.load:<file>`
+//! carries on from one, `game.continue` from the newest, and `game.delete_save:<file>` deletes one
+//! (`dialog` is what asks first, before overwriting another game's save too). Saving from the Save
+//! screen goes back from it, to Pause, which says what was saved. A save starts
 //! with what the list shows, so the list only reads that much of each (see `osp_sim::save`).
 //!
 //! Saves live in `saves/` in `OSP_USER_DIR`, or beside the settings file. Scripted captures
@@ -118,6 +120,16 @@ impl Saves {
         self.current.as_ref().map(|(_, name)| name.as_str())
     }
 
+    /// The file of the save the game in progress goes to, if it has one.
+    pub fn current_file(&self) -> Option<&str> {
+        self.current.as_ref().map(|(file, _)| file.as_str())
+    }
+
+    /// What a new save would be called.
+    pub fn next_name(&self) -> String {
+        next_save(&self.list).1
+    }
+
     /// Write the game in progress to its save, starting one if it has none, and say so. False if
     /// it could not be written.
     pub fn save(&mut self, sim: &Sim) -> bool {
@@ -143,10 +155,27 @@ impl Saves {
     }
 
     /// Write it to a new save, which becomes the one it goes to.
-    fn save_as_new(&mut self, sim: &Sim) {
+    fn save_as_new(&mut self, sim: &Sim) -> bool {
         self.refresh();
-        self.forget_current();
-        self.save(sim);
+        let to = next_save(&self.list);
+        self.save_to(to, sim)
+    }
+
+    /// Write it over the save `file`, under that save's name, which becomes the one it goes to.
+    fn save_over(&mut self, file: &str, sim: &Sim) -> bool {
+        let name = self.name_of(file).to_owned();
+        self.save_to((file.to_owned(), name), sim)
+    }
+
+    /// Write it to the save `to` (file and name), which becomes the one it goes to; if it cannot be
+    /// written, the game goes on going to the save it went to.
+    fn save_to(&mut self, to: (String, String), sim: &Sim) -> bool {
+        let before = (self.current.replace(to), self.saved);
+        let saved = self.save(sim);
+        if !saved {
+            (self.current, self.saved) = before;
+        }
+        saved
     }
 
     /// In one step as far as the folder goes, so a crash leaves the old save or the new one.
@@ -276,7 +305,15 @@ fn save_actions(
             "game.save" if menu.playing => {
                 saves.save(&sim);
             }
-            "game.save_as" if menu.playing => saves.save_as_new(&sim),
+            "game.save_as" | "game.save_to" if menu.playing => {
+                let saved = match action.arg() {
+                    Some(file) if action.name() == "game.save_to" => saves.save_over(file, &sim),
+                    _ => saves.save_as_new(&sim),
+                };
+                if saved && menu.screen() == "save" {
+                    menu.pop();
+                }
+            }
             "game.load" | "game.continue" => {
                 let file = match action.name() {
                     "game.load" => action.arg().map(str::to_owned),

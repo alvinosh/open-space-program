@@ -23,6 +23,10 @@
 //! | `staging.menu:<sequence>` | open the menu of a row in the staging window |
 //!
 //! Throttle and SAS commands disengage the burn executor (see `flight_plan` for its actions).
+//!
+//! Above 30x warp (`sim::ENGINE_START_WARP`) no engine starts: raising the throttle, a sequence that
+//! lights one and lighting one from a part's window are refused, and the warp goes on. Aborts are
+//! the exception, as they are for emergencies.
 
 use bevy::{math::DVec3, prelude::*};
 use osp_sim::guidance::Guidance;
@@ -109,7 +113,11 @@ fn apply_actions(
     // A craft in the editor is only looked at, and its sequences changed.
     if !editor.is_open() {
         let vessel = sim.active_vessel_mut();
-        let throttle_input = held.axis("vessel.throttle_up", "vessel.throttle_down");
+        let mut throttle_input = held.axis("vessel.throttle_up", "vessel.throttle_down");
+        // Raising the throttle starts what is lit.
+        if throttle_input > 0.0 && !warp.engines_may_start(now) {
+            throttle_input = 0.0;
+        }
         if throttle_input != 0.0 {
             // The pilot takes the throttle back from the burn executor.
             vessel.disengage_burn(ut);
@@ -143,7 +151,11 @@ fn apply_actions(
                 continue;
             }
             "vessel.stage" => {
-                sim.stage_active();
+                let next = sim.active_vessel().propulsion.sequences.list().first();
+                let ignites = next.is_some_and(|s| s.iter().any(|a| a.is_engine()));
+                if !ignites || warp.engines_may_start(now) {
+                    sim.stage_active();
+                }
                 continue;
             }
             "vessel.abort" => {
@@ -191,6 +203,8 @@ fn apply_actions(
             }
             "part.do" => {
                 match part_action(action.arg().unwrap_or_default()) {
+                    Some((_, activation))
+                        if activation.is_engine() && !warp.engines_may_start(now) => {}
                     Some((vessel, activation)) => {
                         if !sim.perform(vessel, activation) {
                             warn!("the part does not offer `{}`", action.0);
@@ -205,8 +219,10 @@ fn apply_actions(
         let (vessel, system) = sim.active_vessel_in_system();
         match action.name() {
             "vessel.throttle_full" => {
-                vessel.disengage_burn(ut);
-                vessel.set_throttle(1.0);
+                if warp.engines_may_start(now) {
+                    vessel.disengage_burn(ut);
+                    vessel.set_throttle(1.0);
+                }
             }
             "vessel.throttle_cut" => {
                 vessel.disengage_burn(ut);

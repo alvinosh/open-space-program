@@ -42,7 +42,8 @@ pub use layout::{
 };
 pub use runtime::{
     ActionSource, ActionState, CLICK_SLOP, ContextAction, DragPayload, DropAction,
-    LayoutVisibility, PointerOverUi, Tooltip, UiAction, UiHighlight, UiHover, UiImage, ViewOverlay,
+    LayoutVisibility, PointerOverUi, Slider, Tooltip, UiAction, UiHighlight, UiHover, UiImage,
+    ViewOverlay,
 };
 pub use widgets::{WidgetBuilder, WidgetContext, WidgetRegistry};
 
@@ -101,7 +102,7 @@ impl Plugin for UiPlugin {
                     runtime::update_repeaters,
                     runtime::update_text,
                     runtime::update_visibility,
-                    runtime::update_bars,
+                    (runtime::update_bars, runtime::update_thumbs),
                     runtime::update_accents,
                     runtime::update_gauges,
                     runtime::update_states,

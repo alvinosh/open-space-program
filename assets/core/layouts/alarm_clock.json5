@@ -1,0 +1,53 @@
+// Alarm clock (F6), in the right dock under Orbit: what time warp stops for, soonest first. Warp at any rate and it drops to normal
+// speed as each alarm rings; Warp goes straight to one. Alarms are set where the times are (a launch
+// time or departure in the transfer planner, a manoeuvre's panel or menu, a point in the map's menu,
+// the closest approach in the Target window), or here, for a wait from now.
+{
+  id: "alarm_clock",
+  visible: false,
+  group: "flight",
+  dock: "right",
+  dock_order: 15,
+  root: {
+    widget: "window",
+    icon: "icons/alarm.svg",
+    title: "Alarm clock",
+    style: { width: 330 },
+    children: [
+      { widget: "label", class: "dim", visible: "!alarms.has", text: "No alarms. Set them from the transfer planner, a manoeuvre, the map's menu or the Target window, or for a wait below." },
+      {
+        id: "alarms",
+        widget: "column",
+        repeat: "alarms.list",
+        visible: "alarms.has",
+        style: { gap: 2 },
+        children: [
+          {
+            widget: "row",
+            class: "kv",
+            children: [
+              { widget: "label", text: "{item.in|countdown}", style: { min_width: 84 } },
+              { widget: "label", text: "{item.title}" },
+              { widget: "label", class: "dim", visible: "item.other", text: "{item.vessel}", style: { margin: [0, 0, 0, 8] } },
+              { widget: "spacer" },
+              { widget: "button", class: "step_button", text: "Warp", action: "alarm.warp:{item.id}" },
+              { widget: "button", class: "step_button danger_button", text: "Delete", action: "alarm.delete:{item.id}" },
+            ],
+          },
+        ],
+      },
+      {
+        id: "new",
+        widget: "row",
+        style: { gap: 4, margin: [6, 0, 0, 0] },
+        children: [
+          { widget: "button", class: "step_button", text: "-", action: "alarm.step:-1", tooltip: "Sooner" },
+          { widget: "label", text: "In {alarms.new_in}", style: { min_width: 84 } },
+          { widget: "button", class: "step_button", text: "+", action: "alarm.step:1", tooltip: "Later" },
+          { widget: "spacer" },
+          { widget: "button", class: "step_button", text: "Set alarm", action: "alarm.add" },
+        ],
+      },
+    ],
+  },
+}

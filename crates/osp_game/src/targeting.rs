@@ -10,9 +10,11 @@
 //! | `vessel.fly:<key>` | Fly another vessel (`key` as in `manifest.items`): the camera frames it and stays in the view it is in, and no burn stays selected |
 //! | `plan.match_plane` | Plan a burn at the next node that matches the target's plane |
 //! | `warp.to:approach` | Warp to the first closest approach |
+//! | `target.alarm_approach` | Set an alarm at the first closest approach |
 
 use bevy::{input::mouse::MouseButton, math::DVec3, prelude::*, window::PrimaryWindow};
 use osp_sim::{
+    alarm::AlarmTime,
     body::BodyId,
     orbit::Orbit,
     rendezvous::{Approach, PlaneNodes, Target, closest_approaches, plane_match, plane_nodes},
@@ -23,6 +25,7 @@ use osp_ui::{LayoutVisibility, UiAction, UiData};
 
 use crate::{
     FrameSet,
+    alarm_clock::set_alarm,
     camera::{CameraRig, MainCamera},
     flight_plan::PlanUi,
     frame::RenderFrame,
@@ -164,8 +167,38 @@ fn target_actions(
                 }
                 None => warp.notice = Some(("No closest approach".into(), real)),
             },
+            "target.alarm_approach" => {
+                let target = sim.active_vessel().target;
+                let (Some(mark), Some(target)) = (info.approaches.first(), target) else {
+                    warp.notice = Some(("No closest approach".into(), real));
+                    continue;
+                };
+                let title = match target_name(&sim, target) {
+                    Some(name) => format!("Closest approach to {name}"),
+                    None => "Closest approach".into(),
+                };
+                let vessel = Some(sim.active_id());
+                let when = AlarmTime::At(mark.approach.time);
+                set_alarm(&mut sim, &mut warp, real, title, vessel, when);
+            }
             _ => {}
         }
+    }
+}
+
+/// What a target is called: a body, a vessel, or a vessel's part.
+pub fn target_name(sim: &Sim, target: Target) -> Option<String> {
+    match target {
+        Target::Body(b) => Some(sim.universe.system.body(b).name.clone()),
+        Target::Vessel(id) => sim.universe.vessel(id).map(|v| v.name.clone()),
+        Target::Part(id, part) => sim.universe.vessel(id).map(|v| {
+            let part = v.propulsion.parts().get(part);
+            match part {
+                Some(part) if has_port(v, part) => format!("{}, {} port", v.name, part_title(part)),
+                Some(part) => format!("{}, {}", v.name, part_title(part)),
+                None => v.name.clone(),
+            }
+        }),
     }
 }
 
@@ -418,22 +451,7 @@ fn publish_target(sim: Res<Sim>, info: Res<TargetInfo>, mut data: ResMut<UiData>
     let active = sim.active_index();
     let target = vessel.target;
     data.set("target.has", target.is_some());
-    let name = match target {
-        Some(Target::Body(b)) => Some(system.body(b).name.clone()),
-        Some(Target::Vessel(id)) => sim
-            .universe
-            .find_vessel(id)
-            .map(|i| sim.universe.vessels[i].name.clone()),
-        Some(Target::Part(id, part)) => sim.universe.vessel(id).map(|v| {
-            let part = v.propulsion.parts().get(part);
-            match part {
-                Some(part) if has_port(v, part) => format!("{}, {} port", v.name, part_title(part)),
-                Some(part) => format!("{}, {}", v.name, part_title(part)),
-                None => v.name.clone(),
-            }
-        }),
-        None => None,
-    };
+    let name = target.and_then(|target| target_name(&sim, target));
     data.set("target.name", name.unwrap_or_default());
     let own = vessel.state_at(system, now);
     let relative = sim

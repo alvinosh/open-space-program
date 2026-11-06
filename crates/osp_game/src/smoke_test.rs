@@ -27,8 +27,8 @@ use osp_sim::{
     staging::Activation,
 };
 use osp_ui::{
-    ActionSource, ContextAction, DragPayload, DropAction, Formatters, LayoutVisibility, Template,
-    UiAction, UiData,
+    ActionSource, ContextAction, DragPayload, DropAction, Formatters, LayoutVisibility, Slider,
+    Template, UiAction, UiData,
 };
 
 use crate::{
@@ -150,6 +150,12 @@ impl Plugin for SmokeTestPlugin {
                 POWER_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_WINDOWS").is_some() {
                 WINDOWS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_WARP").is_some() {
+                WARP_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_SAVE").is_some() {
+                SAVE_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_ALARMS").is_some() {
+                ALARMS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_LAUNCH_TIMES").is_some() {
                 LAUNCH_TIMES_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_REVERT").is_some() {
@@ -271,9 +277,11 @@ enum Action {
     /// Let the actions through, as they are when a player flies.
     Unlock,
     /// Move the pointer the UI sees onto the middle of the node with this action, `drag`
-    /// payload, `drop` or `context` as they read now, or that start with this if it ends in
-    /// `:` (the capture has no real pointer).
+    /// payload, `drop`, `context` or slider action as they read now, or that start with this if it
+    /// ends in `:` (the capture has no real pointer).
     UiPointAt(&'static str),
+    /// The same, this far along it from its left edge (0 to 1): pressed, that drags a slider.
+    UiPointAlong(&'static str, f32),
     /// The same, near its left edge: on a row, its number rather than one of its tiles.
     UiPointAtEdge(&'static str),
     /// Press or release that pointer's button.
@@ -1067,7 +1075,8 @@ const MAP_UI_SCRIPT: &[(f64, Action)] = &[
 ];
 
 /// `OSP_SCENARIO=rendezvous OSP_CAPTURE_RENDEZVOUS=1`: the target windows, the map with
-/// the station, closest approaches and plane nodes, then a planned plane match.
+/// the station, closest approaches and plane nodes, then a planned plane match, and an alarm at the
+/// closest approach.
 /// In `apollo11_docking` (`OSP_CAPTURE_DOCKING=1`): the guides, what the two collide with drawn
 /// over them, the view out of the port, a bump, and a dock let go again.
 const DOCKING_SCRIPT: &[(f64, Action)] = &[
@@ -1142,7 +1151,11 @@ const RENDEZVOUS_SCRIPT: &[(f64, Action)] = &[
     (6.0, Action::Ui("ui.show:flight_plan")),
     (6.0, Action::Ui("plan.match_plane")),
     (8.0, Action::Capture("rendezvous_plan.png")),
-    (8.5, Action::Exit),
+    (8.1, Action::Ui("target.alarm_approach")),
+    (8.2, Action::ExpectData("alarms.count == 1")),
+    (8.3, Action::Ui("ui.show:alarm_clock")),
+    (8.9, Action::Capture("rendezvous_alarm.png")),
+    (9.0, Action::Exit),
 ];
 
 /// In orbit (`OSP_CAPTURE_DEORBIT=1`): plan a 150 m/s retrograde burn and capture the
@@ -1162,14 +1175,19 @@ const DEORBIT_SCRIPT: &[(f64, Action)] = &[
     (4.5, Action::Exit),
 ];
 
-/// In LEO (`OSP_CAPTURE_TRANSFER=1`): target the Moon, plot transfers, make the cheapest
-/// one's burn and show the trajectory it leads to.
+/// In LEO (`OSP_CAPTURE_TRANSFER=1`): target the Moon, plot transfers, set an alarm for the
+/// cheapest one's departure, make its burn and show the trajectory it leads to.
 const TRANSFER_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("target.body:Moon")),
     (1.2, Action::Ui("ui.show:transfer_planner")),
     (1.5, Action::Ui("transfer.compute")),
     (5.0, Action::Capture("transfer_plot.png")),
+    (5.1, Action::Ui("transfer.alarm")),
+    (
+        5.15,
+        Action::ExpectData("alarms.next_title == Departure for Moon"),
+    ),
     (5.2, Action::Ui("transfer.create")),
     (5.4, Action::Ui("ui.hide:transfer_planner")),
     (5.4, Action::Ui("ui.show:flight_plan")),
@@ -1188,7 +1206,8 @@ const NIGHT_SCRIPT: &[(f64, Action)] = &[
     (1.0, Action::Ui("target.body:Moon")),
     (1.2, Action::Ui("ui.show:transfer_planner")),
     (1.5, Action::Ui("transfer.compute")),
-    (2.0, Action::Ui("transfer.warp_launch:0")),
+    (2.0, Action::Ui("transfer.alarm_launch:0")),
+    (2.05, Action::Ui("alarm.warp:0")),
     (2.5, Action::Ui("ui.hide:transfer_planner")),
     (2.6, Action::Ui("ui.hide_group:flight")),
     (14.0, Action::LookFrom(70.0, 200.0, 12.0)),
@@ -1255,10 +1274,10 @@ const FALLING_SCRIPT: &[(f64, Action)] = &[
     (22.6, Action::Exit),
 ];
 
-/// `OSP_CAPTURE_POWER=1`: a vessel on batteries alone in the Resources window, on the pad as time
-/// goes by, until they run out. Its avionics draw nothing, so it keeps control and only its other
-/// loads go. A Saturn V left on the pad shows `Out of power` too, once its fuel cells have also run
-/// dry, after about a week.
+/// `OSP_CAPTURE_POWER=1`: a vessel on batteries alone in the Resources window. On the pad it is on
+/// ground power and nothing runs down, however long it waits. Put in orbit, its batteries run down as
+/// time goes by, until they run out. Its avionics draw nothing, so it keeps control and only its other
+/// loads go.
 const POWER_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
@@ -1266,13 +1285,28 @@ const POWER_SCRIPT: &[(f64, Action)] = &[
     (4.0, Action::Ui("editor.launch")),
     (6.0, Action::Ui("ui.show:resources")),
     (6.5, Action::ExpectData("vessel.has_power")),
-    (6.6, Action::ExpectData("vessel.power_draining")),
-    (7.0, Action::Capture("power_start.png")),
-    (7.2, Action::Warp(9)),
-    (20.0, Action::Capture("power_warped.png")),
-    (40.0, Action::ExpectData("vessel.power_shedding")),
-    (40.5, Action::Capture("power_gone.png")),
-    (41.3, Action::Exit),
+    (6.6, Action::ExpectData("vessel.power_supplied")),
+    (6.7, Action::ExpectData("!vessel.power_draining")),
+    (6.8, Action::ExpectData("vessel.power_fraction == 1")),
+    (7.0, Action::Warp(9)),
+    (12.0, Action::Capture("power_on_the_pad.png")),
+    (12.1, Action::ExpectData("vessel.power_fraction == 1")),
+    (12.2, Action::ExpectData("!vessel.power_shedding")),
+    (12.3, Action::Warp(0)),
+    // The same vessel in orbit, with nothing to keep it up.
+    (12.5, Action::Ui("game.menu")),
+    (12.6, Action::Ui("editor.open")),
+    (13.0, Action::Ui("editor.show:lunar_module")),
+    (13.5, Action::Ui("editor.place:orbit")),
+    (16.0, Action::Ui("editor.launch")),
+    (18.0, Action::ExpectData("!vessel.power_supplied")),
+    (18.1, Action::ExpectData("vessel.power_draining")),
+    (18.5, Action::Capture("power_start.png")),
+    (18.7, Action::Warp(9)),
+    (30.0, Action::Capture("power_warped.png")),
+    (50.0, Action::ExpectData("vessel.power_shedding")),
+    (50.5, Action::Capture("power_gone.png")),
+    (51.3, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_WINDOWS=1` (with `OSP_USER_DIR=<a folder>`, and its `windows.json` if there is to be
@@ -1311,7 +1345,7 @@ const WINDOWS_SCRIPT: &[(f64, Action)] = &[
 ];
 
 /// On the pad (`OSP_SCENARIO=pad OSP_CAPTURE_LAUNCH_TIMES=1`): target the Moon and ask when to launch,
-/// warp to the first time and go. Leaving the ground takes the list away, and the plot is then what
+/// set an alarm for the first time, warp to it from the alarm clock and go. Leaving the ground takes the list away, and the plot is then what
 /// there is.
 const LAUNCH_TIMES_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
@@ -1323,13 +1357,161 @@ const LAUNCH_TIMES_SCRIPT: &[(f64, Action)] = &[
     (2.6, Action::ExpectData("transfer.has_windows")),
     (2.7, Action::ExpectData("transfer.launch_far")),
     (3.0, Action::Capture("launch_times.png")),
-    (3.1, Action::Ui("transfer.warp_launch:0")),
+    (3.1, Action::Ui("transfer.alarm_launch:0")),
+    (3.2, Action::ExpectData("alarms.count == 1")),
+    (3.3, Action::Ui("ui.show:alarm_clock")),
+    (3.8, Action::Capture("launch_times_alarm.png")),
+    (3.9, Action::Ui("alarm.warp:0")),
     (15.0, Action::Capture("launch_times_warped.png")),
+    (15.05, Action::ExpectData("!alarms.has")),
+    (15.06, Action::ExpectData("time.warp == 1")),
     (15.1, Action::ExpectData("transfer.on_ground")),
     (15.2, Action::Launch),
     (18.0, Action::ExpectData("!transfer.on_ground")),
     (18.5, Action::Capture("launch_times_gone.png")),
     (19.0, Action::Exit),
+];
+
+/// `OSP_CAPTURE_SAVE=1` (with `OSP_USER_DIR=<an empty folder>`): the Save screen. New saves, saving
+/// over this game's own save at once and over another's after a question, each back on Pause; then
+/// the Vessels screen with the one flown marked, and a volume dragged on its slider.
+const SAVE_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::ExpectSaves(0)),
+    (1.2, Action::Ui("menu.open:save")),
+    (1.3, Action::ExpectScreen("save")),
+    (1.8, Action::Capture("save_none.png")),
+    (1.9, Action::UiPointAt("game.save_as")),
+    (2.0, Action::UiPress(PointerButton::Primary)),
+    (2.1, Action::UiRelease(PointerButton::Primary)),
+    (2.3, Action::ExpectScreen("pause")),
+    (2.35, Action::ExpectSaves(1)),
+    (2.4, Action::ExpectData("menu.save_name == Game 1")),
+    (2.8, Action::Capture("save_back_on_pause.png")),
+    (2.9, Action::Ui("menu.open:save")),
+    (3.0, Action::Ui("game.save_as")),
+    (3.1, Action::ExpectSaves(2)),
+    (3.15, Action::ExpectData("menu.save_name == Game 2")),
+    (3.2, Action::Ui("menu.open:save")),
+    (3.8, Action::Capture("save_two.png")),
+    // Its own save: no question.
+    (3.9, Action::Ui("ask.overwrite:game_2")),
+    (4.0, Action::ExpectDialog("")),
+    (4.05, Action::ExpectScreen("pause")),
+    (4.1, Action::ExpectSaves(2)),
+    // Another game's: asked, and Cancel leaves both as they are.
+    (4.2, Action::Ui("menu.open:save")),
+    (4.3, Action::Ui("ask.overwrite:game_1")),
+    (4.4, Action::ExpectDialog("Save over Game 1?")),
+    (4.9, Action::Capture("save_over_asked.png")),
+    (5.0, Action::Ui("dialog.cancel")),
+    (5.1, Action::ExpectScreen("save")),
+    (5.15, Action::ExpectData("menu.save_name == Game 2")),
+    (5.2, Action::Ui("ask.overwrite:game_1")),
+    (5.3, Action::Ui("dialog.answer:0")),
+    (5.4, Action::ExpectDialog("")),
+    (5.45, Action::ExpectScreen("pause")),
+    (5.5, Action::ExpectSaves(2)),
+    (5.55, Action::ExpectData("menu.save_name == Game 1")),
+    (5.6, Action::Ui("menu.open:save")),
+    (6.2, Action::Capture("save_over_done.png")),
+    (6.3, Action::Ui("menu.back")),
+    (6.4, Action::Ui("menu.open:vessels")),
+    (7.0, Action::Capture("save_vessels.png")),
+    (7.1, Action::Ui("menu.back")),
+    (7.2, Action::Ui("menu.open:settings")),
+    (7.3, Action::Ui("ui.tab:settings:sound")),
+    (7.4, Action::Ui("audio.set:master:100")),
+    (7.5, Action::UiPointAlong("audio.set:master", 0.5)),
+    (7.6, Action::UiPress(PointerButton::Primary)),
+    (7.7, Action::ExpectData("audio.master == 50")),
+    (7.8, Action::UiPointAlong("audio.set:master", 0.3)),
+    (7.9, Action::UiPointAlong("audio.set:master", 0.25)),
+    (8.0, Action::ExpectData("audio.master == 25")),
+    // Past the end, it stops at none.
+    (8.1, Action::UiPointAlong("audio.set:master", -0.4)),
+    (8.2, Action::ExpectData("audio.master == 0")),
+    (8.3, Action::UiPointAlong("audio.set:master", 0.75)),
+    (8.4, Action::UiRelease(PointerButton::Primary)),
+    (8.5, Action::ExpectData("audio.master == 75")),
+    (9.0, Action::Capture("save_sound_sliders.png")),
+    (9.1, Action::Ui("audio.set:master:100")),
+    (9.3, Action::Exit),
+];
+
+/// In orbit (`OSP_SCENARIO=leo OSP_CAPTURE_WARP=1`): the fastest warp, 100 years a second, where no
+/// engine starts, by the throttle or a sequence; then at 10x a sequence lights it and warp drops.
+const WARP_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(true)),
+    (0.6, Action::Unlock),
+    (1.0, Action::Warp(14)),
+    (1.5, Action::ExpectData("time.warp_label == 100 y/s")),
+    (2.0, Action::Capture("warp_fastest.png")),
+    (2.1, Action::Ui("vessel.throttle_full")),
+    (2.2, Action::ExpectData("vessel.throttle == 0")),
+    (2.25, Action::ExpectData("time.warp_label == 100 y/s")),
+    (2.3, Action::Ui("vessel.stage")),
+    (2.6, Action::Capture("warp_no_engines.png")),
+    (2.65, Action::ExpectSequenceCount(3)),
+    (2.7, Action::ExpectData("time.warp_label == 100 y/s")),
+    (2.8, Action::Warp(0)),
+    (2.9, Action::Warp(10)),
+    (3.0, Action::ExpectData("time.warp_label == 11.6 d/s")),
+    (3.4, Action::Capture("warp_days.png")),
+    (3.5, Action::Warp(0)),
+    (3.6, Action::Warp(4)),
+    (3.7, Action::ExpectData("time.warp == 10")),
+    (3.8, Action::Ui("vessel.throttle_full")),
+    (3.9, Action::ExpectData("vessel.throttle == 1")),
+    (4.0, Action::Ui("vessel.stage")),
+    (4.3, Action::ExpectSequenceCount(2)),
+    (4.35, Action::ExpectData("time.warp == 1")),
+    (4.7, Action::Capture("warp_engines_at_10x.png")),
+    (4.8, Action::Ui("vessel.throttle_cut")),
+    (5.0, Action::Exit),
+];
+
+/// In orbit (`OSP_SCENARIO=leo OSP_CAPTURE_ALARMS=1`): an alarm for a manoeuvre, a timer, and one
+/// at a point from the map's menu, in the Alarm clock and under the clocks. The fastest warp stops on
+/// the timer, then on the point and on the burn's alarm, short of the burn, whichever comes first.
+/// Moving the burn moves its alarm. (`OSP_CAPTURE_LAUNCH_TIMES` warps from the clock.)
+const ALARMS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(true)),
+    (1.0, Action::Ui("plan.add:ap")),
+    (1.1, Action::Ui("plan.select:0")),
+    (1.2, Action::Ui("plan.alarm")),
+    (1.3, Action::Ui("plan.alarm")),
+    (1.4, Action::ExpectData("alarms.count == 1")),
+    (1.5, Action::Ui("alarm.add")),
+    (1.6, Action::ExpectData("alarms.count == 2")),
+    (1.7, Action::Ui("ui.show:alarm_clock")),
+    (2.5, Action::Capture("alarms_window.png")),
+    (2.6, Action::Ui("plan.orbit:1")),
+    (3.4, Action::Capture("alarms_burn_moved.png")),
+    (3.5, Action::PointAt(1_500.0)),
+    (3.8, Action::Press(MouseButton::Right)),
+    (3.9, Action::Release(MouseButton::Right)),
+    (4.2, Action::ExpectOpen("map_menu", true)),
+    (4.25, Action::Capture("alarms_map_menu.png")),
+    (4.3, Action::Ui("map.alarm_here")),
+    (4.4, Action::ExpectData("alarms.count == 3")),
+    (4.5, Action::ClearPointer),
+    (4.6, Action::Warp(9)),
+    (7.0, Action::ExpectData("alarms.count == 2")),
+    (7.05, Action::ExpectData("time.warp == 1")),
+    (7.1, Action::Capture("alarms_rung.png")),
+    // The point and the burn, in whichever order they come.
+    (7.2, Action::Warp(9)),
+    (9.7, Action::ExpectData("alarms.count == 1")),
+    (9.75, Action::ExpectData("time.warp == 1")),
+    (9.8, Action::Capture("alarms_second.png")),
+    (9.9, Action::Warp(9)),
+    (12.5, Action::ExpectData("!alarms.has")),
+    (12.55, Action::ExpectData("time.warp == 1")),
+    (12.6, Action::ExpectBurns(1)),
+    (12.7, Action::Capture("alarms_last.png")),
+    (13.0, Action::Exit),
 ];
 
 /// On the pad (`OSP_CAPTURE_PARTS=1`): part windows with their colours, one opened by a
@@ -1642,6 +1824,7 @@ struct UiPointer<'w, 's> {
             Option<&'static DragPayload>,
             Option<&'static DropAction>,
             Option<&'static ContextAction>,
+            Option<&'static Slider>,
         ),
     >,
 }
@@ -1651,7 +1834,7 @@ impl UiPointer<'_, '_> {
     fn find(&self, what: &str) -> Option<(Vec2, Vec2)> {
         self.nodes
             .iter()
-            .find(|(node, _, visible, click, drag, drop, context)| {
+            .find(|(node, _, visible, click, drag, drop, context, slider)| {
                 let says = |template: Option<&Template>| {
                     template.is_some_and(|t| {
                         let said = t.render(&self.data, &self.formatters);
@@ -1663,7 +1846,8 @@ impl UiPointer<'_, '_> {
                     && (says(click.map(|t| &t.0))
                         || says(drag.map(|t| &t.0))
                         || says(drop.map(|t| &t.0))
-                        || says(context.map(|t| &t.0)))
+                        || says(context.map(|t| &t.0))
+                        || says(slider.map(|s| &s.action)))
             })
             .map(|(node, transform, ..)| (transform.translation, node.size()))
     }
@@ -1919,12 +2103,13 @@ fn run_script(
         Action::Press(button) => buttons.press(button),
         Action::Release(button) => buttons.release(button),
         Action::Unlock => locked.0 = false,
-        Action::UiPointAt(what) | Action::UiPointAtEdge(what) => {
+        Action::UiPointAt(what) | Action::UiPointAtEdge(what) | Action::UiPointAlong(what, _) => {
             let Some((middle, size)) = ui_pointer.find(what) else {
                 panic!("smoke test: nothing on screen is `{what}`");
             };
             let to = match action {
                 Action::UiPointAtEdge(_) => middle - Vec2::new(0.5 * size.x - 6.0, 0.0),
+                Action::UiPointAlong(_, along) => middle + Vec2::new((along - 0.5) * size.x, 0.0),
                 _ => middle,
             };
             let delta = to - script.ui_pointer;
