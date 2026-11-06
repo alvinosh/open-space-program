@@ -1,6 +1,6 @@
 //! Where the smoke suites write their pages: `target/smoke/<suite>/` for each, and
 //! `target/smoke/index.html` listing every suite that has a `report.json`. Shared by the
-//! mission suite (`tests/smoke`) and the build suite (`tests/build`).
+//! mission suite (`osp_smoke`) and the build suite (`osp_sim`'s `tests/build`).
 
 use std::path::{Path, PathBuf};
 

@@ -10,6 +10,9 @@ osp_ui = { workspace = true }
 osp_game = { path = "../osp_game" }
 osp_render = { path = "../osp_render" }
 osp_editor = { path = "../osp_editor" }
+osp_sim = { workspace = true }
+# `--watch <mission>`: a smoke test's mission flown in the game.
+osp_smoke = { workspace = true }
 
 [features]
 # Faster incremental builds during development: `cargo run --features dev`

@@ -16,7 +16,7 @@ mod content;
 mod expect;
 mod report;
 
-#[path = "../smoke/site.rs"]
+#[path = "../../../osp_smoke/src/site.rs"]
 mod site;
 
 #[path = "../golden/record.rs"]

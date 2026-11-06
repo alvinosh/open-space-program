@@ -29,6 +29,8 @@ SCOPES = {
     "game": ["crates/osp_game/", "crates/osp/"],
     "render": ["crates/osp_render/"],
     "editor": ["crates/osp_editor/"],
+    # The mission smoke tests, flown headless (`cargo smoke`) and watched in the game.
+    "smoke": ["crates/osp_smoke/"],
     "assets": ["assets/"],
     "example-mod": ["mods/"],
     "tools": ["tools/"],

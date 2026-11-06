@@ -11,12 +11,12 @@ use osp_sim::{
     system::SolarSystem,
     time::SimTime,
     tutorial::{Tutorial, TutorialDef},
-    universe::{PHYSICS_STEP, Universe},
+    universe::{PHYSICS_STEP, SimEvent, Universe},
     vessel::{Vessel, VesselEventKind, VesselId},
 };
 use serde::Serialize;
 
-use crate::record;
+use crate::{record, watch::Pacer};
 
 /// Sampled once per this many seconds of physics, and once per chunk on rails.
 const SAMPLE_EVERY: f64 = 1.0;
@@ -213,6 +213,9 @@ pub struct World {
     /// Where `burn_time` and `delta_v` stood when the phase began.
     phase_mark: (f64, f64),
     last_trace: f64,
+    /// Whoever watches the flight (the game's `--watch`, see [`crate::watch`]): the universe goes
+    /// to them between steps, when their frame is due.
+    pub(crate) pacer: Option<Pacer>,
 }
 
 impl World {
@@ -278,6 +281,7 @@ impl World {
             delta_v: 0.0,
             phase_mark: (0.0, 0.0),
             last_trace: f64::NEG_INFINITY,
+            pacer: None,
         };
         world.sample();
         world
@@ -362,6 +366,7 @@ impl World {
             self.on_event(e.event.kind, e.event.time);
         }
         self.after();
+        self.paced(dt, false, &events);
     }
 
     /// Jumps `seconds` ahead on rails, sampling along the way. `false` if something stopped
@@ -369,13 +374,15 @@ impl World {
     pub fn warp(&mut self, seconds: f64) -> bool {
         let target = self.now().add_seconds(seconds);
         while self.now() < target {
-            let next = (self.now().add_seconds(RAILS_CHUNK)).min(target);
+            let from = self.now();
+            let next = (from.add_seconds(RAILS_CHUNK)).min(target);
             let outcome = self.universe.advance_rails(next);
             let focus = self.focus;
             for e in outcome.events.iter().filter(|e| e.vessel == focus) {
                 self.on_event(e.event.kind, e.event.time);
             }
             self.after();
+            self.paced(self.now().seconds_since(from), true, &outcome.events);
             if outcome.interrupted {
                 return false;
             }
@@ -398,6 +405,23 @@ impl World {
             }
         }
         until(self)
+    }
+
+    /// Gives whoever watches the flight their frame, if it is due after `seconds` more of it (on
+    /// `rails` or not).
+    fn paced(&mut self, seconds: f64, rails: bool, events: &[SimEvent]) {
+        if let Some(pacer) = &mut self.pacer {
+            let phase = self.current.map(|i| self.phases[i].title.as_str());
+            pacer.passed(&mut self.universe, seconds, rails, events, phase);
+        }
+    }
+
+    /// Shows the flight as it stands to whoever watches it, now.
+    pub(crate) fn hand_over(&mut self) {
+        if let Some(pacer) = &mut self.pacer {
+            let phase = self.current.map(|i| self.phases[i].title.as_str());
+            pacer.hand_over(&mut self.universe, phase);
+        }
     }
 
     /// Plays the tutorial `id` of the mods over the scenario, as the game does when it starts one.

@@ -4749,6 +4749,8 @@ dependencies = [
  "osp_editor",
  "osp_game",
  "osp_render",
+ "osp_sim",
+ "osp_smoke",
  "osp_ui",
 ]
 
@@ -4832,6 +4834,17 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "osp_smoke"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+ "osp_mods",
+ "osp_sim",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -15,7 +15,7 @@
     "T059"
   ],
   "refs": [
-    "crates/osp_sim/tests/smoke/saturn_v.rs (the gaps this closes)",
+    "crates/osp_smoke/src/saturn_v.rs (the gaps this closes)",
     "mods/realism/craft/saturn_v.json5"
   ],
   "created": "2026-11-02",

@@ -114,6 +114,7 @@ impl Plugin for SimPlugin {
             render_time,
             lagging: false,
             paused: false,
+            scripted: false,
         })
         .init_resource::<TimeWarp>()
         .add_message::<SimEventMessage>()
@@ -142,6 +143,9 @@ pub struct Sim {
     pub lagging: bool,
     /// Time stands still (behind the main menu).
     pub paused: bool,
+    /// A script flies the universe and steps it (a smoke test's mission, `--watch`): the game
+    /// only shows it, and the player's controls do not reach the vessels.
+    pub scripted: bool,
 }
 
 impl Sim {
@@ -263,6 +267,12 @@ impl TimeWarp {
         may
     }
 
+    /// Shows `rate` as the warp, for a universe that something else steps (`Sim::scripted`).
+    pub fn show_rate(&mut self, rate: f64) {
+        self.target = None;
+        self.auto_rate = Some(rate);
+    }
+
     /// Where an automatic warp is heading, if one is.
     pub fn target(&self) -> Option<&(SimTime, String)> {
         self.target.as_ref()
@@ -354,7 +364,7 @@ fn advance_simulation(
     mut warp: ResMut<TimeWarp>,
     mut messages: MessageWriter<SimEventMessage>,
 ) {
-    if sim.paused {
+    if sim.paused || sim.scripted {
         return;
     }
     let real_dt = time.delta_secs_f64().min(MAX_FRAME_TIME);

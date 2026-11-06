@@ -8,7 +8,7 @@
   "parent": null,
   "depends_on": [],
   "refs": [
-    "crates/osp_sim/tests/smoke (the `within` checks a mission already makes)",
+    "crates/osp_smoke (the `within` checks a mission already makes)",
     "assets/core/scenarios/stock.json5"
   ],
   "created": "2026-11-01",

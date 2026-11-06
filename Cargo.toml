@@ -9,6 +9,7 @@ members = [
   "crates/osp_game",
   "crates/osp_render",
   "crates/osp_editor",
+  "crates/osp_smoke",
   "crates/osp",
 ]
 default-members = ["crates/osp"]
@@ -30,6 +31,7 @@ osp_sim = { path = "crates/osp_sim" }
 osp_mods = { path = "crates/osp_mods" }
 osp_ui = { path = "crates/osp_ui" }
 osp_terrain = { path = "crates/osp_terrain" }
+osp_smoke = { path = "crates/osp_smoke" }
 
 # Bevy is very slow in debug without optimisation; optimise deps fully and our code a little.
 [profile.dev]
@@ -44,6 +46,10 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package.osp_sim]
+opt-level = 3
+
+# The missions' scripts plan burns and fly every tick of a watched flight (`--watch`).
+[profile.dev.package.osp_smoke]
 opt-level = 3
 
 # Bevy systems routinely take many parameters and complex query types.

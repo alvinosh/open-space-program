@@ -10,11 +10,15 @@ orbit down to the Moon and back to orbit. `docking` flies Columbia to Eagle's as
 harness.
 
 ```sh
-cargo smoke                    # every mission, about 3 s each
+cargo smoke                    # every mission (Apollo 11 takes about 2 min)
 cargo smoke saturn_v           # one
 OSP_SMOKE_OPEN=1 cargo smoke   # and open the report
 OSP_SMOKE_TRACE=1 cargo smoke  # print a line of telemetry every 10 s, for calibrating a script
+cargo smoke-watch saturn_v     # fly it in the game, to watch (see Watching a mission)
 ```
+
+The missions are the `osp_smoke` crate (`crates/osp_smoke/src`), and the tests that fly them are
+`crates/osp_smoke/tests/smoke.rs`.
 
 Reports go to `target/smoke/`: `index.html` lists every mission that has been flown, and each
 `<mission>/index.html` is one self-contained page (no network). `report.json` beside it has the
@@ -48,7 +52,7 @@ Each finding has one result:
 It loads every mod and starts a scenario through `Universe::new_game`, as the game does. After
 that it only does what a player can: throttle, the stage key, SAS modes, RCS, targets, the transfer
 planner, planned burns and the burn executor, time warp. Nothing is placed, teleported or patched
-in. Steering uses the game's own SAS control law (`tests/smoke/pilot.rs`), and the ascent is a
+in. Steering uses the game's own SAS control law (`crates/osp_smoke/src/pilot.rs`), and the ascent is a
 pitch program with an angle-of-attack limit, then a levelling-off law, which any player could fly.
 Small corrections are made with an RCS push (`planning::rcs_trim`) because the executor is not
 accurate enough (T027).
@@ -62,9 +66,9 @@ gate for flying the whole of Apollo 11.
 
 ## Adding a mission
 
-1. A new file in `crates/osp_sim/tests/smoke/` with a `pub static MISSION: Mission` (id, title,
-   summary, scenario id from the mods, the list of phases, and `fly`), and a `#[test]` in
-   `main.rs` that runs it. Copy `saturn_v.rs`.
+1. A new file in `crates/osp_smoke/src/` with a `pub static MISSION: Mission` (id, title,
+   summary, scenario id from the mods, the list of phases, and `fly`), listed in `MISSIONS` in
+   `lib.rs`, and a `#[test]` in `tests/smoke.rs` that runs it. Copy `saturn_v.rs`.
 2. Write the phases the real mission had, in order, each with what it did (`PhaseSpec::goal`).
    Phases the script cannot reach still show in the report as not reached.
 3. In `fly`, call `w.phase("id")` at the start of each, drive the vessel, and check against the
@@ -76,7 +80,34 @@ gate for flying the whole of Apollo 11.
 5. Keep the real figures and their source in the check, not in a comment.
 
 `world.rs` is the flight (ticks, rails, sampling, findings), `pilot.rs` the hands (pointing, the
-ascent), `planning.rs` the map (transfers, aiming, burns), `report.rs` and `report.html` the page.
+ascent), `planning.rs` the map (transfers, aiming, burns), `report.rs` and `report.html` the page,
+`watch.rs` the handing over to the game.
+
+## Watching a mission
+
+```sh
+cargo smoke-watch saturn_v         # = cargo run -p osp -- --watch saturn_v
+cargo smoke-watch saturn_v --dev   # with the dev version's plain graphics
+```
+
+The game starts in the mission's scenario and its script flies it, the same script and the same
+flight as `cargo smoke`: the script runs on a thread of its own, and between its steps it hands the
+universe to the game for a frame and waits to get it back. The game does not step the universe
+itself meanwhile, and nothing else in the flight changes (`a_watched_flight_is_the_same_flight`
+flies `first_orbit` both ways and checks it ends in the same place to the bit). The report is
+written at the end, as the test writes it.
+
+- Speed: 4x under physics and 10 000x on rails. The warp keys (`.` and `,`) double or halve both,
+  and `/` goes back to that.
+  Under physics with nothing to see (no engine burning, under 500 Pa of air, no vessel within
+  200 m, over 1 km up) it goes 4 times faster again. At the default speed Apollo 11 takes about 20
+  minutes, most of it the launch, the landing, the rendezvous and the entry.
+- Esc pauses it (the pause menu). Loading a save or reverting ends the watch.
+- The camera, the map (M) and the windows work; the flight keys do not reach the vessel. The
+  windows that change a flight (targets, planned burns, staging, alarms) are not locked: using them
+  changes the script's flight.
+- Phases show as notices and in the log. When the flight is over, the controls are the player's.
+- `OSP_WATCH_SHOTS=<dir>` saves a screenshot of the window as each phase begins.
 
 ## What the Saturn V found
 

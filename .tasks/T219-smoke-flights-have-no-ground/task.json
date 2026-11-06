@@ -1,0 +1,21 @@
+{
+  "id": "T219",
+  "title": "Smoke flights have no ground: the command module sank through land 200 m up",
+  "kind": "bug",
+  "status": "todo",
+  "area": "test",
+  "size": "M",
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "crates/osp_smoke/src/world.rs (World::new, no height sources)",
+    "crates/osp_game/src/content.rs (new_game installs the baked heights)",
+    "crates/osp_sim/src/vessel.rs (what counts as sea)",
+    "crates/osp_smoke/src/saturn_v.rs (the entry and splashdown checks)"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.3
+}

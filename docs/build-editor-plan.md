@@ -161,7 +161,7 @@ E11. (M) The headless editor smoke test: `cargo smoke editor`. It builds the Sat
      growing, and the checks coming and going, such as "no engine" until the F-1s are in); then
      the editor's own refusals (an engine above a tank is refused, a part outside its node's size
      is refused); then save, load, compare; then launch from the file and fly the whole Apollo 11
-     script of `tests/smoke/saturn_v.rs` on that craft. The report is one page: the build
+     script of `crates/osp_smoke/src/saturn_v.rs` on that craft. The report is one page: the build
      timeline, then the mission. Done when the mission's results match those on the hand-built
      craft (the same phases pass, the same findings).
 E12. (M) The UI editor smoke test, in the capture harness: `OSP_CAPTURE_EDITOR=1 cargo run`. The

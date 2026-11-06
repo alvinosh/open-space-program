@@ -1,6 +1,9 @@
 //! Open Space Program: the game (`osp_game`), its editor (`osp_editor`) and what it looks like
 //! (`osp_render`), in a window. `--dev` (or `OSP_DEV=1`, or `cargo dev`) draws it with the dev version's plain
-//! graphics.
+//! graphics. `--watch <mission>` flies one of the smoke tests' missions in it, to watch (see
+//! [`watch`]).
+
+mod watch;
 
 use bevy::{
     app::{TaskPoolOptions, TaskPoolThreadAssignmentPolicy},
@@ -13,6 +16,12 @@ use osp_render::RenderPlugin;
 use osp_ui::UiPlugin;
 
 fn main() -> AppExit {
+    let watched = watch::requested();
+    if let Some(mission) = watched {
+        // The game starts in the mission's scenario, straight into flight, while its script loads.
+        // SAFETY: nothing has started yet that could read the environment at the same time.
+        unsafe { std::env::set_var("OSP_SCENARIO", mission.scenario) };
+    }
     App::new()
         // Models and other files that mods ship (`mods://<mod>/...`); must exist before the
         // asset plugin.
@@ -65,6 +74,7 @@ fn main() -> AppExit {
         .add_plugins(EditorPlugin)
         .add_plugins(RenderPlugin)
         .add_plugins(diagnostics)
+        .add_plugins(watch::WatchPlugin(watched))
         .run()
 }
 

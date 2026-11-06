@@ -84,6 +84,7 @@ crates/osp_ui       data-driven UI
 crates/osp_game     the game: sim stepping, controls, saves, missions, UI data
 crates/osp_editor   the editor: hangar, parts list, shaping, move and turn; reads osp_game
 crates/osp_render   what it looks like; reads osp_game, never read by it
+crates/osp_smoke    whole missions flown by script: `cargo smoke`, and `cargo smoke-watch <mission>` in the game
 crates/osp          the binary: the game, its editor and renderer in a window
 assets/core         the base game, itself a mod
 mods/               installed mods

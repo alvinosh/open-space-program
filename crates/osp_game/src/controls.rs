@@ -106,6 +106,15 @@ fn apply_actions(
         actions.read().for_each(drop);
         return;
     }
+    // A script flies the vessels (`--watch`): of the keys here, only the map's is the player's.
+    if sim.scripted {
+        for action in actions.read() {
+            if action.name() == "view.toggle_map" {
+                rig.map_view = !rig.map_view;
+            }
+        }
+        return;
+    }
     let dt = time.delta_secs_f64();
     let now = time.elapsed_secs_f64();
     let ut = sim.universe.time();

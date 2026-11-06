@@ -6,7 +6,7 @@
 
 - Stage by stage numbers as it builds (mass, delta-v and thrust to weight growing; checks such as 'no engine' coming and going).
 - The editor's own refusals (an engine above a tank, a part outside its node's size).
-- Save, load, compare; launch from the file; run `tests/smoke/saturn_v.rs` on it (the mission harness takes a craft override).
+- Save, load, compare; launch from the file; run `crates/osp_smoke/src/saturn_v.rs` on it (the mission harness takes a craft override).
 - One report page: the build timeline, then the mission.
 
 ## Done when

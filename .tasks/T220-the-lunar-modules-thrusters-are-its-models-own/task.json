@@ -1,0 +1,22 @@
+{
+  "id": "T220",
+  "title": "The lunar module's thrusters are its model's own, configured on the stage",
+  "kind": "feature",
+  "status": "todo",
+  "area": "propulsion",
+  "size": "M",
+  "parent": "T008",
+  "depends_on": [],
+  "refs": [
+    "mods/realism/craft/lunar_module.json5",
+    "mods/realism/craft/saturn_v.json5 (the LM in the stack)",
+    "mods/realism/pods/capsules.json5 (Apollo LM Ascent Stage, its rcs block)",
+    "tools/blender/convert_mu.py (collect_transforms, report_transforms)",
+    "crates/osp_render/src/vessel_render.rs (RCS puffs per nozzle)"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.6
+}
