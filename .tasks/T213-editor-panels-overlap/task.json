@@ -1,0 +1,21 @@
+{
+  "id": "T213",
+  "title": "Editor panels overlap each other",
+  "kind": "bug",
+  "status": "todo",
+  "area": "ui",
+  "size": "S",
+  "parent": "T002",
+  "depends_on": [
+    "T207"
+  ],
+  "refs": [
+    "assets/core/layouts/editor.json5",
+    "assets/core/layouts/editor_part.json5"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.18
+}

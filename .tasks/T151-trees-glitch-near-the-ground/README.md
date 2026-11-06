@@ -18,4 +18,4 @@ Trees stand on the ground (no floating or sunken ones), cell borders show no ove
 
 ## Where it comes from
 
-- `crates/osp_game/src/trees.rs`
+- `crates/osp_render/src/trees.rs`

@@ -8,7 +8,7 @@
   "parent": null,
   "depends_on": [],
   "refs": [
-    "crates/osp_game/src/shaders/terrain.wesl"
+    "crates/osp_render/src/shaders/terrain.wesl"
   ],
   "created": "2026-11-05",
   "updated": "2026-11-05",

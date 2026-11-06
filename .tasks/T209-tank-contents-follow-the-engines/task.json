@@ -1,0 +1,21 @@
+{
+  "id": "T209",
+  "title": "Tank contents follow the engines on the craft, at their ratio",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T002",
+  "depends_on": [
+    "T203"
+  ],
+  "refs": [
+    "crates/osp_sim/src/properties.rs (MIXES)",
+    "crates/osp_sim/src/data.rs (EngineDef::propellants)"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.16
+}

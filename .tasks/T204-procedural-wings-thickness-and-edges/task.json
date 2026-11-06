@@ -1,0 +1,21 @@
+{
+  "id": "T204",
+  "title": "Procedural wings: root and tip thickness, edge profiles",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [
+    "T203"
+  ],
+  "refs": [
+    "crates/osp_sim/src/geometry/preset.rs (WingDef)",
+    "crates/osp_sim/src/shaping.rs"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2
+}

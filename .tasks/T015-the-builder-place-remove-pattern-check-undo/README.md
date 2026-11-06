@@ -22,6 +22,12 @@
 
 - `crates/osp_sim/src/builder.rs` is written and compiles: place, remove, move, rotate, orient, reroot, pattern, mirror, undo and redo, the rules (join, node size, overlap, fit inside a container, fit in a fairing) and `warnings` (engines nothing feeds, exhaust into something that stays on). `Geometry::solids` gives it what fills space.
 - None of its operations has a test yet, and nothing calls it but the one test below.
+- 2026-11-06: the builder owns its draft and takes the catalogue per operation, so the editor keeps
+  one. `resize` changes a part's sizes (`osp_sim::shaping`) as one operation with undo, checked by
+  the rules only for what the change does (a part that already broke a rule before is held to
+  building). Tested in `tests/builder.rs`: every size of every shipped part changes and builds, a
+  resize says what it changed, undoes and redoes, and a payload box grown into its antenna is
+  refused by the overlap rule. The editor's handles use it.
 
 ## Still open
 

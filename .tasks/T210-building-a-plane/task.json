@@ -1,0 +1,23 @@
+{
+  "id": "T210",
+  "title": "Building a plane in the editor",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "L",
+  "parent": "T002",
+  "depends_on": [
+    "T206",
+    "T205",
+    "T217"
+  ],
+  "refs": [
+    "assets/core/craft/glider.json5",
+    "crates/osp_editor/src/building.rs"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.5
+}

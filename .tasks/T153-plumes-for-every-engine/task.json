@@ -8,7 +8,7 @@
   "parent": "T152",
   "depends_on": [],
   "refs": [
-    "crates/osp_game/src/plume.rs (PlumeDef::for_engine)",
+    "crates/osp_render/src/plume.rs (PlumeDef::for_engine)",
     "assets/core/plumes/stock.json5",
     "mods/realism/engines"
   ],

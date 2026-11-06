@@ -1,0 +1,24 @@
+{
+  "id": "T208",
+  "title": "Parts list: filters by function, size and propellant",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [
+    "T017",
+    "T018",
+    "T215"
+  ],
+  "refs": [
+    "crates/osp_sim/src/palette.rs",
+    "crates/osp_editor/src/building.rs",
+    "assets/core/layouts/editor.json5"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.4
+}

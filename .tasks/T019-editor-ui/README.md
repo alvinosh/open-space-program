@@ -17,3 +17,9 @@ Layouts and data keys for the editor, in the game's own data-driven UI.
 ## Where it comes from
 
 - docs/build-editor-plan.md (E7)
+
+## Done so far
+
+- 2026-11-06: the panel names the picked part and lists its sizes (`editor.part.*`), live while a
+  handle is dragged, and the hint under it says what the mouse does now (`editor.hint`). Typing an
+  exact size is not there yet.

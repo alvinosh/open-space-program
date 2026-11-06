@@ -13,7 +13,7 @@
     "T185",
     "T018",
     "T019",
-    "crates/osp_game/src/editor.rs",
+    "crates/osp_editor/src/hangar.rs",
     "assets/core/layouts/editor.json5"
   ],
   "created": "2026-11-04",

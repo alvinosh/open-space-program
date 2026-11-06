@@ -9,7 +9,7 @@
   "depends_on": [],
   "refs": [
     "crates/osp_sim/src/plasma.rs",
-    "crates/osp_game/src/shaders/plasma.wesl"
+    "crates/osp_render/src/shaders/plasma.wesl"
   ],
   "created": "2026-11-05",
   "updated": "2026-11-05",

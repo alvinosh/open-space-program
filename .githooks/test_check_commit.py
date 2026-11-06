@@ -50,6 +50,12 @@ class Files(unittest.TestCase):
         self.assertEqual(c.scope_of("LICENSE-APACHE"), "repo")
         self.assertEqual(c.scope_of("Cargo.lock"), "incidental")
         self.assertIsNone(c.scope_of("something/new.txt"))
+        # The renderer has a scope of its own; the binary goes with the game.
+        self.assertEqual(c.scope_of("crates/osp_render/src/planet.rs"), "render")
+        # The editor has one too.
+        self.assertEqual(c.scope_of("crates/osp_editor/src/hangar.rs"), "editor")
+        self.assertEqual(c.scope_of("crates/osp/src/main.rs"), "game")
+        self.assertEqual(c.scope_of("crates/osp_game/src/sim.rs"), "game")
 
     def test_matching_scopes_pass(self):
         files = ["crates/osp_sim/src/a.rs", "crates/osp_game/src/b.rs", "Cargo.lock"]

@@ -60,6 +60,7 @@ Rebind them on the menu's Controls page.
 cargo run -p osp_bake --release   # once: downloads about 1.1 GB and bakes Earth's terrain
 cargo run                         # the game (without the bake, Earth is a smooth sphere)
 cargo run --features dev          # faster incremental builds
+cargo dev                         # the dev version: plain blocky graphics, no custom shaders
 OSP_SCENARIO=apollo11 cargo run   # skip the menu; ids are in the scenarios folders
 cargo test --workspace            # no GPU needed
 cargo smoke                       # flies whole missions, report in target/smoke
@@ -67,13 +68,23 @@ cargo smoke                       # flies whole missions, report in target/smoke
 
 The toolchain is pinned in `rust-toolchain.toml`.
 
+The dev version (`cargo dev`, or `--dev` / `OSP_DEV=1` on any run, captures included) draws
+the game with Bevy's standard shading alone: faceted planets, matte low-poly hulls, plain
+plume cones and a flat sky. It leaves out every custom pass and shader, starts quicker and
+takes about 6 ms a frame on the pad where High takes 15. Work on the simulation and the game
+around it can be checked there without the full graphics, and the shared code must keep
+running without them (see `crates/osp_render/src/dev_graphics.rs`).
+
 ```
 crates/osp_sim      simulation core: f64, SI units, no Bevy, tested headless
 crates/osp_mods     mod loader
 crates/osp_terrain  planet surface data
 crates/osp_bake     bakes public Earth datasets into tiles
 crates/osp_ui       data-driven UI
-crates/osp_game     the Bevy app
+crates/osp_game     the game: sim stepping, controls, saves, missions, UI data
+crates/osp_editor   the editor: hangar, parts list, shaping, move and turn; reads osp_game
+crates/osp_render   what it looks like; reads osp_game, never read by it
+crates/osp          the binary: the game, its editor and renderer in a window
 assets/core         the base game, itself a mod
 mods/               installed mods
 ```

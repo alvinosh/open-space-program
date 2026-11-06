@@ -8,7 +8,7 @@
   "parent": "T073",
   "depends_on": [],
   "refs": [
-    "`crates/osp_game/src/trees.rs`"
+    "`crates/osp_render/src/trees.rs`"
   ],
   "created": "2026-10-30",
   "updated": "2026-11-01",

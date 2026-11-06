@@ -21,3 +21,12 @@
 ## Where it comes from
 
 - docs/build-editor-plan.md (E4, Design)
+
+## Done so far
+
+- 2026-11-06, the parameter schema for shapes: `osp_sim::shaping` lists each shape's sizes (name,
+  label, value, least and most, whether it is a width), where each is taken hold of (grips, with
+  the way and rate they move) and `resize`, which carries a part's own nodes along (on the wall
+  stays on the wall, near an end stays as far from it). Cylinder and cone tanks, spheres, whole
+  shells, rings, prisms, boxes and wings (mirrored too). Sizers, choices (a shell's profile, what a
+  tank holds) and other components are not in it yet.

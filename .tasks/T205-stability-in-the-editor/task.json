@@ -1,0 +1,20 @@
+{
+  "id": "T205",
+  "title": "Stability in the editor: centre of mass, of pressure and of thrust",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [
+    "T018"
+  ],
+  "refs": [
+    "docs/build-editor-plan.md (E4 numbers)"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.3
+}

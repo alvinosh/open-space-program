@@ -1,0 +1,22 @@
+{
+  "id": "T217",
+  "title": "Symmetry modes: radial count and mirror",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [
+    "T206"
+  ],
+  "refs": [
+    "crates/osp_editor/src/building.rs",
+    "crates/osp_sim/src/builder.rs (alike)",
+    "memory: symmetry is build-time"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.23
+}

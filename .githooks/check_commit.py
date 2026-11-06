@@ -25,7 +25,10 @@ SCOPES = {
     "terrain": ["crates/osp_terrain/"],
     "bake": ["crates/osp_bake/"],
     "ui": ["crates/osp_ui/"],
-    "game": ["crates/osp_game/"],
+    # The game and the binary that runs it with its renderer.
+    "game": ["crates/osp_game/", "crates/osp/"],
+    "render": ["crates/osp_render/"],
+    "editor": ["crates/osp_editor/"],
     "assets": ["assets/"],
     "example-mod": ["mods/"],
     "tools": ["tools/"],

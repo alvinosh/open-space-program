@@ -53,7 +53,7 @@ Three layers. Only the top one needs Bevy, so the lower two run in tests without
    recipe is a list of them, and the tests call them. Components describe their editable
    parameters (name, unit, range, step, choices) so the property panel is generated, and a new
    kind of part needs no editor code.
-3. The editor in the game (`osp_game::editor`). A scene (a hangar, a floor, light), a camera
+3. The editor in the game (`osp_editor::hangar`). A scene (a hangar, a floor, light), a camera
    (orbit, and the orthographic front, side and top), the draft drawn by the vessel renderer, a
    ghost under the pointer, picking, snapping, handles, and the layouts that publish the
    session's numbers and fire its commands.

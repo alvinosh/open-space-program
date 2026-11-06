@@ -1,0 +1,22 @@
+{
+  "id": "T203",
+  "title": "Part menu: shape, sizes and profiles on a click",
+  "kind": "feature",
+  "status": "in_progress",
+  "area": "editor",
+  "size": "L",
+  "parent": "T002",
+  "depends_on": [
+    "T018"
+  ],
+  "refs": [
+    "crates/osp_sim/src/shaping.rs",
+    "crates/osp_editor/src/shaping.rs",
+    "assets/core/layouts/editor.json5"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.1
+}

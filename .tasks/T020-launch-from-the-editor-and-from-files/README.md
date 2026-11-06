@@ -21,9 +21,11 @@ New, open, save, save as; the craft list with shipped and user craft; launch the
 - Launch picks pad, runway or orbit and takes the sequences left in the editor; the Play page lists every craft.
 - Revert from flight (pause menu, asks first): `game.revert:launch` to the moment it left, `game.revert:hangar` to the editor with the same craft, staging and place. Everything since goes, saves are not touched. A game loaded from a save has nothing to revert to until its next launch. `OSP_CAPTURE_REVERT=1` with `OSP_USER_DIR=<empty folder>` runs it.
 
+- 2026-11-06: New vessel in the editor starts a craft from nothing, which launches like any other.
+
 ## Still open
 
-- New, open, save and save as; user craft files.
+- Open, save and save as; user craft files, so a craft built from nothing is kept.
 
 ## Where it comes from
 

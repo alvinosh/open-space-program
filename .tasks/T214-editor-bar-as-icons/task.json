@@ -1,0 +1,20 @@
+{
+  "id": "T214",
+  "title": "Editor bar as icon buttons",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T002",
+  "depends_on": [
+    "T212"
+  ],
+  "refs": [
+    "assets/core/layouts/editor.json5"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.19
+}

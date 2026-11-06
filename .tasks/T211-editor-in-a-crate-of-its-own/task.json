@@ -1,0 +1,18 @@
+{
+  "id": "T211",
+  "title": "The editor in a crate of its own (osp_editor)",
+  "kind": "chore",
+  "status": "done",
+  "area": "editor",
+  "size": "S",
+  "parent": "T002",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/lib.rs",
+    "crates/osp_game/src/editing.rs"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": "2026-11-06",
+  "milestone": "M3"
+}

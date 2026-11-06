@@ -1,0 +1,19 @@
+{
+  "id": "T212",
+  "title": "Editor icon set",
+  "kind": "chore",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T002",
+  "depends_on": [],
+  "refs": [
+    "assets/core/icons/",
+    "memory: HUD design system (SVG, teal accent)"
+  ],
+  "created": "2026-11-06",
+  "updated": "2026-11-06",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.17
+}
