@@ -284,8 +284,30 @@
     // Always there, over the rail while that is out and on the hangar when it is not.
     editor_bar: { position: "absolute", left: 36, top: 45, gap: 8 },
     editor_back: { align_self: "center", margin: [0, 0, 0, 2] },
-    // The tools, Shape, Move and Turn, after the bar's buttons.
-    editor_tools: { width: 216, align_self: "center", margin: [0, 0, 0, 8] },
+    // The bar's buttons are icons, each with a tooltip that names it and its key: Vessels and
+    // Parts, then the tools (Shape, Move, Turn) in a groove, lit teal when on.
+    editor_icon_btn: { width: 40, padding: 0, align_items: "center", justify_content: "center", active_background: "$selected" },
+    editor_icon_choice: { width: "auto", align_self: "center", margin: [0, 0, 0, 8] },
+    editor_icon_item: { width: 40, grow: 0, height: 32, padding: 0, align_items: "center", justify_content: "center" },
+    editor_bar_icon: { width: 20, height: 20, color: "$text_dim", active_color: "$accent" },
+    // The symmetry (radial with its count, or mirror) and the turn step, at the foot of the
+    // hangar in its corner by the panel: the craft stands in the middle, and the staging takes
+    // the other corner.
+    editor_modes: {
+      position: "absolute",
+      bottom: 20,
+      right: 316,
+      padding: 6,
+      gap: 8,
+      align_items: "center",
+      justify_content: "center",
+      radius: 8,
+      background: "$rail",
+      border: 1,
+      border_color: "$rail_edge",
+    },
+    editor_mode_item: { width: "auto", direction: "row", gap: 6, padding: [0, 10] },
+    editor_mode_text: { font_size: 15, font_weight: 600, color: "$text_dim", active_color: "$text_strong" },
     // Beside the rail, or at the window's edge with the rail away.
     editor_staging: { align_self: "end", margin: [0, 0, 12, 12] },
     editor_panel: {

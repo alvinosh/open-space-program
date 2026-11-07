@@ -290,30 +290,69 @@
         class: "editor_bar",
         children: [
           { widget: "button", class: "back editor_back", text: "‹ Back", action: "menu.back" },
-          { widget: "button", class: "btn", text: "Vessels", action: "editor.list", active: "editor.list_open" },
-          { widget: "button", class: "btn", text: "Parts", action: "editor.parts", active: "editor.rail == parts", visible: "editor.has_vessel" },
+          // What the rail shows: the vessels to choose from, or the parts to build with.
+          {
+            widget: "button", class: "btn editor_icon_btn", action: "editor.list", active: "editor.list_open", tooltip: "Vessels: choose one, or start a new one",
+            children: [{ widget: "image", class: "editor_bar_icon", image: "icons/vessel.svg", active: "editor.list_open" }],
+          },
+          {
+            widget: "button", class: "btn editor_icon_btn", action: "editor.parts", active: "editor.rail == parts", visible: "editor.has_vessel", tooltip: "Parts: the list to build from",
+            children: [{ widget: "image", class: "editor_bar_icon", image: "icons/editor/parts.svg", active: "editor.rail == parts" }],
+          },
           // What the pointer does to a picked part (osp_editor::moving).
           {
             widget: "row",
-            class: "choice editor_tools",
+            class: "choice editor_icon_choice",
             visible: "editor.has_parts",
             children: [
-              { widget: "button", class: "choice_item", text: "Shape", action: "editor.tool:shape", active: "editor.tool == shape", tooltip: "Size it by the handles on it (1)" },
-              { widget: "button", class: "choice_item", text: "Move", action: "editor.tool:move", active: "editor.tool == move", tooltip: "Slide it by its arrows (2)" },
-              { widget: "button", class: "choice_item", text: "Turn", action: "editor.tool:turn", active: "editor.tool == turn", tooltip: "Turn it by its rings (3)" },
+              {
+                widget: "button", class: "choice_item editor_icon_item", action: "editor.tool:shape", active: "editor.tool == shape", tooltip: "Shape: size it by the handles on it (1)",
+                children: [{ widget: "image", class: "editor_bar_icon", image: "icons/editor/shape.svg", active: "editor.tool == shape" }],
+              },
+              {
+                widget: "button", class: "choice_item editor_icon_item", action: "editor.tool:move", active: "editor.tool == move", tooltip: "Move: slide it by its arrows (2)",
+                children: [{ widget: "image", class: "editor_bar_icon", image: "icons/editor/move.svg", active: "editor.tool == move" }],
+              },
+              {
+                widget: "button", class: "choice_item editor_icon_item", action: "editor.tool:turn", active: "editor.tool == turn", tooltip: "Turn: turn it by its rings (3)",
+                children: [{ widget: "image", class: "editor_bar_icon", image: "icons/editor/turn.svg", active: "editor.tool == turn" }],
+              },
             ],
           },
-          // How many go on at once (osp_editor::building).
+        ],
+      },
+      // How many go on at once and how far a turn steps (osp_editor::building), at the foot of
+      // the hangar in the corner by the panel.
+      {
+        id: "editor_modes",
+        widget: "row",
+        class: "editor_modes",
+        visible: "editor.has_vessel",
+        children: [
           {
             widget: "row",
-            class: "choice editor_tools",
-            visible: "editor.has_vessel",
+            class: "choice editor_icon_choice",
             children: [
-              { widget: "button", class: "choice_item", text: "{editor.symmetry}", action: "editor.symmetry", active: "!editor.mirror", tooltip: "Radial symmetry: how many go round (X, Shift+X back)" },
-              { widget: "button", class: "choice_item", text: "Mirror", action: "editor.symmetry_mode", active: "editor.mirror", tooltip: "Mirror symmetry across the middle (R)" },
+              {
+                widget: "button", class: "choice_item editor_icon_item editor_mode_item", action: "editor.symmetry", active: "!editor.mirror", tooltip: "Radial symmetry: how many go round (X, Shift+X back)",
+                children: [
+                  { widget: "image", class: "editor_bar_icon", image: "icons/editor/radial.svg", active: "!editor.mirror" },
+                  { widget: "label", class: "editor_mode_text", text: "{editor.symmetry}", active: "!editor.mirror" },
+                ],
+              },
+              {
+                widget: "button", class: "choice_item editor_icon_item", action: "editor.symmetry_mode", active: "editor.mirror", tooltip: "Mirror symmetry across the middle (R)",
+                children: [{ widget: "image", class: "editor_bar_icon", image: "icons/editor/mirror.svg", active: "editor.mirror" }],
+              },
             ],
           },
-          { widget: "button", class: "btn", text: "{editor.snap}", action: "editor.snap", visible: "editor.has_vessel", tooltip: "How far a turn goes in a step (C, Shift+C back)" },
+          {
+            widget: "button", class: "btn editor_icon_btn editor_mode_item", action: "editor.snap", tooltip: "Turn step: how far a turn goes in a step (C, Shift+C back)",
+            children: [
+              { widget: "image", class: "editor_bar_icon", image: "icons/editor/snap.svg" },
+              { widget: "label", class: "editor_mode_text", text: "{editor.snap}" },
+            ],
+          },
         ],
       },
       {
