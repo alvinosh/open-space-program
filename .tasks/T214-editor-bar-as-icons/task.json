@@ -2,7 +2,7 @@
   "id": "T214",
   "title": "Editor bar as icon buttons",
   "kind": "feature",
-  "status": "todo",
+  "status": "in_progress",
   "area": "editor",
   "size": "S",
   "parent": "T002",
@@ -13,7 +13,7 @@
     "assets/core/layouts/editor.json5"
   ],
   "created": "2026-11-06",
-  "updated": "2026-11-06",
+  "updated": "2026-11-07",
   "done": null,
   "milestone": "M3",
   "priority": 61.19

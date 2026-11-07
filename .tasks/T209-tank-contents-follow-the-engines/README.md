@@ -55,6 +55,12 @@ craft has.
   tank left alone) and `builder` (an engine under two new tanks fills both, undone in one step).
   `OSP_CAPTURE_EDITOR_BUILD` shows the tank with no engine (`build_tank_no_engine.png`) and with
   the K-1 Booster on (`build_tank_filled.png`).
+- 2026-11-07, after "if i attach an engine radially it says no propellant": a joint on a surface
+  passed no propellant (`Carries::SURFACE`), so an engine on a tank's side was fed by nothing, and
+  the tank offered it nothing. Surfaces now pass propellant as nodes do; a decoupler still passes
+  it only with its crossfeed on, whether on a node or on a side. No shipped craft's staging figures
+  change (`craft_golden`). Test: `builder` (a K-0 on the lower tank's side fills both tanks, they
+  offer what it burns, and in flight they feed it).
 
 ## Open
 

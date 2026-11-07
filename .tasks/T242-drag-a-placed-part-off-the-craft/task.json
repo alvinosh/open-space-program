@@ -2,7 +2,7 @@
   "id": "T242",
   "title": "Drag a placed part off the craft",
   "kind": "bug",
-  "status": "todo",
+  "status": "in_progress",
   "area": "editor",
   "size": "S",
   "parent": "T002",

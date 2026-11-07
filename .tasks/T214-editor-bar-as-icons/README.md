@@ -28,3 +28,15 @@ group. Nothing says what each does until it is pressed, and the tools' keys (1, 
   and mirror and such i want icons". So the symmetry controls (radial count, mirror) and the snap
   step leave the top bar for a bar at the bottom of the view, and every tool and mode button is
   an icon (with its tooltip and key).
+
+## Done so far
+
+- 2026-11-07: the top bar is Back, then icons: Vessels (`icons/vessel.svg`), Parts
+  (`icons/editor/parts.svg`), and the tools Shape, Move, Turn (`shape`, `move`, `turn`) in a
+  groove, lit teal when on, each with a tooltip naming it and its key. Symmetry and the turn step
+  left it for a bar of their own at the foot of the hangar, in the corner by the panel (`editor_modes`):
+  radial (`radial.svg` with the count), mirror (`mirror.svg`), and the turn step (`snap.svg` with
+  the angle). Centred under the craft it covered the bottom of a tall one (a fin under it could
+  not be grabbed), so it sits in the corner; the staging takes the other.
+- Not yet: undo and redo buttons (T241), keys shown on the buttons (T238).
+
