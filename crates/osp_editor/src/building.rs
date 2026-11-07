@@ -32,7 +32,9 @@
 //! why. Dragged, it goes where it is let go; taken by a click, where the next click is. The parts
 //! list stays out for the next one; a click on the part picks it to shape it. Esc, a right click or
 //! `editor.drop` puts it back. Delete or Backspace, or `editor.remove`, takes the picked part off
-//! with everything held by it. All of it can be undone.
+//! with everything held by it. A part dragged off the craft and let go where it cannot go on (out
+//! in the hangar, or over the parts list) comes off, with its copies by symmetry and all they hold;
+//! while it is there the craft is shown without them. All of it can be undone.
 //!
 //! Publishes `editor.holding`, `editor.symmetry` (the radial count as it reads: `1`, `x4`),
 //! `editor.mirror`, and `editor.hint` while something is in hand.
@@ -167,7 +169,25 @@ struct Plan {
 }
 
 impl Plan {
+    /// Taking `replacing` off the craft, with all they hold: what a part dragged off the craft and
+    /// let go where it cannot go on does.
+    fn taking_off(replacing: BTreeSet<String>) -> Self {
+        Self {
+            parts: Vec::new(),
+            places: Vec::new(),
+            replacing,
+        }
+    }
+
+    fn takes_off(&self) -> bool {
+        self.places.is_empty()
+    }
+
     fn put(&self, draft: &CraftDef) -> Result<(CraftDef, Vec<String>), String> {
+        if self.takes_off() {
+            let craft = builder::removed(draft, &self.replacing).map_err(|r| r.to_string())?;
+            return Ok((craft, Vec::new()));
+        }
         let (craft, tops) = builder::put_set(draft, &self.parts, &self.places, &self.replacing)
             .map_err(|r| r.to_string())?;
         let mut ghost = Vec::new();
@@ -1142,7 +1162,16 @@ pub(crate) fn place_parts(
                 Ok(plan) => placing.plan = Some(plan),
                 Err(e) => placing.refused = Some(e),
             },
-            None => placing.refused = None,
+            None => {
+                placing.refused = None;
+                // Nowhere on the craft, over the parts list or out in the hangar: a part taken
+                // from the craft comes off it, with its copies by symmetry and all they hold.
+                if let Held::Moved(id) = &held {
+                    let mut replacing = BTreeSet::from([id.clone()]);
+                    replacing.extend(builder::alike(&draft, id).into_iter().map(|(c, _)| c));
+                    placing.plan = Some(Plan::taking_off(replacing));
+                }
+            }
         }
     }
     placing.spot = spot;
@@ -1181,9 +1210,14 @@ pub(crate) fn place_parts(
             .builder_mut()
             .ok_or_else(|| "there is no craft to build".to_owned())
             .and_then(|builder| {
-                builder
-                    .put_set(catalog, &plan.parts, &plan.places, &plan.replacing)
-                    .map_err(|r| r.to_string())
+                if plan.takes_off() {
+                    builder
+                        .remove_all(catalog, &plan.replacing)
+                        .map(|change| (change, Vec::new()))
+                } else {
+                    builder.put_set(catalog, &plan.parts, &plan.places, &plan.replacing)
+                }
+                .map_err(|r| r.to_string())
             });
         match put {
             Ok(_) => {
@@ -1582,10 +1616,23 @@ fn publish_placing(
     } else {
         "one".to_owned()
     };
-    let mut hint = format!(
-        "{how} or the side of a part to put the {name} there ({symmetry}: X and R change it). \
-         Q and E turn it."
-    );
+    let mut hint = if matches!(held, Held::Moved(_)) && placing.spot.is_none() {
+        // Taken from the craft and brought nowhere on it: letting go takes it off.
+        let copies = if placing.mirror || placing.symmetry > 1 {
+            " and its copies"
+        } else {
+            ""
+        };
+        format!(
+            "Let go here to take the {name}{copies} off, with what it holds, or bring it to a \
+             ring or the side of a part to put it there."
+        )
+    } else {
+        format!(
+            "{how} or the side of a part to put the {name} there ({symmetry}: X and R change \
+             it). Q and E turn it."
+        )
+    };
     if let Some(why) = &placing.refused {
         hint = format!("It cannot go there: {why}. {hint}");
     }

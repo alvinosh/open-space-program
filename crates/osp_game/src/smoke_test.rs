@@ -616,7 +616,8 @@ const EDITOR_VIEW_SCRIPT: &[(f64, Action)] = &[
 /// picked, its settings shown in the rail in place of the list and set there (with no engine yet it
 /// has nothing to be filled with), and the list brought back with Parts; the engine, after which the
 /// tank holds what it burns; four fins round the tank's side; one taken off and put back with undo;
-/// then it is launched and flown.
+/// one dragged off out into the hangar, which takes its copies too, and put back with undo; then
+/// it is launched and flown.
 const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
@@ -722,11 +723,24 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (23.1, Action::Ui("editor.undo")),
     (23.7, Action::ExpectPartCount(8)),
     (23.8, Action::Ui("editor.pick:")),
-    (24.0, Action::Ui("editor.launch")),
-    (25.0, Action::ExpectEditor(None)),
-    (26.0, Action::Launch),
-    (34.0, Action::Capture("build_flying.png")),
-    (34.5, Action::Exit),
+    // A fin dragged off the craft out into the hangar: shown gone while it is there, it comes off
+    // with its copies when let go, and undo puts them back.
+    (23.85, Action::EditorPointAtPart("fin")),
+    (24.1, Action::Press(MouseButton::Left)),
+    (24.2, Action::PointerBy(0.0, -40.0)),
+    (24.4, Action::PointerAt(1150.0, 120.0)),
+    (25.0, Action::ExpectData("editor.holding")),
+    (25.1, Action::Capture("build_drag_off.png")),
+    (25.2, Action::Release(MouseButton::Left)),
+    (25.8, Action::ExpectPartCount(4)),
+    (25.9, Action::Ui("editor.undo")),
+    (26.5, Action::ExpectPartCount(8)),
+    (26.6, Action::ClearPointer),
+    (27.0, Action::Ui("editor.launch")),
+    (28.0, Action::ExpectEditor(None)),
+    (29.0, Action::Launch),
+    (37.0, Action::Capture("build_flying.png")),
+    (37.5, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_EDITOR_CRAFT=1`: what the craft itself can do in the editor. A tank as the root is

@@ -290,6 +290,20 @@ impl Builder {
         })
     }
 
+    /// Take every part of `ids` away, each with everything held by it, as one change: a part
+    /// dragged off the craft with its copies by symmetry. See [`removed`].
+    pub fn remove_all(
+        &mut self,
+        catalog: &PartCatalog,
+        ids: &BTreeSet<String>,
+    ) -> Result<Change, Refusal> {
+        let next = removed(&self.draft, ids)?;
+        self.edit(catalog, |draft| {
+            *draft = next;
+            Ok(())
+        })
+    }
+
     /// Hold `id` somewhere else, with everything it holds.
     pub fn move_to(
         &mut self,
@@ -709,6 +723,21 @@ pub fn put_set(
         }
     }
     Ok((next, tops))
+}
+
+/// `draft` without the parts `ids`, each with everything held by it, and out of what its
+/// sequences do. The root holds everything, so it goes with all of it.
+pub fn removed(draft: &CraftDef, ids: &BTreeSet<String>) -> Result<CraftDef, Refusal> {
+    let mut next = draft.clone();
+    let mut gone = BTreeSet::new();
+    for id in ids {
+        if next.parts.iter().any(|p| &p.id == id) {
+            gone.extend(held_by(&next, id)?);
+        }
+    }
+    next.parts.retain(|p| !gone.contains(&p.id));
+    forget(&mut next, &gone);
+    Ok(next)
 }
 
 /// An id for a copy of the part `id`, not yet in `draft`: `<id>_2` up, after any number it
@@ -1876,6 +1905,90 @@ mod tests {
             (held["LqdOxygen"] / held["Kerosene"] - 2.4).abs() < 1e-9,
             "{held:?}"
         );
+    }
+
+    #[test]
+    fn an_engine_on_a_tanks_side_burns_what_the_tank_holds() {
+        let catalog = catalog();
+        let mut builder = stack(&catalog);
+        let craft = Craft::build(builder.draft(), &catalog).unwrap();
+        let lower = craft.find("lower").unwrap();
+        let mut engine = entry("engine:K-0", &catalog);
+        engine.id = "side_engine".into();
+        let node = side_node(&alone(&engine, &catalog).unwrap());
+        engine.nodes.push(node.clone());
+        let at = SurfaceAtDef {
+            u: 0.3,
+            v: 0.5,
+            side: Side::Front,
+            standoff: 0.0,
+        };
+        let mount = Mount::Surface {
+            surface: "barrel".into(),
+            side: Side::Front,
+            u: at.u,
+            v: at.v,
+            standoff: 0.0,
+        };
+        let mut place = Place::surface("lower.barrel", SIDE, at);
+        place.roll = upright_roll(&craft, lower, &mount, &node, DVec3::Z).unwrap();
+        builder
+            .put_set(&catalog, &[engine], &[(place, false)], &BTreeSet::new())
+            .unwrap();
+        // The tank it is on, and the one over that, are filled for it and offer what it burns.
+        let draft = builder.draft();
+        let held = |id: &str| {
+            let part = draft.parts.iter().find(|p| p.id == id).unwrap();
+            (part.components.iter())
+                .find_map(|c| match c {
+                    crate::component::ComponentDef::Storage(s) => Some(s.contents.clone()),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        for tank in ["lower", "top"] {
+            let contents = held(tank);
+            let ratio = contents["LqdOxygen"] / contents["Kerosene"];
+            assert!((ratio - 2.4).abs() < 1e-9, "{tank}: {ratio}");
+            let offered = properties::mixes(draft, &catalog, tank);
+            assert_eq!(offered.len(), 1, "{tank}: {offered:?}");
+        }
+        // In flight the tanks feed it.
+        let propulsion = crate::propulsion::Propulsion::from_craft(draft, &catalog).unwrap();
+        let index = draft
+            .parts
+            .iter()
+            .position(|p| p.id == "side_engine")
+            .unwrap();
+        let engine = crate::parts::PartId(index as u32);
+        assert!(propulsion.reachable(engine, "Kerosene") > 0.0);
+    }
+
+    #[test]
+    fn a_part_and_its_copies_come_off_together_and_go_back_with_one_undo() {
+        let catalog = catalog();
+        let mut builder = stack(&catalog);
+        let before = builder.draft().parts.clone();
+        let first = (builder.draft().parts.iter())
+            .find(|p| p.id.starts_with("fin"))
+            .map(|p| p.id.clone())
+            .unwrap();
+        let mut fins = BTreeSet::from([first.clone()]);
+        fins.extend(alike(builder.draft(), &first).into_iter().map(|(c, _)| c));
+        assert_eq!(fins.len(), 4);
+        let change = builder.remove_all(&catalog, &fins).unwrap();
+        assert_eq!(change.removed.len(), 4);
+        let left: Vec<&str> = (builder.draft().parts.iter())
+            .map(|p| p.id.as_str())
+            .collect();
+        assert_eq!(left, ["top", "lower"]);
+        assert!(builder.undo());
+        assert_eq!(builder.draft().parts, before);
+        // The lower tank goes alone; the root holds everything and takes it all.
+        let lower = BTreeSet::from(["lower".to_owned()]);
+        assert_eq!(removed(builder.draft(), &lower).unwrap().parts.len(), 5);
+        let root = BTreeSet::from(["top".to_owned()]);
+        assert!(removed(builder.draft(), &root).is_ok_and(|d| d.parts.is_empty()));
     }
 
     #[test]
