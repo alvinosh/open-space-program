@@ -99,10 +99,11 @@ impl Carries {
         power: true,
         data: true,
     };
-    /// What a surface passes unless its part says otherwise: power and data, not
-    /// propellant.
+    /// What a surface passes unless its part says otherwise: everything, as a node does. A
+    /// part on another's side draws on its tanks (an engine on a tank's side burns what the
+    /// tank holds); a decoupler's connector passes propellant only with its crossfeed on.
     pub const SURFACE: Self = Self {
-        fluid: false,
+        fluid: true,
         power: true,
         data: true,
     };

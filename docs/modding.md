@@ -184,8 +184,8 @@ engines, RCS blocks and legs do nothing until it has let go. What is left to sta
 that leave goes with them, so a lander shed with the stage carrying it still has its own staging.
 Something shed with seats on it is a vessel and not debris, and holds its attitude. Engines burn once
 armed if no stage hangs under theirs. Each engine and RCS block draws from the tanks propellant
-can reach it from: through joints at nodes (not on surfaces), and across a decoupler only if
-its `crossfeed` is on; the tanks it reaches give in proportion to what they hold, so they drain
+can reach it from: through joints at nodes and on surfaces (an engine on a tank's side burns
+from it), and across a decoupler only if its `crossfeed` is on; the tanks it reaches give in proportion to what they hold, so they drain
 together. A tank on the same part always feeds it. A shell whose `bottom` stands on a body's or
 a pod's `top`, straight up with one section, is stacked on the stage; a panel over part of a
 turn that lets go at its bottom, stands round its stage from its base and holds nothing is half
