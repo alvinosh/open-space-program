@@ -640,22 +640,21 @@ impl Shape {
     pub fn new(propulsion: &Propulsion) -> Self {
         let (tree, stages) = (propulsion.parts(), &propulsion.sections);
         let base = DVec3::Z * tree.base();
-        let mut triangles = Vec::new();
-        for part in tree.parts() {
-            let Some(built) = &part.built else {
-                continue;
-            };
-            let apart = built.components.iter().any(|c| {
-                matches!(
-                    c,
-                    Component::Engine(_) | Component::LiftingSurface(_) | Component::Gear(_)
-                )
-            });
-            if !apart {
-                let place = |p: DVec3| part.position + part.rotation * p - base;
-                outer_triangles(built, place, &mut triangles);
-            }
-        }
+        let hull: Vec<(&Part, &BuiltPart)> = (tree.parts().iter())
+            .filter_map(|part| Some((part, &**part.built.as_ref()?)))
+            .filter(|(_, built)| {
+                !built.components.iter().any(|c| {
+                    matches!(
+                        c,
+                        Component::Engine(_) | Component::LiftingSurface(_) | Component::Gear(_)
+                    )
+                })
+            })
+            .collect();
+        let triangles = gathered(&hull, |&(part, built), out| {
+            let place = |p: DVec3| part.position + part.rotation * p - base;
+            outer_triangles(built, place, out);
+        });
         let body = Body::new(&triangles);
         let engines: Vec<f64> = (propulsion.engines.iter())
             .map(|e| e.mount.z - base.z)
@@ -1002,6 +1001,61 @@ pub(crate) fn outer_triangles(
             out.extend((mesh.indices.chunks_exact(3)).map(|t| [0, 1, 2].map(|k| corner(t[k]))));
         }
     }
+}
+
+/// What `each` puts out for every one of `items`, in their order, as if done one after
+/// another, but worked out on several threads.
+fn gathered<T: Sync, U: Send>(items: &[T], each: impl Fn(&T, &mut Vec<U>) + Sync) -> Vec<U> {
+    gathered_in_order(items, || (), |_, item, out| each(item, out))
+}
+
+/// [`gathered`], each thread keeping a `state` of its own from item to item. A thread is
+/// given items in their order, each later than the last it had, though not every one: what
+/// `each` puts out must not depend on which went before.
+fn gathered_in_order<T: Sync, S, U: Send>(
+    items: &[T],
+    state: impl Fn() -> S + Sync,
+    each: impl Fn(&mut S, &T, &mut Vec<U>) + Sync,
+) -> Vec<U> {
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(8));
+    if threads < 2 || items.len() < 2 {
+        let (mut state, mut out) = (state(), Vec::new());
+        for item in items {
+            each(&mut state, item, &mut out);
+        }
+        return out;
+    }
+    // Threads take the next item until none are left: items differ in size, and some cores
+    // are slower than others.
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let work = || {
+        let (mut state, mut done) = (state(), Vec::new());
+        loop {
+            let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let Some(item) = items.get(i) else {
+                return done;
+            };
+            let mut out = Vec::new();
+            each(&mut state, item, &mut out);
+            done.push((i, out));
+        }
+    };
+    let mut pieces: Vec<Vec<U>> = (0..items.len()).map(|_| Vec::new()).collect();
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..threads.min(items.len()))
+            .map(|_| scope.spawn(work))
+            .collect();
+        for worker in workers {
+            for (i, out) in worker.join().expect("working through the items") {
+                pieces[i] = out;
+            }
+        }
+    });
+    let mut out = Vec::with_capacity(pieces.iter().map(Vec::len).sum());
+    for mut piece in pieces {
+        out.append(&mut piece);
+    }
+    out
 }
 
 /// Whether air and exhaust pass through `part` along its axis: somewhere up it, what its

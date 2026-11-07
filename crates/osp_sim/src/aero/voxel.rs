@@ -91,55 +91,68 @@ impl Body {
             count: [cells(hi.y - lo.y), cells(hi.x - lo.x)],
         };
 
-        // Heights snapped to the corners they are meant to be at.
+        // Heights snapped to the corners they are meant to be at, and which corner that is.
         let corners = corners(triangles);
+        let bands = Bands::new(&corners);
         let snap = |z: f64| {
-            let i = corners.partition_point(|&c| c < z - SAME_HEIGHT);
-            corners
-                .get(i)
-                .copied()
-                .filter(|c| (c - z).abs() <= SAME_HEIGHT)
-                .unwrap_or(z)
-        };
-        let triangles: Vec<[DVec3; 3]> = triangles
-            .iter()
-            .map(|t| t.map(|v| DVec3::new(v.x, v.y, snap(v.z))))
-            .collect();
-        let low = |t: &[DVec3; 3]| t[0].z.min(t[1].z).min(t[2].z);
-        let high = |t: &[DVec3; 3]| t[0].z.max(t[1].z).max(t[2].z);
-        let mut order: Vec<usize> = (0..triangles.len()).collect();
-        order.sort_by(|&a, &b| low(&triangles[a]).total_cmp(&low(&triangles[b])));
-
-        // Each thread cuts a run of the planes, sweeping up through the triangles.
-        let planes = planes(&triangles, &corners);
-        let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(8));
-        let run = planes.len().div_ceil(threads).max(8);
-        let cut_run = |planes: &[(f64, bool)]| {
-            let (mut active, mut next) = (Vec::new(), 0);
-            let mut cuts = Vec::with_capacity(planes.len());
-            for &(z, above) in planes {
-                while next < order.len() && low(&triangles[order[next]]) <= z {
-                    active.push(order[next]);
-                    next += 1;
-                }
-                active.retain(|&t| high(&triangles[t]) >= z);
-                let segments: Vec<[DVec2; 2]> = active
-                    .iter()
-                    .filter_map(|&t| crossing(&triangles[t], z, above))
-                    .collect();
-                cuts.push(Cut::new(z, &segments, &grid));
+            let i = bands.below(z - SAME_HEIGHT);
+            match corners.get(i) {
+                Some(&c) if (c - z).abs() <= SAME_HEIGHT => (c, i),
+                _ => (z, usize::MAX),
             }
-            cuts
         };
-        let cuts = std::thread::scope(|scope| {
-            let runs: Vec<_> = (planes.chunks(run))
-                .map(|chunk| scope.spawn(|| cut_run(chunk)))
-                .collect();
-            let runs = runs
-                .into_iter()
-                .map(|r| r.join().expect("cutting the body"));
-            runs.flatten().collect()
-        });
+        let mut triangles = triangles.to_vec();
+        // Each triangle's lowest corner by number; `usize::MAX` if it has one off the corners.
+        let mut lowest = Vec::with_capacity(triangles.len());
+        for t in &mut triangles {
+            let (mut first, mut off) = (usize::MAX, false);
+            for v in t.iter_mut() {
+                let (z, i) = snap(v.z);
+                v.z = z;
+                off |= i == usize::MAX;
+                first = first.min(i);
+            }
+            lowest.push(if off { usize::MAX } else { first });
+        }
+        let low: Vec<f64> = (triangles.iter())
+            .map(|t| t[0].z.min(t[1].z).min(t[2].z))
+            .collect();
+        let high: Vec<f64> = (triangles.iter())
+            .map(|t| t[0].z.max(t[1].z).max(t[2].z))
+            .collect();
+        // Bottom up by their lowest corners, level ones in the order they came in.
+        let order = if lowest.contains(&usize::MAX) {
+            let mut order: Vec<usize> = (0..triangles.len()).collect();
+            order.sort_unstable_by(|&a, &b| low[a].total_cmp(&low[b]).then(a.cmp(&b)));
+            order
+        } else {
+            // The corners rise one after another, so counting triangles by the number of
+            // their lowest one sorts them by its height, and keeps them in order on each.
+            counting_sort(&lowest, corners.len())
+        };
+
+        // Threads cut a few planes at a time, each sweeping up through the triangles: of the
+        // first `next` in order (those starting below the plane), the `active` ones reach it.
+        let planes = planes(&triangles, &corners);
+        let batches: Vec<&[(f64, bool)]> = planes.chunks(4).collect();
+        let cuts = super::gathered_in_order(
+            &batches,
+            || (Vec::new(), 0),
+            |(active, next): &mut (Vec<usize>, usize), batch, cuts| {
+                for &(z, above) in *batch {
+                    while *next < order.len() && low[order[*next]] <= z {
+                        active.push(order[*next]);
+                        *next += 1;
+                    }
+                    active.retain(|&t| high[t] >= z);
+                    let segments: Vec<[DVec2; 2]> = active
+                        .iter()
+                        .filter_map(|&t| crossing(&triangles[t], z, above))
+                        .collect();
+                    cuts.push(Cut::new(z, &segments, &grid));
+                }
+            },
+        );
         Self {
             cuts,
             grid: Some(grid),
@@ -451,10 +464,99 @@ fn crossing(triangle: &[DVec3; 3], z: f64, above: bool) -> Option<[DVec2; 2]> {
 /// The heights of the corners of `triangles`, bottom up, those within [`SAME_HEIGHT`] of
 /// each other as one.
 fn corners(triangles: &[[DVec3; 3]]) -> Vec<f64> {
-    let mut corners: Vec<f64> = triangles.iter().flatten().map(|v| v.z).collect();
-    corners.sort_by(f64::total_cmp);
+    // A ring of vertices shares a height, so most heights come again and again. One that has
+    // come before changes nothing below: the merging drops it whichever copy it meets first.
+    // Those still in `seen` are left out; the first of each always goes in.
+    const SEEN: usize = 4096;
+    let mut seen = [None; SEEN];
+    let mut corners: Vec<f64> = Vec::new();
+    for v in triangles.iter().flatten() {
+        let bits = v.z.to_bits();
+        let slot = (bits.wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 52) as usize;
+        if seen[slot] != Some(bits) {
+            seen[slot] = Some(bits);
+            corners.push(v.z);
+        }
+    }
+    // Equal under `total_cmp` is the same bits, so an unstable sort leaves the same list.
+    corners.sort_unstable_by(f64::total_cmp);
     corners.dedup_by(|z, kept| *z - *kept <= SAME_HEIGHT);
     corners
+}
+
+/// Sorted heights, cut into bands of equal height to find where a height falls among them
+/// quicker than searching them all.
+struct Bands<'a> {
+    heights: &'a [f64],
+    bottom: f64,
+    /// Bands per metre.
+    scale: f64,
+    /// The top band.
+    last: usize,
+    /// The first height in each band and in those above it; the number of them after the last.
+    starts: Vec<usize>,
+}
+
+impl<'a> Bands<'a> {
+    fn new(heights: &'a [f64]) -> Self {
+        let count = 4 * heights.len() + 1;
+        let (bottom, top) = match heights {
+            [first, .., last] => (*first, *last),
+            _ => (0.0, 0.0),
+        };
+        let scale = if top > bottom {
+            count as f64 / (top - bottom)
+        } else {
+            0.0
+        };
+        let mut bands = Self {
+            heights,
+            bottom,
+            scale,
+            last: count - 1,
+            starts: Vec::with_capacity(count + 1),
+        };
+        let mut i = 0;
+        for b in 0..count {
+            while i < heights.len() && bands.band(heights[i]) < b {
+                i += 1;
+            }
+            bands.starts.push(i);
+        }
+        bands.starts.push(heights.len());
+        bands
+    }
+
+    /// The band `z` falls in. It never falls lower for a greater `z`, so every height in a
+    /// lower band is less than it and every height in a higher band greater.
+    fn band(&self, z: f64) -> usize {
+        (((z - self.bottom) * self.scale).floor().max(0.0) as usize).min(self.last)
+    }
+
+    /// How many of the heights are below `z`: `heights.partition_point(|&h| h < z)`.
+    fn below(&self, z: f64) -> usize {
+        let b = self.band(z);
+        let (from, to) = (self.starts[b], self.starts[b + 1]);
+        from + self.heights[from..to].partition_point(|&h| h < z)
+    }
+}
+
+/// The indices of `keys` in order of their keys (each below `count`), those with the same key
+/// in the order they came in.
+fn counting_sort(keys: &[usize], count: usize) -> Vec<usize> {
+    let mut next = vec![0; count + 1];
+    for &k in keys {
+        next[k + 1] += 1;
+    }
+    for k in 0..count {
+        next[k + 1] += next[k];
+    }
+    let mut order = vec![0; keys.len()];
+    for (i, &k) in keys.iter().enumerate() {
+        order[next[k]] = i;
+        next[k] += 1;
+    }
+    order
 }
 
 /// Where to cut `triangles` (snapped to `corners`), bottom up: each height, and whether
@@ -703,5 +805,39 @@ mod tests {
         let cut = &body.cuts[body.cuts.len() / 2];
         assert!(near(cut.area, 8.0 * polygon(0.05), 0.1), "{}", cut.area);
         assert!(!body.encloses(DVec3::new(0.0, 0.0, 1.5)));
+    }
+
+    #[test]
+    fn bands_find_what_a_search_finds() {
+        let lists: [&[f64]; 5] = [
+            &[2.5],
+            &[-3.0, 0.0, 0.1, 0.10001, 7.0],
+            &[1.0, 1.0 + 1e-9, 1.0 + 2e-9, 40.0, 40.5, 41.0, 110.0],
+            &[0.0, 1e-300, 1e-12, 5.0],
+            &[-1e6, -1.0, 1e6],
+        ];
+        for heights in lists {
+            let bands = Bands::new(heights);
+            let mut asked = vec![f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1e9, 1e9];
+            for &h in heights {
+                asked.extend([h, h.next_down(), h.next_up(), h - 1e-5, h + 1e-5]);
+            }
+            for k in 0..=1000 {
+                let (lo, hi) = (heights[0] - 1.0, heights[heights.len() - 1] + 1.0);
+                asked.push(lo + (hi - lo) * k as f64 / 1000.0);
+            }
+            for z in asked {
+                let expected = heights.partition_point(|&h| h < z);
+                assert_eq!(bands.below(z), expected, "{z} among {heights:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn counting_keeps_the_order_on_each_key() {
+        let keys = [3, 0, 2, 0, 3, 1, 0, 2];
+        let mut expected: Vec<usize> = (0..keys.len()).collect();
+        expected.sort_by_key(|&i| keys[i]);
+        assert_eq!(counting_sort(&keys, 4), expected);
     }
 }

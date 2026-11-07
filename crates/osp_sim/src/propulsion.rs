@@ -1301,21 +1301,28 @@ impl Propulsion {
             let axis = holder
                 .map_or(above.bottom, |p| p.as_built().position)
                 .truncate();
-            let mut triangles = Vec::new();
-            for part in tree.stage(s.id) {
-                if let Some(built) = &part.built {
-                    let pose = part.as_built();
-                    let place = |p: DVec3| pose.point(p);
-                    crate::aero::outer_triangles(built, place, &mut triangles);
-                }
-            }
-            let across = triangles.iter().any(|t| {
+            let across_axis = |t: &[DVec3; 3]| {
                 let [a, b, c] = t.map(|v| v.truncate() - axis);
                 let area = (b - a).perp_dot(c - a);
                 let sides = [a.perp_dot(b), b.perp_dot(c), c.perp_dot(a)];
                 area.abs() > 1e-9 && sides.iter().all(|&w| w * area >= 0.0)
-            });
-            if !triangles.is_empty() && !across {
+            };
+            // Part by part, as one surface across the axis is enough to block it.
+            let (mut triangles, mut any, mut across) = (Vec::new(), false, false);
+            for part in tree.stage(s.id) {
+                if let Some(built) = &part.built {
+                    let pose = part.as_built();
+                    let place = |p: DVec3| pose.point(p);
+                    triangles.clear();
+                    crate::aero::outer_triangles(built, place, &mut triangles);
+                    any |= !triangles.is_empty();
+                    across = triangles.iter().any(across_axis);
+                    if across {
+                        break;
+                    }
+                }
+            }
+            if any && !across {
                 out.insert(s.id);
             }
         }
