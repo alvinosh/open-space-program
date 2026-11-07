@@ -21,3 +21,10 @@ group. Nothing says what each does until it is pressed, and the tools' keys (1, 
 ## Done when
 
 - The bar is icons only, each with a tooltip, and a capture shows the tooltips and the lit tool.
+
+## Asked again
+
+- 2026-11-07: "the mirror and symmetry options should be at the bottom, and for the shape move turn
+  and mirror and such i want icons". So the symmetry controls (radial count, mirror) and the snap
+  step leave the top bar for a bar at the bottom of the view, and every tool and mode button is
+  an icon (with its tooltip and key).

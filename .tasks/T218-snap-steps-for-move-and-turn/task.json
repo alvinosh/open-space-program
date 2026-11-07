@@ -2,7 +2,7 @@
   "id": "T218",
   "title": "Snap steps for move and turn (1°, 5°, 15°, 45°...)",
   "kind": "feature",
-  "status": "todo",
+  "status": "in_progress",
   "area": "editor",
   "size": "S",
   "parent": "T002",

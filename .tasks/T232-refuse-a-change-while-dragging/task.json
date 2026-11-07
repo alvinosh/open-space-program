@@ -1,0 +1,20 @@
+{
+  "id": "T232",
+  "title": "Refuse a change while dragging, not after",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/shaping.rs",
+    "crates/osp_editor/src/moving.rs",
+    "crates/osp_sim/src/builder.rs (check)"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.247
+}

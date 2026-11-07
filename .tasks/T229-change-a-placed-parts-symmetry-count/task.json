@@ -1,0 +1,21 @@
+{
+  "id": "T229",
+  "title": "Change a placed part's symmetry count",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [
+    "T228"
+  ],
+  "refs": [
+    "crates/osp_sim/src/builder.rs (put_set, alike)",
+    "memory: symmetry is build-time"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.244
+}

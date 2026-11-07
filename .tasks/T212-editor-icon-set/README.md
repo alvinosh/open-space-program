@@ -25,3 +25,13 @@ for what is on), so the editor's bar, parts list and part settings can use pictu
 
 - The icons are in `assets/core/icons/editor/`, each readable at 20 px, shown together in a capture
   next to their names.
+
+## Done so far
+
+- 2026-11-06, for the parts list (T215, T208): `assets/core/icons/editor/` has `pod`, `tank`,
+  `structure` (a nose cone over a decoupler), `aero` (a fin), `width`, `propellant` and `search`,
+  in the HUD's style (24 px, white strokes 1.6 wide, tinted by the theme, teal when on). The engines
+  and control tabs use `icons/engine.svg` and `icons/rcs.svg`. The tabs have tooltips with their
+  names; they have no keys.
+- Left: the bar's icons, the part settings' section icons, and a capture of the set beside their
+  names.

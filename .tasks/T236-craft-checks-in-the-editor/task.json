@@ -1,0 +1,19 @@
+{
+  "id": "T236",
+  "title": "Craft checks in the editor",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/builder.rs (warnings)",
+    "T205"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.245
+}

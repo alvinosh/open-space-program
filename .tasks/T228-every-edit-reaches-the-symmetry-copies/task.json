@@ -1,0 +1,20 @@
+{
+  "id": "T228",
+  "title": "Every edit reaches the symmetry copies",
+  "kind": "bug",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/builder.rs (resize, set_field, remove, alike)",
+    "crates/osp_editor/src/part_settings.rs",
+    "crates/osp_editor/src/shaping.rs"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.243
+}

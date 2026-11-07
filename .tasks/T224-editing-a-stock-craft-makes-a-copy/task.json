@@ -1,0 +1,20 @@
+{
+  "id": "T224",
+  "title": "Editing a stock craft makes a copy",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [
+    "T020"
+  ],
+  "refs": [
+    "crates/osp_editor/src/hangar.rs (vessel_groups)"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 64.5
+}

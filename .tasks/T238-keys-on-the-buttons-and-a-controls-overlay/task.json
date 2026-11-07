@@ -1,0 +1,21 @@
+{
+  "id": "T238",
+  "title": "Keys on the buttons, and a controls overlay",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [
+    "T214"
+  ],
+  "refs": [
+    "assets/core/keybindings",
+    "crates/osp_editor/src/building.rs (hint)"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.257
+}

@@ -29,3 +29,28 @@ joining it by another of its nodes. Find out first what goes wrong in the given 
 
 - In a capture, a tank under a pod is dragged to the top of the pod and stays there, then the pod
   (the root) is dragged under the tank, and both moves can be undone.
+
+## Done so far (2026-11-06)
+
+The user: "there is also a restriction that the vessel needs to sit at the bottom which just should
+not be there, i should be able to drag the root part (the command pod for example) and bring
+everything up to make room". Chosen: dragging the root carries the whole craft, as in KSP; no
+reroot.
+
+- The craft floats in the hangar where its root is (`Showing::anchor`); it is lifted only when a
+  part would go through the floor. A new craft's first part floats its own size plus 2 m up.
+- Dragging the root (or its Move arrows) carries the whole craft in the plane facing the view;
+  Esc puts it back.
+- Any other part dragged off comes with what it holds and its copies by symmetry, and goes on by
+  whichever free node of its own faces the node it is brought to: in the capture the lower tank is
+  put on top of the root by its other end, then undone.
+- Any part goes on the side of another: tanks, pods and engines by a point on their side
+  (`builder::side_node`, node `held_side`), upright (`builder::upright_roll`); a decoupler by its
+  top, standing out, so a booster goes on its free end by its side.
+- One builder operation for all of it, `Builder::put_set` (a part, what it holds, every place it
+  goes, what it replaces), shared by the preview and the drop.
+- Capture `OSP_CAPTURE_EDITOR_CRAFT=1`.
+
+## Open
+
+- Rerooting (making another part the root) is not offered.

@@ -2,7 +2,7 @@
   "id": "T216",
   "title": "Grab a placed part and put it on anywhere",
   "kind": "feature",
-  "status": "todo",
+  "status": "in_progress",
   "area": "editor",
   "size": "M",
   "parent": "T002",

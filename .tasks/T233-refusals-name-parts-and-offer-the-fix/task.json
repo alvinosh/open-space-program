@@ -1,0 +1,18 @@
+{
+  "id": "T233",
+  "title": "Refusals name parts and offer the fix",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/builder.rs (Refusal)"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.248
+}

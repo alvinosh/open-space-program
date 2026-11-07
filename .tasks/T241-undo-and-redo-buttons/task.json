@@ -1,0 +1,18 @@
+{
+  "id": "T241",
+  "title": "Undo and redo buttons",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/builder.rs (undo, redo)"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.256
+}

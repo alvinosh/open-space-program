@@ -1,0 +1,21 @@
+{
+  "id": "T226",
+  "title": "The parts list stays while a part's settings show",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [
+    "T207"
+  ],
+  "refs": [
+    "assets/core/layouts/editor.json5",
+    "crates/osp_editor/src/part_settings.rs"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.25
+}

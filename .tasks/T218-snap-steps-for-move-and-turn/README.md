@@ -28,3 +28,14 @@ lets a part be placed or slid inside another, which the builder refuses now).
 
 - A fin turned with each angle step lands on multiples of it, a slide with each length step lands
   on multiples of it, and both are shown in a capture.
+
+## Done so far (2026-11-06)
+
+- Turn steps 1°, 5°, 15°, 22.5°, 45°, 90°: a button in the bar showing the step (`editor.snap`)
+  and C (Shift+C back). Used by the rings and by Q and E; Shift goes finer (5°, or 1° for small
+  steps).
+
+## Open
+
+- Slide steps are still chosen from the view (Shift a tenth); a length snap is not offered.
+- The "part clipping" question is still to ask.

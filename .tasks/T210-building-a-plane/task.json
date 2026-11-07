@@ -2,7 +2,7 @@
   "id": "T210",
   "title": "Building a plane in the editor",
   "kind": "feature",
-  "status": "todo",
+  "status": "in_progress",
   "area": "editor",
   "size": "L",
   "parent": "T002",

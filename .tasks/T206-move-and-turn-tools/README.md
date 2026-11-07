@@ -46,3 +46,13 @@ and 3), and with a part picked, handles for the tool on it.
 - The hangar stands the craft on its lowest point, so sliding a part below the rest lifts what
   is above it on the screen; the handles follow, but it can surprise.
 - Turning the root (a whole craft lying down for a plane) is T210.
+
+## Done so far (2026-11-06, second pass)
+
+The user said turning was "very very glitchy". The hangar stood the craft on its lowest point and
+the editor measured everything from the base of the lowest stage, so a part turned or slid below
+the rest lifted the whole craft while the pointer was on its ring: the ring moved under the pointer
+and the turn fed back on itself. Now the craft floats where its root is put (T216) and the editor
+works in the craft's own frame, from the root (`shaping::tree_origin`, `craft_origin`): nothing
+moves but the part in hand. The root has handles too: its arrows carry the whole craft about the
+hangar, its rings turn the whole craft (`Builder::turn_root`). Turn steps come from T218.

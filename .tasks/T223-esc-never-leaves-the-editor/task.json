@@ -1,0 +1,18 @@
+{
+  "id": "T223",
+  "title": "Esc never leaves the editor",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/hangar.rs (game.menu)"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.242
+}

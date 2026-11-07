@@ -1,0 +1,19 @@
+{
+  "id": "T235",
+  "title": "Delta-v and TWR in the vessel summary",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "assets/core/layouts/editor.json5 (editor_panel)",
+    "staging.json5 (DV / TWR)"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.246
+}

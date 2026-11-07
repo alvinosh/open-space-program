@@ -1,0 +1,19 @@
+{
+  "id": "T230",
+  "title": "Name the two kinds of move apart",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/moving.rs",
+    "crates/osp_editor/src/building.rs (grab)"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.254
+}

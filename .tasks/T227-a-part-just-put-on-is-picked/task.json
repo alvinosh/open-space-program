@@ -1,0 +1,20 @@
+{
+  "id": "T227",
+  "title": "A part just put on is picked",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [
+    "T226"
+  ],
+  "refs": [
+    "crates/osp_editor/src/building.rs"
+  ],
+  "created": "2026-11-07",
+  "updated": "2026-11-07",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.251
+}
