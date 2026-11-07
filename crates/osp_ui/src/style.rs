@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use bevy::{
     prelude::*,
-    text::{FontFeatureTag, FontFeatures},
+    text::{FontFeatureTag, FontFeatures, Justify, LineBreak, TextLayout},
 };
 use serde::{Deserialize, Serialize};
 
@@ -181,6 +181,11 @@ style_def! {
     letter_spacing: f32,
     /// Show text in capitals (titles, captions).
     uppercase: bool,
+    /// How lines of text sit across their box: `"left"` (the default), `"center"` or `"right"`.
+    text_align: String,
+    /// Break a word too long for its line where it runs out, instead of letting it run past
+    /// (a long name under a picture).
+    break_words: bool,
     /// Background gradient from top to bottom, stops spread evenly (drawn over
     /// `background`).
     gradient: Vec<ColorDef>,
@@ -373,6 +378,24 @@ impl StyleDef {
             font.weight = FontWeight(weight.clamp(1.0, 1000.0) as u16);
         }
         font
+    }
+
+    /// How text lines up and breaks, if the style says (`text_align`, `break_words`).
+    pub fn text_layout(&self) -> Option<TextLayout> {
+        if self.text_align.is_none() && self.break_words.is_none() {
+            return None;
+        }
+        let justify = match self.text_align.as_deref() {
+            Some("center") => Justify::Center,
+            Some("right") => Justify::Right,
+            _ => Justify::Left,
+        };
+        let linebreak = if self.break_words == Some(true) {
+            LineBreak::WordOrCharacter
+        } else {
+            LineBreak::WordBoundary
+        };
+        Some(TextLayout::new(justify, linebreak))
     }
 }
 

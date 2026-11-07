@@ -765,9 +765,15 @@ pub struct CraftPartDef {
     /// Where on the surface, when one end of the joint is a surface.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<SurfaceAtDef>,
-    /// Degrees it is turned about the line the joint holds it along.
+    /// Degrees it is turned about the line the joint holds it along; for the root, about the way
+    /// it `points`.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub roll: f64,
+    /// The root only: which way its own +Z points in the craft's frame, and so how everything held
+    /// by it is turned there. Along +Z by default, as a rocket stands; see
+    /// [`crate::craft::root_rotation`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub points: Option<[f64; 3]>,
     /// Id of an `engines`, `pods`, `rcs` or `reaction_wheels` record: its model, nodes and
     /// what it does. Instead of `shape`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

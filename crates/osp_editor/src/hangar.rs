@@ -6,6 +6,12 @@
 //! a vessel on it takes no launch until that is cleared (`editor.clear`, asked once). Back or Esc
 //! goes back to the menu with the game as it was. Building is in the crate's other modules.
 //!
+//! Nothing the player did to the craft on show is thrown away without asking: while it has changes
+//! since it was put on show, putting another on show, New rocket or New plane, Back and Esc ask
+//! first (they send `editor.ask_discard:<action>`, which asks the frame after, so the press that
+//! asked does not also close the question). Discard sends `editor.discard:<action>`, which lets
+//! that action through once.
+//!
 //! A launch is remembered (`osp_game::editing::LastLaunch`) until the game is left or another launch replaces it. The
 //! pause menu can go back to it: `game.revert:launch` to the moment it left, `game.revert:hangar` to
 //! here with the same craft, staging and place, as if it had never gone (`ask.revert:<to>` asks
@@ -60,7 +66,11 @@ use osp_game::{
     sim::{Sim, SimRestarted, TimeWarp},
 };
 
-use crate::{building::Placing, moving::Moving, shaping::Shaping};
+use crate::{
+    building::Placing,
+    moving::Moving,
+    shaping::{Shaping, craft_origin},
+};
 
 /// The layout with the launch button.
 const LAYOUT: &str = "editor";
@@ -75,6 +85,11 @@ const STAGING_DOCK: &str = "editor_staging";
 const PART_WINDOW: &str = "part_info";
 /// How far the view starts from the middle of an empty hangar, m.
 const EMPTY_VIEW: f64 = 45.0;
+/// How far over the floor the first part of a new craft floats, m, besides its own size (half of it
+/// for a plane): room for what goes under it.
+const FIRST_CLEARANCE: f64 = 2.0;
+/// How far from the middle of the floor the craft can be carried, m, if it is not bigger.
+const MOVE_ROOM: f64 = 20.0;
 /// A new game's clock: around midday at the Cape, like the stock scenarios. Seconds since J2000.
 const NEW_GAME_TIME: f64 = 21_600.0;
 /// What a craft weighs by when there is no launch site to ask, m/s².
@@ -192,9 +207,12 @@ struct Showing {
     flown: Option<VesselId>,
     /// The vessel to go back to is not the one the player left: the camera finds it afresh.
     flown_changed: bool,
-    /// The box round the craft as it stands, from the base of its stack, sim axes.
+    /// The box round the craft as it stands, from its root, sim axes.
     low: DVec3,
     high: DVec3,
+    /// Where the root is, from the middle of the floor: the craft stays where it is put, and is
+    /// lifted only when a part would go through the floor.
+    anchor: DVec3,
     /// The hangar, how big it was built (radius and height, m), and the ambient light to go back to
     /// when it goes.
     hangar: Entity,
@@ -207,14 +225,17 @@ struct Showing {
     yaw: f64,
     pitch: f64,
     distance: f64,
-    /// What the camera looks at, from the middle of the craft.
-    pan: DVec3,
+    /// What the camera looks at, from the middle of the floor.
+    look_at: DVec3,
     /// The left button went down off the UI, so it drags the view.
     dragging: bool,
     /// Whether the staging window was open, to leave it so.
     staging_was_open: bool,
     /// The list of vessels is showing.
     list_open: bool,
+    /// The action the player said may throw away the changes to the craft (`editor.discard`): it
+    /// goes ahead once without asking.
+    discard: Option<String>,
 }
 
 impl Showing {
@@ -222,18 +243,52 @@ impl Showing {
         (self.high - self.low).max_element()
     }
 
+    /// The box round the craft, from the middle of the floor.
+    fn bounds(&self) -> (DVec3, DVec3) {
+        (self.anchor + self.low, self.anchor + self.high)
+    }
+
+    /// The middle of the craft, from the middle of the floor.
+    fn middle(&self) -> DVec3 {
+        self.anchor + (self.low + self.high) / 2.0
+    }
+
     fn radius(&self) -> f64 {
-        (self.size() * HANGAR_RADIUS).max(HANGAR_LEAST_RADIUS)
+        let (low, high) = self.bounds();
+        let out = low.truncate().abs().max(high.truncate().abs()).length();
+        (self.size() * HANGAR_RADIUS)
+            .max(HANGAR_LEAST_RADIUS)
+            .max(out * 1.5)
     }
 
     fn height(&self) -> f64 {
-        (self.size() * HANGAR_HEIGHT).max(HANGAR_LEAST_HEIGHT)
+        (self.size() * HANGAR_HEIGHT)
+            .max(HANGAR_LEAST_HEIGHT)
+            .max(self.bounds().1.z * 1.3)
     }
 
-    /// The middle of the floor under the craft, from the base of its stack.
-    fn floor(&self) -> DVec3 {
+    /// Keep the craft over the floor and near the middle of the hall.
+    fn keep_in(&mut self) {
         let middle = (self.low + self.high) / 2.0;
-        DVec3::new(middle.x, middle.y, self.low.z)
+        let room = self.size().max(MOVE_ROOM);
+        let across = (self.anchor + middle).truncate().clamp_length_max(room);
+        self.anchor.x = across.x - middle.x;
+        self.anchor.y = across.y - middle.y;
+        let top = room * 2.0 + HANGAR_LEAST_HEIGHT;
+        self.anchor.z = self.anchor.z.min(top - self.high.z).max(-self.low.z);
+    }
+
+    /// Stand the craft in the middle of the floor, `clearance` metres over it.
+    fn stand_at(&mut self, clearance: f64) {
+        let middle = (self.low + self.high) / 2.0;
+        self.anchor = DVec3::new(-middle.x, -middle.y, clearance - self.low.z);
+        self.keep_in();
+    }
+
+    /// Look at the middle of the craft, from far enough to see all of it.
+    fn frame(&mut self) {
+        self.look_at = self.middle();
+        self.distance = self.size() * 1.15 + 6.0;
     }
 }
 
@@ -264,7 +319,7 @@ impl Showing {
 
     /// What the view looks at, from the middle of the floor.
     fn focus(&self) -> DVec3 {
-        (self.low + self.high) / 2.0 + self.pan - self.floor()
+        self.look_at
     }
 
     /// `at`, from the middle of the floor, in the hall's proportions: the dome is the unit sphere.
@@ -300,9 +355,10 @@ impl Showing {
         let right = DVec3::new(-away.y, away.x, 0.0);
         // Dragged, what is on the screen stays under the pointer.
         let per_pixel = self.distance * 0.0012;
-        self.pan += (DVec3::Z * input.drag.y + right * input.drag.x) * per_pixel;
+        self.look_at += (DVec3::Z * input.drag.y + right * input.drag.x) * per_pixel;
         let step = self.distance.max(10.0) * 0.6 * input.dt;
-        self.pan += (-away * input.walk.x + right * input.walk.y + DVec3::Z * input.walk.z) * step;
+        self.look_at +=
+            (-away * input.walk.x + right * input.walk.y + DVec3::Z * input.walk.z) * step;
 
         // What it looks at stays over the floor and well inside the dome.
         let (radius, height) = (self.radius(), self.height());
@@ -310,8 +366,7 @@ impl Showing {
         let up = focus.z.clamp(OVER_FLOOR, height * FOCUS_REACH);
         let share = up / height;
         let across = radius * (FOCUS_REACH * FOCUS_REACH - share * share).max(0.0).sqrt();
-        let focus = focus.truncate().clamp_length_max(across).extend(up);
-        self.pan = focus + self.floor() - (self.low + self.high) / 2.0;
+        self.look_at = focus.truncate().clamp_length_max(across).extend(up);
 
         if input.zoom != 0.0 {
             // From where it is, however far it was asked to be.
@@ -321,11 +376,11 @@ impl Showing {
         }
     }
 
-    /// Where the camera is and what it looks at, sim axes, given where the base of the stack is.
-    fn view(&self, base: DVec3) -> (DVec3, DVec3) {
-        let focus = base + (self.low + self.high) / 2.0 + self.pan;
+    /// Where the camera is and what it looks at, sim axes, given where the middle of the floor is.
+    fn view(&self, floor: DVec3) -> (DVec3, DVec3) {
+        let focus = floor + self.look_at;
         let mut eye = focus + self.around() * self.distance.min(self.reach());
-        eye.z = eye.z.max(base.z + self.floor().z + OVER_FLOOR);
+        eye.z = eye.z.max(floor.z + OVER_FLOOR);
         (eye, focus)
     }
 }
@@ -381,6 +436,35 @@ impl Editor {
         self.0.as_mut()?.craft.as_mut()
     }
 
+    /// Whether `action` has to wait for the player to say the changes to the craft on show may be
+    /// thrown away: it would put another craft in its place (`editor.show`, `editor.new`) or leave
+    /// (Back, Esc), and there are changes the craft was not put on show with. If so the question is
+    /// sent for (`editor.ask_discard:<action>`) and the caller does nothing more with `action`.
+    /// The action the player agreed to (`editor.discard`) goes through, once.
+    pub(crate) fn asks_first(&mut self, action: &UiAction, commands: &mut Commands) -> bool {
+        let Some(showing) = self.0.as_mut() else {
+            return false;
+        };
+        if showing.discard.as_deref() == Some(action.0.as_str()) {
+            showing.discard = None;
+            return false;
+        }
+        let Some(craft) = showing.craft.as_ref() else {
+            return false;
+        };
+        let replaces = match action.name() {
+            // Choosing the craft that is on show only puts the list away.
+            "editor.show" => action.arg() != Some(craft.draft().id.as_str()),
+            "editor.new" | "editor.back" | "menu.back" | "game.menu" => true,
+            _ => false,
+        };
+        if !replaces || !craft.can_undo() {
+            return false;
+        }
+        commands.write_message(UiAction(format!("editor.ask_discard:{}", action.0)));
+        true
+    }
+
     /// The vessel standing in the hangar.
     pub(crate) fn vessel(&self) -> Option<VesselId> {
         self.0.as_ref().map(|showing| showing.vessel)
@@ -431,6 +515,7 @@ impl Editor {
         let Some(showing) = self.0.as_mut() else {
             return;
         };
+        vessel.lie_on_display(showing.place == Place::Runway);
         if let Some(left) = sim.universe.vessel(showing.vessel) {
             // A change of size leaves the parts as they were, so the staging still fits them.
             if left.propulsion.parts().parts().len() == vessel.propulsion.parts().parts().len() {
@@ -444,11 +529,18 @@ impl Editor {
         close_part_windows(ui);
     }
 
-    /// Start a craft of nothing, to be built: the hangar empties and the view stays where it is.
-    pub(crate) fn start_new(&mut self, sim: &mut Sim, ui: &mut LayoutVisibility) {
+    /// Start a craft of nothing, to be built: a rocket for the pad, or for the runway a plane,
+    /// built lying as it will stand there. The hangar empties and the view stays where it is.
+    pub(crate) fn start_new(&mut self, plane: bool, sim: &mut Sim, ui: &mut LayoutVisibility) {
         let Some(showing) = self.0.as_mut() else {
             return;
         };
+        if plane {
+            showing.place = Place::Runway;
+        } else if showing.place == Place::Runway {
+            showing.place = Place::Pad;
+        }
+        showing.anchor = DVec3::ZERO;
         showing.craft = Some(Builder::of(CraftDef {
             id: NEW_CRAFT.into(),
             name: "New vessel".into(),
@@ -459,19 +551,41 @@ impl Editor {
             abort: Vec::new(),
         }));
         showing.list_open = false;
+        showing.discard = None;
         showing.notice.clear();
         let empty = Vessel::empty_display(&sim.universe.system, sim.universe.time());
         self.stand(empty, sim, ui);
         self.settle(sim);
     }
 
-    /// Bring the view in to what is on show, measured afresh, as for a craft put on show: for the
-    /// first part of one being built, which the empty hangar's view is far from.
-    pub(crate) fn frame_view(&mut self, sim: &mut Sim) {
+    /// The first part of a craft being built is on show: it floats well over the floor, with
+    /// room under it for what goes below, and the view, far out in the empty hangar, comes in to
+    /// it.
+    pub(crate) fn frame_first_part(&mut self, sim: &mut Sim) {
         self.settle(sim);
         if let Some(showing) = self.0.as_mut() {
-            showing.pan = DVec3::ZERO;
-            showing.distance = showing.size() * 1.15 + 6.0;
+            let size = showing.size();
+            let clearance = if showing.place == Place::Runway {
+                FIRST_CLEARANCE + 0.5 * size
+            } else {
+                FIRST_CLEARANCE + size
+            };
+            showing.stand_at(clearance);
+            showing.frame();
+        }
+    }
+
+    /// Where the root is from the middle of the floor, sim axes.
+    pub(crate) fn anchor(&self) -> Option<DVec3> {
+        self.0.as_ref().map(|showing| showing.anchor)
+    }
+
+    /// Move the whole craft to have its root `at` (from the middle of the floor, sim axes), as far
+    /// as it stays over the floor and in the hall; the view keeps looking at the same place.
+    pub(crate) fn carry_to(&mut self, at: DVec3) {
+        if let Some(showing) = self.0.as_mut() {
+            showing.anchor = at;
+            showing.keep_in();
         }
     }
 
@@ -503,9 +617,40 @@ impl Editor {
         else {
             return;
         };
-        let looked_at = (showing.low + showing.high) / 2.0 + showing.pan;
         (showing.low, showing.high) = extent(sim, index);
-        showing.pan = looked_at - (showing.low + showing.high) / 2.0;
+        // It stays where it is, lifted only so as not to go through the floor.
+        showing.keep_in();
+    }
+
+    /// Show the craft standing, for the pad and for orbit, or lying, for the runway, as `place`
+    /// says; stood on the floor afresh when that changes how it lies.
+    pub(crate) fn set_place(
+        &mut self,
+        place: Place,
+        catalog: &PartCatalog,
+        sim: &mut Sim,
+        ui: &mut LayoutVisibility,
+    ) {
+        let Some(showing) = self.0.as_mut() else {
+            return;
+        };
+        let turned = (showing.place == Place::Runway) != (place == Place::Runway);
+        showing.place = place;
+        showing.notice.clear();
+        if !turned {
+            return;
+        }
+        let draft = showing.craft.as_ref().map(|b| b.draft().clone());
+        if let Some(draft) = draft
+            && let Err(e) = self.redraw(&draft, catalog, sim, ui)
+        {
+            error!("cannot show the craft: {e}");
+        }
+        self.settle(sim);
+        if let Some(showing) = self.0.as_mut() {
+            showing.stand_at(0.0);
+            showing.frame();
+        }
     }
 }
 
@@ -560,6 +705,25 @@ fn revert_question(to: RevertTo, name: &str, since: f64) -> Question {
         "Revert",
         format!("game.revert:{}", to.id()),
     )
+}
+
+/// Whether to throw away what was done to `craft` and go on with `then`.
+fn discard_question(craft: &CraftDef, then: &str) -> Question {
+    let (title, text) = if craft.id == NEW_CRAFT {
+        (
+            "Discard the vessel you are building?".to_owned(),
+            "It has not been launched, so it will be lost.".to_owned(),
+        )
+    } else {
+        (
+            format!("Discard your changes to {}?", craft.name),
+            format!(
+                "They have not been launched, so they will be lost. {} itself stays as it was.",
+                craft.name
+            ),
+        )
+    };
+    Question::destructive(title, &text, "Discard", format!("editor.discard:{then}"))
 }
 
 /// `editor.vessels` (name, and in `craft` each one's id, name, parts and selected): every craft
@@ -628,13 +792,13 @@ fn ground_at_launch(sim: &Sim, all: &[LaunchSiteDef]) -> (f64, f64) {
     })
 }
 
-/// The box round `vessel`'s parts as it stands, from the base of its stack, sim axes.
+/// The box round `vessel`'s parts as it stands, from its root, sim axes.
 fn extent(sim: &mut Sim, index: usize) -> (DVec3, DVec3) {
     let universe = &mut sim.universe;
     let vessel = &universe.vessels[index];
     let tree = vessel.propulsion.parts();
     let attitude = vessel.attitude_at(&universe.system, universe.time());
-    let base = DVec3::Z * tree.base();
+    let base = tree.root().map_or(DVec3::ZERO, |root| root.position);
     let Some(bounds) = universe.colliders.of(tree).bounds() else {
         return (DVec3::splat(-1.0), DVec3::splat(1.0));
     };
@@ -964,6 +1128,21 @@ pub(crate) fn editor_actions(
                     flown,
                 );
             }
+            // Sent by an action that would throw away changes to the craft (Editor::asks_first).
+            "editor.ask_discard" => {
+                let craft = editor.builder().map(Builder::draft);
+                if let (Some(then), Some(craft)) = (action.arg(), craft) {
+                    dialog.ask(discard_question(craft, then));
+                }
+            }
+            // The player said the changes may go: the action that asked goes ahead.
+            "editor.discard" => {
+                let (Some(then), Some(showing)) = (action.arg(), editor.0.as_mut()) else {
+                    continue;
+                };
+                showing.discard = Some(then.to_owned());
+                commands.write_message(UiAction(then.to_owned()));
+            }
             "ask.clear" => {
                 let Some(showing) = editor.0.as_ref() else {
                     continue;
@@ -998,6 +1177,7 @@ pub(crate) fn editor_actions(
                 }
                 showing.notice.clear();
             }
+            "editor.show" if editor.asks_first(action, &mut commands) => {}
             // Put another craft on show in place of what is there.
             "editor.show" => {
                 let Some(showing) = editor.0.as_mut() else {
@@ -1029,10 +1209,13 @@ pub(crate) fn editor_actions(
                         continue;
                     }
                 };
+                let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
+                let place = place_for(&vessel, sites(&all).1.is_some(), showing.place);
                 put_on_show(
                     showing,
                     craft,
                     vessel,
+                    place,
                     &mut commands,
                     &mut sim,
                     &mut ui,
@@ -1045,14 +1228,15 @@ pub(crate) fn editor_actions(
                 }
             }
             "editor.place" => {
-                let place = action.arg().and_then(Place::parse);
-                if let (Some(showing), Some(place)) = (&mut editor.0, place) {
-                    showing.place = place;
-                    showing.notice.clear();
+                if let Some(place) = action.arg().and_then(Place::parse) {
+                    let catalog = catalog(&content.0.registry, &mut Vec::new());
+                    editor.set_place(place, &catalog, &mut sim, &mut ui);
                 }
             }
             // Esc closes a popup first. Otherwise it and Back go to the menu they came from.
             "game.menu" if editor.0.is_some() && ui.dismiss_popups(&docs) => {}
+            "editor.back" | "menu.back" | "game.menu"
+                if editor.asks_first(action, &mut commands) => {}
             "editor.back" | "menu.back" | "game.menu" => {
                 let Some(showing) = editor.0.take() else {
                     continue;
@@ -1155,11 +1339,24 @@ pub(crate) fn editor_actions(
     }
 }
 
-/// Put `vessel`, built from `craft`, on show in place of what is there.
+/// Where a craft put on show goes from: what rolls on wheels from the runway, if there is one, and
+/// is shown lying as it will stand there; anything else from where the last went, or the pad if
+/// that was the runway.
+fn place_for(vessel: &Vessel, runway: bool, now: Place) -> Place {
+    let rolls = (osp_sim::gear::legs(&vessel.propulsion).iter()).any(|leg| !leg.foot);
+    match now {
+        _ if rolls && runway => Place::Runway,
+        Place::Runway => Place::Pad,
+        other => other,
+    }
+}
+
+/// Put `vessel`, built from `craft`, on show in place of what is there, going from `place`.
 fn put_on_show(
     showing: &mut Showing,
     craft: CraftDef,
     vessel: Vessel,
+    place: Place,
     commands: &mut Commands,
     sim: &mut Sim,
     ui: &mut LayoutVisibility,
@@ -1171,21 +1368,25 @@ fn put_on_show(
 ) {
     let pressure =
         (sim.universe.vessel(showing.vessel)).map_or(0.0, |left| left.flight.static_pressure);
+    showing.place = place;
+    let mut vessel = vessel;
+    vessel.lie_on_display(showing.place == Place::Runway);
     sim.universe.remove_vessel(showing.vessel);
     showing.vessel = sim.universe.add_vessel(vessel);
     sim.universe.focus = Some(showing.vessel);
     sim.active_vessel_mut().flight.static_pressure = pressure;
     let index = sim.active_index();
     (showing.low, showing.high) = extent(sim, index);
-    let (radius, height) = (showing.radius(), showing.height());
     showing.craft = Some(Builder::of(craft));
+    showing.discard = None;
     showing.notice.clear();
     // Every craft is first seen the same way, with the list out of its way.
     showing.list_open = false;
     showing.yaw = START_YAW;
     showing.pitch = START_PITCH;
-    showing.pan = DVec3::ZERO;
-    showing.distance = showing.size() * 1.15 + 6.0;
+    showing.stand_at(0.0);
+    showing.frame();
+    let (radius, height) = (showing.radius(), showing.height());
     // The hall fits what is in it.
     commands.entity(showing.hangar).despawn();
     showing.hangar = spawn_hangar(
@@ -1297,13 +1498,13 @@ fn revert_actions(
         let Some(showing) = editor.0.as_mut() else {
             continue;
         };
-        showing.place = point.place;
         // The camera was on what is gone.
         showing.flown_changed = true;
         put_on_show(
             showing,
             point.craft.clone(),
             display,
+            point.place,
             &mut commands,
             &mut sim,
             &mut ui,
@@ -1345,6 +1546,7 @@ fn open_hangar(
         flown_changed: false,
         low,
         high,
+        anchor: DVec3::ZERO,
         hangar: Entity::PLACEHOLDER,
         hangar_size: (0.0, 0.0),
         ambient: ambient.brightness,
@@ -1354,10 +1556,11 @@ fn open_hangar(
         yaw: START_YAW,
         pitch: START_PITCH,
         distance: EMPTY_VIEW,
-        pan: DVec3::ZERO,
+        look_at: DVec3::Z * OVER_FLOOR,
         dragging: false,
         staging_was_open: ui.shown(STAGING),
         list_open: true,
+        discard: None,
     };
     showing.hangar = spawn_hangar(
         commands,
@@ -1470,11 +1673,9 @@ fn drive_camera(
         input.dt = time.delta_secs_f64();
     }
     showing.steer(&input);
-    let base = frame.relative(
-        vessel.parent(),
-        vessel.base_at(&sim.universe.system, frame.time),
-    );
-    let (eye, focus) = showing.view(base);
+    let root = craft_origin(vessel, &sim.universe.system, frame.time);
+    let floor = frame.relative(vessel.parent(), root) - showing.anchor;
+    let (eye, focus) = showing.view(floor);
     rig.position = eye;
     **camera = Transform::from_translation(to_render(eye)).looking_at(to_render(focus), Vec3::Y);
 }
@@ -1510,7 +1711,7 @@ fn refit_hangar(
     showing.hangar_size = (radius, height);
 }
 
-/// Keep the floor under the craft.
+/// Keep the floor where it is under the craft.
 fn place_hangar(
     editor: Res<Editor>,
     sim: Res<Sim>,
@@ -1521,12 +1722,10 @@ fn place_hangar(
     let Some(vessel) = sim.universe.vessel(showing.vessel) else {
         return;
     };
-    let base = frame.relative(
-        vessel.parent(),
-        vessel.base_at(&sim.universe.system, frame.time),
-    );
+    let root = craft_origin(vessel, &sim.universe.system, frame.time);
+    let floor = frame.relative(vessel.parent(), root) - showing.anchor;
     for mut transform in &mut hangars {
-        transform.translation = to_render(base + showing.floor());
+        transform.translation = to_render(floor);
     }
 }
 
@@ -1787,6 +1986,7 @@ mod tests {
             flown_changed: false,
             low: DVec3::new(-5.0, -5.0, -2.0),
             high: DVec3::new(5.0, 5.0, 98.0),
+            anchor: DVec3::new(0.0, 0.0, 2.0),
             hangar: Entity::PLACEHOLDER,
             hangar_size: (0.0, 0.0),
             ambient: 0.0,
@@ -1796,17 +1996,19 @@ mod tests {
             yaw: 0.0,
             pitch: 0.1,
             distance: 120.0,
-            pan: DVec3::ZERO,
+            look_at: DVec3::new(0.0, 0.0, 50.0),
             dragging: false,
             staging_was_open: true,
             list_open: false,
+            discard: None,
         }
     }
 
-    /// How far out in the dome the camera stands, 1 at the dome, and what is on show from there.
+    /// How far out in the dome the camera stands, 1 at the dome, with the floor's middle at the
+    /// origin.
     fn out_in_dome(view: &Showing) -> f64 {
         let (eye, _) = view.view(DVec3::ZERO);
-        view.in_dome(eye - view.floor()).length()
+        view.in_dome(eye).length()
     }
 
     #[test]
@@ -1815,6 +2017,8 @@ mod tests {
         let small = Showing {
             low: DVec3::new(-1.0, -1.0, 0.0),
             high: DVec3::new(1.0, 1.0, 15.0),
+            anchor: DVec3::ZERO,
+            look_at: DVec3::new(0.0, 0.0, 7.5),
             ..showing()
         };
         for craft in [small, showing()] {
@@ -2058,7 +2262,7 @@ mod tests {
                 ..default()
             },
         ];
-        let floor = view.floor().z;
+        let floor = 0.0;
         let (radius, height) = (view.radius(), view.height());
         for input in &hard {
             view.steer(input);
@@ -2069,7 +2273,7 @@ mod tests {
             );
             assert!(focus.z <= floor + height, "through the roof: {input:?}");
             assert!(out_in_dome(&view) <= 1.0, "through the dome: {input:?}");
-            let out = eye.truncate().distance(view.floor().truncate());
+            let out = eye.truncate().length();
             assert!(
                 out <= radius,
                 "through the wall at {out} of {radius}: {input:?}"

@@ -291,6 +291,10 @@ mod tests {
         "slider_value",
     ];
 
+    /// The layouts that may show pictures: the editor, whose parts list and bar are icons and
+    /// pictures of parts where words did not work (T212, T215). The menus are words.
+    const PICTURED: [&str; 1] = ["editor"];
+
     /// What a menu layout does against the rules in T185.
     fn broken_rules(layout: &LayoutDef, theme: &ThemeDef) -> Vec<String> {
         let mut problems = Vec::new();
@@ -300,7 +304,8 @@ mod tests {
 
     fn check_node(layout: &str, node: &NodeDef, theme: &ThemeDef, problems: &mut Vec<String>) {
         let at = format!("{layout}/{}", node.widget);
-        if matches!(node.widget.as_str(), "image" | "panel" | "window") {
+        let picture = node.widget == "image" && PICTURED.contains(&layout);
+        if matches!(node.widget.as_str(), "image" | "panel" | "window") && !picture {
             problems.push(format!("{at}: no {} in a menu", node.widget));
         }
         let s = &node.style;

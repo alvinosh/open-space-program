@@ -554,6 +554,16 @@ impl Vessel {
         vessel
     }
 
+    /// Show it lying level as it would on a runway, nose along +X and feet along -Z, or standing
+    /// with its nose along +Z as on a pad.
+    pub fn lie_on_display(&mut self, lying: bool) {
+        self.attitude.state.orientation = if lying {
+            DQuat::from_mat3(&DMat3::from_cols(DVec3::NEG_Y, DVec3::NEG_Z, DVec3::X))
+        } else {
+            DQuat::IDENTITY
+        };
+    }
+
     /// Nothing, in the place a craft is shown: a vessel with no parts, for a hangar with nothing
     /// chosen yet. No craft can be this empty.
     pub fn empty_display(system: &SolarSystem, time: SimTime) -> Self {

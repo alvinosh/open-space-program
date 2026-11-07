@@ -28,10 +28,12 @@ use bevy::{
 };
 use osp_sim::{
     data::{CraftDef, PartCatalog},
-    parts::PartId,
+    parts::{PartId, PartTree},
     propulsion::Propulsion,
     shaping::{self, Grip, Size},
-    vessel::VesselId,
+    system::SolarSystem,
+    time::SimTime,
+    vessel::{Vessel, VesselId},
 };
 use osp_ui::{CLICK_SLOP, LayoutVisibility, UiAction, UiData, UiDocuments, ViewOverlay};
 
@@ -296,8 +298,23 @@ pub(crate) fn in_plane(
     Some((off.dot(a), off.dot(b)))
 }
 
-/// How a vessel's frame (sim axes, from the base of its stack) sits in the view: as the renderer
-/// places it.
+/// Where the parts of `tree` are measured from in the editor: its root, the origin of the craft's
+/// frame. The tree's own frame stands on the base of its lowest stage, which moves as parts go on
+/// and off.
+pub(crate) fn tree_origin(tree: &PartTree) -> DVec3 {
+    tree.root().map_or(DVec3::ZERO, |root| root.position)
+}
+
+/// Where the root of `vessel` is at `time`, from its parent body: the origin of the frame the
+/// editor works in.
+pub(crate) fn craft_origin(vessel: &Vessel, system: &SolarSystem, time: SimTime) -> DVec3 {
+    let tree = vessel.propulsion.parts();
+    let attitude = vessel.attitude_at(system, time);
+    let from_base = tree_origin(tree) - DVec3::Z * tree.base();
+    vessel.base_at(system, time) + attitude * from_base
+}
+
+/// How a vessel's frame (sim axes, from its root) sits in the view: as the renderer places it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct VesselFrame {
     translation: Vec3,
@@ -310,9 +327,24 @@ impl VesselFrame {
         let system = &sim.universe.system;
         let attitude = vessel.attitude_at(system, frame.time);
         Some(Self {
-            translation: frame.to_render(vessel.parent(), vessel.base_at(system, frame.time)),
+            translation: frame.to_render(vessel.parent(), craft_origin(vessel, system, frame.time)),
             rotation: attitude,
         })
+    }
+
+    /// A way in the vessel's frame, in sim axes: the hangar's.
+    pub(crate) fn sim_way(&self, way: DVec3) -> DVec3 {
+        self.rotation * way
+    }
+
+    /// A way in sim axes, the hangar's, in the vessel's frame.
+    pub(crate) fn vessel_way_from_sim(&self, way: DVec3) -> DVec3 {
+        self.rotation.inverse() * way
+    }
+
+    /// The turn from sim axes, the hangar's, to the vessel's frame.
+    pub(crate) fn turn_from_sim(&self) -> DQuat {
+        self.rotation.inverse()
     }
 
     /// A point of the vessel's frame in the view.
@@ -348,7 +380,7 @@ fn place_grips(
     let Some(on_show) = tree.parts().get(part) else {
         return Vec::new();
     };
-    let base = DVec3::Z * tree.base();
+    let base = tree_origin(tree);
     let (position, rotation) = (on_show.position - base, on_show.rotation);
     // Where the eye is from the part, in its own frame, to turn handles that can go round towards.
     let seen = rotation.inverse() * (eye - position);
@@ -996,14 +1028,18 @@ fn publish_shaping(
     let shaped = part.is_some_and(|p| !shaping::part_sizes(p).is_empty());
     let root = part.is_some_and(|p| p.on.is_none());
     let hint = match (moving.tool(), part) {
-        (Tool::Move | Tool::Turn, Some(_)) if root => {
-            "The first part holds the rest, so it stays where it is. Pick another to move or turn."
+        (Tool::Move, Some(_)) if root => {
+            "The first part holds the rest: its arrows carry the whole craft about the hangar."
+        }
+        (Tool::Turn, Some(_)) if root => {
+            "The first part holds the rest: its rings turn the whole craft. Q and E roll it."
         }
         (Tool::Move, Some(_)) => {
             "Drag an arrow to slide it, with what it holds. Shift for small steps. 1 shapes, 3 turns."
         }
         (Tool::Turn, Some(_)) => {
-            "Drag a ring to turn it, 15° a step, Shift 5°. Q and E turn it about the joint. 1 shapes."
+            "Drag a ring to turn it, a step at a time (C sets the step, Shift finer). Q and E turn it \
+             about the joint. 1 shapes."
         }
         (Tool::Move, None) if !empty => "Click a part to slide it. 1 shapes it, 3 turns it.",
         (Tool::Turn, None) if !empty => "Click a part to turn it. 1 shapes it, 2 slides it.",
@@ -1016,7 +1052,8 @@ fn publish_shaping(
             }
             None if empty => "Pick a part from the list to start the vessel with.",
             None if draft.is_some() => {
-                "Click a part to change it, or add one from Parts. Drag to look around, WASD to move."
+                "Click a part to change it, drag one to move it (the first carries the craft), or add \
+                 one from Parts. Drag the background to look around."
             }
             None => "Drag to look around, middle drag or WASD, Q and E to move, wheel to zoom.",
         },

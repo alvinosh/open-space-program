@@ -13,10 +13,10 @@ use std::{
     sync::Arc,
 };
 
-use glam::DVec3;
+use glam::{DQuat, DVec3};
 
 use crate::{
-    assembly::{Assembly, AssemblyPart, End, Joint, Mount},
+    assembly::{Assembly, AssemblyPart, End, Joint, Mount, Pose},
     component::{BuiltPart, Component, PartDef},
     data::{
         AssemblyDef, CraftDef, CraftPartDef, EngineDef, PartCatalog, PodDef, RcsDef,
@@ -127,7 +127,15 @@ impl Craft {
         }
         let root =
             root.ok_or_else(|| bad("every part is on another: one must be the root".into()))?;
-        let assembly = Assembly::new(joined, joints, root).map_err(bad)?;
+        let turned = root_rotation(&def.parts[root]).ok_or_else(|| {
+            bad(format!(
+                "the root `{}` points nowhere: `points` needs a length",
+                def.parts[root].id
+            ))
+        })?;
+        let assembly = Assembly::new(joined, joints, root)
+            .map_err(bad)?
+            .with_root_pose(Pose::new(DVec3::ZERO, turned));
         Ok(Self {
             id: def.id.clone(),
             name: if def.name.is_empty() {
@@ -490,6 +498,43 @@ fn mount(holder: &AssemblyPart, name: &str, part: &CraftPartDef) -> Result<Mount
         "`{}` has no node or surface `{name}`",
         holder.id
     )))
+}
+
+/// How the root `part` is turned in its craft's frame: its +Z the way it `points`, by the
+/// shortest turn from +Z (half a turn about +X if it points straight down), then turned `roll`
+/// degrees about that way. None if it points nowhere.
+pub fn root_rotation(part: &CraftPartDef) -> Option<DQuat> {
+    let way = match part.points {
+        Some(points) => DVec3::from(points).try_normalize()?,
+        None => DVec3::Z,
+    };
+    let point = if way.z < -1.0 + 1e-12 {
+        DQuat::from_rotation_x(std::f64::consts::PI)
+    } else {
+        DQuat::from_rotation_arc(DVec3::Z, way)
+    };
+    Some(DQuat::from_axis_angle(way, part.roll.to_radians()) * point)
+}
+
+/// `points` and `roll` for a root turned `rotation` in its craft's frame ([`root_rotation`]),
+/// rounded so that a turn written and read again is the same: none and 0 for no turn.
+pub fn root_turn(rotation: DQuat) -> (Option<[f64; 3]>, f64) {
+    let way = (rotation * DVec3::Z).normalize();
+    let tidy = |x: f64, per: f64| (x * per).round() / per + 0.0;
+    let way = DVec3::new(tidy(way.x, 1e12), tidy(way.y, 1e12), tidy(way.z, 1e12));
+    let point = if way.z < -1.0 + 1e-12 {
+        DQuat::from_rotation_x(std::f64::consts::PI)
+    } else {
+        DQuat::from_rotation_arc(DVec3::Z, way.normalize())
+    };
+    // What is left is a turn about the way it points.
+    let left = rotation * point.inverse();
+    let along = DVec3::new(left.x, left.y, left.z).dot(way.normalize());
+    let roll = (2.0 * along.atan2(left.w)).to_degrees();
+    let roll = tidy((roll + 180.0).rem_euclid(360.0) - 180.0, 1e6);
+    let roll = if roll == -180.0 { 180.0 } else { roll };
+    let points = (way != DVec3::Z).then(|| way.to_array());
+    (points, roll)
 }
 
 /// A node written out from one placed in a part's frame, its place rounded to a nanometre.

@@ -1,5 +1,6 @@
 //! Everything the game looks like: planets and their terrain, the sky, clouds and sea,
-//! vessels with their materials, plumes and trails, the launch site, trees and the navball.
+//! vessels with their materials, plumes and trails, the launch site, trees, the navball and the
+//! pictures of parts in the editor's parts list.
 //!
 //! It reads the game (`osp_game`: the simulation, the floating origin, the camera rig, the
 //! settings) and never the other way round, so the game builds and runs without it, and
@@ -18,6 +19,7 @@ mod navball;
 mod ocean;
 mod paint_layers;
 mod part_mesh;
+mod part_pictures;
 mod planet;
 mod plasma;
 mod plume;
@@ -43,6 +45,7 @@ impl Plugin for RenderPlugin {
             trees::TreesPlugin,
             launch_site::LaunchSitePlugin,
             vessel_render::VesselRenderPlugin,
+            part_pictures::PartPicturesPlugin,
             navball::NavballPlugin,
         ));
     }

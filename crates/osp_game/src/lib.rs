@@ -27,6 +27,7 @@ mod mission;
 pub mod orbit_lines;
 pub mod part_highlight;
 pub mod part_info;
+pub mod part_pictures;
 pub mod profiler;
 mod recorder;
 pub mod saves;
@@ -74,6 +75,7 @@ impl Plugin for GamePlugin {
         )
         // Content first: everything else is built from the loaded mods.
         .add_plugins(content::ContentPlugin)
+        .init_resource::<part_pictures::PartPictures>()
         .add_plugins((
             settings::SettingsPlugin,
             profiler::ProfilerPlugin,

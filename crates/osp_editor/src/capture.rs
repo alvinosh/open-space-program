@@ -16,7 +16,7 @@ use osp_game::{
     smoke_test::{Action, CaptureSet, EditorStep},
 };
 use osp_sim::{
-    data::CraftPartDef,
+    data::CraftDef,
     properties::{self, Value},
 };
 
@@ -108,6 +108,40 @@ fn take(action: Action, looking: &Looking) -> Result<Option<Vec2>, String> {
                 return Err(format!("the list of vessels should be open: {wanted}"));
             }
         }
+        Action::ExpectRootAbove(least) => {
+            let (Some(anchor), Some(draft)) =
+                (editor.anchor(), editor.builder().map(|b| b.draft()))
+            else {
+                return Err("there is no craft in the editor".into());
+            };
+            if draft.parts.is_empty() || anchor.z < least {
+                return Err(format!(
+                    "the root is {:.2} m up, wanted {least} m",
+                    anchor.z
+                ));
+            }
+        }
+        Action::ExpectRootPoints(way) => {
+            let draft = editor.builder().map(|b| b.draft());
+            let root = draft.and_then(|d| d.parts.iter().find(|p| p.on.is_none()));
+            let Some(root) = root else {
+                return Err("there is no root".into());
+            };
+            let points = (osp_sim::craft::root_rotation(root))
+                .map(|turn| turn * DVec3::Z)
+                .unwrap_or(DVec3::ZERO);
+            let wanted = match way {
+                "x" => DVec3::X,
+                "-x" => DVec3::NEG_X,
+                "y" => DVec3::Y,
+                "-y" => DVec3::NEG_Y,
+                "-z" => DVec3::NEG_Z,
+                _ => DVec3::Z,
+            };
+            if points.angle_between(wanted) > 1f64.to_radians() {
+                return Err(format!("the root points {points:?}, wanted {way}"));
+            }
+        }
         Action::ExpectEditor(wanted) => {
             let found = editor.craft();
             if found != wanted {
@@ -146,7 +180,8 @@ fn take(action: Action, looking: &Looking) -> Result<Option<Vec2>, String> {
             ));
         }
         Action::ExpectField(part, field, wanted) => {
-            let found = part_def(part).and_then(|p| field_value(p, field, looking.content));
+            let draft = editor.builder().map(|b| b.draft());
+            let found = draft.and_then(|d| field_value(d, part, field, looking.content));
             let matches = match &found {
                 Some(Value::Number { value, .. }) => {
                     (wanted.parse::<f64>()).is_ok_and(|w| (w - value).abs() < 1e-6)
@@ -203,10 +238,12 @@ fn take(action: Action, looking: &Looking) -> Result<Option<Vec2>, String> {
     Ok(None)
 }
 
-/// The value of `field` (`osp_sim::properties`) of `part`.
-fn field_value(part: &CraftPartDef, field: &str, content: &GameContent) -> Option<Value> {
+/// The value of `field` (`osp_sim::properties`) of part `part` of `craft`.
+fn field_value(craft: &CraftDef, part: &str, field: &str, content: &GameContent) -> Option<Value> {
     let catalog = catalog(&content.0.registry, &mut Vec::new());
-    (properties::fields(part, &catalog).into_iter())
+    let part = craft.parts.iter().find(|p| p.id == part)?;
+    let mixes = properties::mixes(craft, &catalog, &part.id);
+    (properties::fields(part, &mixes, &catalog).into_iter())
         .find(|f| f.id == field)
         .map(|f| f.value)
 }
@@ -225,7 +262,7 @@ fn on_screen(
     let tree = shown.propulsion.parts();
     let on_show = tree.parts().get(index)?;
     let at = point(on_show.built.as_ref()?)?;
-    let base = DVec3::Z * tree.base();
+    let base = crate::shaping::tree_origin(tree);
     let local = on_show.position - base + on_show.rotation * at;
     let view = VesselFrame::of(looking.sim, looking.frame, vessel)?.view_point(local);
     let (camera, transform) = looking.camera;

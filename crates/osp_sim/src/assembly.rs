@@ -313,6 +313,8 @@ pub struct Assembly {
     parts: Vec<AssemblyPart>,
     joints: Vec<Joint>,
     root: usize,
+    /// How the root sits in the assembly's frame: where it was turned to as a whole.
+    root_pose: Pose,
     /// Each joint's ends' frames, in their parts' frames.
     frames: Vec<[Pose; 2]>,
 }
@@ -387,6 +389,7 @@ impl Assembly {
             parts,
             joints,
             root,
+            root_pose: Pose::IDENTITY,
             frames,
         };
         let reached = assembly.order();
@@ -418,18 +421,31 @@ impl Assembly {
         self.root
     }
 
+    /// The assembly with its root at `pose` in its frame, and everything it holds with it: the
+    /// whole of it turned.
+    pub fn with_root_pose(mut self, pose: Pose) -> Self {
+        self.root_pose = pose;
+        self
+    }
+
+    /// Where the root is in the assembly's frame.
+    pub fn root_pose(&self) -> Pose {
+        self.root_pose
+    }
+
     /// The index of the part with this id.
     pub fn find(&self, id: &str) -> Option<usize> {
         self.parts.iter().position(|p| p.id == id)
     }
 
-    /// Make `part` the root. No joint changes.
+    /// Make `part` the root, the frame its own. No joint changes.
     pub fn reroot(&mut self, part: usize) {
         assert!(
             part < self.parts.len(),
             "rerooting at a part not in the assembly"
         );
         self.root = part;
+        self.root_pose = Pose::IDENTITY;
     }
 
     /// Set how far a hinge is turned or a slide drawn out.
@@ -490,9 +506,11 @@ impl Assembly {
         parents
     }
 
-    /// Every part's pose in the root's frame.
+    /// Every part's pose in the assembly's frame: the root's, unless it was turned
+    /// ([`Self::with_root_pose`]).
     pub fn poses(&self) -> Vec<Pose> {
         let mut poses = vec![Pose::IDENTITY; self.parts.len()];
+        poses[self.root] = self.root_pose;
         let parents = self.parents();
         for part in self.order().into_iter().skip(1) {
             let (j, parent) = parents[part].expect("every part but the root hangs from one");
@@ -585,6 +603,7 @@ impl Assembly {
             parts: leave,
             joints,
             root: index[far],
+            root_pose: Pose::IDENTITY,
             frames,
         }
     }

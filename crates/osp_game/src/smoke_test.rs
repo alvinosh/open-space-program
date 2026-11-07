@@ -163,8 +163,12 @@ impl Plugin for SmokeTestPlugin {
                 EDITOR_SHAPE_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_EDITOR_BUILD").is_some() {
                 EDITOR_BUILD_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_EDITOR_PARTS").is_some() {
+                EDITOR_PARTS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_EDITOR_MOVE").is_some() {
                 EDITOR_MOVE_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_EDITOR_CRAFT").is_some() {
+                EDITOR_CRAFT_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_SATURN_PAD").is_some() {
                 SATURN_PAD_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_CHUTES").is_some() {
@@ -431,6 +435,12 @@ pub enum Action {
     /// Stop the capture with a failure unless this part of the craft in the editor is held on a
     /// surface between these shares of the way along it.
     ExpectAlong(&'static str, f64, f64),
+    /// Stop the capture with a failure unless the root of the craft in the editor is at least this
+    /// far over the hangar's floor, m.
+    ExpectRootAbove(f64),
+    /// Stop the capture with a failure unless the root of the craft in the editor points this way
+    /// in its frame (within a degree): `x`, `y`, `z`, `-x`...
+    ExpectRootPoints(&'static str),
     Exit,
 }
 
@@ -453,6 +463,8 @@ impl Action {
                 | Self::EditorPointAtHandle(..)
                 | Self::ExpectHeldBy(..)
                 | Self::ExpectAlong(..)
+                | Self::ExpectRootAbove(..)
+                | Self::ExpectRootPoints(..)
         )
     }
 }
@@ -601,9 +613,10 @@ const EDITOR_VIEW_SCRIPT: &[(f64, Action)] = &[
 /// `OSP_CAPTURE_EDITOR_BUILD=1`: a rocket built from nothing with the pointer, as a player would.
 /// A new vessel; a capsule from the list, which goes straight on; a decoupler, a tank and an engine
 /// each taken from the list and put on the free node under the last, the list staying out; the tank
-/// picked, its settings shown in the rail in place of the list and set there, and the list brought
-/// back with Parts; four fins round the tank's side; one taken off and put back with undo; then it
-/// is launched and flown.
+/// picked, its settings shown in the rail in place of the list and set there (with no engine yet it
+/// has nothing to be filled with), and the list brought back with Parts; the engine, after which the
+/// tank holds what it burns; four fins round the tank's side; one taken off and put back with undo;
+/// then it is launched and flown.
 const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
@@ -616,8 +629,8 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (3.4, Action::ExpectPartCount(1)),
     (3.45, Action::ExpectData("editor.rail == parts")),
     (3.5, Action::Capture("build_pod.png")),
-    (3.6, Action::Ui("editor.group:procedural")),
-    // The decoupler dragged from its row onto the ring under the capsule.
+    (3.6, Action::Ui("editor.group:structure")),
+    // The decoupler dragged from its tile onto the ring under the capsule.
     (3.7, Action::UiPointAt("editor.add:decoupler")),
     (3.8, Action::UiPress(PointerButton::Primary)),
     (3.81, Action::Press(MouseButton::Left)),
@@ -640,16 +653,16 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (7.9, Action::Ui("editor.set:shape:cone")),
     (8.4, Action::ExpectField("tank", "shape", "cone")),
     (8.5, Action::Ui("editor.set:top_diameter:1.2")),
-    (9.0, Action::Ui("editor.set:contents:hydrolox")),
-    (9.5, Action::ExpectField("tank", "contents", "hydrolox")),
+    // It feeds no engine yet, so it has nothing to be filled with.
+    (9.0, Action::Ui("editor.expand:contents")),
+    (9.5, Action::ExpectField("tank", "contents", "custom")),
+    (9.55, Action::Capture("build_tank_no_engine.png")),
     (9.6, Action::Ui("editor.set:utilization:50")),
     (10.1, Action::ExpectField("tank", "utilization", "50")),
     (10.2, Action::Ui("editor.expand:tank_type")),
     (10.7, Action::Capture("build_tank_types.png")),
     (10.8, Action::Ui("editor.set:shape:cylinder")),
-    (11.3, Action::Ui("editor.set:contents:kerolox")),
     (11.8, Action::Ui("editor.set:utilization:90")),
-    (12.3, Action::ExpectField("tank", "contents", "kerolox")),
     (12.35, Action::ExpectField("tank", "shape", "cylinder")),
     (12.4, Action::Capture("build_tank_set.png")),
     // Parts brings the list back in place of the settings, and lets go of the tank.
@@ -662,52 +675,280 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (13.7, Action::Press(MouseButton::Left)),
     (13.8, Action::Release(MouseButton::Left)),
     (14.4, Action::ExpectPartCount(4)),
-    (14.5, Action::Ui("editor.group:procedural")),
-    (14.6, Action::Ui("editor.add:fin")),
-    (14.7, Action::Ui("editor.symmetry")),
-    (14.75, Action::Ui("editor.symmetry")),
-    (14.8, Action::Ui("editor.symmetry")),
+    // The tank feeds it now, and holds what it burns.
+    (14.45, Action::ExpectField("tank", "contents", "kerolox")),
+    (14.5, Action::Ui("editor.pick:tank")),
+    (14.6, Action::Ui("editor.expand:contents")),
+    (15.2, Action::Capture("build_tank_filled.png")),
+    (15.3, Action::Ui("editor.parts")),
+    (15.5, Action::Ui("editor.group:aero")),
+    (15.6, Action::Ui("editor.add:fin")),
+    (15.7, Action::Ui("editor.symmetry")),
+    (15.75, Action::Ui("editor.symmetry")),
+    (15.8, Action::Ui("editor.symmetry")),
     (
-        15.0,
+        16.0,
         Action::EditorPointAtSurface("tank", "barrel", 0.625, 0.12),
     ),
-    (15.9, Action::Capture("build_fins_preview.png")),
-    (16.0, Action::Press(MouseButton::Left)),
-    (16.1, Action::Release(MouseButton::Left)),
-    (16.7, Action::ExpectPartCount(8)),
+    (16.9, Action::Capture("build_fins_preview.png")),
+    (17.0, Action::Press(MouseButton::Left)),
+    (17.1, Action::Release(MouseButton::Left)),
+    (17.7, Action::ExpectPartCount(8)),
     // A fin turned in its settings, then picked up by dragging it and put further up the tank.
-    (16.75, Action::Ui("editor.pick:fin_1")),
-    (16.8, Action::Ui("editor.set:roll:30")),
-    (17.3, Action::ExpectField("fin_1", "roll", "30")),
-    (17.4, Action::Ui("editor.set:roll:0")),
-    (17.9, Action::Ui("editor.pick:")),
-    (18.0, Action::EditorPointAtPart("fin_1")),
-    (18.3, Action::Press(MouseButton::Left)),
+    (17.75, Action::Ui("editor.pick:fin")),
+    (17.8, Action::Ui("editor.set:roll:30")),
+    (18.3, Action::ExpectField("fin", "roll", "30")),
+    (18.4, Action::Ui("editor.set:roll:0")),
+    (18.9, Action::Ui("editor.pick:")),
+    (19.0, Action::EditorPointAtPart("fin")),
+    (19.3, Action::Press(MouseButton::Left)),
     (
-        18.5,
+        19.5,
         Action::EditorPointAtSurface("tank", "barrel", 0.55, 0.6),
     ),
-    (19.3, Action::Capture("build_move_preview.png")),
-    (19.4, Action::Release(MouseButton::Left)),
-    (20.0, Action::ExpectPartCount(8)),
-    (20.1, Action::Capture("build_moved.png")),
-    (20.2, Action::Ui("editor.undo")),
-    (20.8, Action::ExpectPartCount(8)),
-    (20.9, Action::ClearPointer),
-    (21.0, Action::Ui("editor.pick:")),
-    (21.1, Action::ExpectData("editor.rail == parts")),
-    (21.2, Action::Capture("build_rocket.png")),
-    (21.3, Action::Ui("editor.pick:fin_1")),
-    (21.4, Action::Ui("editor.remove")),
-    (22.0, Action::ExpectPartCount(7)),
-    (22.1, Action::Ui("editor.undo")),
-    (22.7, Action::ExpectPartCount(8)),
-    (22.8, Action::Ui("editor.pick:")),
-    (23.0, Action::Ui("editor.launch")),
-    (24.0, Action::ExpectEditor(None)),
-    (25.0, Action::Launch),
-    (33.0, Action::Capture("build_flying.png")),
-    (33.5, Action::Exit),
+    (20.3, Action::Capture("build_move_preview.png")),
+    (20.4, Action::Release(MouseButton::Left)),
+    (21.0, Action::ExpectPartCount(8)),
+    (21.1, Action::Capture("build_moved.png")),
+    (21.2, Action::Ui("editor.undo")),
+    (21.8, Action::ExpectPartCount(8)),
+    (21.9, Action::ClearPointer),
+    (22.0, Action::Ui("editor.pick:")),
+    (22.1, Action::ExpectData("editor.rail == parts")),
+    (22.2, Action::Capture("build_rocket.png")),
+    (22.3, Action::Ui("editor.pick:fin")),
+    (22.4, Action::Ui("editor.remove")),
+    (23.0, Action::ExpectPartCount(7)),
+    (23.1, Action::Ui("editor.undo")),
+    (23.7, Action::ExpectPartCount(8)),
+    (23.8, Action::Ui("editor.pick:")),
+    (24.0, Action::Ui("editor.launch")),
+    (25.0, Action::ExpectEditor(None)),
+    (26.0, Action::Launch),
+    (34.0, Action::Capture("build_flying.png")),
+    (34.5, Action::Exit),
+];
+
+/// `OSP_CAPTURE_EDITOR_CRAFT=1`: what the craft itself can do in the editor. A tank as the root is
+/// carried up off the floor by dragging it, and another goes under it; four decouplers go round the
+/// lower one's side with radial symmetry, a tank on one's free node stands upright beside the core
+/// and goes on all four, and a nose cone on one booster goes on all four; the root is turned with
+/// its ring, taking the whole craft with it, and undone. Esc would leave and lose the rocket, so it
+/// asks first, and Cancel keeps it; so do another craft from the list, and a new plane in its
+/// place, which Discard goes on to.
+/// Then the new plane: a capsule lying as on
+/// the runway, a tank behind it, a pair of wings on the tank's sides with mirror symmetry, and a
+/// tank put on one wing's tip goes on both.
+const EDITOR_CRAFT_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.new")),
+    (2.0, Action::Unlock),
+    (2.1, Action::Ui("editor.group:tanks")),
+    (2.2, Action::Ui("editor.add:tank")),
+    (3.0, Action::ExpectPartCount(1)),
+    (3.1, Action::Capture("craft_root.png")),
+    // Carried up by its root.
+    (3.2, Action::EditorPointAtPart("tank")),
+    (3.4, Action::Press(MouseButton::Left)),
+    (3.5, Action::PointerBy(0.0, -20.0)),
+    (3.7, Action::PointerBy(0.0, -260.0)),
+    (4.2, Action::Capture("craft_carried.png")),
+    (4.3, Action::Release(MouseButton::Left)),
+    (4.5, Action::ExpectRootAbove(8.0)),
+    (4.6, Action::ClearPointer),
+    (4.7, Action::Ui("editor.add:tank")),
+    (5.0, Action::EditorPointAtNode("tank", "bottom")),
+    (5.7, Action::Press(MouseButton::Left)),
+    (5.8, Action::Release(MouseButton::Left)),
+    (6.4, Action::ExpectPartCount(2)),
+    (6.45, Action::ExpectRootAbove(8.0)),
+    // The lower tank picked up and put on top of the root, by its other end; then back.
+    (6.46, Action::EditorPointAtPart("tank_2")),
+    (6.5, Action::Press(MouseButton::Left)),
+    (6.55, Action::PointerBy(30.0, -30.0)),
+    (6.8, Action::EditorPointAtNode("tank", "top")),
+    (7.5, Action::Capture("craft_moved_on_top_preview.png")),
+    (7.52, Action::Release(MouseButton::Left)),
+    (8.1, Action::ExpectPartCount(2)),
+    (8.12, Action::ExpectHeldBy("tank_2", "bottom")),
+    (8.14, Action::ClearPointer),
+    (8.16, Action::Capture("craft_moved_on_top.png")),
+    (8.18, Action::Ui("editor.undo")),
+    (8.4, Action::ExpectHeldBy("tank_2", "top")),
+    // Four radial decouplers round the lower tank, boosters on them, a cone on one booster.
+    (8.5, Action::EditorLook(0.0, 0.0, -4.0)),
+    (8.6, Action::Ui("editor.add:decoupler")),
+    (8.7, Action::Ui("editor.symmetry")),
+    (8.75, Action::Ui("editor.symmetry")),
+    (8.8, Action::Ui("editor.symmetry")),
+    (8.9, Action::ExpectData("editor.symmetry == x4")),
+    (
+        7.0,
+        Action::EditorPointAtSurface("tank_2", "barrel", 0.625, 0.5),
+    ),
+    (9.9, Action::Capture("craft_decouplers_preview.png")),
+    (10.0, Action::Press(MouseButton::Left)),
+    (10.1, Action::Release(MouseButton::Left)),
+    (10.8, Action::ExpectPartCount(6)),
+    (10.9, Action::Ui("editor.add:tank")),
+    (11.0, Action::EditorPointAtNode("decoupler", "bottom")),
+    (11.9, Action::Capture("craft_boosters_preview.png")),
+    (12.0, Action::Press(MouseButton::Left)),
+    (12.1, Action::Release(MouseButton::Left)),
+    (12.8, Action::ExpectPartCount(10)),
+    (12.85, Action::ExpectHeldBy("tank_3", "held_side")),
+    (12.9, Action::Ui("editor.add:nose_cone")),
+    (13.0, Action::EditorPointAtNode("tank_3", "top")),
+    (13.9, Action::Press(MouseButton::Left)),
+    (14.0, Action::Release(MouseButton::Left)),
+    (14.7, Action::ExpectPartCount(14)),
+    (14.8, Action::ClearPointer),
+    (14.9, Action::Capture("craft_boosters.png")),
+    // The root turned a quarter turn about +X by its ring: everything goes with it.
+    (15.0, Action::Ui("editor.pick:tank")),
+    (15.1, Action::Ui("editor.tool:turn")),
+    (15.6, Action::Capture("craft_root_rings.png")),
+    (15.7, Action::EditorPointAtHandle(0, 0.0)),
+    (15.8, Action::Press(MouseButton::Left)),
+    (15.9, Action::EditorPointAtHandle(0, 0.125)),
+    (16.1, Action::EditorPointAtHandle(0, 0.25)),
+    (17.0, Action::Capture("craft_root_turning.png")),
+    (17.1, Action::Release(MouseButton::Left)),
+    (17.8, Action::ClearPointer),
+    (17.9, Action::Capture("craft_root_turned.png")),
+    (18.0, Action::ExpectRootAbove(0.0)),
+    (18.1, Action::Ui("editor.undo")),
+    (18.6, Action::ExpectRootPoints("z")),
+    (18.7, Action::Ui("editor.tool:shape")),
+    (18.8, Action::Ui("editor.pick:")),
+    // Leaving would lose the rocket, so Esc asks first, and Cancel keeps it.
+    (18.82, Action::Ui("game.menu")),
+    (
+        18.9,
+        Action::ExpectDialog("Discard the vessel you are building?"),
+    ),
+    (18.92, Action::Capture("craft_discard_asked.png")),
+    (18.95, Action::Ui("dialog.answer:1")),
+    (19.0, Action::ExpectDialog("")),
+    // Another craft from the list asks too.
+    (19.05, Action::Ui("editor.show:sounder")),
+    (
+        19.15,
+        Action::ExpectDialog("Discard the vessel you are building?"),
+    ),
+    (19.2, Action::Ui("dialog.answer:1")),
+    (19.25, Action::ExpectDialog("")),
+    (19.3, Action::ExpectEditor(Some("new_vessel"))),
+    (19.35, Action::ExpectPartCount(14)),
+    // So does a new plane in its place; Discard goes on to it.
+    (19.4, Action::Ui("editor.new:plane")),
+    (
+        19.5,
+        Action::ExpectDialog("Discard the vessel you are building?"),
+    ),
+    (19.55, Action::Ui("dialog.answer:0")),
+    // A plane: lying as it will on the runway, wings in mirror pairs.
+    (20.1, Action::ExpectData("editor.place == runway")),
+    (20.2, Action::ExpectData("editor.mirror")),
+    (20.3, Action::Ui("editor.group:pods")),
+    (20.4, Action::Ui("editor.add:pod:C-1 Capsule")),
+    (21.2, Action::ExpectPartCount(1)),
+    (21.3, Action::Ui("editor.group:aero")),
+    (21.4, Action::Ui("editor.add:tank")),
+    (21.6, Action::EditorPointAtNode("pod", "bottom")),
+    (22.3, Action::Press(MouseButton::Left)),
+    (22.4, Action::Release(MouseButton::Left)),
+    (23.0, Action::ExpectPartCount(2)),
+    (23.1, Action::Ui("editor.add:wing")),
+    (
+        23.2,
+        Action::EditorPointAtSurface("tank", "barrel", 0.0, 0.5),
+    ),
+    (24.1, Action::Capture("plane_wings_preview.png")),
+    (24.2, Action::Press(MouseButton::Left)),
+    (24.3, Action::Release(MouseButton::Left)),
+    (24.9, Action::ExpectPartCount(4)),
+    (25.0, Action::ClearPointer),
+    (25.1, Action::EditorLook(2.0, 300.0, 0.0)),
+    (25.6, Action::Capture("plane_wings.png")),
+    (25.7, Action::Ui("editor.place:pad")),
+    (26.3, Action::Capture("plane_standing.png")),
+    (26.4, Action::Ui("editor.place:runway")),
+    (27.0, Action::Capture("plane_lying.png")),
+    // Wheels under its belly: one that steers under the nose, a mirrored pair further back.
+    (27.1, Action::EditorLook(2.0, -420.0, 0.0)),
+    (27.2, Action::Ui("editor.add:nose_wheel")),
+    (
+        27.3,
+        Action::EditorPointAtSurface("tank", "barrel", 0.25, 0.85),
+    ),
+    (28.2, Action::Press(MouseButton::Left)),
+    (28.3, Action::Release(MouseButton::Left)),
+    (28.9, Action::ExpectPartCount(5)),
+    (29.0, Action::Ui("editor.add:wheel")),
+    (
+        29.1,
+        Action::EditorPointAtSurface("tank", "barrel", 0.2, 0.25),
+    ),
+    (30.0, Action::Capture("plane_wheels_preview.png")),
+    (30.1, Action::Press(MouseButton::Left)),
+    (30.2, Action::Release(MouseButton::Left)),
+    (30.8, Action::ExpectPartCount(7)),
+    (30.9, Action::ClearPointer),
+    (31.0, Action::Capture("plane_wheels.png")),
+    (31.1, Action::Ui("editor.launch")),
+    (32.0, Action::ExpectEditor(None)),
+    (36.0, Action::Capture("plane_on_runway.png")),
+    (36.5, Action::Exit),
+];
+
+/// `OSP_CAPTURE_EDITOR_PARTS=1`: the parts list as a grid of pictures. A new vessel, and each tab
+/// of the list; the engines narrowed to those that burn hydrolox, then to those 3 to 4 m across,
+/// each with a click on its chip; a tile pointed at, its figures under the grid; a search over every
+/// tab; and a tab's tooltip.
+const EDITOR_PARTS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.new")),
+    (2.0, Action::Unlock),
+    (2.1, Action::ExpectData("editor.rail == parts")),
+    (2.2, Action::Ui("editor.group:pods")),
+    (4.5, Action::Capture("parts_pods.png")),
+    (4.6, Action::Ui("editor.group:tanks")),
+    (5.6, Action::Capture("parts_tanks.png")),
+    (5.7, Action::Ui("editor.group:engines")),
+    (8.5, Action::Capture("parts_engines.png")),
+    (8.6, Action::Ui("editor.group:structure")),
+    (9.6, Action::Capture("parts_structure.png")),
+    (9.7, Action::Ui("editor.group:aero")),
+    (10.7, Action::Capture("parts_aero.png")),
+    (10.8, Action::Ui("editor.group:control")),
+    (12.0, Action::Capture("parts_control.png")),
+    // Hydrolox engines 3 to 4 m across: two clicks once on the engines.
+    (12.1, Action::Ui("editor.group:engines")),
+    (12.6, Action::UiPointAt("editor.propellant:hydrolox")),
+    (12.7, Action::UiPress(PointerButton::Primary)),
+    (12.75, Action::UiRelease(PointerButton::Primary)),
+    (13.0, Action::ExpectData("editor.propellant == hydrolox")),
+    (14.5, Action::Capture("parts_hydrolox.png")),
+    (14.6, Action::UiPointAt("editor.size:3_4")),
+    (14.7, Action::UiPress(PointerButton::Primary)),
+    (14.75, Action::UiRelease(PointerButton::Primary)),
+    (15.0, Action::ExpectData("editor.size == 3_4")),
+    (16.0, Action::Capture("parts_hydrolox_3_4.png")),
+    // The pointer on the first tile: what it is, under the grid.
+    (16.1, Action::UiPointAt("editor.add:")),
+    (16.6, Action::ExpectData("editor.pointed")),
+    (16.7, Action::Capture("parts_pointed.png")),
+    (16.8, Action::Ui("editor.size:any")),
+    (16.85, Action::Ui("editor.propellant:any")),
+    (16.9, Action::Ui("editor.search:capsule")),
+    (16.95, Action::ExpectData("editor.group == search")),
+    (18.5, Action::Capture("parts_search.png")),
+    (18.6, Action::UiPointAt("editor.group:aero")),
+    (19.2, Action::Capture("parts_tab_tooltip.png")),
+    (19.5, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_EDITOR_MOVE=1`: sliding and turning parts with the Move and Turn tools. A tank,
@@ -720,7 +961,7 @@ const EDITOR_MOVE_SCRIPT: &[(f64, Action)] = &[
     (1.0, Action::Ui("game.new")),
     (1.5, Action::Ui("editor.new")),
     (2.0, Action::Unlock),
-    (2.1, Action::Ui("editor.group:procedural")),
+    (2.1, Action::Ui("editor.group:tanks")),
     (2.2, Action::Ui("editor.add:tank")),
     (3.0, Action::ExpectPartCount(1)),
     (3.1, Action::Ui("editor.add:tank")),
@@ -741,7 +982,7 @@ const EDITOR_MOVE_SCRIPT: &[(f64, Action)] = &[
     (7.2, Action::ExpectPartCount(6)),
     (7.25, Action::EditorLook(0.0, 0.0, -6.0)),
     (7.3, Action::ClearPointer),
-    (7.4, Action::Ui("editor.pick:fin_1")),
+    (7.4, Action::Ui("editor.pick:fin")),
     (7.5, Action::Ui("editor.tool:move")),
     (7.6, Action::ExpectData("editor.tool == move")),
     (8.0, Action::Capture("move_arrows.png")),
@@ -751,9 +992,9 @@ const EDITOR_MOVE_SCRIPT: &[(f64, Action)] = &[
     (8.6, Action::PointerBy(0.0, -40.0)),
     (9.4, Action::Capture("move_dragging.png")),
     (9.5, Action::Release(MouseButton::Left)),
-    (10.2, Action::ExpectAlong("fin_1", 0.55, 1.0)),
+    (10.2, Action::ExpectAlong("fin", 0.55, 1.0)),
     (10.25, Action::ExpectAlong("fin_3", 0.55, 1.0)),
-    (10.27, Action::ExpectHeldBy("fin_1", "root")),
+    (10.27, Action::ExpectHeldBy("fin", "root")),
     (10.3, Action::ClearPointer),
     (10.4, Action::Capture("move_moved.png")),
     (10.5, Action::Ui("editor.tool:turn")),
@@ -768,10 +1009,10 @@ const EDITOR_MOVE_SCRIPT: &[(f64, Action)] = &[
     // Undone, the turn and then the slide.
     (13.05, Action::ExpectHeldBy("fin_4", "held_root")),
     (13.1, Action::Ui("editor.undo")),
-    (13.5, Action::ExpectHeldBy("fin_1", "root")),
-    (13.55, Action::ExpectAlong("fin_1", 0.55, 1.0)),
+    (13.5, Action::ExpectHeldBy("fin", "root")),
+    (13.55, Action::ExpectAlong("fin", 0.55, 1.0)),
     (13.6, Action::Ui("editor.undo")),
-    (14.1, Action::ExpectAlong("fin_1", 0.49, 0.51)),
+    (14.1, Action::ExpectAlong("fin", 0.49, 0.51)),
     (14.2, Action::ExpectAlong("fin_4", 0.49, 0.51)),
     // The lower tank turned about the stack, then slid off its joint, which is refused.
     (14.3, Action::Ui("editor.pick:tank_2")),
@@ -806,7 +1047,8 @@ const EDITOR_MOVE_SCRIPT: &[(f64, Action)] = &[
 /// picked, its length handle pointed at and dragged up, then let go; undone and done again, then
 /// undone. Its diameter dragged out and let go; undone; dragged a little, so it keeps the Instrument
 /// Unit's width; dragged as far as it goes, and undone. An S-IC fin, too small from far off for more
-/// than one handle; then the Sounder, a fin's tip dragged out and back, and Esc to let go of it.
+/// than one handle; then the Sounder, with no question as nothing done to the Saturn V is left, a
+/// fin's tip dragged out and back, and Esc to let go of it.
 const EDITOR_SHAPE_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
@@ -864,6 +1106,8 @@ const EDITOR_SHAPE_SCRIPT: &[(f64, Action)] = &[
     (18.4, Action::EditorLook(0.0, 0.0, -10.0)),
     (19.0, Action::Capture("shape_fin_far.png")),
     (19.1, Action::Ui("editor.show:sounder")),
+    // Every change to the Saturn V was undone or came to nothing, so nothing asks.
+    (19.2, Action::ExpectDialog("")),
     (20.5, Action::Ui("editor.pick:sounder_fin_1")),
     (21.0, Action::Capture("shape_fin.png")),
     (21.1, Action::EditorPointAtGrip("span", 0.0, 0.0)),
@@ -2471,7 +2715,9 @@ fn run_script(
         | Action::ExpectPicked(..)
         | Action::EditorPointAtHandle(..)
         | Action::ExpectHeldBy(..)
-        | Action::ExpectAlong(..) => {
+        | Action::ExpectAlong(..)
+        | Action::ExpectRootAbove(..)
+        | Action::ExpectRootPoints(..) => {
             editor_steps.write(EditorStep(action));
         }
         Action::Capture(name) => {

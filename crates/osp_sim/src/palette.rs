@@ -1,7 +1,10 @@
 //! The palette: what a player can put on a craft in the editor. A few procedural parts (a tank, a
-//! structural tube, a nose cone, a decoupler, a fin and a wing) whose sizes the player then sets,
+//! structural tube, a nose cone, a decoupler, a fin, a wing and landing wheels) whose sizes the
+//! player then sets,
 //! as in KSP with its procedural parts, and the catalogue's pods, engines, RCS blocks and reaction
-//! wheels as they are.
+//! wheels as they are. Each is listed by what it does ([`Group`], KSP's function filter) and says
+//! what else the parts list narrows it by: how wide it is ([`Entry::width`]) and what it burns
+//! ([`Propellant`]).
 //!
 //! An entry is a part to copy ([`Entry::part`], with no id: the editor names it). A procedural one
 //! is [`fit`] to what it goes on, so a tank put under a 3 m tank is 3 m across and a fin is sized
@@ -11,35 +14,45 @@
 use serde_json::json;
 
 use crate::{
-    data::{CraftPartDef, PartCatalog},
+    craft::Craft,
+    data::{CatalogInfo, CraftDef, CraftPartDef, PartCatalog},
     geometry::preset::{AirfoilDef, ShapeDef},
     shaping,
     sizing::ProceduralDef,
 };
 
-/// Where an entry is listed.
+/// Where an entry is listed: by what it does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Group {
-    Procedural,
     Pods,
+    Tanks,
     Engines,
+    /// Tubes, nose cones and decouplers.
+    Structure,
+    /// Fins and wings.
+    Aero,
+    /// RCS blocks and reaction wheels.
     Control,
 }
 
 impl Group {
-    pub const ALL: [Group; 4] = [
-        Group::Procedural,
+    pub const ALL: [Group; 6] = [
         Group::Pods,
+        Group::Tanks,
         Group::Engines,
+        Group::Structure,
+        Group::Aero,
         Group::Control,
     ];
 
     /// As actions write it.
     pub fn id(self) -> &'static str {
         match self {
-            Group::Procedural => "procedural",
             Group::Pods => "pods",
+            Group::Tanks => "tanks",
             Group::Engines => "engines",
+            Group::Structure => "structure",
+            Group::Aero => "aero",
             Group::Control => "control",
         }
     }
@@ -51,10 +64,128 @@ impl Group {
     /// What the player reads.
     pub fn name(self) -> &'static str {
         match self {
-            Group::Procedural => "Procedural",
             Group::Pods => "Pods",
+            Group::Tanks => "Tanks",
             Group::Engines => "Engines",
+            Group::Structure => "Structure",
+            Group::Aero => "Aero",
             Group::Control => "Control",
+        }
+    }
+}
+
+/// What an engine or an RCS block burns, by kind, as players name it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Propellant {
+    /// Liquid oxygen and kerosene (RP-1, RG-1, syntin).
+    Kerolox,
+    /// Liquid oxygen and liquid hydrogen.
+    Hydrolox,
+    /// Liquid oxygen and liquid methane.
+    Methalox,
+    /// Propellants kept at room temperature: nitrogen tetroxide or nitric acid with a hydrazine or
+    /// kerosene.
+    Hypergolic,
+    Solid,
+    /// One propellant broken down over a catalyst: hydrazine or peroxide.
+    Monopropellant,
+    /// Gas let out of a nozzle, burning nothing.
+    ColdGas,
+    /// Gas pushed out by electric power: xenon, krypton, argon.
+    Electric,
+    /// Propellant heated by a reactor.
+    Nuclear,
+    /// Anything else: alcohol and oxygen, fluorine, boranes.
+    Other,
+}
+
+impl Propellant {
+    pub const ALL: [Propellant; 10] = [
+        Propellant::Kerolox,
+        Propellant::Hydrolox,
+        Propellant::Methalox,
+        Propellant::Hypergolic,
+        Propellant::Solid,
+        Propellant::Monopropellant,
+        Propellant::ColdGas,
+        Propellant::Electric,
+        Propellant::Nuclear,
+        Propellant::Other,
+    ];
+
+    /// As actions write it.
+    pub fn id(self) -> &'static str {
+        match self {
+            Propellant::Kerolox => "kerolox",
+            Propellant::Hydrolox => "hydrolox",
+            Propellant::Methalox => "methalox",
+            Propellant::Hypergolic => "hypergolic",
+            Propellant::Solid => "solid",
+            Propellant::Monopropellant => "monopropellant",
+            Propellant::ColdGas => "cold_gas",
+            Propellant::Electric => "electric",
+            Propellant::Nuclear => "nuclear",
+            Propellant::Other => "other",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|p| p.id() == text)
+    }
+
+    /// What the player reads.
+    pub fn name(self) -> &'static str {
+        match self {
+            Propellant::Kerolox => "Kerolox",
+            Propellant::Hydrolox => "Hydrolox",
+            Propellant::Methalox => "Methalox",
+            Propellant::Hypergolic => "Hypergolic",
+            Propellant::Solid => "Solid",
+            Propellant::Monopropellant => "Monoprop",
+            Propellant::ColdGas => "Cold gas",
+            Propellant::Electric => "Electric",
+            Propellant::Nuclear => "Nuclear",
+            Propellant::Other => "Other",
+        }
+    }
+
+    /// The kind of what burns `resources` (resource ids) in an engine of `kind` (`liquid`, `solid`
+    /// or `electric`), if it says.
+    pub fn of<'a>(kind: Option<&str>, resources: impl IntoIterator<Item = &'a str>) -> Self {
+        match kind {
+            Some("solid") => return Propellant::Solid,
+            Some("electric") => return Propellant::Electric,
+            _ => {}
+        }
+        // Chilled propellants are the same propellants.
+        let burns: Vec<&str> = (resources.into_iter())
+            .map(|r| r.strip_prefix("Cooled").unwrap_or(r))
+            .collect();
+        let has = |names: &[&str]| burns.iter().any(|r| names.contains(r));
+        let oxygen = has(&["LqdOxygen"]);
+        let storable = (burns.iter()).any(|r| {
+            ["NTO", "MON", "IRFNA", "IWFNA", "AK2"]
+                .iter()
+                .any(|s| r.starts_with(s))
+        });
+        if has(&["EnrichedUranium"]) {
+            Propellant::Nuclear
+        } else if has(&["XenonGas", "KryptonGas", "ArgonGas"]) {
+            Propellant::Electric
+        } else if oxygen && has(&["LqdHydrogen"]) {
+            Propellant::Hydrolox
+        } else if oxygen && has(&["LqdMethane"]) {
+            Propellant::Methalox
+        } else if oxygen && has(&["RP-1", "Kerosene", "RG-1", "Syntin"]) {
+            Propellant::Kerolox
+        } else if storable {
+            Propellant::Hypergolic
+        } else if burns.len() == 1 && has(&["Hydrazine", "HTP"]) {
+            Propellant::Monopropellant
+        } else if burns.len() == 1 && has(&["Nitrogen", "Helium"]) {
+            Propellant::ColdGas
+        } else {
+            Propellant::Other
         }
     }
 }
@@ -66,8 +197,17 @@ pub struct Entry {
     pub id: String,
     pub name: String,
     pub group: Group,
-    /// A short line about it: how hard an engine pushes, how many a pod carries.
+    /// The figures that matter for what it is, on a line: thrust and Isp for an engine, crew for
+    /// a pod, size and volume for a tank.
     pub detail: String,
+    /// What it is: who made it and what for, as its catalogue record says, or how a procedural
+    /// part is sized.
+    pub about: String,
+    /// How wide it is where it goes on, m: a pod's base, an engine's nozzle exit. None for what
+    /// takes the width of what it goes on (the procedural parts) or has none to speak of.
+    pub width: Option<f64>,
+    /// What it burns. None for what burns nothing, and for a tank, which holds what it is set to.
+    pub propellant: Option<Propellant>,
     /// What a new part starts as, with no id.
     pub part: CraftPartDef,
     /// The node of its own it is held by on a surface, and how far it is turned about the joint
@@ -78,13 +218,19 @@ pub struct Entry {
 }
 
 impl Entry {
-    /// Whether `search` (any case) is in its name, its detail or its group's name.
+    /// Whether `search` (any case) is in its name, its figures, what it is, what it burns or its
+    /// group's name.
     pub fn matches(&self, search: &str) -> bool {
         let search = search.trim().to_lowercase();
-        search.is_empty()
-            || [self.name.as_str(), self.detail.as_str(), self.group.name()]
-                .iter()
-                .any(|text| text.to_lowercase().contains(&search))
+        let burns = self.propellant.map_or("", Propellant::name);
+        let texts = [
+            self.name.as_str(),
+            self.detail.as_str(),
+            self.about.as_str(),
+            burns,
+            self.group.name(),
+        ];
+        search.is_empty() || texts.iter().any(|t| t.to_lowercase().contains(&search))
     }
 }
 
@@ -92,123 +238,286 @@ fn part(value: serde_json::Value) -> CraftPartDef {
     serde_json::from_value(value).expect("the palette's own parts are well formed")
 }
 
+/// A force as the player reads it: `850 N`, `914 kN`, `7.78 MN`.
+fn force(newtons: f64) -> String {
+    let (value, unit) = if newtons >= 1e6 {
+        (newtons / 1e6, "MN")
+    } else if newtons >= 1e3 {
+        (newtons / 1e3, "kN")
+    } else {
+        (newtons, "N")
+    };
+    format!("{} {unit}", three_figures(value))
+}
+
+/// A mass as the player reads it: `470 kg`, `8.44 t`.
+fn mass(kg: f64) -> String {
+    if kg >= 1e3 {
+        format!("{} t", three_figures(kg / 1e3))
+    } else {
+        format!("{} kg", three_figures(kg))
+    }
+}
+
+/// A length to the centimetre at most, without noughts at the end: `2 m`, `3.72 m`.
+fn metres(m: f64) -> String {
+    let text = format!("{m:.2}");
+    format!("{} m", text.trim_end_matches('0').trim_end_matches('.'))
+}
+
+/// `value` to three figures, without noughts at the end after the point.
+fn three_figures(value: f64) -> String {
+    let decimals = match value {
+        v if v >= 100.0 => 0,
+        v if v >= 10.0 => 1,
+        _ => 2,
+    };
+    let text = format!("{value:.decimals$}");
+    if text.contains('.') {
+        text.trim_end_matches('0').trim_end_matches('.').to_owned()
+    } else {
+        text
+    }
+}
+
+/// Who made a catalogue part and what it is, as its record says.
+fn about(info: &CatalogInfo) -> String {
+    let said: Vec<&str> = [info.manufacturer.as_deref(), info.description.as_deref()]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    said.join(". ")
+}
+
 /// The paint of a new procedural part: white, as most rockets are.
 const WHITE: [f64; 3] = [0.85, 0.85, 0.83];
 const GREY: [f64; 3] = [0.55, 0.57, 0.6];
 
-/// The procedural parts, in the order they are listed.
-fn procedural() -> Vec<Entry> {
-    let entry = |id: &str, name: &str, detail: &str, value, surface: Option<(&str, f64)>| Entry {
-        id: id.into(),
-        name: name.into(),
-        group: Group::Procedural,
-        detail: detail.into(),
-        part: part(value),
-        surface: surface.map(|(node, roll)| (node.to_owned(), roll)),
-        stem: id.into(),
-    };
+/// The procedural parts, in the order they are listed, each with its size as it starts, which its
+/// figures begin with.
+fn procedural() -> Vec<(Entry, &'static str)> {
+    let entry =
+        |id: &str, name: &str, group, about: &str, value, surface: Option<(&str, f64)>| Entry {
+            id: id.into(),
+            name: name.into(),
+            group,
+            detail: String::new(),
+            about: about.into(),
+            width: None,
+            propellant: None,
+            part: part(value),
+            surface: surface.map(|(node, roll)| (node.to_owned(), roll)),
+            stem: id.into(),
+        };
     vec![
-        entry(
-            "tank",
-            "Tank",
-            "Kerosene and liquid oxygen",
-            json!({
-                "id": "", "name": "Tank",
-                "shape": { "cylinder_tank": { "diameter": 2.0, "length": 4.0 } },
-                "components": [{ "storage": {
-                    "type": "Stiffened Al 2219",
-                    "contents": { "Kerosene": 1.0, "LqdOxygen": 2.36 },
-                } }],
-                "paint": { "color": WHITE },
-            }),
-            None,
+        (
+            entry(
+                "tank",
+                "Tank",
+                Group::Tanks,
+                "Kerosene and liquid oxygen, or what it is set to hold. As wide as what it goes on",
+                json!({
+                    "id": "", "name": "Tank",
+                    "shape": { "cylinder_tank": { "diameter": 2.0, "length": 4.0 } },
+                    "components": [{ "storage": {
+                        "type": "Stiffened Al 2219",
+                        "contents": { "Kerosene": 1.0, "LqdOxygen": 2.36 },
+                    } }],
+                    "paint": { "color": WHITE },
+                }),
+                None,
+            ),
+            "2 m × 4 m",
         ),
-        entry(
-            "structural",
-            "Structural",
-            "A tube: an interstage or a skirt",
-            json!({
-                "id": "", "name": "Structural",
-                "shape": { "shell": { "bottom_diameter": 2.0, "sections": [{ "length": 1.0 }] } },
-                "structure": { "material": "Al 2219-T87", "thickness": 0.004 },
-                "paint": { "color": WHITE },
-            }),
-            None,
+        (
+            entry(
+                "structural",
+                "Structural",
+                Group::Structure,
+                "A tube: an interstage or a skirt. As wide as what it goes on",
+                json!({
+                    "id": "", "name": "Structural",
+                    "shape": { "shell": { "bottom_diameter": 2.0, "sections": [{ "length": 1.0 }] } },
+                    "structure": { "material": "Al 2219-T87", "thickness": 0.004 },
+                    "paint": { "color": WHITE },
+                }),
+                None,
+            ),
+            "2 m × 1 m",
         ),
-        entry(
-            "nose_cone",
-            "Nose cone",
-            "An ogive, closed at its base",
-            json!({
-                "id": "", "name": "Nose cone",
-                "shape": { "shell": {
-                    "bottom_diameter": 2.0,
-                    "sections": [{ "length": 3.0, "top_diameter": 0.0, "profile": "ogive" }],
-                    "cap_bottom": true,
-                } },
-                "structure": { "material": "Al 2219-T87", "thickness": 0.003 },
-                "paint": { "color": WHITE },
-            }),
-            None,
+        (
+            entry(
+                "nose_cone",
+                "Nose cone",
+                Group::Structure,
+                "An ogive, closed at its base. As wide as what it goes on",
+                json!({
+                    "id": "", "name": "Nose cone",
+                    "shape": { "shell": {
+                        "bottom_diameter": 2.0,
+                        "sections": [{ "length": 3.0, "top_diameter": 0.0, "profile": "ogive" }],
+                        "cap_bottom": true,
+                    } },
+                    "structure": { "material": "Al 2219-T87", "thickness": 0.003 },
+                    "paint": { "color": WHITE },
+                }),
+                None,
+            ),
+            "2 m × 3 m",
         ),
-        entry(
-            "decoupler",
-            "Decoupler",
-            "Lets go of what is below it",
-            json!({
-                "id": "", "name": "Decoupler",
-                "procedural": { "decoupler": { "diameter": 2.0, "load": 1e6 } },
-            }),
-            None,
+        (
+            entry(
+                "decoupler",
+                "Decoupler",
+                Group::Structure,
+                "Lets go of what is below it. As wide as what it goes on",
+                json!({
+                    "id": "", "name": "Decoupler",
+                    "procedural": { "decoupler": { "diameter": 2.0, "load": 1e6 } },
+                }),
+                None,
+            ),
+            "2 m",
         ),
-        entry(
-            "fin",
-            "Fin",
-            "A flat plate, swept",
-            json!({
-                "id": "", "name": "Fin",
-                "shape": { "wing": {
-                    "root_chord": 1.6, "tip_chord": 0.7, "span": 0.9, "sweep": 0.8,
-                    "airfoil": { "plate": { "thickness": 0.02 } },
-                } },
-                "structure": { "material": "Al 2219-T87" },
-                "components": [{ "lifting_surface": {} }],
-                "paint": { "color": GREY, "finish": "metal" },
-            }),
-            Some(("root", 0.0)),
+        (
+            entry(
+                "fin",
+                "Fin",
+                Group::Aero,
+                "A flat plate, swept. Sized for the hull it stands on",
+                json!({
+                    "id": "", "name": "Fin",
+                    "shape": { "wing": {
+                        "root_chord": 1.6, "tip_chord": 0.7, "span": 0.9, "sweep": 0.8,
+                        "airfoil": { "plate": { "thickness": 0.02 } },
+                    } },
+                    "structure": { "material": "Al 2219-T87" },
+                    "components": [{ "lifting_surface": {} }],
+                    "paint": { "color": GREY, "finish": "metal" },
+                }),
+                Some(("root", 0.0)),
+            ),
+            "0.9 m span",
         ),
-        entry(
-            "wing",
-            "Wing",
-            "An airfoil, tapered and swept",
-            json!({
-                "id": "", "name": "Wing",
-                "shape": { "wing": {
-                    "root_chord": 3.0, "tip_chord": 1.2, "span": 4.0, "sweep": 1.5,
-                } },
-                "structure": { "material": "Al 2219-T87" },
-                "components": [{ "lifting_surface": {} }],
-                "paint": { "color": WHITE },
-            }),
-            Some(("root", 0.0)),
+        (
+            entry(
+                "wing",
+                "Wing",
+                Group::Aero,
+                "An airfoil, tapered and swept. Sized for the hull it stands on",
+                json!({
+                    "id": "", "name": "Wing",
+                    "shape": { "wing": {
+                        "root_chord": 3.0, "tip_chord": 1.2, "span": 4.0, "sweep": 1.5,
+                    } },
+                    "structure": { "material": "Al 2219-T87" },
+                    "components": [{ "lifting_surface": {} }],
+                    "paint": { "color": WHITE },
+                }),
+                Some(("root", 0.0)),
+            ),
+            "4 m span",
+        ),
+        // A strut down from where it is put, a wheel at its end that rolls along the craft.
+        (
+            entry(
+                "wheel",
+                "Wheel",
+                Group::Aero,
+                "Landing gear with brakes, for a plane's belly. It rolls along the craft",
+                json!({
+                    "id": "", "name": "Wheel",
+                    "shape": { "compound": [{
+                        "shape": { "beam": { "length": 1.2, "section": { "circle": { "diameter": 0.1 } } } },
+                        "rotation": [180, 0, 0],
+                    }] },
+                    "components": [{ "gear": {
+                        "length": 1.2, "wheel_radius": 0.3, "stroke": 0.25, "load": 5000.0,
+                        "mass": 60.0, "brakes": true,
+                    } }],
+                    "paint": { "color": GREY, "finish": "metal" },
+                }),
+                Some(("bottom", 0.0)),
+            ),
+            "1.2 m strut",
+        ),
+        (
+            entry(
+                "nose_wheel",
+                "Nose wheel",
+                Group::Aero,
+                "Landing gear that steers, for under a plane's nose. It rolls along the craft",
+                json!({
+                    "id": "", "name": "Nose wheel",
+                    "shape": { "compound": [{
+                        "shape": { "beam": { "length": 1.2, "section": { "circle": { "diameter": 0.1 } } } },
+                        "rotation": [180, 0, 0],
+                    }] },
+                    "components": [{ "gear": {
+                        "length": 1.2, "wheel_radius": 0.25, "stroke": 0.25, "load": 3000.0,
+                        "mass": 40.0, "steering": 25.0,
+                    } }],
+                    "paint": { "color": GREY, "finish": "metal" },
+                }),
+                Some(("bottom", 0.0)),
+            ),
+            "1.2 m strut",
         ),
     ]
+}
+
+/// A procedural part's figures as it starts, `size` first: what it weighs, and what a tank holds.
+fn built_figures(part: &CraftPartDef, size: &str, catalog: &PartCatalog) -> String {
+    let mut part = part.clone();
+    part.id = "alone".into();
+    let alone = CraftDef {
+        id: "alone".into(),
+        name: String::new(),
+        parts: vec![part],
+        sequences: None,
+        triggers: Vec::new(),
+        rcs_shut: Vec::new(),
+        abort: Vec::new(),
+    };
+    let mut figures = vec![size.to_owned()];
+    if let Ok(craft) = Craft::build(&alone, catalog)
+        && let Some(built) = craft.parts.first().map(|p| &p.built)
+    {
+        let volume: f64 = built.storages().map(|s| s.volume).sum();
+        if volume > 0.0 {
+            figures.push(format!("{} m³", three_figures(volume)));
+        }
+        figures.push(mass(built.mass.mass));
+    }
+    figures.join(" · ")
 }
 
 /// Everything a craft can be built from, `catalog`'s records after the procedural parts, each group
 /// by name.
 pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
     let template = |id: &str, name: &str| part(json!({ "id": "", "name": name, "template": id }));
-    let mut out = procedural();
+    let mut out: Vec<Entry> = (procedural().into_iter())
+        .map(|(mut entry, size)| {
+            entry.detail = built_figures(&entry.part, size, catalog);
+            entry
+        })
+        .collect();
     let mut pods: Vec<Entry> = (catalog.pods.iter())
         .map(|pod| Entry {
             id: format!("pod:{}", pod.id),
             name: pod.id.clone(),
             group: Group::Pods,
-            detail: match pod.crew {
-                1 => format!("1 crew, {:.1} m", pod.diameter),
-                n => format!("{n} crew, {:.1} m", pod.diameter),
-            },
+            detail: [
+                format!("{} crew", pod.crew),
+                metres(pod.diameter),
+                mass(pod.mass),
+            ]
+            .join(" · "),
+            about: about(&pod.catalog),
+            width: Some(pod.diameter),
+            propellant: None,
             part: template(&pod.id, &pod.id),
             surface: None,
             stem: "pod".into(),
@@ -216,10 +525,29 @@ pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
         .collect();
     let mut engines: Vec<Entry> = (catalog.engines.iter())
         .map(|engine| {
-            let name = (engine.catalog.title.clone()).unwrap_or_else(|| engine.id.clone());
+            // Not a title still waiting to be translated (`#roBE3UTitle`).
+            let title = (engine.catalog.title.clone()).filter(|t| !t.starts_with('#'));
+            let name = title.unwrap_or_else(|| engine.id.clone());
+            let burns = engine.propellants.keys().map(String::as_str);
+            let propellant = Propellant::of(engine.kind.as_deref(), burns);
+            let mut detail = vec![
+                force(engine.thrust_vac),
+                format!(
+                    "Isp {:.0} s, {:.0} s at sea level",
+                    engine.isp_vac, engine.isp_sl
+                ),
+                propellant.name().to_owned(),
+            ];
+            if engine.exit_diameter > 0.0 {
+                detail.push(metres(engine.exit_diameter));
+            }
+            detail.push(mass(engine.mass));
             Entry {
                 id: format!("engine:{}", engine.id),
-                detail: format!("{:.0} kN", engine.thrust_vac / 1e3),
+                detail: detail.join(" · "),
+                about: about(&engine.catalog),
+                width: (engine.exit_diameter > 0.0).then_some(engine.exit_diameter),
+                propellant: Some(propellant),
                 part: template(&engine.id, &name),
                 name,
                 group: Group::Engines,
@@ -231,20 +559,40 @@ pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
     // RCS blocks stand with +Y towards the nose: turned a quarter about the joint from how a
     // surface holds them.
     let mut control: Vec<Entry> = (catalog.rcs.iter())
-        .map(|rcs| Entry {
-            id: format!("rcs:{}", rcs.id),
-            name: rcs.id.clone(),
-            group: Group::Control,
-            detail: format!("RCS, {:.0} N a nozzle", rcs.thrust),
-            part: template(&rcs.id, &rcs.id),
-            surface: Some(("mount".into(), 90.0)),
-            stem: "rcs".into(),
+        .map(|rcs| {
+            let burns = rcs.propellants.keys().map(String::as_str);
+            let propellant = Propellant::of(None, burns);
+            Entry {
+                id: format!("rcs:{}", rcs.id),
+                name: rcs.id.clone(),
+                group: Group::Control,
+                detail: [
+                    format!("RCS, {} a nozzle", force(rcs.thrust)),
+                    format!("Isp {:.0} s", rcs.isp_vac),
+                    propellant.name().to_owned(),
+                    mass(rcs.mass),
+                ]
+                .join(" · "),
+                about: String::new(),
+                width: None,
+                propellant: Some(propellant),
+                part: template(&rcs.id, &rcs.id),
+                surface: Some(("mount".into(), 90.0)),
+                stem: "rcs".into(),
+            }
         })
         .chain(catalog.reaction_wheels.iter().map(|wheel| Entry {
             id: format!("wheel:{}", wheel.id),
             name: wheel.id.clone(),
             group: Group::Control,
-            detail: format!("Reaction wheel, {:.0} N·m", wheel.torque),
+            detail: format!(
+                "Reaction wheel, {} N·m · {}",
+                three_figures(wheel.torque),
+                mass(wheel.mass)
+            ),
+            about: String::new(),
+            width: None,
+            propellant: None,
             part: template(&wheel.id, &wheel.id),
             surface: None,
             stem: "reaction_wheel".into(),
@@ -302,7 +650,6 @@ pub fn fit(part: &mut CraftPartDef, width: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{craft::Craft, data::CraftDef};
 
     fn catalog() -> PartCatalog {
         crate::vessel::tests::catalog()
@@ -452,8 +799,70 @@ mod tests {
     fn a_search_finds_by_name_detail_or_group_in_any_case() {
         let all = entries(&catalog());
         let tank = all.iter().find(|e| e.id == "tank").unwrap();
-        assert!(tank.matches("TAN") && tank.matches("oxygen") && tank.matches("procedural"));
+        assert!(tank.matches("TAN") && tank.matches("oxygen") && tank.matches("tanks"));
         assert!(tank.matches("  ") && !tank.matches("wheel"));
         assert_eq!(Group::parse(Group::Engines.id()), Some(Group::Engines));
+        // What an engine burns is found by its kind's name.
+        let engine = all.iter().find(|e| e.group == Group::Engines).unwrap();
+        let burns = engine.propellant.unwrap().name();
+        assert!(engine.matches(&burns.to_uppercase()));
+    }
+
+    #[test]
+    fn each_part_is_listed_by_what_it_does_and_says_its_figures() {
+        let all = entries(&catalog());
+        let group = |id: &str| all.iter().find(|e| e.id == id).unwrap().group;
+        assert_eq!(group("tank"), Group::Tanks);
+        assert_eq!(group("decoupler"), Group::Structure);
+        assert_eq!(group("fin"), Group::Aero);
+        let tank = all.iter().find(|e| e.id == "tank").unwrap();
+        assert!(tank.detail.starts_with("2 m × 4 m · ") && tank.detail.contains("m³"));
+        assert_eq!((tank.width, tank.propellant), (None, None));
+        let engine = all.iter().find(|e| e.group == Group::Engines).unwrap();
+        assert!(engine.detail.contains("Isp") && engine.width.is_some());
+        let pod = all.iter().find(|e| e.group == Group::Pods).unwrap();
+        assert!(pod.detail.contains("crew") && pod.width.is_some());
+    }
+
+    #[test]
+    fn propellants_are_known_by_their_kind() {
+        let of = |kind: Option<&str>, burns: &[&str]| Propellant::of(kind, burns.iter().copied());
+        assert_eq!(of(None, &["LqdOxygen", "RP-1"]), Propellant::Kerolox);
+        assert_eq!(
+            of(None, &["CooledLqdOxygen", "CooledRG-1"]),
+            Propellant::Kerolox
+        );
+        assert_eq!(
+            of(None, &["LqdHydrogen", "LqdOxygen"]),
+            Propellant::Hydrolox
+        );
+        assert_eq!(of(None, &["LqdMethane", "LqdOxygen"]), Propellant::Methalox);
+        assert_eq!(of(None, &["NTO", "UDMH"]), Propellant::Hypergolic);
+        assert_eq!(of(None, &["MMH", "MON3"]), Propellant::Hypergolic);
+        assert_eq!(of(None, &["AK27", "Kerosene"]), Propellant::Hypergolic);
+        assert_eq!(of(Some("solid"), &["HTPB"]), Propellant::Solid);
+        assert_eq!(of(Some("electric"), &["XenonGas"]), Propellant::Electric);
+        assert_eq!(
+            of(None, &["EnrichedUranium", "LqdHydrogen"]),
+            Propellant::Nuclear
+        );
+        assert_eq!(of(None, &["Hydrazine"]), Propellant::Monopropellant);
+        assert_eq!(of(None, &["Nitrogen"]), Propellant::ColdGas);
+        assert_eq!(of(None, &["Ethanol75", "LqdOxygen"]), Propellant::Other);
+        for kind in Propellant::ALL {
+            assert_eq!(Propellant::parse(kind.id()), Some(kind));
+        }
+    }
+
+    #[test]
+    fn figures_read_as_a_player_would_say_them() {
+        assert_eq!(force(914_000.0), "914 kN");
+        assert_eq!(force(7_775_490.0), "7.78 MN");
+        assert_eq!(force(445.0), "445 N");
+        assert_eq!(mass(470.0), "470 kg");
+        assert_eq!(mass(8444.1), "8.44 t");
+        assert_eq!(metres(2.0), "2 m");
+        assert_eq!(metres(3.723), "3.72 m");
+        assert_eq!(three_figures(12.0), "12");
     }
 }

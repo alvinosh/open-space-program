@@ -9,6 +9,12 @@
 //! sweep, dihedral and twist, and its airfoil. A part's material and wall, and every number a
 //! sizer asks for (a decoupler's load), are there too. Values are in the units the player reads:
 //! metres, millimetres, percent, degrees, g.
+//!
+//! What a tank can hold is what the engines it feeds burn, each at its engine's ratio
+//! ([`mixes`]); one that feeds no engine can only be emptied. A tank still as the parts list gave
+//! it follows the engines it feeds when it or an engine goes on ([`fill_from_engines`]).
+
+use std::collections::BTreeMap;
 
 use serde_json::{Value as Json, json};
 
@@ -105,8 +111,8 @@ fn choice(value: &str, options: &[(&str, &str)]) -> Value {
     }
 }
 
-/// What a tank can be filled with: an id, what the player reads, and the mass ratio. Those whose
-/// resources the content has are offered.
+/// The mixes the game has names for: an id, what the player reads, and the mass ratio. They name
+/// what an engine burns when it burns the same resources.
 const MIXES: &[(&str, &str, &[(&str, f64)])] = &[
     (
         "kerolox",
@@ -145,32 +151,279 @@ const MIXES: &[(&str, &str, &[(&str, f64)])] = &[
 
 /// What a tank holding nothing is called: it is then structure.
 const NOTHING: &str = "none";
-/// What contents no mix above match are called.
+/// What contents none of the mixes offered match are called.
 const CUSTOM: &str = "custom";
 
-/// The mixes `catalog` has every resource of.
-fn mixes(
+/// What a tank can be filled with: what [`set`] knows it by, what the player reads, and the
+/// resources in it with their ratio by mass.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mix {
+    pub id: String,
+    pub label: String,
+    pub contents: BTreeMap<String, f64>,
+}
+
+/// What a tank from the parts list holds, by mass (`palette`'s tank). A tank that still holds it
+/// follows the engines it feeds ([`fill_from_engines`]); one the player filled keeps what it has.
+pub const NEW_TANK: &[(&str, f64)] = &[("Kerosene", 1.0), ("LqdOxygen", 2.36)];
+
+/// What tank `part` of `craft` can be filled with: what the engines and thrusters it feeds burn,
+/// those joined to it through joints that pass propellant ([`fed_from`]), each mix once and at its
+/// engine's own ratio, in the order the craft lists them, its label naming the engines that burn
+/// it. The same resources burnt at two ratios are two mixes, the second called `<id>_2`. A tank that
+/// feeds nothing has nothing to be filled with: it can only be emptied.
+pub fn mixes(craft: &CraftDef, catalog: &PartCatalog, part: &str) -> Vec<Mix> {
+    let Some(index) = craft.parts.iter().position(|p| p.id == part) else {
+        return Vec::new();
+    };
+    let Ok(built) = Craft::build(craft, catalog) else {
+        return Vec::new();
+    };
+    let known = |contents: &BTreeMap<String, f64>| {
+        (contents.keys()).all(|name| catalog.resources.iter().any(|r| &r.id == name))
+    };
+    // Each mix with the names of what burns it.
+    let mut found: Vec<(BTreeMap<String, f64>, Vec<String>)> = Vec::new();
+    for at in fed_from(&built, index) {
+        let part = &craft.parts[at];
+        for (contents, _) in burnt_by(part, catalog) {
+            if !known(&contents) {
+                continue;
+            }
+            let name = engine_name(part);
+            match found.iter_mut().find(|(c, _)| same_mix(c, &contents)) {
+                Some((_, names)) if names.contains(&name) => {}
+                Some((_, names)) => names.push(name),
+                None => found.push((contents, vec![name])),
+            }
+        }
+    }
+    let mut out: Vec<Mix> = Vec::new();
+    for (contents, names) in found {
+        let (base, ..) = names_of(&contents);
+        let before = (out.iter())
+            .filter(|m| m.contents.keys().eq(contents.keys()))
+            .count();
+        let id = match before {
+            0 => base,
+            n => format!("{base}_{}", n + 1),
+        };
+        out.push(Mix {
+            id,
+            label: format!("{} ({})", label_of(&contents), names.join(", ")),
+            contents,
+        });
+    }
+    out
+}
+
+/// The parts of `craft` joined to part `index` through joints that pass propellant, itself among
+/// them, in the order the craft lists them: the engines a tank feeds and the tanks an engine draws
+/// on are among them.
+fn fed_from(craft: &Craft, index: usize) -> Vec<usize> {
+    let joints = craft.assembly.joints();
+    let mut seen = std::collections::BTreeSet::from([index]);
+    let mut open = vec![index];
+    while let Some(at) = open.pop() {
+        for (j, joint) in joints.iter().enumerate() {
+            let [a, b] = &joint.ends;
+            let next = if a.part == at {
+                b.part
+            } else if b.part == at {
+                a.part
+            } else {
+                continue;
+            };
+            if craft.assembly.carries(j).fluid && seen.insert(next) {
+                open.push(next);
+            }
+        }
+    }
+    seen.into_iter().collect()
+}
+
+/// What the player calls an engine part: its name, or what it was made from.
+fn engine_name(part: &CraftPartDef) -> String {
+    (part.name.clone())
+        .or_else(|| part.template.clone())
+        .unwrap_or_else(|| part.id.clone())
+}
+
+/// Fill the tanks that the parts `put`, just put on `craft`, are joined to through joints that pass
+/// propellant: a tank that still holds what a new one comes with ([`NEW_TANK`]) takes what the
+/// engines it feeds burn, at their ratio, an engine's mix before thrusters'. So a tank put on an
+/// engine, and an engine put under a tank, need nothing set. A tank the player filled stays as it
+/// is, and so does one that feeds nothing. The ids of the tanks filled.
+pub fn fill_from_engines(
+    craft: &mut CraftDef,
     catalog: &PartCatalog,
-) -> Vec<(&'static str, &'static str, &'static [(&'static str, f64)])> {
+    put: &[String],
+) -> Vec<String> {
+    let concerned =
+        |part: &CraftPartDef| storage(part).is_some() || !burnt_by(part, catalog).is_empty();
+    let starts: Vec<usize> = (craft.parts.iter().enumerate())
+        .filter(|(_, p)| put.contains(&p.id) && concerned(p))
+        .map(|(i, _)| i)
+        .collect();
+    if starts.is_empty() {
+        return Vec::new();
+    }
+    let Ok(built) = Craft::build(craft, catalog) else {
+        return Vec::new();
+    };
+    let new_tank: BTreeMap<String, f64> = (NEW_TANK.iter())
+        .map(|(name, ratio)| ((*name).to_owned(), *ratio))
+        .collect();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut filled = Vec::new();
+    for start in starts {
+        if seen.contains(&start) {
+            continue;
+        }
+        let group = fed_from(&built, start);
+        seen.extend(group.iter().copied());
+        let burnt: Vec<(BTreeMap<String, f64>, bool)> = (group.iter())
+            .flat_map(|&i| burnt_by(&craft.parts[i], catalog))
+            .collect();
+        let wanted = (burnt.iter().find(|(_, thrusters)| !thrusters))
+            .or(burnt.first())
+            .map(|(contents, _)| contents.clone());
+        let Some(wanted) = wanted.filter(|w| !same_mix(w, &new_tank)) else {
+            continue;
+        };
+        let mix = Mix {
+            id: "engines".into(),
+            label: String::new(),
+            contents: wanted,
+        };
+        for &i in &group {
+            let part = &mut craft.parts[i];
+            if !storage(part).is_some_and(|s| same_mix(&s.contents, &new_tank)) {
+                continue;
+            }
+            let mut tank = part.clone();
+            if set_contents(&mut tank, &mix.id, std::slice::from_ref(&mix), catalog).is_ok() {
+                filled.push(tank.id.clone());
+                *part = tank;
+            }
+        }
+    }
+    filled
+}
+
+/// The usual mixes: those of [`MIXES`] `catalog` has every resource of.
+#[cfg(test)]
+fn usual(catalog: &PartCatalog) -> Vec<Mix> {
     (MIXES.iter())
         .filter(|(_, _, parts)| {
             (parts.iter()).all(|(name, _)| catalog.resources.iter().any(|r| r.id == *name))
         })
-        .copied()
+        .map(|(id, label, parts)| Mix {
+            id: (*id).to_owned(),
+            label: (*label).to_owned(),
+            contents: (parts.iter())
+                .map(|(name, ratio)| ((*name).to_owned(), *ratio))
+                .collect(),
+        })
         .collect()
 }
 
-/// Which mix `contents` is, if any: the same resources in the same ratio.
-fn mix_of(contents: &std::collections::BTreeMap<String, f64>) -> Option<&'static str> {
-    let total: f64 = contents.values().sum();
-    MIXES.iter().find_map(|(id, _, parts)| {
-        let mine: f64 = parts.iter().map(|(_, ratio)| ratio).sum();
-        let same = parts.len() == contents.len()
-            && (parts.iter()).all(|(name, ratio)| {
-                (contents.get(*name)).is_some_and(|r| (r / total - ratio / mine).abs() < 1e-3)
-            });
-        same.then_some(*id)
-    })
+/// What `part` burns, each as its record has it and whether it is thrusters' (RCS): a template's,
+/// those among its components, and those a sizer makes. A sized part that holds everything its
+/// engine burns (a separation motor and its grain) draws on no tank, and is left out.
+fn burnt_by(part: &CraftPartDef, catalog: &PartCatalog) -> Vec<(BTreeMap<String, f64>, bool)> {
+    let mut out = Vec::new();
+    if let Some(id) = &part.template {
+        let engine = (catalog.engines.iter()).find(|e| &e.id == id);
+        let rcs = (catalog.rcs.iter()).find(|r| &r.id == id);
+        out.extend(engine.map(|e| (e.propellants.clone(), false)));
+        out.extend(rcs.map(|r| (r.propellants.clone(), true)));
+    }
+    out.extend(part.components.iter().filter_map(|c| burns(c, catalog)));
+    let design = (part.procedural.as_ref()).and_then(|p| p.size(catalog).ok());
+    if let Some(design) = design {
+        let held: Vec<&String> = (design.components.iter())
+            .filter_map(|c| match c {
+                ComponentDef::Storage(s) => Some(s.contents.keys()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        out.extend(
+            (design.components.iter())
+                .filter_map(|c| burns(c, catalog))
+                .filter(|(burns, _)| !burns.keys().all(|name| held.contains(&name))),
+        );
+    }
+    out
+}
+
+/// What `component` burns, if it is an engine or thrusters, and whether it is thrusters.
+fn burns(component: &ComponentDef, catalog: &PartCatalog) -> Option<(BTreeMap<String, f64>, bool)> {
+    match component {
+        ComponentDef::Engine(r) => (catalog.engines.iter())
+            .find(|e| e.id == r.id)
+            .map(|e| (e.propellants.clone(), false)),
+        ComponentDef::Rcs(r) => (catalog.rcs.iter())
+            .find(|b| b.id == r.id)
+            .map(|b| (b.propellants.clone(), true)),
+        ComponentDef::SolidMotor(motor) => Some(([(motor.propellant.clone(), 1.0)].into(), false)),
+        _ => None,
+    }
+}
+
+/// Whether `a` and `b` are the same resources in the same shares by mass.
+fn same_mix(a: &BTreeMap<String, f64>, b: &BTreeMap<String, f64>) -> bool {
+    let (total_a, total_b): (f64, f64) = (a.values().sum(), b.values().sum());
+    a.len() == b.len()
+        && (a.iter()).all(|(name, ratio)| {
+            (b.get(name)).is_some_and(|r| (ratio / total_a - r / total_b).abs() < 1e-3)
+        })
+}
+
+/// Whether a mix of [`MIXES`] is of the resources `contents` is, in whatever ratio.
+fn same_resources(parts: &[(&str, f64)], contents: &BTreeMap<String, f64>) -> bool {
+    parts.len() == contents.len() && (parts.iter()).all(|(name, _)| contents.contains_key(*name))
+}
+
+/// What `contents` is called: its id, what the player reads, and the order its resources are
+/// named in. As [`MIXES`] calls the same resources, or by their ids from the least of it by mass to
+/// the most, which puts a fuel before its oxidiser.
+fn names_of(contents: &BTreeMap<String, f64>) -> (String, String, Vec<&str>) {
+    match (MIXES.iter()).find(|(_, _, parts)| same_resources(parts, contents)) {
+        Some((id, label, parts)) => (
+            (*id).to_owned(),
+            (*label).to_owned(),
+            parts.iter().map(|p| p.0).collect(),
+        ),
+        None => {
+            let mut order: Vec<&str> = contents.keys().map(String::as_str).collect();
+            order.sort_by(|a, b| contents[*a].total_cmp(&contents[*b]));
+            (order.join("+"), order.join(" and "), order)
+        }
+    }
+}
+
+/// What the player reads for `contents`: its name (see [`names_of`]), then the ratio by mass of
+/// its resources when there is more than one (`Kerosene and liquid oxygen, 1 : 2.27`).
+fn label_of(contents: &BTreeMap<String, f64>) -> String {
+    let (_, name, order) = names_of(contents);
+    let first = order.first().and_then(|n| contents.get(*n)).copied();
+    match first {
+        Some(first) if order.len() > 1 && first > 0.0 => {
+            let ratio: Vec<String> = (order.iter())
+                .map(|n| short(contents.get(*n).copied().unwrap_or_default() / first))
+                .collect();
+            format!("{name}, {}", ratio.join(" : "))
+        }
+        _ => name,
+    }
+}
+
+/// `value` to two places, without the zeros at its end: `2.27`, `5.5`, `1`.
+fn short(value: f64) -> String {
+    let text = format!("{value:.2}");
+    text.trim_end_matches('0').trim_end_matches('.').to_owned()
 }
 
 /// The shape a part is drawn as, when it is a procedural one.
@@ -236,8 +489,10 @@ fn profile_id(profile: ShellProfile) -> &'static str {
     }
 }
 
-/// Everything that can be set on `part`, in the order the window shows it.
-pub fn fields(part: &CraftPartDef, catalog: &PartCatalog) -> Vec<Field> {
+/// Everything that can be set on `part`, in the order the window shows it. Its tank can hold one of
+/// `mixes` (those of its craft, see [`mixes`]) or nothing; what it holds now stays offered, as
+/// `custom`, if it is none of them.
+pub fn fields(part: &CraftPartDef, mixes: &[Mix], catalog: &PartCatalog) -> Vec<Field> {
     let name = part.name.clone().unwrap_or_else(|| part.id.clone());
     let mut out = vec![field("name", "Name", "Part", Value::Text(name))];
     let shape = own_shape(part);
@@ -246,17 +501,15 @@ pub fn fields(part: &CraftPartDef, catalog: &PartCatalog) -> Vec<Field> {
     }
     // What it holds, and how its tank is built.
     if shape.is_some_and(holds_things) || storage(part).is_some() {
-        let mut options: Vec<(String, String)> = mixes(catalog)
-            .iter()
-            .map(|(id, label, _)| ((*id).into(), (*label).into()))
+        let mut options: Vec<(String, String)> = (mixes.iter())
+            .map(|m| (m.id.clone(), m.label.clone()))
             .collect();
         let value = match storage(part) {
             None => NOTHING.to_owned(),
-            Some(s) => match mix_of(&s.contents) {
-                Some(id) if options.iter().any(|(o, _)| o == id) => id.to_owned(),
-                _ => {
-                    let names: Vec<&str> = s.contents.keys().map(String::as_str).collect();
-                    options.push((CUSTOM.into(), names.join(" and ")));
+            Some(s) => match mixes.iter().find(|m| same_mix(&m.contents, &s.contents)) {
+                Some(mix) => mix.id.clone(),
+                None => {
+                    options.push((CUSTOM.into(), label_of(&s.contents)));
                     CUSTOM.to_owned()
                 }
             },
@@ -568,17 +821,19 @@ fn parse_toggle(text: &str) -> Result<bool, String> {
 }
 
 /// Set field `id` of `part` to `text`: a number in the field's unit, a choice's id or a toggle's
-/// `true` or `false`. A number is kept within what the field can be. What is mounted on a shape
-/// is carried along as it changes, as when a size is dragged. Says why if it cannot be set; the
-/// part is then as it was.
+/// `true` or `false`. A number is kept within what the field can be, and a tank holds one of
+/// `mixes` (see [`fields`]): a mix no engine it feeds burns is refused. What is mounted on a
+/// shape is carried along as it changes, as when a size is dragged. Says why if it cannot be set;
+/// the part is then as it was.
 pub fn set(
     part: &mut CraftPartDef,
     id: &str,
     text: &str,
+    mixes: &[Mix],
     catalog: &PartCatalog,
 ) -> Result<(), String> {
     let mut changed = part.clone();
-    set_on(&mut changed, id, text, catalog)?;
+    set_on(&mut changed, id, text, mixes, catalog)?;
     if let Some(shape) = &changed.shape {
         shape.build()?;
     }
@@ -591,16 +846,26 @@ fn set_on(
     part: &mut CraftPartDef,
     id: &str,
     text: &str,
+    mixes: &[Mix],
     catalog: &PartCatalog,
 ) -> Result<(), String> {
     // A number is kept within what its field can be.
-    let field = fields(part, catalog).into_iter().find(|f| f.id == id);
+    let field = fields(part, mixes, catalog)
+        .into_iter()
+        .find(|f| f.id == id);
     let Some(field) = field else {
         return Err(format!("`{}` has nothing called `{id}` to set", part.id));
     };
     let value = match &field.value {
         Value::Number { least, most, .. } => Some(parse_number(text)?.clamp(*least, *most)),
         Value::Choice { options, .. } if !options.iter().any(|(o, _)| o == text) => {
+            // One of the usual mixes, which no engine the tank feeds burns.
+            if id == "contents" && MIXES.iter().any(|(mix, ..)| *mix == text) {
+                return Err(format!(
+                    "{} cannot be `{text}`: no engine it feeds burns it",
+                    field.label
+                ));
+            }
             return Err(format!("{} cannot be `{text}`", field.label));
         }
         _ => None,
@@ -633,7 +898,7 @@ fn set_on(
         }
     }
     match id {
-        "contents" => return set_contents(part, text, catalog),
+        "contents" => return set_contents(part, text, mixes, catalog),
         "tank_type" => {
             if let Some(s) = storage_mut(part) {
                 s.tank_type = text.to_owned();
@@ -774,9 +1039,15 @@ fn switched(shape: &ShapeDef, kind: &str) -> ShapeDef {
     }
 }
 
-/// Fill `part` with mix `id`, or empty it for `none`. A tank type that cannot hold the mix gives way
-/// to the first that can; an empty tank is structure, and gets a wall if it had none.
-fn set_contents(part: &mut CraftPartDef, id: &str, catalog: &PartCatalog) -> Result<(), String> {
+/// Fill `part` with the mix of `mixes` called `id`, or empty it for `none`. A tank type that cannot
+/// hold the mix gives way to the first that can; an empty tank is structure, and gets a wall if it
+/// had none.
+fn set_contents(
+    part: &mut CraftPartDef,
+    id: &str,
+    mixes: &[Mix],
+    catalog: &PartCatalog,
+) -> Result<(), String> {
     if id == CUSTOM {
         return Ok(());
     }
@@ -791,13 +1062,10 @@ fn set_contents(part: &mut CraftPartDef, id: &str, catalog: &PartCatalog) -> Res
         }
         return Ok(());
     }
-    let Some((_, _, mix)) = mixes(catalog).into_iter().find(|(m, ..)| *m == id) else {
+    let Some(mix) = mixes.iter().find(|m| m.id == id) else {
         return Err(format!("there is no mix `{id}`"));
     };
-    let contents = mix
-        .iter()
-        .map(|(name, ratio)| ((*name).to_owned(), *ratio))
-        .collect();
+    let contents = mix.contents.clone();
     match storage_mut(part) {
         Some(s) => s.contents = contents,
         None => part.components.push(ComponentDef::Storage(StorageDef {
@@ -895,11 +1163,254 @@ mod tests {
 
     fn value(part: &CraftPartDef, id: &str) -> Value {
         let catalog = catalog();
-        fields(part, &catalog)
+        fields(part, &usual(&catalog), &catalog)
             .into_iter()
             .find(|f| f.id == id)
             .unwrap()
             .value
+    }
+
+    /// Set a field of a part on a craft with no engine, whose tanks hold the usual mixes.
+    fn set_alone(
+        part: &mut CraftPartDef,
+        id: &str,
+        text: &str,
+        catalog: &PartCatalog,
+    ) -> Result<(), String> {
+        set(part, id, text, &usual(catalog), catalog)
+    }
+
+    /// `tank` with `under` (palette ids) under it, each on the one above.
+    fn craft_of(tank: &CraftPartDef, under: &[&str]) -> CraftDef {
+        let mut parts = vec![tank.clone()];
+        for (k, id) in under.iter().enumerate() {
+            let mut next = part(id);
+            next.id = format!("under_{k}");
+            next.on = Some(format!("{}.bottom", parts[parts.len() - 1].id));
+            next.by = "top".into();
+            parts.push(next);
+        }
+        CraftDef {
+            id: "test".into(),
+            name: String::new(),
+            parts,
+            sequences: None,
+            triggers: Vec::new(),
+            rcs_shut: Vec::new(),
+            abort: Vec::new(),
+        }
+    }
+
+    /// `tank` with `below` (a palette id) under it, and over it another tank with `above` on that
+    /// tank's top, held by its `by`: two things that burn, both fed from `tank`. An engine has no
+    /// node under it, so a second one goes on top.
+    fn two_ends(tank: &CraftPartDef, below: &str, above: &str, by: &str) -> CraftDef {
+        let mut craft = craft_of(tank, &[below]);
+        let mut over = part("tank");
+        over.id = "over".into();
+        over.on = Some(format!("{}.top", tank.id));
+        over.by = "bottom".into();
+        let mut last = part(above);
+        last.id = "above".into();
+        last.on = Some("over.top".into());
+        last.by = by.into();
+        craft.parts.extend([over, last]);
+        craft
+    }
+
+    /// What a tank's contents can be set to on `craft`, each `(id, label)`, and what it is: what
+    /// the engines its copy on `craft` (by id) feeds burn.
+    fn holds(tank: &CraftPartDef, craft: &CraftDef) -> (String, Vec<(String, String)>) {
+        let catalog = catalog();
+        let mixes = mixes(craft, &catalog, &tank.id);
+        let found = fields(tank, &mixes, &catalog);
+        match found
+            .into_iter()
+            .find(|f| f.id == "contents")
+            .unwrap()
+            .value
+        {
+            Value::Choice { value, options } => (value, options),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    fn ids(options: &[(String, String)]) -> Vec<&str> {
+        options.iter().map(|(id, _)| id.as_str()).collect()
+    }
+
+    /// Fill `tank` on `craft` with mix `id`.
+    fn fill(tank: &mut CraftPartDef, id: &str, craft: &CraftDef) -> Result<(), String> {
+        let catalog = catalog();
+        set(
+            tank,
+            "contents",
+            id,
+            &mixes(craft, &catalog, &tank.id),
+            &catalog,
+        )
+    }
+
+    /// Whether `tank` holds `parts`, in their ratio.
+    fn holds_mix(tank: &CraftPartDef, parts: &[(&str, f64)]) -> bool {
+        let wanted = (parts.iter())
+            .map(|(name, ratio)| ((*name).to_owned(), *ratio))
+            .collect();
+        storage(tank).is_some_and(|s| same_mix(&s.contents, &wanted))
+    }
+
+    #[test]
+    fn the_parts_list_tank_holds_what_a_new_tank_is_said_to() {
+        let new_tank: BTreeMap<String, f64> = (NEW_TANK.iter())
+            .map(|(name, ratio)| ((*name).to_owned(), *ratio))
+            .collect();
+        assert!(storage(&part("tank")).is_some_and(|s| same_mix(&s.contents, &new_tank)));
+    }
+
+    #[test]
+    fn a_tank_holds_what_the_engine_it_feeds_burns_at_its_ratio() {
+        // The tank holds kerolox at 2.36, the K-5 burns it at 2.27: the tank's own stays shown, as
+        // custom, beside the engine's, named with the engine.
+        let mut tank = part("tank");
+        let one = craft_of(&tank, &["engine:K-5"]);
+        let (value, options) = holds(&tank, &one);
+        assert_eq!(value, "custom");
+        assert_eq!(ids(&options), ["kerolox", "custom", "none"]);
+        assert!(
+            options[0]
+                .1
+                .starts_with("Kerosene and liquid oxygen, 1 : 2.27 (")
+                && options[0].1.contains("K-5"),
+            "{}",
+            options[0].1
+        );
+        assert_eq!(options[1].1, "Kerosene and liquid oxygen, 1 : 2.36");
+        // Set, it holds what the engine burns, in its ratio, and nothing else is offered.
+        fill(&mut tank, "kerolox", &one).unwrap();
+        assert!(holds_mix(&tank, &[("Kerosene", 1.0), ("LqdOxygen", 2.27)]));
+        let (value, options) = holds(&tank, &one);
+        assert_eq!(
+            (value.as_str(), ids(&options)),
+            ("kerolox", vec!["kerolox", "none"])
+        );
+        // Its engine does not burn hydrogen: the tank is not filled with it.
+        let before = tank.clone();
+        let why = fill(&mut tank, "hydrolox", &one).unwrap_err();
+        assert!(why.contains("no engine"), "{why}");
+        assert_eq!(tank, before);
+        // A hydrolox engine it feeds as well adds hydrolox at its ratio.
+        let two = two_ends(&tank, "engine:K-5", "engine:H-25", "top");
+        let (_, options) = holds(&tank, &two);
+        assert_eq!(ids(&options), ["kerolox", "hydrolox", "none"]);
+        fill(&mut tank, "hydrolox", &two).unwrap();
+        assert!(holds_mix(
+            &tank,
+            &[("LqdHydrogen", 1.0), ("LqdOxygen", 6.0)]
+        ));
+    }
+
+    #[test]
+    fn a_tank_is_offered_nothing_an_engine_past_a_decoupler_burns() {
+        let tank = part("tank");
+        let craft = craft_of(&tank, &["decoupler", "engine:H-25"]);
+        let (value, options) = holds(&tank, &craft);
+        assert_eq!(
+            (value.as_str(), ids(&options)),
+            ("custom", vec!["custom", "none"])
+        );
+        let (_, options) = holds(&tank, &craft_of(&tank, &["decoupler"]));
+        assert_eq!(ids(&options), ["custom", "none"]);
+    }
+
+    #[test]
+    fn the_same_propellants_burnt_at_two_ratios_are_two_mixes() {
+        let tank = part("tank");
+        // The K-1 Booster burns the tank's own 2.36, the K-5 2.27.
+        let craft = two_ends(&tank, "engine:K-5", "engine:K-1 Booster", "top");
+        let (value, options) = holds(&tank, &craft);
+        assert_eq!(ids(&options), ["kerolox", "kerolox_2", "none"]);
+        assert_eq!(value, "kerolox_2");
+        // The same mix burnt by two engines is offered once, naming both.
+        let craft = two_ends(&tank, "engine:K-1 Booster", "engine:K-1 Vacuum", "top");
+        let (value, options) = holds(&tank, &craft);
+        assert_eq!(
+            (value.as_str(), ids(&options)),
+            ("kerolox", vec!["kerolox", "none"])
+        );
+        assert!(
+            options[0]
+                .1
+                .starts_with("Kerosene and liquid oxygen, 1 : 2.36 (")
+                && options[0].1.contains("K-1 Booster")
+                && options[0].1.contains("K-1 Vacuum"),
+            "{}",
+            options[0].1
+        );
+    }
+
+    #[test]
+    fn what_a_solid_or_thrusters_burn_is_offered() {
+        let mut tank = part("tank");
+        // A separation motor carries its own grain, and asks nothing of the tanks.
+        let motor: CraftPartDef = serde_json::from_value(json!({
+            "id": "motor",
+            "procedural": { "separation_motor": { "impulse": 60000, "burn_time": 4 } },
+        }))
+        .unwrap();
+        assert!(burnt_by(&motor, &catalog()).is_empty());
+        // A solid's grain, and the gas that thrusters it feeds burn.
+        let craft = two_ends(&tank, "engine:S-1", "rcs:Cold Gas Quad", "mount");
+        let (_, options) = holds(&tank, &craft);
+        assert_eq!(ids(&options), ["HTPB", "nitrogen", "custom", "none"]);
+        fill(&mut tank, "HTPB", &craft).unwrap();
+        assert!(holds_mix(&tank, &[("HTPB", 1.0)]));
+    }
+
+    #[test]
+    fn a_new_tank_takes_what_its_engine_burns_whichever_goes_on_last() {
+        let catalog = catalog();
+        let k5 = [("Kerosene", 1.0), ("LqdOxygen", 2.27)];
+        // The engine put on under the tank.
+        let mut craft = craft_of(&part("tank"), &["engine:K-5"]);
+        let filled = fill_from_engines(&mut craft, &catalog, &["under_0".into()]);
+        assert_eq!(filled, ["p"]);
+        assert!(holds_mix(&craft.parts[0], &k5));
+        // The tank put on over the engine: the same.
+        let mut craft = craft_of(&part("tank"), &["engine:K-5"]);
+        assert_eq!(
+            fill_from_engines(&mut craft, &catalog, &["p".into()]),
+            ["p"]
+        );
+        assert!(holds_mix(&craft.parts[0], &k5));
+        // Hydrolox, in a tank type that holds it.
+        let mut craft = craft_of(&part("tank"), &["engine:H-25"]);
+        assert_eq!(
+            fill_from_engines(&mut craft, &catalog, &["p".into()]),
+            ["p"]
+        );
+        assert!(holds_mix(
+            &craft.parts[0],
+            &[("LqdHydrogen", 1.0), ("LqdOxygen", 6.0)]
+        ));
+        assert!(alone(&craft.parts[0], &catalog).is_ok());
+    }
+
+    #[test]
+    fn a_tank_the_player_filled_or_past_a_decoupler_is_left_as_it_is() {
+        let catalog = catalog();
+        let mut tank = part("tank");
+        if let Some(s) = storage_mut(&mut tank) {
+            s.contents = [("Kerosene".to_owned(), 1.0), ("LqdOxygen".to_owned(), 2.0)].into();
+        }
+        let mut craft = craft_of(&tank, &["engine:K-5"]);
+        assert!(fill_from_engines(&mut craft, &catalog, &["under_0".into()]).is_empty());
+        assert_eq!(craft.parts[0], tank);
+        let mut craft = craft_of(&part("tank"), &["decoupler", "engine:H-25"]);
+        assert!(fill_from_engines(&mut craft, &catalog, &["under_1".into()]).is_empty());
+        assert_eq!(craft.parts[0], part("tank"));
+        // A part that has nothing to do with propellant fills nothing.
+        let mut craft = craft_of(&part("tank"), &["engine:K-5", "fin"]);
+        assert!(fill_from_engines(&mut craft, &catalog, &["under_1".into()]).is_empty());
     }
 
     #[test]
@@ -914,7 +1425,7 @@ mod tests {
             "wing",
         ] {
             let start = part(id);
-            for f in fields(&start, &catalog) {
+            for f in fields(&start, &usual(&catalog), &catalog) {
                 let tries: Vec<String> = match &f.value {
                     Value::Number { least, most, .. } => {
                         vec![
@@ -929,13 +1440,13 @@ mod tests {
                 };
                 for text in tries {
                     let mut changed = start.clone();
-                    match set(&mut changed, &f.id, &text, &catalog) {
+                    match set_alone(&mut changed, &f.id, &text, &catalog) {
                         // What was set builds, and reads back as set.
                         Ok(()) => {
                             alone(&changed, &catalog).unwrap();
                             if let (Value::Choice { .. }, Some(back)) = (
                                 &f.value,
-                                fields(&changed, &catalog)
+                                fields(&changed, &usual(&catalog), &catalog)
                                     .into_iter()
                                     .find(|g| g.id == f.id),
                             ) && let Value::Choice { value, .. } = back.value
@@ -958,20 +1469,20 @@ mod tests {
     fn a_tank_switches_shape_keeping_its_size() {
         let catalog = catalog();
         let mut tank = part("tank");
-        set(&mut tank, "diameter", "3", &catalog).unwrap();
-        set(&mut tank, "length", "8", &catalog).unwrap();
-        set(&mut tank, "shape", "cone", &catalog).unwrap();
+        set_alone(&mut tank, "diameter", "3", &catalog).unwrap();
+        set_alone(&mut tank, "length", "8", &catalog).unwrap();
+        set_alone(&mut tank, "shape", "cone", &catalog).unwrap();
         assert_eq!(
             value(&tank, "bottom_diameter"),
             number(3.0, 0.0, value_most(&tank, "bottom_diameter"), Unit::Metres)
         );
-        set(&mut tank, "top_diameter", "1.5", &catalog).unwrap();
-        set(&mut tank, "shape", "cylinder", &catalog).unwrap();
+        set_alone(&mut tank, "top_diameter", "1.5", &catalog).unwrap();
+        set_alone(&mut tank, "shape", "cylinder", &catalog).unwrap();
         let Value::Number { value: d, .. } = value(&tank, "diameter") else {
             panic!()
         };
         assert_eq!(d, 3.0);
-        set(&mut tank, "shape", "sphere", &catalog).unwrap();
+        set_alone(&mut tank, "shape", "sphere", &catalog).unwrap();
         assert!(
             matches!(tank.shape, Some(ShapeDef::Sphere(SphereDef { diameter })) if diameter == 3.0)
         );
@@ -993,19 +1504,19 @@ mod tests {
             let storage = craft.parts[0].built.storages().next().unwrap();
             storage.contents.iter().map(|c| c.capacity).sum()
         };
-        set(&mut tank, "utilization", "100", &catalog).unwrap();
+        set_alone(&mut tank, "utilization", "100", &catalog).unwrap();
         let full = held(&tank);
-        set(&mut tank, "utilization", "50", &catalog).unwrap();
+        set_alone(&mut tank, "utilization", "50", &catalog).unwrap();
         assert!((held(&tank) / full - 0.5).abs() < 1e-9);
         // Hydrogen needs an insulated tank: the tank type gives way to one.
-        set(&mut tank, "contents", "hydrolox", &catalog).unwrap();
+        set_alone(&mut tank, "contents", "hydrolox", &catalog).unwrap();
         assert!(
             matches!(value(&tank, "contents"), Value::Choice { value, .. } if value == "hydrolox")
         );
         // Emptied, it is structure with a wall; filled again, a tank.
-        set(&mut tank, "contents", "none", &catalog).unwrap();
+        set_alone(&mut tank, "contents", "none", &catalog).unwrap();
         assert!(storage(&tank).is_none() && tank.structure.thickness.is_some());
-        set(&mut tank, "contents", "kerolox", &catalog).unwrap();
+        set_alone(&mut tank, "contents", "kerolox", &catalog).unwrap();
         assert!(storage(&tank).is_some());
         assert!(
             readouts(&tank, &catalog)
@@ -1021,11 +1532,11 @@ mod tests {
         assert!(parse_number("tall").is_err());
         let catalog = catalog();
         let mut decoupler = part("decoupler");
-        set(&mut decoupler, "diameter", "9999", &catalog).unwrap();
+        set_alone(&mut decoupler, "diameter", "9999", &catalog).unwrap();
         let Value::Number { value, most, .. } = value(&decoupler, "diameter") else {
             panic!()
         };
         assert_eq!(value, most);
-        assert!(set(&mut decoupler, "colour", "red", &catalog).is_err());
+        assert!(set_alone(&mut decoupler, "colour", "red", &catalog).is_err());
     }
 }

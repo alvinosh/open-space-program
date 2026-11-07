@@ -1232,6 +1232,7 @@ fn blank(id: String) -> CraftPartDef {
         by: "bottom".into(),
         at: None,
         roll: 0.0,
+        points: None,
         template: None,
         shape: None,
         procedural: None,

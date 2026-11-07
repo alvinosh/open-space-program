@@ -70,6 +70,9 @@ impl WidgetContext<'_, '_, '_> {
         if style.uppercase == Some(true) {
             e.insert(Uppercase);
         }
+        if let Some(layout) = style.text_layout() {
+            e.insert(layout);
+        }
         e.insert(BoundText(template));
         if let (Some(condition), Some(active)) = (&self.def.active, &style.active_color) {
             e.insert((

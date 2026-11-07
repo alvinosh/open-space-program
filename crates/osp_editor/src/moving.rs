@@ -7,7 +7,9 @@
 //! The arrows and rings lie along the connector that holds the part: on a surface, round it (red),
 //! along it (green) and out of it (blue); on a node, across it (red, green) and along it (blue). An
 //! arrow dragged slides the part and all it holds, in steps that suit how near the view is (Shift
-//! for steps a tenth as big); a ring dragged turns it about that axis, 15° a step (Shift 5°). The
+//! for steps a tenth as big); a ring dragged turns it about that axis a turn step at a time: 15°,
+//! or what `editor.snap` or C (Shift+C back) set, 1° to 90° (`editor.snap` reads it), finer with
+//! Shift. The
 //! parts put on with it by symmetry go with it, mirrored if they were (`osp_sim::builder::alike`).
 //! What is on show is built again as the pointer goes, on a thread of its own; let go, the builder
 //! checks the change and keeps it, or puts it back and says why under the launch button. Esc while
@@ -59,6 +61,8 @@ const STEP_PX: f64 = 6.0;
 /// A step of a turn, degrees, and with Shift.
 const TURN_STEP: f64 = 15.0;
 const FINE_TURN_STEP: f64 = 5.0;
+/// The steps a turn can go in, degrees: `editor.snap` and C step through them.
+const ANGLE_STEPS: [f64; 6] = [1.0, 5.0, 15.0, 22.5, 45.0, 90.0];
 /// A ring whose axis is less than this far out of the screen (the cosine of the angle between them)
 /// turns as the pointer goes across it, not round it.
 const EDGE_ON: f64 = 0.3;
@@ -174,6 +178,9 @@ struct Drag {
     /// Where the root was on show when it was taken hold of: the craft stands on its lowest point,
     /// so what is on show moves as a part below slides, and the root says how far.
     root: DVec3,
+    /// The root itself in hand: where it was from the middle of the floor. Its arrows carry the
+    /// whole craft about the hangar, and its rings turn the whole craft about it.
+    anchor: Option<DVec3>,
     /// A step, m or rad.
     step: f64,
     /// A ring seen nearly edge on turns as the pointer goes across it instead: where the pointer
@@ -190,9 +197,11 @@ struct Building {
 }
 
 /// The tool the pointer is, and its handles on the picked part.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct Moving {
     tool: Tool,
+    /// How far a turn goes in a step, degrees.
+    angle: f64,
     handles: Vec<Handle>,
     /// The handle under the pointer, by its place in `handles`.
     over: Option<usize>,
@@ -206,9 +215,34 @@ pub struct Moving {
     held: Option<(String, VesselId, Option<(Holding, Pose)>)>,
 }
 
+impl Default for Moving {
+    fn default() -> Self {
+        Self {
+            tool: Tool::default(),
+            angle: TURN_STEP,
+            handles: Vec::new(),
+            over: None,
+            drag: None,
+            building: None,
+            drift: DVec3::ZERO,
+            was_down: false,
+            held: None,
+        }
+    }
+}
+
 impl Moving {
     pub fn tool(&self) -> Tool {
         self.tool
+    }
+
+    /// How far a turn goes in a step, degrees, and with Shift.
+    pub fn angle_step(&self, fine: bool) -> f64 {
+        if fine {
+            fine_angle(self.angle)
+        } else {
+            self.angle
+        }
     }
 
     /// Put back a handle in hand: whether there was one.
@@ -298,6 +332,13 @@ fn move_parts(
         {
             moving.tool = tool;
         }
+        if action.name() == "editor.snap" {
+            moving.angle = next_angle(moving.angle, true);
+        }
+    }
+    if !locked.0 && !typing.typing() && keys.just_pressed(KeyCode::KeyC) {
+        let back = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+        moving.angle = next_angle(moving.angle, !back);
     }
     if !locked.0 && !typing.typing() && moving.drag.is_none() {
         let keyed = [
@@ -378,6 +419,11 @@ fn move_parts(
         };
         moving.drift = root_on_show(&sim, vessel, &draft).map_or(DVec3::ZERO, |at| at - drag.root);
         handle.origin += moving.drift;
+        // The craft carried by its root moves under the pointer: the pointer is taken in the frame
+        // it had when it was taken hold of.
+        let carried = (drag.anchor.zip(editor.anchor())).map_or(DVec3::ZERO, |(from, now)| {
+            vessel_frame.vessel_way_from_sim(now - from)
+        });
         match (drag.across, cursor) {
             (Some((from, way)), Some(at)) => {
                 let gone = f64::from((at - from).dot(way)) / RING_PX;
@@ -386,9 +432,15 @@ fn move_parts(
             (Some(_), None) => {}
             (None, _) => {
                 if let Some((from, look)) = look {
-                    follow(drag, &handle, tool, from, look, shift);
+                    follow(drag, &handle, tool, from + carried, look, shift);
                 }
             }
+        }
+        if let (Some(from), Tool::Move) = (drag.anchor, tool) {
+            let way = vessel_frame.sim_way(handle.axis * drag.value);
+            editor.carry_to(from + way);
+            shaping.set_handles(true, true);
+            return;
         }
         // What has been built goes on show.
         let done = moving
@@ -419,9 +471,15 @@ fn move_parts(
                 shared.clone(),
                 drag.value,
             );
+            let root = drag.anchor.is_some();
             let task = std::thread::spawn(move || {
-                let (craft, _) =
-                    builder::shifted(&start, &catalog, &id, by, turn).map_err(|r| r.to_string())?;
+                let craft = if root {
+                    builder::turned_root(&start, turn).map_err(|r| r.to_string())?
+                } else {
+                    builder::shifted(&start, &catalog, &id, by, turn)
+                        .map_err(|r| r.to_string())?
+                        .0
+                };
                 let propulsion =
                     Propulsion::from_craft(&craft, &catalog).map_err(|e| e.to_string())?;
                 Ok((craft, propulsion))
@@ -454,16 +512,20 @@ fn move_parts(
         });
         moving.held = Some((id.clone(), vessel, holding));
     }
-    let Some((_, _, Some((holding, in_craft)))) = moving.held.clone() else {
-        // The root: nothing to slide it along.
-        quiet(moving, &mut shaping);
-        return;
+    let root = draft.parts[index].on.is_none();
+    let holding = match moving.held.clone() {
+        Some((_, _, Some(holding))) => Some(holding),
+        _ if root => None,
+        _ => {
+            quiet(moving, &mut shaping);
+            return;
+        }
     };
     let Some(shown) = sim.universe.vessel(vessel) else {
         return;
     };
     let tree = shown.propulsion.parts();
-    let base = DVec3::Z * tree.base();
+    let base = crate::shaping::tree_origin(tree);
     let Some(on_show) = tree.parts().get(index) else {
         return;
     };
@@ -472,10 +534,26 @@ fn move_parts(
         .as_ref()
         .map_or(DVec3::ZERO, |b| b.mass.center);
     let middle = on_show.position - base + on_show.rotation * middle;
-    // The craft as built and the vessel on show need not share a frame: the part is the same in
-    // both.
-    let to_vessel = Pose::new(on_show.position - base, on_show.rotation) * in_craft.inverse();
-    let pivot = to_vessel.point(holding.pivot);
+    // How the handles lie, and the point it turns about.
+    let (to_vessel, axes, pivot) = match holding {
+        // The craft as built and the vessel on show need not share a frame: the part is the same
+        // in both.
+        Some((holding, in_craft)) => {
+            let to_vessel =
+                Pose::new(on_show.position - base, on_show.rotation) * in_craft.inverse();
+            let axes = to_vessel.rotation * holding.frame.rotation;
+            (to_vessel.rotation, axes, to_vessel.point(holding.pivot))
+        }
+        // The root: carried along the hangar's axes, and turned with everything about the craft's
+        // own at its origin.
+        None => {
+            let axes = match moving.tool {
+                Tool::Move => vessel_frame.turn_from_sim(),
+                _ => DQuat::IDENTITY,
+            };
+            (DQuat::IDENTITY, axes, on_show.position - base)
+        }
+    };
     // Metres a pixel is worth where the handles are.
     let on_screen = |at: DVec3| {
         camera
@@ -500,9 +578,7 @@ fn move_parts(
     let old = std::mem::take(&mut moving.handles);
     moving.handles = (0..3)
         .map(|axis_index| {
-            let axis = to_vessel.rotation
-                * holding.frame.rotation
-                * [DVec3::X, DVec3::Y, DVec3::Z][axis_index];
+            let axis = axes * [DVec3::X, DVec3::Y, DVec3::Z][axis_index];
             let screen = (old.iter())
                 .find(|h| h.axis_index == axis_index)
                 .map(|h| h.screen.clone())
@@ -512,7 +588,7 @@ fn move_parts(
                 axis,
                 origin,
                 across: square_to(axis),
-                to_craft: to_vessel.rotation.inverse(),
+                to_craft: to_vessel.inverse(),
                 size: px * per_pixel,
                 screen,
             }
@@ -534,7 +610,7 @@ fn move_parts(
     {
         let step = match tool {
             Tool::Move => nice_step(per_pixel * STEP_PX),
-            _ => TURN_STEP.to_radians(),
+            _ => moving.angle.to_radians(),
         };
         // Seen edge on, the near side of the ring goes the way it turns.
         let across = (tool == Tool::Turn && handle.axis.dot(look).abs() < EDGE_ON)
@@ -547,6 +623,7 @@ fn move_parts(
                 Some((cursor?, (b - a).normalize_or_zero()))
             })
             .flatten();
+        let root_picked = root;
         let root = root_on_show(&sim, vessel, &draft).unwrap_or_default();
         moving.drag = Some(Drag {
             handle: over,
@@ -558,6 +635,7 @@ fn move_parts(
             shown: 0.0,
             asked: 0.0,
             root,
+            anchor: if root_picked { editor.anchor() } else { None },
             step,
             across,
             cancel: false,
@@ -573,7 +651,7 @@ fn move_parts(
 fn root_on_show(sim: &Sim, vessel: VesselId, draft: &CraftDef) -> Option<DVec3> {
     let root = draft.parts.iter().position(|p| p.on.is_none())?;
     let tree = sim.universe.vessel(vessel)?.propulsion.parts();
-    Some(tree.parts().get(root)?.position - DVec3::Z * tree.base())
+    Some(tree.parts().get(root)?.position - crate::shaping::tree_origin(tree))
 }
 
 /// Where the pointer, a ray from `from` the way `look`, takes `handle`: m along an arrow, or the
@@ -606,15 +684,34 @@ fn follow(drag: &mut Drag, handle: &Handle, tool: Tool, from: DVec3, look: DVec3
     drag.value = stepped(gone, tool, drag.step, fine);
 }
 
-/// `gone` in whole steps: `step`, or with Shift a tenth of it for a slide and 5° for a turn.
+/// `gone` in whole steps: `step`, or with Shift a tenth of it for a slide and a finer one for a
+/// turn ([`fine_angle`]).
 fn stepped(gone: f64, tool: Tool, step: f64, fine: bool) -> f64 {
     let step = match tool {
         Tool::Move if fine => step / 10.0,
         Tool::Move => step,
-        _ if fine => FINE_TURN_STEP.to_radians(),
+        _ if fine => fine_angle(step.to_degrees()).to_radians(),
         _ => step,
     };
     (gone / step).round() * step
+}
+
+/// The finer step Shift turns in, degrees, for steps of `angle`: 5°, or 1° for steps of 5° or less.
+fn fine_angle(angle: f64) -> f64 {
+    if angle > FINE_TURN_STEP + 1e-9 {
+        FINE_TURN_STEP
+    } else {
+        1.0
+    }
+}
+
+/// The turn step after `now`, up or down the list, round from the end.
+fn next_angle(now: f64, up: bool) -> f64 {
+    let at = (ANGLE_STEPS.iter())
+        .position(|&a| (a - now).abs() < 1e-9)
+        .unwrap_or(2);
+    let n = ANGLE_STEPS.len();
+    ANGLE_STEPS[if up { (at + 1) % n } else { (at + n - 1) % n }]
 }
 
 /// How far `handle` moved `value` slides and turns the part, in the craft's frame.
@@ -637,6 +734,14 @@ fn finish(
     sim: &mut Sim,
     ui: &mut LayoutVisibility,
 ) {
+    // The craft carried by its root is where it was let go, or back where it was.
+    if let (Some(from), Tool::Move) = (drag.anchor, tool) {
+        if drag.cancel {
+            editor.carry_to(from);
+        }
+        editor.set_notice("");
+        return;
+    }
     let mut redraw = drag.shown != 0.0;
     let mut notice = String::new();
     if !drag.cancel
@@ -644,7 +749,12 @@ fn finish(
         && let (Some(handle), Some(builder)) = (handle, editor.builder_mut())
     {
         let (by, turn) = motion(tool, &handle, drag.value);
-        match builder.shift(catalog, &drag.part, by, turn) {
+        let changed = if drag.anchor.is_some() {
+            builder.turn_root(catalog, turn)
+        } else {
+            builder.shift(catalog, &drag.part, by, turn)
+        };
+        match changed {
             // What is on show is the change, unless the pointer moved on while it was built.
             Ok(_) => redraw = drag.shown != drag.value,
             Err(refusal) => {
@@ -725,8 +835,12 @@ fn draw_handles(
     let tool = moving.tool;
     let held = moving.drag.as_ref().map(|d| d.handle);
     let lit = held.or(moving.over);
-    // While one is in hand, it alone is drawn, where the part has gone.
-    let (gone, drift) = (moving.drag.as_ref().map_or(0.0, |d| d.value), moving.drift);
+    // While one is in hand, it alone is drawn, where the part has gone; the root carried takes its
+    // frame along, so its arrow stays on it as it is.
+    let gone = (moving.drag.as_ref())
+        .filter(|d| d.anchor.is_none())
+        .map_or(0.0, |d| d.value);
+    let drift = moving.drift;
     for (i, handle) in moving.handles.iter_mut().enumerate() {
         let Some(frame) = vessel_frame.filter(|_| held.is_none_or(|h| h == i)) else {
             handle.screen.clear();
@@ -832,12 +946,19 @@ fn draw_handles(
 }
 
 /// `editor.tool`.
-fn publish_tool(moving: Res<Moving>, mut data: ResMut<UiData>, mut published: Local<Option<Tool>>) {
-    if *published == Some(moving.tool) {
+fn publish_tool(
+    moving: Res<Moving>,
+    mut data: ResMut<UiData>,
+    mut published: Local<Option<(Tool, u64)>>,
+) {
+    let now = (moving.tool, moving.angle.to_bits());
+    if *published == Some(now) {
         return;
     }
-    *published = Some(moving.tool);
+    *published = Some(now);
     data.set("editor.tool", moving.tool.id());
+    let angle = format!("{}°", moving.angle);
+    data.set("editor.snap", angle);
 }
 
 #[cfg(test)]
@@ -884,6 +1005,7 @@ mod tests {
             shown: 0.0,
             asked: 0.0,
             root: DVec3::ZERO,
+            anchor: None,
             step: TURN_STEP.to_radians(),
             across: None,
             cancel: false,

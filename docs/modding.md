@@ -154,9 +154,15 @@ engine, pod, RCS block or reaction wheel) or a `shape` with what it is made of a
   says where on it: `u` around and `v` along it (each 0 to 1), `side` (`front`, or `back`
   inside a container) and `standoff` (m). `roll` turns the part about the line it is held
   along (degrees).
+- The root hangs from nothing. `points: [x, y, z]` says which way its own +Z points in the
+  craft's frame (+Z, up the craft, if not given), and `roll` turns it about that way: the whole
+  craft turns with it, as the editor turns it. The craft's frame stays the one it flies by: +Z the
+  nose, +Y the belly.
 - `nodes`: nodes of its own besides its shape's, in its frame, where other parts are held. A part
   slid or turned in the editor is held by one written here, `held_<node>`, standing where its own
-  `<node>` would have to be for it to sit where it was put; `<node>` then counts as taken.
+  `<node>` would have to be for it to sit where it was put; `<node>` then counts as taken. A part
+  put on by its side (a booster beside a core, an engine on a pod's flank) is held by
+  `held_side`, a point on its outside half way up.
 - `paint`: how it looks; see [Paint](#paint).
 - `model: { path, scale }`: a glTF model drawn in place of its `shape` or its sized `procedural`
   design, which stay what it holds and weighs and what the air sees. On a landing leg it is the foot.
@@ -1445,6 +1451,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `editor.palette_open`, `editor.group`, `editor.palette[]` (`id`, `name`, `detail`, `held`), `editor.palette_more`, `editor.search_shown`, `editor.holding`, `editor.has_parts` | The editor's parts list: whether it is out, the group shown, its rows (at most 60), how many more a search would find, what the search box shows; whether a part is in hand; whether the craft has any parts |
 | `editor.rail` | Which screen the editor's rail on the left shows: `vessels` (the list of vessels), `part` (the picked part's settings), `parts` (the parts list), or nothing |
 | `editor.tool` | What the pointer does to a picked part in the editor: `shape` (the handles that size it), `move` (arrows that slide it) or `turn` (rings that turn it) |
+| `editor.symmetry`, `editor.mirror`, `editor.snap` | How parts go on in the editor: the radial count (`1`, `x4`), whether mirror symmetry is on instead, and how far a turn goes in a step (`15°`) |
 | `editor.part.picked`, `editor.part.name`, `editor.part.rows[]`, `editor.part.problem`, `editor.hint` | The part picked in the editor and its settings, shown in the rail in place of the parts list (`editor` layout): its name, its rows (`kind` `section`, `number`, `text`, `choice`, `toggle` or `readout`, with what each needs; see the layout), why the last change was refused; what the mouse does now |
 | `graphics.preset`, `graphics.recommended`, `graphics.summary` | The preset the settings match (`low`, `medium`, `high`, `ultra` or `custom`); the one for this GPU; every setting on one line |
 | `graphics.render_scale`, `graphics.antialiasing`, `graphics.shadows`, `graphics.terrain`, `graphics.trees`, `graphics.effects`, `graphics.bloom`, `graphics.vsync`, `graphics.fps_limit` | Each setting as text: percent; `off`, `fxaa`, `msaa`; a level (`off`, `low`, `medium`, `high`, `ultra`); `on` / `off`; frames per second (`0` for none) |
@@ -1502,6 +1509,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `game.menu` | Esc: closes an open popup, or opens the menu, or goes back as `menu.back` does. In the editor it goes back to the menu it came from |
 | `menu.open:<screen>`, `menu.back` | Go to the screen, the layout `menu_<screen>`; go back one. From the pause menu that resumes; from the title screen it does nothing |
 | `game.resume`, `game.exit`, `game.quit`, `game.start_tutorial:<tutorial>` | Back to the flight; leave the game for the title screen; close the game; start a tutorial's scenario with its steps. None of them asks: a button that leaves a game uses `ask.leave` |
+| `editor.ask_discard:<action>`, `editor.discard:<action>` | The editor's own: `editor.show`, `editor.new`, Back and Esc send `editor.ask_discard` instead of going ahead while the craft on show has changes, which asks in the `dialog` layout; its Discard sends `editor.discard`, which lets `<action>` through once |
 | `ask.leave:<action>`, `ask.delete_save:<file>`, `ask.overwrite:<file>`, `ask.destroy:<vessel>`, `ask.clear`, `ask.revert:<launch\|hangar>` | Ask, in the `dialog` layout, before something is lost. `ask.leave` does `<action>`, which can have an argument of its own (`ask.leave:game.load:game_2`), asking first to save a game that its save does not hold; `ask.overwrite` saves over the game's own save at once and asks before saving over another's; the others ask whether to do `game.delete_save`, `vessel.destroy`, `editor.clear` or `game.revert` |
 | `game.revert:<launch\|hangar>` | Go back to the last launch: to the moment it left, or to the editor with the same craft, staging and place. Everything since goes, the vessels already in the game as they were then. Saves are not touched |
 | `vessel.abort` | Begin the craft's `abort`, if it has one |
@@ -1511,6 +1519,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `game.save`, `game.save_as`, `game.save_to:<file>`, `game.load:<file>`, `game.continue`, `game.delete_save:<file>` | Save the game in progress to its save; to a new save, or over the save `file`, which it then goes to (from the Save screen, either goes back to Pause); carry on from a save or a quicksave (`<save>/quicksave_<n>`); from the newest save this game can read; delete one, a save with its quicksaves |
 | `game.quicksave`, `game.quickload` | In flight only, not in a tutorial: add a quicksave to the save the game in progress goes to, starting that save if there is none; carry on from its newest quicksave. Bound to a held key (F9), `game.quickload` waits for it to be held a second; fired from a button it loads at once. Neither changes the save itself, so leaving still asks to save |
 | `editor.list`, `editor.clear`, `vessel.destroy:<vessel>` | Show or hide the editor's list of vessels (`editor.list_open`), which choosing one hides; destroy what stands on the pad or runway picked; destroy a vessel, flying another if it was the one being flown and going to the empty hangar if it was the last |
+| `editor.symmetry_mode`, `editor.snap`, `editor.new:plane` | Switch between radial and mirror symmetry (R); step how far a turn goes (C: 1°, 5°, 15°, 22.5°, 45°, 90°); start a plane from nothing, shown lying as on the runway, with mirror symmetry on |
 | `editor.new`, `editor.parts`, `editor.group:<procedural\|pods\|engines\|control>`, `editor.search:<text>`, `editor.add:<entry>`, `editor.drop`, `editor.symmetry`, `editor.remove` | Start a vessel from nothing; show or hide the parts list (with a part picked, let go of it and show the list in place of its settings); show a group of it, or what a search finds in all of them; take a part in hand (the first part of an empty craft goes straight on), put it back; step the symmetry of what goes on a surface (1, 2, 3, 4, 6, 8, as X does); take the picked part off with what it holds (Delete or Backspace) |
 | `editor.set:<field>:<value>`, `editor.step:<field>:<-1\|1>`, `editor.expand:<field>` | In the picked part's settings: set a field of it (`osp_sim::properties`: a size, its shape, what its tank holds, its tank type, utilization, material, a sizer's requirement, how far it is turned), step a number, drop a choice down. Each goes through the builder, so it is checked and can be undone. A parts list row carries `palette:<entry>` when dragged, to be let go in the hangar |
 | `editor.tool:<shape\|move\|turn>` | The editor's tool, as the keys 1, 2 and 3: size a picked part by its handles, slide it by its arrows, or turn it by its rings; the parts put on with it by symmetry go with it |

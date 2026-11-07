@@ -19,7 +19,7 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use osp_sim::{
     data::{CraftPartDef, PartCatalog},
-    properties::{self, Unit, Value},
+    properties::{self, Mix, Unit, Value},
 };
 use osp_ui::{LayoutVisibility, UiAction, UiData, UiRecord, UiValue, record};
 
@@ -142,13 +142,16 @@ fn part_settings(
                 let Some((field, way)) = arg.split_once(':') else {
                     continue;
                 };
-                let part = (window.part.as_ref())
-                    .and_then(|id| editor.builder()?.draft().parts.iter().find(|p| &p.id == id))
-                    .cloned();
+                let Some(draft) = editor.builder().map(|b| b.draft()) else {
+                    continue;
+                };
+                let part =
+                    (window.part.as_ref()).and_then(|id| draft.parts.iter().find(|p| &p.id == id));
                 let Some(part) = part else {
                     continue;
                 };
-                let found = properties::fields(&part, &catalog)
+                let mixes = properties::mixes(draft, &catalog, &part.id);
+                let found = properties::fields(part, &mixes, &catalog)
                     .into_iter()
                     .find(|f| f.id == field);
                 if let Some(properties::Field {
@@ -222,9 +225,10 @@ fn apply(
 }
 
 /// The rows of the settings for `part`, `open` the choice dropped down, with the sizes a handle in
-/// hand has in place of the part's own.
+/// hand has in place of the part's own. Its tank can hold `mixes`, what the engines it feeds burn.
 fn rows(
     part: &CraftPartDef,
+    mixes: &[Mix],
     catalog: &PartCatalog,
     open: Option<&str>,
     dragged: &[(&str, f64)],
@@ -232,7 +236,7 @@ fn rows(
     let mut out = Vec::new();
     let mut section = "Part";
     let heading = |label: &str| record([("kind", "section".into()), ("label", label.into())]);
-    for field in properties::fields(part, catalog) {
+    for field in properties::fields(part, mixes, catalog) {
         if field.section != section {
             section = field.section;
             out.push(heading(section));
@@ -290,6 +294,14 @@ fn rows(
             ]),
         };
         out.push(row);
+        // A tank that feeds no engine has nothing to be filled with until one goes on under it.
+        if id == "contents" && mixes.is_empty() {
+            out.push(record([
+                ("kind", "readout".into()),
+                ("label", "Feeds".into()),
+                ("value", "No engine yet".into()),
+            ]));
+        }
     }
     let readouts = properties::readouts(part, catalog);
     if !readouts.is_empty() {
@@ -313,9 +325,11 @@ fn publish_part_settings(
     content: Res<GameContent>,
     mut data: ResMut<UiData>,
     mut stores: Local<Option<PartCatalog>>,
+    mut fed: Local<Option<(Vec<CraftPartDef>, String, Vec<Mix>)>>,
     mut published: Local<
         Option<(
             Option<CraftPartDef>,
+            Vec<Mix>,
             Option<String>,
             String,
             Vec<(String, u64)>,
@@ -328,12 +342,34 @@ fn publish_part_settings(
     let Some(catalog) = stores.as_ref() else {
         return;
     };
+    let draft = editor.builder().map(|b| b.draft());
     let part = (window.part.as_ref())
-        .and_then(|id| editor.builder()?.draft().parts.iter().find(|p| &p.id == id))
+        .and_then(|id| draft?.parts.iter().find(|p| &p.id == id))
         .cloned();
+    // What the engines it feeds burn, which its tank can hold: an engine put on or taken off
+    // changes them while the part stays as it was. Working them out builds the craft, so only
+    // when the craft or the part changes.
+    if content.is_changed() {
+        *fed = None;
+    }
+    let mixes = match (&part, draft) {
+        (Some(part), Some(draft)) => {
+            let fresh = (fed.as_ref())
+                .is_some_and(|(parts, id, _)| *id == part.id && *parts == draft.parts);
+            if !fresh {
+                let mixes = properties::mixes(draft, catalog, &part.id);
+                *fed = Some((draft.parts.clone(), part.id.clone(), mixes));
+            }
+            fed.as_ref()
+                .map(|(.., mixes)| mixes.clone())
+                .unwrap_or_default()
+        }
+        _ => Vec::new(),
+    };
     let dragged = shaping.drag_values();
     let now = (
         part.clone(),
+        mixes.clone(),
         window.open_field.clone(),
         window.problem.clone(),
         (dragged.iter())
@@ -355,7 +391,13 @@ fn publish_part_settings(
     data.set("editor.part.name", name);
     data.set(
         "editor.part.rows",
-        rows(&part, catalog, window.open_field.as_deref(), &dragged),
+        rows(
+            &part,
+            &mixes,
+            catalog,
+            window.open_field.as_deref(),
+            &dragged,
+        ),
     );
 }
 

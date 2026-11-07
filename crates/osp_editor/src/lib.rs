@@ -5,7 +5,8 @@
 //!
 //! - [`hangar`]: opening and closing the editor, the hall drawn round what is on show, its camera,
 //!   the list of vessels, launching and reverting to a launch.
-//! - [`building`]: the parts list, taking a part in hand and putting it on.
+//! - [`parts_list`]: the parts list, a grid of pictures of parts by tab, filter and search.
+//! - [`building`]: taking a part in hand and putting it on.
 //! - [`shaping`]: picking a part, and the handles that size it.
 //! - [`moving`]: the move and turn tools.
 //! - [`part_settings`]: everything that can be set on the picked part, in the rail.
@@ -16,6 +17,7 @@ mod capture;
 mod hangar;
 mod moving;
 mod part_settings;
+mod parts_list;
 mod shaping;
 
 use bevy::prelude::*;
@@ -28,6 +30,7 @@ impl Plugin for EditorPlugin {
             hangar::HangarPlugin,
             shaping::ShapingPlugin,
             building::BuildingPlugin,
+            parts_list::PartsListPlugin,
             moving::MovingPlugin,
             part_settings::PartSettingsPlugin,
             capture::CapturePlugin,

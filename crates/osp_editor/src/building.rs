@@ -1,31 +1,46 @@
 //! Building a craft from parts in the editor, as in KSP with its procedural parts. `editor.new`
-//! starts an empty craft. The parts list (`editor.parts` shows and hides it) has the palette's
-//! entries (`osp_sim::palette`) a group at a time (`editor.group:<group>`), or those a search
-//! matches in every group (`editor.search:<text>`).
+//! starts an empty craft, a rocket for the pad, or with `editor.new:plane` a plane, built lying as it
+//! will stand on the runway. The parts list (`editor.parts` shows and hides it) is
+//! [`crate::parts_list`]'s.
 //!
-//! A part is taken in hand by dragging its row into the hangar, by clicking its row
+//! A part is taken in hand by dragging its tile into the hangar, by clicking its tile
 //! (`editor.add:<entry>`), or, for a part already on the craft, by dragging it off with the left
-//! button (with everything held by it; a drag that starts on nothing turns the view). The first part
-//! of an empty craft goes on as its root. After that the craft's free nodes show as rings, and what
-//! is in hand is shown where it would go, built on a thread of its own as the pointer moves: on a
-//! ring it comes near, by its own node that faces the other way (a new part as wide as that node);
-//! on the side of a part, for what goes on surfaces (fins, wings, RCS blocks), at the point under
-//! the pointer, a new one sized for the hull there, with copies round it for symmetry (X steps
-//! through 1, 2, 3, 4, 6 and 8, Shift+X back). Q and E turn it about the joint, 15° a press or 5°
-//! with Shift; with nothing in hand they turn the picked part. The builder's rules are checked on
-//! the same thread: where it may not go it shows red and the hint says why. Dragged, it goes where
-//! it is let go; taken by a click, where the next click is. The parts list stays out for the next
-//! one; a click on the part picks it to shape it. Esc, a right click or `editor.drop` puts it back. Delete or Backspace, or
-//! `editor.remove`, takes the picked part off with everything held by it. All of it can be undone.
+//! button, with everything held by it and the parts put on with it by symmetry. Dragging the root
+//! carries the whole craft about the hangar instead: up off the floor to make room under it, say.
+//! A drag that starts on nothing turns the view. The first part of an empty craft goes on as its
+//! root, floating well over the floor. After that the craft's free nodes show as rings, and what is
+//! in hand is shown where it would go, built on a thread of its own as the pointer moves:
 //!
-//! Publishes `editor.palette_open`, `editor.group`, `editor.palette` (each `id`, `name`, `detail`,
-//! `held`; at most [`MOST_ROWS`]), `editor.palette_more`, `editor.search_shown`, `editor.holding`
-//! and `editor.hint` while something is in hand.
+//! - On a ring it comes near: by its own node that faces the other way (a new part as wide as that
+//!   node); or, on a node that faces across the craft, by its side, upright beside what holds it,
+//!   as a booster on a radial decoupler.
+//! - On the side of any part, at the point under the pointer: fins, wings and RCS blocks by the
+//!   node they stand on, sized for the hull there; a decoupler by its top, standing out of it, to
+//!   hold a booster; anything else by its side, upright: a tank, an engine, a pod.
+//!
+//! Symmetry: X steps the radial count (1, 2, 3, 4, 6, 8; Shift+X back) and R switches to mirror,
+//! across the craft's middle plane (its nose and belly), and back (`editor.symmetry`,
+//! `editor.symmetry_mode`). Radial copies go round the part they are on, a mirror copy to the far
+//! side of the plane. Whatever is put on a part that has copies by symmetry goes on each of them
+//! as well, mirrored on mirror images: a nose cone on one of four boosters goes on all four. The
+//! copies are plain parts; nothing remembers them (`osp_sim::builder::alike` finds them again).
+//!
+//! Q and E turn what is in hand about the joint, a turn step a press (15° unless C or `editor.snap`
+//! changed it; finer with Shift); with nothing in hand
+//! they turn the picked part, or the whole craft about its axis if that is the root. The builder's
+//! rules are checked on the preview's thread: where it may not go it shows red and the hint says
+//! why. Dragged, it goes where it is let go; taken by a click, where the next click is. The parts
+//! list stays out for the next one; a click on the part picks it to shape it. Esc, a right click or
+//! `editor.drop` puts it back. Delete or Backspace, or `editor.remove`, takes the picked part off
+//! with everything held by it. All of it can be undone.
+//!
+//! Publishes `editor.holding`, `editor.symmetry` (the radial count as it reads: `1`, `x4`),
+//! `editor.mirror`, and `editor.hint` while something is in hand.
 
 use std::{collections::BTreeSet, sync::Arc, thread::JoinHandle};
 
 use bevy::{
-    math::DVec3,
+    math::{DQuat, DVec3},
     picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings},
     prelude::*,
 };
@@ -34,13 +49,14 @@ use osp_sim::{
     builder::{self, Place},
     craft::Craft,
     data::{CraftDef, CraftPartDef, PartCatalog, SurfaceAtDef},
-    palette::{self, Entry, Group},
+    geometry::preset::NodeDef,
+    palette::{self, Entry},
     parts::PartId,
+    properties,
     propulsion::Propulsion,
 };
 use osp_ui::{
-    CLICK_SLOP, DragPayload, Formatters, LayoutVisibility, TextFocus, UiAction, UiData,
-    ViewOverlay, record,
+    CLICK_SLOP, DragPayload, Formatters, LayoutVisibility, TextFocus, UiAction, UiData, ViewOverlay,
 };
 
 use osp_game::{
@@ -56,7 +72,8 @@ use osp_game::{
 
 use crate::{
     hangar::{Editor, editor_actions},
-    shaping::{Shaping, VesselFrame, shape_parts},
+    moving::Moving,
+    shaping::{Shaping, VesselFrame, shape_parts, tree_origin},
 };
 
 /// How near a free node the pointer has to come for the part in hand to go there, px.
@@ -64,17 +81,15 @@ const NODE_REACH_PX: f32 = 18.0;
 /// How a free node's ring is drawn, px across, and the most drawn.
 const RING_PX: f32 = 14.0;
 const MOST_RINGS: usize = 64;
-/// The most rows the parts list shows at once.
-pub const MOST_ROWS: usize = 60;
 /// How far off a wall what the pointer touches may be and still be on it: the drawn mesh is a
 /// little off the exact shape. m, and as a share of how far the wall is from the axis.
 const ON_WALL: f64 = 0.15;
 const ON_WALL_SHARE: f64 = 0.05;
-/// The symmetries the X key steps through.
+/// The radial symmetries the X key steps through.
 const SYMMETRIES: [u32; 6] = [1, 2, 3, 4, 6, 8];
-/// How far Q and E turn a part, degrees, and with Shift.
-const TURN: f64 = 15.0;
-const FINE_TURN: f64 = 5.0;
+/// A node whose way out is less than this far along the craft's axis (the cosine) faces across
+/// it: a part with a side goes on there by its side, upright.
+const ACROSS: f64 = 0.7;
 /// What a list row carries when dragged: `palette:<entry>`.
 const PALETTE_DRAG: &str = "palette:";
 const ACCENT: Color = Color::srgb(0.220, 0.878, 0.769);
@@ -104,32 +119,63 @@ impl Plugin for BuildingPlugin {
 enum Held {
     /// A new part, from the palette entry with this id.
     New(String),
-    /// A part of the craft, by its id, with everything held by it.
+    /// A part of the craft, by its id, with everything held by it and the parts put on with it by
+    /// symmetry.
     Moved(String),
+}
+
+/// How what is in hand goes on a surface.
+#[derive(Debug, Clone, PartialEq)]
+enum OnSurface {
+    /// By a node of its own, turned so far about the joint, degrees: a fin, a wing, an RCS block,
+    /// or a decoupler by its top, standing out of the surface.
+    By(String, f64),
+    /// By its side, upright beside what it is on: a tank, an engine, a pod.
+    Side,
+    /// By a node of its own, turned to roll along the craft: a wheel.
+    Rolling(String),
 }
 
 /// Where what is in hand would go. Parts are named by their ids.
 #[derive(Debug, Clone, PartialEq)]
 enum Spot {
-    /// The first part, as the root.
-    Root,
-    /// At a free node of `part`, by its own node `by`, a new part as wide as `width`.
+    /// At a free node of `part`: by its own node `by`, a new part as wide as `width`; or by its
+    /// side, upright, if `by` is none.
     Node {
         part: String,
         node: String,
-        by: String,
+        by: Option<String>,
         width: f64,
     },
-    /// On a surface of `part`, by its own node `by` turned `roll` degrees, a new part sized for a
-    /// hull `width` across.
+    /// On a surface of `part` at `at`, a new part sized for a hull `width` across.
     Surface {
         part: String,
         surface: String,
         at: SurfaceAtDef,
-        by: String,
-        roll: f64,
         width: f64,
     },
+}
+
+/// What putting what is in hand somewhere does: the parts it puts on (the one in hand first, then
+/// what it holds), each place they go (and whether as their mirror image), and the parts they
+/// replace (what was picked up, and its copies).
+#[derive(Debug, Clone, PartialEq)]
+struct Plan {
+    parts: Vec<CraftPartDef>,
+    places: Vec<(Place, bool)>,
+    replacing: BTreeSet<String>,
+}
+
+impl Plan {
+    fn put(&self, draft: &CraftDef) -> Result<(CraftDef, Vec<String>), String> {
+        let (craft, tops) = builder::put_set(draft, &self.parts, &self.places, &self.replacing)
+            .map_err(|r| r.to_string())?;
+        let mut ghost = Vec::new();
+        for top in &tops {
+            ghost.extend(held_through(&craft, top));
+        }
+        Ok((craft, ghost))
+    }
 }
 
 /// A node of the craft with nothing held there.
@@ -147,39 +193,52 @@ struct FreeNode {
     screen: Option<Vec2>,
 }
 
-/// What a preview shows: where, how many round the axis, and turned how far besides.
-type Wanted = Option<(Spot, u32, f64)>;
-
-/// What a preview is built into on its thread: the craft, its parts, and why the rules would not
-/// have it, if they would not.
-type Built = Result<(CraftDef, Propulsion, Option<String>), String>;
+/// What a preview is built into on its thread: the craft, its parts, the parts in hand, and why
+/// the rules would not have it, if they would not.
+type Built = Result<(CraftDef, Propulsion, Vec<String>, Option<String>), String>;
 
 /// A preview being built.
 struct Job {
     task: JoinHandle<Built>,
-    wanted: Wanted,
-    ghost: Vec<String>,
+    wanted: Option<Plan>,
+}
+
+/// The whole craft being carried about the hangar by its root.
+#[derive(Debug, Clone, Copy)]
+struct Carry {
+    /// Where the root was, from the middle of the floor.
+    from: DVec3,
+    /// The point taken hold of, from the middle of the floor then, and the way the view looked:
+    /// it is carried in the plane square to that through the point.
+    grabbed: DVec3,
+    look: DVec3,
 }
 
 /// The parts list and what is in hand.
 #[derive(Resource)]
 pub struct Placing {
     open: bool,
-    group: Group,
-    search: String,
     held: Option<Held>,
     /// It was dragged into the view or off the craft: it goes where it is let go.
     dropping: bool,
+    /// How many go round, and whether one goes across the middle instead.
     symmetry: u32,
+    mirror: bool,
     /// Degrees it is turned about the joint besides how it goes on.
     roll: f64,
     spot: Option<Spot>,
+    plan: Option<Plan>,
+    /// What the plan was worked out for: where, the symmetry, and the turn.
+    asked: Option<(Spot, u32, bool, f64)>,
     nodes: Vec<FreeNode>,
     /// The craft without what is in hand, built to tell which of its nodes are free: the parts it
     /// was built from, what was in hand then, and the craft.
-    built: Option<(Vec<CraftPartDef>, Option<Held>, Craft)>,
-    /// What is on show: the draft with what is in hand where `shown` says, or the draft alone.
-    shown: Wanted,
+    built: Option<(Vec<CraftPartDef>, Option<Held>, Arc<Craft>)>,
+    /// Parts built on their own, to tell how they go on: the last few.
+    alone: Vec<(CraftPartDef, Arc<Craft>)>,
+    /// What is on show: the draft as the plan would leave it, or the draft alone; and that craft.
+    shown: Option<Plan>,
+    shown_craft: Option<CraftDef>,
     job: Option<Job>,
     /// The parts a preview shows in hand, and whether the rules would have them there, or why not.
     ghost: Vec<String>,
@@ -191,22 +250,28 @@ pub struct Placing {
     was_down: [bool; 2],
     /// A left press on a part of the craft, not yet a click or a drag: the part and where.
     grabbed: Option<(String, Vec2)>,
+    carry: Option<Carry>,
+    /// Esc while carrying the craft: it goes back here.
+    put_back: Option<DVec3>,
 }
 
 impl Default for Placing {
     fn default() -> Self {
         Self {
             open: false,
-            group: Group::Procedural,
-            search: String::new(),
             held: None,
             dropping: false,
             symmetry: 1,
+            mirror: false,
             roll: 0.0,
             spot: None,
+            plan: None,
+            asked: None,
             nodes: Vec::new(),
             built: None,
+            alone: Vec::new(),
             shown: None,
+            shown_craft: None,
             job: None,
             ghost: Vec::new(),
             refused: None,
@@ -215,6 +280,8 @@ impl Default for Placing {
             right_press: None,
             was_down: [false; 2],
             grabbed: None,
+            carry: None,
+            put_back: None,
         }
     }
 }
@@ -225,16 +292,30 @@ impl Placing {
         self.open
     }
 
-    /// Something is in hand: the pointer is for putting it somewhere.
+    /// Something is in hand, or the craft is being carried: the pointer is for that.
     pub fn is_holding(&self) -> bool {
-        self.held.is_some()
+        self.held.is_some() || self.carry.is_some()
     }
 
-    /// Put back what is in hand, if anything is: whether it was.
+    /// The palette entry a new part in hand is from, if one is.
+    pub fn held_entry(&self) -> Option<&str> {
+        match &self.held {
+            Some(Held::New(entry)) => Some(entry),
+            _ => None,
+        }
+    }
+
+    /// Put back what is in hand, or the craft being carried, if anything is: whether it was.
     pub fn let_go(&mut self) -> bool {
+        if let Some(carry) = self.carry.take() {
+            self.put_back = Some(carry.from);
+            return true;
+        }
         let held = self.held.take().is_some();
         if held {
             self.spot = None;
+            self.plan = None;
+            self.asked = None;
             self.dropping = false;
             self.roll = 0.0;
             self.restore = true;
@@ -254,8 +335,31 @@ impl Placing {
         self.held = Some(held);
         self.dropping = dropping;
         self.spot = None;
+        self.plan = None;
+        self.asked = None;
         self.roll = 0.0;
         self.refused = None;
+    }
+
+    /// `part` built on its own, from the last few asked for.
+    fn alone(&mut self, part: &CraftPartDef, catalog: &PartCatalog) -> Option<Arc<Craft>> {
+        if let Some((_, craft)) = self.alone.iter().find(|(p, _)| p == part) {
+            return Some(craft.clone());
+        }
+        let craft = Arc::new(builder::alone(part, catalog).ok()?);
+        if self.alone.len() >= 8 {
+            self.alone.remove(0);
+        }
+        self.alone.push((part.clone(), craft.clone()));
+        Some(craft)
+    }
+
+    /// How the radial symmetry reads: `1`, `x4`.
+    fn symmetry_label(&self) -> String {
+        match self.symmetry {
+            1 => "1".to_owned(),
+            n => format!("x{n}"),
+        }
     }
 }
 
@@ -295,131 +399,13 @@ fn held_through(draft: &CraftDef, id: &str) -> BTreeSet<String> {
     }
 }
 
-/// Where a spot puts a part, turned `roll` degrees besides.
-fn place_at(spot: &Spot, roll: f64) -> Option<Place> {
-    match spot {
-        Spot::Root => None,
-        Spot::Node { part, node, by, .. } => {
-            let mut place = Place::node(format!("{part}.{node}"), by.clone());
-            place.roll = roll;
-            Some(place)
-        }
-        Spot::Surface {
-            part,
-            surface,
-            at,
-            by,
-            roll: own,
-            ..
-        } => {
-            let mut place = Place::surface(format!("{part}.{surface}"), by.clone(), *at);
-            place.roll = own + roll;
-            Some(place)
-        }
+/// The parts picked up with `id`: it, the parts put on with it by symmetry, and all they hold.
+fn picked_up(draft: &CraftDef, id: &str) -> BTreeSet<String> {
+    let mut ids = held_through(draft, id);
+    for (other, _) in builder::alike(draft, id) {
+        ids.extend(held_through(draft, &other));
     }
-}
-
-fn width_of(spot: &Spot) -> Option<f64> {
-    match spot {
-        Spot::Root => None,
-        Spot::Node { width, .. } | Spot::Surface { width, .. } => Some(*width),
-    }
-}
-
-/// The new part to put in from `entry`, sized for `spot`.
-fn new_part(entry: &Entry, spot: &Spot, draft: &CraftDef, symmetry: u32) -> CraftPartDef {
-    let mut part = entry.part.clone();
-    let copies = match spot {
-        Spot::Surface { .. } if symmetry > 1 => symmetry,
-        _ => 0,
-    };
-    part.id = new_id(draft, &entry.stem, copies);
-    if let Some(width) = width_of(spot) {
-        palette::fit(&mut part, width);
-    }
-    part
-}
-
-/// `draft` with what is in hand at `spot`, without the rules: what a preview shows. And the ids
-/// of the parts in hand there.
-fn with_held(
-    draft: &CraftDef,
-    held: &Held,
-    entries: &[Entry],
-    spot: &Spot,
-    symmetry: u32,
-    roll: f64,
-) -> Result<(CraftDef, Vec<String>), String> {
-    let place = place_at(spot, roll);
-    let mut craft = draft.clone();
-    match held {
-        Held::New(entry) => {
-            let entry = entries
-                .iter()
-                .find(|e| &e.id == entry)
-                .ok_or("no such part")?;
-            let part = new_part(entry, spot, draft, symmetry);
-            let added = match (&place, spot) {
-                (Some(place), Spot::Surface { .. }) if symmetry > 1 => {
-                    builder::patterned(&part, place, symmetry).map_err(|r| r.to_string())?
-                }
-                (Some(place), _) => vec![builder::held_at(part, place)],
-                (None, _) => vec![part],
-            };
-            let ids = added.iter().map(|p| p.id.clone()).collect();
-            craft.parts.extend(added);
-            Ok((craft, ids))
-        }
-        Held::Moved(id) => {
-            let place = place.ok_or("it has to be held by something")?;
-            let index = (craft.parts.iter())
-                .position(|p| &p.id == id)
-                .ok_or("it is not on the craft")?;
-            let moved = builder::held_at(craft.parts[index].clone(), &place);
-            craft.parts[index] = moved;
-            Ok((craft, held_through(draft, id).into_iter().collect()))
-        }
-    }
-}
-
-/// Put what is in hand at `spot` through the builder, with its rules: what a click or a drop does.
-/// The ids of the parts it put there.
-fn put(
-    editor: &mut Editor,
-    catalog: &PartCatalog,
-    held: &Held,
-    entries: &[Entry],
-    spot: &Spot,
-    symmetry: u32,
-    roll: f64,
-) -> Result<Vec<String>, String> {
-    let Some(builder) = editor.builder_mut() else {
-        return Err("there is no craft to build".into());
-    };
-    let place = place_at(spot, roll);
-    let change = match held {
-        Held::New(entry) => {
-            let entry = entries
-                .iter()
-                .find(|e| &e.id == entry)
-                .ok_or("no such part")?;
-            let part = new_part(entry, spot, builder.draft(), symmetry);
-            match place {
-                Some(place) if symmetry > 1 && matches!(spot, Spot::Surface { .. }) => {
-                    builder.pattern(catalog, part, place, symmetry)
-                }
-                place => builder.place(catalog, part, place),
-            }
-        }
-        Held::Moved(id) => {
-            let place = place.ok_or("it has to be held by something")?;
-            builder.move_to(catalog, id, place).map(|mut c| {
-                c.added = vec![id.clone()];
-                c
-            })
-        }
-    };
-    change.map(|c| c.added).map_err(|r| r.to_string())
+    ids
 }
 
 /// The free nodes of `craft`, by part id.
@@ -436,10 +422,12 @@ fn free_nodes(craft: &Craft) -> Vec<FreeNode> {
             })
             .collect();
         // A part slid or turned is held by a node of its own that stands for one it has: that one
-        // is taken too.
+        // is taken too. A node of its own it is held by on its side is no place for anything else.
         let taken = |name: &str| {
-            used.iter()
-                .any(|u| *u == name || builder::stands_for(u) == name)
+            name == builder::SIDE
+                || used
+                    .iter()
+                    .any(|u| *u == name || builder::stands_for(u) == name)
         };
         for node in part.nodes().filter(|n| !taken(&n.name)) {
             out.push(FreeNode {
@@ -459,26 +447,8 @@ fn free_nodes(craft: &Craft) -> Vec<FreeNode> {
 /// Which of `part`'s own nodes goes on a node facing `way` (the craft's frame): the one that faces
 /// most the other way as the part stands, of those nothing is held at (`used`). None if there is
 /// none.
-fn by_node(
-    part: &CraftPartDef,
-    used: &[String],
-    catalog: &PartCatalog,
-    way: DVec3,
-) -> Option<String> {
-    let mut part = part.clone();
-    part.id = "held".into();
-    (part.on, part.at) = (None, None);
-    let alone = CraftDef {
-        id: "held".into(),
-        name: String::new(),
-        parts: vec![part],
-        sequences: None,
-        triggers: Vec::new(),
-        rcs_shut: Vec::new(),
-        abort: Vec::new(),
-    };
-    let craft = Craft::build(&alone, catalog).ok()?;
-    let own = &craft.assembly.parts()[0];
+fn by_node(alone: &Craft, used: &[String], way: DVec3) -> Option<String> {
+    let own = &alone.assembly.parts()[0];
     own.nodes()
         // Not one it was slid or turned to by hand, which meant that place only.
         .filter(|n| !used.contains(&n.name) && builder::stands_for(&n.name) == n.name)
@@ -496,6 +466,238 @@ fn dragged_entry(
         let carried = payload.0.render(data, formatters);
         carried.strip_prefix(PALETTE_DRAG).map(str::to_owned)
     })
+}
+
+/// Everything about putting what is in hand at `spot` that does not depend on the pointer: the
+/// craft as it stands (`draft`), without what is in hand (`built`), and how it is held.
+struct Making<'a> {
+    draft: &'a CraftDef,
+    built: &'a Craft,
+    catalog: &'a PartCatalog,
+    entries: &'a [Entry],
+    symmetry: u32,
+    mirror: bool,
+    roll: f64,
+}
+
+impl Making<'_> {
+    /// The part in hand as it is to go on at `spot`, and how it goes on a surface.
+    fn in_hand(
+        &self,
+        placing: &mut Placing,
+        held: &Held,
+    ) -> Result<(CraftPartDef, OnSurface), String> {
+        match held {
+            Held::New(id) => {
+                let entry = (self.entries.iter())
+                    .find(|e| &e.id == id)
+                    .ok_or("no such part")?;
+                let alone =
+                    (placing.alone(&entry.part, self.catalog)).ok_or("it cannot be built")?;
+                let how = match &entry.surface {
+                    Some((by, _)) if builder::rolls(&alone) => OnSurface::Rolling(by.clone()),
+                    Some((by, roll)) => OnSurface::By(by.clone(), *roll),
+                    None if builder::lets_go(&alone) => OnSurface::By("top".into(), 0.0),
+                    None => OnSurface::Side,
+                };
+                let mut part = entry.part.clone();
+                part.id = new_id(self.draft, &entry.stem, 0);
+                Ok((part, how))
+            }
+            Held::Moved(id) => {
+                let part = (self.draft.parts.iter())
+                    .find(|p| &p.id == id)
+                    .ok_or("it is not on the craft")?
+                    .clone();
+                let alone = (placing.alone(&part, self.catalog)).ok_or("it cannot be built")?;
+                let how = match () {
+                    _ if builder::rolls(&alone) => OnSurface::Rolling(part.by.clone()),
+                    _ if part.at.is_some() && part.by != builder::SIDE => {
+                        OnSurface::By(part.by.clone(), part.roll)
+                    }
+                    _ if builder::lets_go(&alone) => OnSurface::By("top".into(), 0.0),
+                    _ => OnSurface::Side,
+                };
+                Ok((part, how))
+            }
+        }
+    }
+
+    /// What putting `held` at `spot` does.
+    fn plan(&self, placing: &mut Placing, held: &Held, spot: &Spot) -> Result<Plan, String> {
+        let (mut part, how) = self.in_hand(placing, held)?;
+        let new = matches!(held, Held::New(_));
+        let holder_of = |id: &str| self.built.find(id).ok_or("it has nothing to go on");
+        // Sized for where it goes, a new one: as wide as a node, or for the hull it stands on.
+        let side = match spot {
+            Spot::Node { by, width, .. } => {
+                if new && by.is_some() {
+                    palette::fit(&mut part, *width);
+                }
+                by.is_none()
+            }
+            Spot::Surface { width, .. } => {
+                if new {
+                    palette::fit(&mut part, *width);
+                }
+                how == OnSurface::Side
+            }
+        };
+        part.nodes.retain(|n| n.name != builder::SIDE);
+        let side_node = if side {
+            let alone = placing
+                .alone(&part, self.catalog)
+                .ok_or("it cannot be built")?;
+            let node = builder::side_node(&alone);
+            part.nodes.push(node.clone());
+            Some(node)
+        } else {
+            None
+        };
+        let upright = |holder: usize, mount: &Mount| -> Result<f64, String> {
+            let node = side_node.as_ref().ok_or("it has no side")?;
+            builder::upright_roll(self.built, holder, mount, node, DVec3::Z)
+                .ok_or_else(|| "it cannot stand upright there".to_owned())
+        };
+        // A wheel rolls along its own +Y: along the craft.
+        let wheel_node = match &how {
+            OnSurface::Rolling(by) => {
+                let alone = placing
+                    .alone(&part, self.catalog)
+                    .ok_or("it cannot be built")?;
+                let node = (alone.assembly.parts()[0].node(by))
+                    .ok_or_else(|| format!("it has no node `{by}`"))?;
+                Some(NodeDef {
+                    name: node.name.clone(),
+                    position: node.position.to_array(),
+                    direction: node.direction.to_array(),
+                    size: node.size,
+                })
+            }
+            _ => None,
+        };
+        let rolling = |holder: usize, mount: &Mount| -> Result<f64, String> {
+            let node = wheel_node.as_ref().ok_or("it has no wheel")?;
+            builder::upright_roll(self.built, holder, mount, node, DVec3::Y)
+                .ok_or_else(|| "it cannot roll that way there".to_owned())
+        };
+        let (place, holder) = match spot {
+            Spot::Node {
+                part: on, node, by, ..
+            } => {
+                let holder = holder_of(on)?;
+                let (by, roll) = match by {
+                    Some(by) => (by.clone(), 0.0),
+                    None => (
+                        builder::SIDE.to_owned(),
+                        upright(holder, &Mount::Node(node.clone()))?,
+                    ),
+                };
+                let mut place = Place::node(format!("{on}.{node}"), by);
+                place.roll = roll;
+                (place, holder)
+            }
+            Spot::Surface {
+                part: on,
+                surface,
+                at,
+                ..
+            } => {
+                let holder = holder_of(on)?;
+                let mount = Mount::Surface {
+                    surface: surface.clone(),
+                    side: at.side,
+                    u: at.u,
+                    v: at.v,
+                    standoff: at.standoff,
+                };
+                let (by, roll) = match &how {
+                    OnSurface::By(by, roll) if !side => (by.clone(), *roll),
+                    OnSurface::Rolling(by) => (by.clone(), rolling(holder, &mount)?),
+                    _ => (builder::SIDE.to_owned(), upright(holder, &mount)?),
+                };
+                let mut place = Place::surface(format!("{on}.{surface}"), by, *at);
+                place.roll = roll;
+                (place, holder)
+            }
+        };
+        let mut place = place;
+        place.roll = wrapped(place.roll + self.roll);
+        let places = self.symmetric(place, holder);
+        let (parts, replacing) = match held {
+            Held::New(_) => (vec![part], BTreeSet::new()),
+            Held::Moved(id) => {
+                let below = held_through(self.draft, id);
+                let mut parts = vec![part];
+                parts.extend(
+                    (self.draft.parts.iter())
+                        .filter(|p| &p.id != id && below.contains(&p.id))
+                        .cloned(),
+                );
+                let mut replacing = BTreeSet::from([id.clone()]);
+                replacing.extend(builder::alike(self.draft, id).into_iter().map(|(c, _)| c));
+                (parts, replacing)
+            }
+        };
+        Ok(Plan {
+            parts,
+            places,
+            replacing,
+        })
+    }
+
+    /// `place` on the part at `holder` in the built craft, and the places of its copies by
+    /// symmetry, each with whether it is a mirror image.
+    fn symmetric(&self, place: Place, holder: usize) -> Vec<(Place, bool)> {
+        let Some((holder_id, connector)) = place.on.split_once('.') else {
+            return vec![(place, false)];
+        };
+        // On the part it goes on, and on each put on with that by symmetry.
+        let mut holders = vec![(holder_id.to_owned(), false)];
+        holders.extend(builder::alike(self.draft, holder_id));
+        let mut places = Vec::new();
+        for (on, mirrored) in holders {
+            let mut here = place.clone();
+            here.on = format!("{on}.{connector}");
+            if mirrored {
+                here.roll = wrapped(-here.roll);
+                if let Some(at) = &mut here.at {
+                    at.u = (-at.u).rem_euclid(1.0);
+                }
+            }
+            let Some(at) = here.at else {
+                places.push((here, mirrored));
+                continue;
+            };
+            let index = if on == holder_id {
+                Some(holder)
+            } else {
+                self.built.find(&on)
+            };
+            let surface = connector;
+            places.push((here.clone(), mirrored));
+            if self.mirror {
+                let across = index.and_then(|i| builder::mirrored_u(self.built, i, surface, at));
+                if let Some(u) = across {
+                    let mut image = here.clone();
+                    image.roll = wrapped(-here.roll);
+                    image.at = Some(SurfaceAtDef { u, ..at });
+                    places.push((image, !mirrored));
+                }
+            } else {
+                for k in 1..self.symmetry {
+                    let mut copy = here.clone();
+                    let turn = f64::from(k) / f64::from(self.symmetry);
+                    copy.at = Some(SurfaceAtDef {
+                        u: ((at.u + turn).rem_euclid(1.0) * 1e9).round() / 1e9,
+                        ..at
+                    });
+                    places.push((copy, mirrored));
+                }
+            }
+        }
+        places
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -523,6 +725,7 @@ pub(crate) fn place_parts(
     mut marks: ResMut<PartMarks>,
     mut actions: MessageReader<UiAction>,
     mut stores: Local<Option<(Arc<PartCatalog>, Arc<Vec<Entry>>)>>,
+    (moving, mut commands): (Res<Moving>, Commands),
 ) {
     let placing = &mut *placing;
     let down = [
@@ -543,8 +746,8 @@ pub(crate) fn place_parts(
     let catalog = &**shared;
     if !editor.is_open() {
         *placing = Placing {
-            group: placing.group,
-            search: std::mem::take(&mut placing.search),
+            symmetry: placing.symmetry,
+            mirror: placing.mirror,
             ..default()
         };
         marks.set_ghost(None);
@@ -553,11 +756,16 @@ pub(crate) fn place_parts(
 
     for action in actions.read() {
         match action.name() {
+            // A craft with changes is not thrown away without asking (hangar).
+            "editor.new" if editor.asks_first(action, &mut commands) => {}
             "editor.new" => {
-                editor.start_new(&mut sim, &mut ui);
+                editor.start_new(action.arg() == Some("plane"), &mut sim, &mut ui);
                 shaping.pick(None);
                 placing.held = None;
+                placing.carry = None;
                 placing.open = true;
+                // A plane's wings and gear go on in mirror pairs.
+                placing.mirror = action.arg() == Some("plane");
             }
             // With a part's settings in the rail, the list comes back in their place.
             "editor.parts" => {
@@ -568,13 +776,6 @@ pub(crate) fn place_parts(
                 }
             }
             "editor.list" => placing.open = false,
-            "editor.group" => {
-                if let Some(group) = action.arg().and_then(Group::parse) {
-                    placing.group = group;
-                    placing.search.clear();
-                }
-            }
-            "editor.search" => placing.search = action.arg().unwrap_or("").trim().to_owned(),
             "editor.add" => {
                 let entry = action
                     .arg()
@@ -588,13 +789,21 @@ pub(crate) fn place_parts(
             "editor.drop" => {
                 placing.let_go();
             }
-            "editor.symmetry" => placing.symmetry = next_symmetry(placing.symmetry, true),
+            "editor.symmetry" => {
+                if placing.mirror {
+                    placing.mirror = false;
+                } else {
+                    placing.symmetry = next_symmetry(placing.symmetry, true);
+                }
+            }
+            "editor.symmetry_mode" => placing.mirror = !placing.mirror,
             "editor.remove" => remove_picked(&mut shaping, &mut editor, catalog, &mut sim, &mut ui),
             _ => {}
         }
     }
     let Some(draft) = editor.builder().map(|b| b.draft().clone()) else {
         placing.held = None;
+        placing.carry = None;
         marks.set_ghost(None);
         return;
     };
@@ -609,26 +818,30 @@ pub(crate) fn place_parts(
     }
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     if !typing.typing() {
-        if keys.just_pressed(KeyCode::KeyX) {
-            placing.symmetry = next_symmetry(placing.symmetry, !shift);
-        }
         let command = keys.any_pressed([
             KeyCode::ControlLeft,
             KeyCode::ControlRight,
             KeyCode::SuperLeft,
             KeyCode::SuperRight,
         ]);
+        if keys.just_pressed(KeyCode::KeyX) && !command {
+            placing.mirror = false;
+            placing.symmetry = next_symmetry(placing.symmetry, !shift);
+        }
+        if keys.just_pressed(KeyCode::KeyR) && !command {
+            placing.mirror = !placing.mirror;
+        }
         if !command && keys.any_just_pressed([KeyCode::Delete, KeyCode::Backspace]) {
             remove_picked(&mut shaping, &mut editor, catalog, &mut sim, &mut ui);
         }
-        // Q and E turn what is in hand, or the part picked.
-        let turn = if shift { FINE_TURN } else { TURN };
+        // Q and E turn what is in hand, or the part picked, a turn step at a time.
+        let turn = moving.angle_step(shift);
         let turned = f64::from(keys.just_pressed(KeyCode::KeyE))
             - f64::from(keys.just_pressed(KeyCode::KeyQ));
         if turned != 0.0 && !command {
-            if placing.is_holding() {
+            if placing.held.is_some() {
                 placing.roll = wrapped(placing.roll + turned * turn);
-            } else {
+            } else if placing.carry.is_none() {
                 turn_picked(
                     &shaping,
                     &mut editor,
@@ -644,6 +857,7 @@ pub(crate) fn place_parts(
     let cursor = pointer.position();
     let (camera, eye) = *camera;
     let vessel = editor.vessel();
+    let vessel_frame = vessel.and_then(|v| VesselFrame::of(&sim, &frame, v));
     let draft_index = |id: &str| draft.parts.iter().position(|p| p.id == id);
     // The part of the draft under the pointer, of those `skip` does not leave out, and where the
     // pointer meets it in the view.
@@ -663,10 +877,37 @@ pub(crate) fn place_parts(
         let (mesh, hit) = ray_cast.cast_ray(ray, &settings).first()?;
         Some((tagged(*mesh)?.id.clone(), hit.point))
     };
+    // The pointer's ray from the middle of the floor, sim axes, with the root at `anchor`.
+    let ray_on_floor = |anchor: DVec3| -> Option<(DVec3, DVec3)> {
+        let frame = vessel_frame?;
+        let ray = camera.viewport_to_world(eye, cursor?).ok()?;
+        let from = frame.sim_way(frame.vessel_point(ray.origin)) + anchor;
+        let way = frame.sim_way(frame.vessel_way(*ray.direction)).normalize();
+        Some((from, way))
+    };
 
-    // A drag that starts on a part of the craft picks it up with what it holds; one that starts
-    // on nothing turns the view.
-    if !placing.is_holding() && !draft.parts.is_empty() {
+    // The whole craft carried by its root follows the pointer until it is let go, or goes back.
+    if let Some(at) = placing.put_back.take() {
+        editor.carry_to(at);
+    }
+    if let Some(carry) = placing.carry {
+        if !down[0] {
+            placing.carry = None;
+        } else if let Some((from, way)) = editor.anchor().and_then(ray_on_floor) {
+            let across = way.dot(carry.look);
+            if across.abs() > 1e-6 {
+                let hit = from + way * (carry.grabbed - from).dot(carry.look) / across;
+                editor.carry_to(carry.from + hit - carry.grabbed);
+            }
+        }
+        editor.stop_view_drag();
+        marks.set_ghost(None);
+        return;
+    }
+
+    // A drag that starts on a part of the craft picks it up with what it holds, or, on the root,
+    // carries the whole craft; one that starts on nothing turns the view.
+    if placing.held.is_none() && !draft.parts.is_empty() {
         if went_down[0] && !shaping.holds_pointer() {
             placing.grabbed = under(&|_| false).map(|(id, _)| id).zip(cursor);
         }
@@ -677,13 +918,55 @@ pub(crate) fn place_parts(
             && from.distance(at) >= CLICK_SLOP
         {
             placing.grabbed = None;
-            // The root holds everything: dragging it turns the view instead.
-            if draft.parts.iter().any(|p| p.id == id && p.on.is_some()) {
+            let root = draft.parts.iter().any(|p| p.id == id && p.on.is_none());
+            if root {
+                // Taken hold of where the press was, in the plane square to the view.
+                let anchor = editor.anchor();
+                let start = (anchor.and_then(ray_on_floor), anchor);
+                if let (Some((origin, way)), Some(anchor)) = start {
+                    let middle = vessel.and_then(|_| {
+                        let frame = vessel_frame?;
+                        let on_show = sim.universe.vessel(vessel?)?;
+                        let tree = on_show.propulsion.parts();
+                        let part = tree.parts().get(draft_index(&id)?)?;
+                        let at = part.position - tree_origin(tree);
+                        Some(frame.sim_way(at) + anchor)
+                    });
+                    let depth = middle.map_or(10.0, |m| (m - origin).dot(way));
+                    placing.carry = Some(Carry {
+                        from: anchor,
+                        grabbed: origin + way * depth,
+                        look: way,
+                    });
+                }
+            } else {
+                // Its copies by symmetry come with it: the symmetry is theirs again while it is
+                // in hand.
+                let copies = builder::alike(&draft, &id);
+                let same_holder = |other: &str| {
+                    let holder = |p: &str| {
+                        (draft.parts.iter())
+                            .find(|q| q.id == p)
+                            .and_then(|q| q.on.clone())
+                    };
+                    holder(other) == holder(&id)
+                };
+                let beside: Vec<&(String, bool)> =
+                    copies.iter().filter(|(c, _)| same_holder(c)).collect();
+                if beside.iter().any(|(_, mirrored)| *mirrored) {
+                    placing.mirror = true;
+                } else if !beside.is_empty() {
+                    placing.mirror = false;
+                    placing.symmetry = beside.len() as u32 + 1;
+                } else {
+                    placing.mirror = false;
+                    placing.symmetry = 1;
+                }
                 placing.take_in_hand(Held::Moved(id), true);
                 shaping.pick(None);
-                editor.stop_view_drag();
-                editor.set_notice("");
             }
+            editor.stop_view_drag();
+            editor.set_notice("");
         }
     }
 
@@ -694,10 +977,10 @@ pub(crate) fn place_parts(
     {
         let now = !placing.dropping || (went_up[0] && cursor.is_some());
         if now {
-            match put(&mut editor, catalog, &held, entries, &Spot::Root, 1, 0.0) {
-                Ok(_) => {
+            match put_root(&mut editor, catalog, &held, entries) {
+                Ok(()) => {
                     redraw_draft(&mut editor, catalog, &mut sim, &mut ui);
-                    editor.frame_view(&mut sim);
+                    editor.frame_first_part(&mut sim);
                 }
                 Err(e) => editor.set_notice(format!("Cannot start with it: {e}")),
             }
@@ -711,7 +994,7 @@ pub(crate) fn place_parts(
 
     // Which nodes are free, on the draft without what is in hand.
     let moved = match &placing.held {
-        Some(Held::Moved(id)) => held_through(&draft, id),
+        Some(Held::Moved(id)) => picked_up(&draft, id),
         _ => BTreeSet::new(),
     };
     let stale = (placing.built.as_ref())
@@ -721,7 +1004,7 @@ pub(crate) fn place_parts(
         rest.parts.retain(|p| !moved.contains(&p.id));
         placing.built = Craft::build(&rest, catalog)
             .ok()
-            .map(|craft| (draft.parts.clone(), placing.held.clone(), craft));
+            .map(|craft| (draft.parts.clone(), placing.held.clone(), Arc::new(craft)));
         placing.nodes = (placing.built.as_ref()).map_or(Vec::new(), |(_, _, c)| free_nodes(c));
     }
 
@@ -737,13 +1020,13 @@ pub(crate) fn place_parts(
         );
         return;
     };
-    let Some(vessel_frame) = VesselFrame::of(&sim, &frame, vessel) else {
+    let Some(vessel_frame) = vessel_frame else {
         return;
     };
     // Where the free nodes are on show.
     if let Some(on_show) = sim.universe.vessel(vessel) {
         let tree = on_show.propulsion.parts();
-        let base = DVec3::Z * tree.base();
+        let base = tree_origin(tree);
         for node in &mut placing.nodes {
             let shown = draft_index(&node.part).and_then(|i| tree.parts().get(i));
             if let Some(part) = shown {
@@ -752,23 +1035,26 @@ pub(crate) fn place_parts(
         }
     }
 
-    // What is in hand, and how it can go on.
-    let (in_hand, surface) = match &held {
-        Held::New(id) => {
-            let Some(entry) = entries.iter().find(|e| &e.id == id) else {
-                placing.held = None;
-                return;
-            };
-            (entry.part.clone(), entry.surface.clone())
-        }
-        Held::Moved(id) => {
-            let Some(part) = draft.parts.iter().find(|p| &p.id == id) else {
-                placing.held = None;
-                return;
-            };
-            // On a surface again only if it was on one.
-            let surface = part.at.is_some().then(|| (part.by.clone(), part.roll));
-            (part.clone(), surface)
+    // How what is in hand goes on: by its side at a node facing across the craft, if it goes on
+    // surfaces that way.
+    let Some(built) = placing.built.as_ref().map(|(_, _, craft)| craft.clone()) else {
+        return;
+    };
+    let making = Making {
+        draft: &draft,
+        built: &built,
+        catalog,
+        entries,
+        symmetry: placing.symmetry,
+        mirror: placing.mirror,
+        roll: placing.roll,
+    };
+    let (in_hand, how) = match making.in_hand(placing, &held) {
+        Ok(found) => found,
+        Err(e) => {
+            editor.set_notice(format!("Cannot hold it: {e}"));
+            placing.held = None;
+            return;
         }
     };
     // Its own nodes that hold something already cannot hold it on.
@@ -787,18 +1073,31 @@ pub(crate) fn place_parts(
             .map(|(n, _)| n.clone())
     });
     let spot = if let Some(node) = near {
-        by_node(&in_hand, &used, catalog, node.way).map(|by| Spot::Node {
-            part: node.part.clone(),
-            node: node.name.clone(),
-            by,
-            width: node.size,
-        })
-    } else if let Some((by, roll)) = surface {
+        let across = node.way.normalize_or_zero().z.abs() < ACROSS;
+        if across && how == OnSurface::Side {
+            Some(Spot::Node {
+                part: node.part.clone(),
+                node: node.name.clone(),
+                by: None,
+                width: node.size,
+            })
+        } else {
+            let alone = placing.alone(&in_hand, catalog);
+            alone
+                .and_then(|alone| by_node(&alone, &used, node.way))
+                .map(|by| Spot::Node {
+                    part: node.part.clone(),
+                    node: node.name.clone(),
+                    by: Some(by),
+                    width: node.size,
+                })
+        }
+    } else {
         under(&|id| moved.contains(id)).and_then(|(part_id, point)| {
             let on_show = sim.universe.vessel(vessel)?;
             let tree = on_show.propulsion.parts();
             let shown = tree.parts().get(draft_index(&part_id)?)?;
-            let base = DVec3::Z * tree.base();
+            let base = tree_origin(tree);
             let local = shown.rotation.inverse()
                 * (vessel_frame.vessel_point(point) - (shown.position - base));
             let geometry = &shown.built.as_ref()?.geometry;
@@ -827,14 +1126,25 @@ pub(crate) fn place_parts(
                     side,
                     standoff: 0.0,
                 },
-                by,
-                roll,
                 width: 2.0 * out,
             })
         })
-    } else {
-        None
     };
+    // Worked out again only when where it would go, or how, changes.
+    let asked = spot
+        .clone()
+        .map(|s| (s, placing.symmetry, placing.mirror, placing.roll));
+    if asked != placing.asked || stale {
+        placing.asked = asked;
+        placing.plan = None;
+        match &spot {
+            Some(spot) => match making.plan(placing, &held, spot) {
+                Ok(plan) => placing.plan = Some(plan),
+                Err(e) => placing.refused = Some(e),
+            },
+            None => placing.refused = None,
+        }
+    }
     placing.spot = spot;
 
     // A right click puts it back. A click puts it where it is shown, or, dragged, letting go does.
@@ -860,24 +1170,25 @@ pub(crate) fn place_parts(
         clicked
     };
     if put_now {
-        let Some(spot) = placing.spot.clone() else {
+        let Some(plan) = placing.plan.clone() else {
             // Let go where it cannot go: it goes back.
             if placing.dropping {
                 placing.let_go();
             }
             return;
         };
-        let (symmetry, roll) = (placing.symmetry, placing.roll);
-        let symmetry = if matches!(held, Held::New(_)) {
-            symmetry
-        } else {
-            1
-        };
-        match put(&mut editor, catalog, &held, entries, &spot, symmetry, roll) {
+        let put = editor
+            .builder_mut()
+            .ok_or_else(|| "there is no craft to build".to_owned())
+            .and_then(|builder| {
+                builder
+                    .put_set(catalog, &plan.parts, &plan.places, &plan.replacing)
+                    .map_err(|r| r.to_string())
+            });
+        match put {
             Ok(_) => {
                 // What is on show is already this, if the preview was of it.
-                let matched =
-                    placing.shown == Some((spot, symmetry, roll)) && placing.refused.is_none();
+                let matched = placing.shown.as_ref() == Some(&plan) && placing.refused.is_none();
                 if !matched {
                     redraw_draft(&mut editor, catalog, &mut sim, &mut ui);
                 }
@@ -885,10 +1196,10 @@ pub(crate) fn place_parts(
                 editor.set_notice("");
                 *placing = Placing {
                     open: placing.open,
-                    group: placing.group,
-                    search: std::mem::take(&mut placing.search),
                     symmetry: placing.symmetry,
+                    mirror: placing.mirror,
                     was_down: placing.was_down,
+                    alone: std::mem::take(&mut placing.alone),
                     ..default()
                 };
                 // Not picked: the parts list stays for the next one, and a click on the part shows
@@ -906,41 +1217,37 @@ pub(crate) fn place_parts(
     }
 
     // Show it where it would go.
-    let symmetry = if matches!(held, Held::New(_)) {
-        placing.symmetry
-    } else {
-        1
-    };
-    let wanted = placing.spot.clone().map(|s| (s, symmetry, placing.roll));
+    let wanted = placing.plan.clone();
     preview(
         placing,
         &mut editor,
-        &held,
-        entries,
         &draft,
         shared,
         wanted,
         &mut sim,
         &mut ui,
     );
-    let ghost: Vec<PartId> = (placing.ghost.iter())
-        .filter_map(|id| {
-            let shown = sim.universe.vessel(editor.vessel()?)?;
-            let craft_index = match &held {
-                Held::New(_) => draft.parts.len() + placing.ghost.iter().position(|g| g == id)?,
-                Held::Moved(_) => draft_index(id)?,
-            };
-            (craft_index < shown.propulsion.parts().parts().len())
-                .then_some(PartId(craft_index as u32))
+    let ghost = (placing.shown_craft.as_ref())
+        .filter(|_| placing.shown.is_some())
+        .map(|craft| {
+            let shown = editor
+                .vessel()
+                .and_then(|v| sim.universe.vessel(v))
+                .map_or(0, |v| v.propulsion.parts().parts().len());
+            (placing.ghost.iter())
+                .filter_map(|id| craft.parts.iter().position(|p| &p.id == id))
+                .filter(|&i| i < shown)
+                .map(|i| PartId(i as u32))
+                .collect::<Vec<_>>()
         })
-        .collect();
-    let ghost = (!ghost.is_empty() && placing.shown.is_some()).then(|| {
-        (
-            editor.vessel().unwrap_or(vessel),
-            ghost,
-            placing.refused.is_some(),
-        )
-    });
+        .filter(|ghost| !ghost.is_empty())
+        .map(|ghost| {
+            (
+                editor.vessel().unwrap_or(vessel),
+                ghost,
+                placing.refused.is_some(),
+            )
+        });
     marks.set_ghost(ghost);
 }
 
@@ -950,7 +1257,32 @@ fn wrapped(degrees: f64) -> f64 {
     if turned == -180.0 { 180.0 } else { turned }
 }
 
-/// Turn the picked part `degrees` about the joint that holds it.
+/// Put the first part of an empty craft on as its root.
+fn put_root(
+    editor: &mut Editor,
+    catalog: &PartCatalog,
+    held: &Held,
+    entries: &[Entry],
+) -> Result<(), String> {
+    let Some(builder) = editor.builder_mut() else {
+        return Err("there is no craft to build".into());
+    };
+    let Held::New(entry) = held else {
+        return Err("it is on the craft already".into());
+    };
+    let entry = (entries.iter())
+        .find(|e| &e.id == entry)
+        .ok_or("no such part")?;
+    let mut part = entry.part.clone();
+    part.id = new_id(builder.draft(), &entry.stem, 0);
+    builder
+        .place(catalog, part, None)
+        .map(|_| ())
+        .map_err(|r| r.to_string())
+}
+
+/// Turn the picked part `degrees` about the joint that holds it; the root turns the whole craft
+/// about its axis.
 fn turn_picked(
     shaping: &Shaping,
     editor: &mut Editor,
@@ -965,17 +1297,19 @@ fn turn_picked(
     let Some(builder) = editor.builder_mut() else {
         return;
     };
-    let held = builder
-        .draft()
-        .parts
-        .iter()
-        .any(|p| p.id == id && p.on.is_some());
-    if !held {
+    let Some(part) = builder.draft().parts.iter().find(|p| p.id == id) else {
         return;
-    }
-    match builder.rotate(catalog, &id, degrees) {
+    };
+    let turned = if part.on.is_some() {
+        builder.rotate(catalog, &id, degrees)
+    } else {
+        let turn = DQuat::from_rotation_z(degrees.to_radians());
+        builder.turn_root(catalog, turn)
+    };
+    match turned {
         Ok(_) => {
             redraw_draft(editor, catalog, sim, ui);
+            editor.settle(sim);
             editor.set_notice("");
         }
         Err(e) => editor.set_notice(format!("Cannot turn it: {e}")),
@@ -988,11 +1322,9 @@ fn turn_picked(
 fn preview(
     placing: &mut Placing,
     editor: &mut Editor,
-    held: &Held,
-    entries: &[Entry],
     draft: &CraftDef,
     catalog: &Arc<PartCatalog>,
-    wanted: Wanted,
+    wanted: Option<Plan>,
     sim: &mut Sim,
     ui: &mut LayoutVisibility,
 ) {
@@ -1006,15 +1338,17 @@ fn preview(
             .join()
             .unwrap_or_else(|_| Err("building it failed".into()))
         {
-            Ok((craft, propulsion, refused)) => {
+            Ok((craft, propulsion, ghost, refused)) => {
                 editor.redraw_built(&craft, propulsion, sim, ui);
-                placing.ghost = job.ghost;
+                placing.ghost = ghost;
                 placing.refused = refused;
+                placing.shown_craft = Some(craft);
             }
             Err(e) => {
                 warn!("cannot show it there: {e}");
                 placing.ghost.clear();
                 placing.refused = Some(e);
+                placing.shown_craft = None;
             }
         }
         placing.shown = job.wanted;
@@ -1022,33 +1356,30 @@ fn preview(
     if wanted == placing.shown || placing.job.is_some() {
         return;
     }
-    let made = match &wanted {
-        Some((spot, symmetry, roll)) => with_held(draft, held, entries, spot, *symmetry, *roll),
-        None => Ok((draft.clone(), Vec::new())),
-    };
-    let (craft, ghost) = match made {
-        Ok(made) => made,
-        Err(e) => {
-            placing.refused = Some(e);
-            placing.shown = wanted;
-            return;
+    let Some(plan) = wanted.clone() else {
+        // Nowhere to go: the draft as it stands, with nothing in hand on it.
+        if placing.shown.is_some() {
+            redraw_draft(editor, catalog, sim, ui);
+            placing.shown = None;
+            placing.shown_craft = None;
+            placing.ghost.clear();
         }
+        return;
     };
-    let (catalog, touched) = (catalog.clone(), ghost.clone());
+    let (draft, catalog) = (draft.clone(), catalog.clone());
     let task = std::thread::spawn(move || {
+        let (mut craft, ghost) = plan.put(&draft)?;
+        // As the builder will have it: new tanks take what their engines burn.
+        properties::fill_from_engines(&mut craft, &catalog, &ghost);
         let propulsion = Propulsion::from_craft(&craft, &catalog).map_err(|e| e.to_string())?;
-        let touched: Vec<&str> = touched.iter().map(String::as_str).collect();
+        let touched: Vec<&str> = ghost.iter().map(String::as_str).collect();
         let refused = (!touched.is_empty())
             .then(|| builder::check(&craft, &catalog, &touched).err())
             .flatten()
             .map(|r| r.to_string());
-        Ok((craft, propulsion, refused))
+        Ok((craft, propulsion, ghost, refused))
     });
-    placing.job = Some(Job {
-        task,
-        wanted,
-        ghost,
-    });
+    placing.job = Some(Job { task, wanted });
 }
 
 /// Nothing is in hand: if a preview is on show, the draft goes back on show.
@@ -1062,12 +1393,15 @@ fn finish_preview(
     draft: &CraftDef,
 ) {
     placing.spot = None;
+    placing.plan = None;
+    placing.asked = None;
     placing.job = None;
     if placing.restore || placing.shown.is_some() {
         if placing.shown.is_some() && !draft.parts.is_empty() {
             redraw_draft(editor, catalog, sim, ui);
         }
         placing.shown = None;
+        placing.shown_craft = None;
         placing.restore = false;
         placing.ghost.clear();
         placing.refused = None;
@@ -1160,7 +1494,7 @@ fn draw_rings(
 ) {
     let (camera, transform) = *camera;
     let eye = GlobalTransform::from(*transform);
-    let holding = placing.is_holding();
+    let holding = placing.held.is_some();
     let vessel_frame = editor
         .vessel()
         .and_then(|v| VesselFrame::of(&sim, &frame, v));
@@ -1189,7 +1523,7 @@ fn draw_rings(
     }
 }
 
-/// `editor.palette*`, `editor.holding` and, with something in hand, `editor.hint`; see the module.
+/// `editor.holding` and, with something in hand, `editor.hint`; see the module.
 #[allow(clippy::type_complexity)]
 fn publish_placing(
     placing: Res<Placing>,
@@ -1197,18 +1531,7 @@ fn publish_placing(
     content: Res<GameContent>,
     mut data: ResMut<UiData>,
     mut entries: Local<Option<Vec<Entry>>>,
-    mut published: Local<
-        Option<(
-            bool,
-            Group,
-            String,
-            Option<Held>,
-            u32,
-            Option<String>,
-            bool,
-            i64,
-        )>,
-    >,
+    mut published: Local<Option<(Option<Held>, u32, bool, Option<String>, bool, i64)>>,
 ) {
     if entries.is_none() || content.is_changed() {
         let parts = catalog(&content.0.registry, &mut Vec::new());
@@ -1218,11 +1541,9 @@ fn publish_placing(
         return;
     };
     let now = (
-        placing.open && editor.is_open(),
-        placing.group,
-        placing.search.clone(),
         placing.held.clone(),
         placing.symmetry,
+        placing.mirror,
         placing.refused.clone(),
         placing.spot.is_some(),
         placing.roll.round() as i64,
@@ -1231,73 +1552,22 @@ fn publish_placing(
         return;
     }
     *published = Some(now);
-    data.set("editor.palette_open", placing.open && editor.is_open());
-    data.set("editor.group", placing.group.id());
-    let shown: Vec<&Entry> = if placing.search.is_empty() {
-        entries
-            .iter()
-            .filter(|e| e.group == placing.group)
-            .collect()
-    } else {
-        entries
-            .iter()
-            .filter(|e| e.matches(&placing.search))
-            .collect()
-    };
-    let held_entry = match &placing.held {
-        Some(Held::New(id)) => Some(id.as_str()),
-        _ => None,
-    };
-    let rows: Vec<_> = (shown.iter().take(MOST_ROWS))
-        .map(|e| {
-            record([
-                ("id", e.id.clone().into()),
-                ("name", e.name.clone().into()),
-                ("detail", e.detail.clone().into()),
-                ("held", (held_entry == Some(e.id.as_str())).into()),
-            ])
-        })
-        .collect();
-    data.set("editor.palette", rows);
-    let more = shown.len().saturating_sub(MOST_ROWS);
-    data.set(
-        "editor.palette_more",
-        if more > 0 {
-            format!("{more} more: search to find them")
-        } else if shown.is_empty() {
-            "Nothing found".to_owned()
-        } else {
-            String::new()
-        },
-    );
-    data.set(
-        "editor.search_shown",
-        if placing.search.is_empty() {
-            "Search parts"
-        } else {
-            placing.search.as_str()
-        },
-    );
     data.set("editor.holding", placing.held.is_some());
+    data.set("editor.symmetry", placing.symmetry_label());
+    data.set("editor.mirror", placing.mirror);
     let Some(held) = &placing.held else {
         return;
     };
-    let (name, surface) = match held {
-        Held::New(id) => {
-            let entry = entries.iter().find(|e| &e.id == id);
-            (
-                entry.map_or("part".to_owned(), |e| e.name.to_lowercase()),
-                entry.is_some_and(|e| e.surface.is_some()),
-            )
-        }
+    let name = match held {
+        Held::New(id) => (entries.iter())
+            .find(|e| &e.id == id)
+            .map_or("part".to_owned(), |e| e.name.to_lowercase()),
         Held::Moved(id) => {
-            // Back on a surface if it was on one.
             let draft = editor.builder().map(|b| b.draft());
             let part = draft.and_then(|d| d.parts.iter().find(|p| &p.id == id));
-            let name = part
-                .and_then(|p| p.name.clone())
-                .unwrap_or_else(|| id.clone());
-            (name.to_lowercase(), part.is_some_and(|p| p.at.is_some()))
+            part.and_then(|p| p.name.clone())
+                .unwrap_or_else(|| id.clone())
+                .to_lowercase()
         }
     };
     let how = if placing.dropping {
@@ -1305,17 +1575,17 @@ fn publish_placing(
     } else {
         "Click a ring"
     };
-    let mut hint = if surface && matches!(held, Held::New(_)) {
-        format!(
-            "{how} or the side of a part to put the {name} there. X: symmetry, now {}.",
-            placing.symmetry
-        )
-    } else if surface {
-        format!("{how} or the side of a part to put the {name} there.")
+    let symmetry = if placing.mirror {
+        "mirrored".to_owned()
+    } else if placing.symmetry > 1 {
+        format!("{} round", placing.symmetry)
     } else {
-        format!("{how} to put the {name} there.")
+        "one".to_owned()
     };
-    hint.push_str(" Q and E turn it.");
+    let mut hint = format!(
+        "{how} or the side of a part to put the {name} there ({symmetry}: X and R change it). \
+         Q and E turn it."
+    );
     if let Some(why) = &placing.refused {
         hint = format!("It cannot go there: {why}. {hint}");
     }

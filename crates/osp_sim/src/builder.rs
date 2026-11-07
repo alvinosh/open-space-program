@@ -435,6 +435,43 @@ impl Builder {
         })
     }
 
+    /// Turn the whole craft `turn` about its root, in the craft's frame: the root's `points` and
+    /// `roll` change, and everything held by it turns with it.
+    pub fn turn_root(&mut self, catalog: &PartCatalog, turn: DQuat) -> Result<Change, Refusal> {
+        let next = turned_root(&self.draft, turn)?;
+        let all: BTreeSet<String> = next.parts.iter().map(|p| p.id.clone()).collect();
+        self.edit_checking(catalog, &all, |draft| {
+            *draft = next;
+            Ok(())
+        })
+    }
+
+    /// Put `parts` (a part first, then what it holds, held by each other) at each of `places`,
+    /// taking `replacing` and what they hold off first: what the editor does with a part in hand
+    /// and its symmetry. See [`put_set`]. Tanks still as the parts list gave them that the parts
+    /// put on join take what their engines burn ([`properties::fill_from_engines`]). Also the ids
+    /// of the parts at each place, top first.
+    pub fn put_set(
+        &mut self,
+        catalog: &PartCatalog,
+        parts: &[CraftPartDef],
+        places: &[(Place, bool)],
+        replacing: &BTreeSet<String>,
+    ) -> Result<(Change, Vec<String>), Refusal> {
+        let (mut next, tops) = put_set(&self.draft, parts, places, replacing)?;
+        let mut carried = BTreeSet::new();
+        for top in &tops {
+            carried.extend(held_by(&next, top)?);
+        }
+        let put: Vec<String> = carried.iter().cloned().collect();
+        carried.extend(properties::fill_from_engines(&mut next, catalog, &put));
+        let change = self.edit_checking(catalog, &carried, |draft| {
+            *draft = next;
+            Ok(())
+        })?;
+        Ok((change, tops))
+    }
+
     /// Put `count` copies of `part` round a surface: the one at `at` and the rest at equal turns
     /// from it, named `<id>_1` up. They are plain parts, as if placed one by one; nothing remembers
     /// the pattern.
@@ -529,8 +566,8 @@ impl Builder {
     }
 
     /// Set field `field` of `id` (see [`properties`]) from `text`, as the part window does: a size,
-    /// its shape, what its tank holds, its material, a sizer's requirement. Checked as
-    /// [`Builder::resize`] is: only for what the change does.
+    /// its shape, what its tank holds (what the engines it feeds burn), its material, a sizer's
+    /// requirement. Checked as [`Builder::resize`] is: only for what the change does.
     pub fn set_field(
         &mut self,
         catalog: &PartCatalog,
@@ -539,9 +576,11 @@ impl Builder {
         text: &str,
     ) -> Result<Change, Refusal> {
         let kept = check(&self.draft, catalog, &[id]).is_ok();
+        let mixes = properties::mixes(&self.draft, catalog, id);
         let mut next = self.draft.clone();
         let part = part_mut(&mut next, id)?;
-        properties::set(part, field, text, catalog).map_err(|e| Refusal::new(Rule::Part, e))?;
+        properties::set(part, field, text, &mixes, catalog)
+            .map_err(|e| Refusal::new(Rule::Part, e))?;
         if kept {
             check(&next, catalog, &[id])?;
         } else {
@@ -578,6 +617,236 @@ impl Builder {
 pub fn held_at(mut part: CraftPartDef, place: &Place) -> CraftPartDef {
     place.write(&mut part);
     part
+}
+
+/// `draft` with the whole craft turned `turn` about its root, in the craft's frame: what
+/// [`Builder::turn_root`] makes, without the rules.
+pub fn turned_root(draft: &CraftDef, turn: DQuat) -> Result<CraftDef, Refusal> {
+    let mut next = draft.clone();
+    let root = (next.parts.iter_mut())
+        .find(|p| p.on.is_none())
+        .ok_or_else(|| Refusal::new(Rule::Part, "there is no root to turn"))?;
+    let now = crate::craft::root_rotation(root).ok_or_else(|| {
+        Refusal::new(Rule::Join, format!("the root `{}` points nowhere", root.id))
+    })?;
+    (root.points, root.roll) = crate::craft::root_turn((turn * now).normalize());
+    Ok(next)
+}
+
+/// `draft` with `parts` (a part first, then what it holds, each held by one before it) put at each
+/// of `places`, without the rules: first `replacing` and everything they hold are taken off. At
+/// the first place the parts keep their ids; at the others they are copies, each id made new from
+/// its own (`<id>_2` up). A place marked mirrored has the mirror image of them all: each shape
+/// reflected, its own nodes too, and what is held on a surface at the reflected place, as
+/// [`Builder::mirror`] makes them; the place itself is as given, for the reflected part. Also the
+/// ids of the parts at each place, top first.
+pub fn put_set(
+    draft: &CraftDef,
+    parts: &[CraftPartDef],
+    places: &[(Place, bool)],
+    replacing: &BTreeSet<String>,
+) -> Result<(CraftDef, Vec<String>), Refusal> {
+    let Some(top) = parts.first() else {
+        return Err(Refusal::new(Rule::Part, "there is nothing to put on"));
+    };
+    let mut next = draft.clone();
+    let mut gone = BTreeSet::new();
+    for id in replacing {
+        if next.parts.iter().any(|p| &p.id == id) {
+            gone.extend(held_by(&next, id)?);
+        }
+    }
+    if gone.len() == next.parts.len() && !gone.is_empty() && !places.is_empty() {
+        return Err(Refusal::new(
+            Rule::Part,
+            format!("`{}` holds the rest: it cannot be put on anything", top.id),
+        ));
+    }
+    next.parts.retain(|p| !gone.contains(&p.id));
+    let kept: BTreeSet<&str> = parts.iter().map(|p| p.id.as_str()).collect();
+    let forgotten: BTreeSet<String> = (gone.iter())
+        .filter(|id| !kept.contains(id.as_str()))
+        .cloned()
+        .collect();
+    forget(&mut next, &forgotten);
+    let mut tops = Vec::new();
+    for (k, (place, mirrored)) in places.iter().enumerate() {
+        let mut names = std::collections::BTreeMap::new();
+        for part in parts {
+            let id = if k == 0 {
+                part.id.clone()
+            } else {
+                fresh_id(&next, &part.id)
+            };
+            if next.parts.iter().any(|p| p.id == id) {
+                return Err(Refusal::new(
+                    Rule::Part,
+                    format!("it already has a part `{id}`"),
+                ));
+            }
+            names.insert(part.id.clone(), id.clone());
+            let mut copy = if *mirrored {
+                reflected(part, 0.0)
+            } else {
+                part.clone()
+            };
+            copy.id = id;
+            if part.id == top.id {
+                // A part of its own, not the root any more: it points as its joint says.
+                copy.points = None;
+                place.write(&mut copy);
+                tops.push(copy.id.clone());
+            } else {
+                copy.on = (copy.on.as_ref()).map(|on| match on.split_once('.') {
+                    Some((held, connector)) => match names.get(held) {
+                        Some(renamed) => format!("{renamed}.{connector}"),
+                        None => on.clone(),
+                    },
+                    None => on.clone(),
+                });
+            }
+            next.parts.push(copy);
+        }
+    }
+    Ok((next, tops))
+}
+
+/// An id for a copy of the part `id`, not yet in `draft`: `<id>_2` up, after any number it
+/// already ends with.
+fn fresh_id(draft: &CraftDef, id: &str) -> String {
+    let stem = match id.rsplit_once('_') {
+        Some((stem, n)) if !stem.is_empty() && n.parse::<u32>().is_ok() => stem,
+        _ => id,
+    };
+    (2..)
+        .map(|n| format!("{stem}_{n}"))
+        .find(|candidate| !draft.parts.iter().any(|p| &p.id == candidate))
+        .unwrap_or_else(|| format!("{stem}_copy"))
+}
+
+/// The name of the node of its own a part is held by on its side ([`by_side`]).
+pub const SIDE: &str = "held_side";
+
+/// `part` as it would be alone, the root of a craft of its own.
+pub fn alone(part: &CraftPartDef, catalog: &PartCatalog) -> Result<Craft, Refusal> {
+    let mut part = part.clone();
+    part.id = "alone".into();
+    (part.on, part.at, part.points, part.roll) = (None, None, None, 0.0);
+    part.nodes.retain(|n| !n.name.starts_with(HELD));
+    let alone = CraftDef {
+        id: "alone".into(),
+        name: String::new(),
+        parts: vec![part],
+        sequences: None,
+        triggers: Vec::new(),
+        rcs_shut: Vec::new(),
+        abort: Vec::new(),
+    };
+    Craft::build(&alone, catalog).map_err(|e| Refusal::new(Rule::Join, e.to_string()))
+}
+
+/// Whether `part` lets go of what is on its nodes: a decoupler, which goes on a surface by its
+/// top, standing out of it, to hold a booster there.
+pub fn lets_go(alone: &Craft) -> bool {
+    (alone.parts[0].built.components.iter()).any(|c| matches!(c, Component::Decoupler(_)))
+}
+
+/// The node of its own a part goes on by its side ([`SIDE`]): on its outside at its -X, half way
+/// up, facing out, a point that takes any size. `alone` is the part built on its own.
+pub fn side_node(alone: &Craft) -> NodeDef {
+    let built = &alone.parts[0].built;
+    let mut triangles = Vec::new();
+    outer_triangles(built, |p| p, &mut triangles);
+    let (mut lo, mut hi) = (DVec3::INFINITY, DVec3::NEG_INFINITY);
+    for corner in triangles.iter().flatten() {
+        lo = lo.min(*corner);
+        hi = hi.max(*corner);
+    }
+    if !lo.is_finite() {
+        (lo, hi) = (DVec3::splat(-0.5), DVec3::splat(0.5));
+    }
+    let middle = (lo + hi) / 2.0;
+    let geometry = &alone.assembly.parts()[0].geometry;
+    // Where its outside is nearest a point well off its -X side, if that faces that way.
+    let probe = DVec3::new(lo.x - (hi - lo).max_element() - 1.0, middle.y, middle.z);
+    let on_wall = (geometry.surface_near(probe))
+        .and_then(|(surface, u, v, _)| geometry.surface_point(&surface, u, v))
+        .filter(|p| p.normal.x < -0.7);
+    let (position, direction) = match on_wall {
+        Some(p) => (p.position, DVec3::NEG_X),
+        None => (DVec3::new(lo.x, middle.y, middle.z), DVec3::NEG_X),
+    };
+    let tidy = |v: DVec3| v.to_array().map(|x| (x * 1e9).round() / 1e9 + 0.0);
+    NodeDef {
+        name: SIDE.into(),
+        position: tidy(position),
+        direction: tidy(direction),
+        size: 0.0,
+    }
+}
+
+/// Whether the part, built on its own, is a landing gear leg: it goes on rolling along the craft.
+pub fn rolls(alone: &Craft) -> bool {
+    (alone.parts[0].built.components.iter()).any(|c| matches!(c, Component::Gear(_)))
+}
+
+/// How far a part held at `node` (its own, in its frame) on connector `near` of the part at
+/// `holder` in `craft` must be turned about the joint to stand upright: its own `axis` (+Z for a
+/// tank, +Y for a wheel, which rolls along it) along the craft's +Z, as near as the connector lets
+/// it. Degrees.
+pub fn upright_roll(
+    craft: &Craft,
+    holder: usize,
+    near: &Mount,
+    node: &NodeDef,
+    axis: DVec3,
+) -> Option<f64> {
+    let frame = craft.assembly.parts()[holder].frame(near)?;
+    let held = Node {
+        name: node.name.clone(),
+        position: DVec3::from(node.position),
+        direction: DVec3::from(node.direction),
+        size: node.size,
+    };
+    let far = crate::assembly::node_frame(&held);
+    let connector = craft.assembly.poses()[holder] * frame;
+    // The part's +Z, turned no further, in the craft's frame, and the way it should go: both
+    // square to the line out of the connector, which the turn is about.
+    let out = connector.rotation * DVec3::Z;
+    let unturned = (connector * crate::assembly::meet(Pose::IDENTITY, far, 0.0)).rotation * axis;
+    let up = DVec3::Z.reject_from(out);
+    let up = if up.length() > 1e-6 {
+        up.normalize()
+    } else {
+        // Standing on an end of the craft: along the connector's own +Y.
+        connector.rotation * DVec3::Y
+    };
+    let unturned = unturned.reject_from(out).try_normalize()?;
+    let angle = out.dot(unturned.cross(up)).atan2(unturned.dot(up));
+    Some(wrapped((angle.to_degrees() * 1e6).round() / 1e6))
+}
+
+/// Where on surface `surface` of the part at `holder` in `craft` the mirror image of what is held
+/// at `at` goes, across the craft's middle plane (+Y and +Z, which a plane's nose and belly lie
+/// in): its `u` there, if the part is its own mirror image across that plane, and the image is
+/// somewhere else than the original.
+pub fn mirrored_u(craft: &Craft, holder: usize, surface: &str, at: SurfaceAtDef) -> Option<f64> {
+    let part = &craft.assembly.parts()[holder];
+    let pose = craft.assembly.poses()[holder];
+    let point = part.geometry.surface_point(surface, at.u, at.v)?.position;
+    let here = pose.point(point);
+    let there = DVec3::new(-here.x, here.y, here.z);
+    if here.distance(there) < 0.01 {
+        return None;
+    }
+    let local = pose.inverse().point(there);
+    let (found, u, v, off) = part.geometry.surface_near(local)?;
+    let again = part.geometry.surface_point(&found, u, v)?.position;
+    (found == surface
+        && off < 0.01
+        && (v - at.v).abs() < 1e-3
+        && pose.point(again).distance(there) < 0.01)
+        .then(|| (u * 1e9).round() / 1e9)
 }
 
 /// The parts [`Builder::pattern`] puts in the craft: `count` copies of `part` round the surface
@@ -652,21 +921,43 @@ pub fn holding(craft: &Craft, index: usize) -> Option<Holding> {
 
 /// The parts put on with `id` by symmetry, as far as can be told, each with whether it is its
 /// mirror image: those on the same surface of the same part, as far along it and as far off it,
-/// and the same in every other way, or the same as its reflection. Nothing remembers a pattern or
-/// a mirror, so they are found by matching.
+/// and the same in every other way, or the same as its reflection; and those held the same way by
+/// the parts put on with its holder by symmetry (a nose cone on each of four boosters). Nothing
+/// remembers a pattern or a mirror, so they are found by matching.
 pub fn alike(draft: &CraftDef, id: &str) -> Vec<(String, bool)> {
+    counterparts(draft, id, 0)
+}
+
+/// [`alike`], `depth` holders down.
+fn counterparts(draft: &CraftDef, id: &str, depth: usize) -> Vec<(String, bool)> {
     let Some(part) = draft.parts.iter().find(|p| p.id == id) else {
         return Vec::new();
     };
-    if part.at.is_none() {
+    let Some((holder, connector)) = part.on.as_deref().and_then(|on| on.split_once('.')) else {
         return Vec::new();
+    };
+    // Its holder and the holder's own, each with whether it is the holder's mirror image.
+    let mut holders = vec![(holder.to_owned(), false)];
+    if depth < 32 {
+        holders.extend(counterparts(draft, holder, depth + 1));
     }
     let key = |p: &CraftPartDef| {
         let mut p = p.clone();
         p.id.clear();
         p.name = None;
+        p.on =
+            p.on.and_then(|on| on.split_once('.').map(|(_, c)| c.to_owned()));
+        let tidy = |x: &mut f64, per: f64| *x = (*x * per).round() / per + 0.0;
         if let Some(at) = &mut p.at {
             at.u = 0.0;
+            tidy(&mut at.v, 1e6);
+            tidy(&mut at.standoff, 1e6);
+        }
+        tidy(&mut p.roll, 1e4);
+        for node in &mut p.nodes {
+            for x in node.position.iter_mut().chain(node.direction.iter_mut()) {
+                tidy(x, 1e6);
+            }
         }
         p
     };
@@ -674,6 +965,14 @@ pub fn alike(draft: &CraftDef, id: &str) -> Vec<(String, bool)> {
     (draft.parts.iter())
         .filter(|p| p.id != id)
         .filter_map(|p| {
+            let (on, at) = p.on.as_deref()?.split_once('.')?;
+            if at != connector || !holders.iter().any(|(h, _)| h == on) {
+                return None;
+            }
+            // Two parts cannot share a node: on its own holder, only a surface has others.
+            if on == holder && part.at.is_none() {
+                return None;
+            }
             let other = key(p);
             if other == same {
                 Some((p.id.clone(), false))
@@ -1548,5 +1847,232 @@ mod tests {
         let [a2, b2] = pivots(&Builder::of(next));
         assert!(near(b2, reflect(a2)));
         assert!((a2.z - a.z - by.z).abs() < 1e-6 && (a2 - a).length() > 0.3);
+    }
+
+    #[test]
+    fn a_tank_is_filled_with_what_the_engine_on_the_craft_burns() {
+        let catalog = catalog();
+        let mut builder = stack(&catalog);
+        let mut engine = entry("engine:K-0", &catalog);
+        engine.id = "engine".into();
+        let under = Place::node("lower.bottom", "top");
+        builder.place(&catalog, engine, Some(under)).unwrap();
+        // Nothing on it burns hydrogen.
+        let hydrolox = builder.set_field(&catalog, "top", "contents", "hydrolox");
+        assert_eq!(hydrolox.map_err(|r| r.rule), Err(Rule::Part));
+        // Kerolox is the K-0's, 2.4 parts oxygen to one of kerosene.
+        builder
+            .set_field(&catalog, "top", "contents", "kerolox")
+            .unwrap();
+        let top = (builder.draft().parts.iter())
+            .find(|p| p.id == "top")
+            .unwrap();
+        let held = top.components.iter().find_map(|c| match c {
+            crate::component::ComponentDef::Storage(s) => Some(&s.contents),
+            _ => None,
+        });
+        let held = held.unwrap();
+        assert!(
+            (held["LqdOxygen"] / held["Kerosene"] - 2.4).abs() < 1e-9,
+            "{held:?}"
+        );
+    }
+
+    #[test]
+    fn an_engine_put_under_new_tanks_fills_them_and_one_undo_takes_both_back() {
+        let catalog = catalog();
+        let mut builder = stack(&catalog);
+        let before = builder.draft().parts.clone();
+        let mut engine = entry("engine:K-0", &catalog);
+        engine.id = "engine".into();
+        let under = Place::node("lower.bottom", "top");
+        let (change, _) = builder
+            .put_set(&catalog, &[engine], &[(under, false)], &BTreeSet::new())
+            .unwrap();
+        // Both tanks feed it, through each other: both hold its 2.4 to one.
+        let ratio = |id: &str| {
+            let part = (builder.draft().parts.iter()).find(|p| p.id == id).unwrap();
+            let held = (part.components.iter())
+                .find_map(|c| match c {
+                    crate::component::ComponentDef::Storage(s) => Some(s.contents.clone()),
+                    _ => None,
+                })
+                .unwrap();
+            held["LqdOxygen"] / held["Kerosene"]
+        };
+        assert!((ratio("top") - 2.4).abs() < 1e-9, "{}", ratio("top"));
+        assert!((ratio("lower") - 2.4).abs() < 1e-9, "{}", ratio("lower"));
+        assert!(change.changed.contains(&"top".to_owned()), "{change:?}");
+        assert!(builder.undo());
+        assert_eq!(builder.draft().parts, before);
+    }
+
+    #[test]
+    fn the_root_turns_and_everything_turns_with_it() {
+        let catalog = catalog();
+        let mut builder = stack(&catalog);
+        let before = poses(&builder, &catalog);
+        // Laid down, nose along +X, then rolled: everything goes round the root with it.
+        let turn =
+            DQuat::from_rotation_y(std::f64::consts::FRAC_PI_2) * DQuat::from_rotation_z(0.3);
+        builder.turn_root(&catalog, turn).unwrap();
+        let root = &builder.draft().parts[0];
+        assert!(root.points.is_some());
+        let after = poses(&builder, &catalog);
+        for (id, was) in &before {
+            let now = pose(&after, id);
+            assert!(near(now.position, turn * was.position), "{id}");
+            assert!(
+                now.rotation.angle_between(turn * was.rotation) < 1e-6,
+                "{id}"
+            );
+        }
+        // Written and read back, a turn is the same turn.
+        let (points, roll) = crate::craft::root_turn(turn);
+        let again = CraftPartDef {
+            points,
+            roll,
+            ..root.clone()
+        };
+        let read = crate::craft::root_rotation(&again).unwrap();
+        // Its roll is kept to a millionth of a degree.
+        assert!(read.angle_between(turn) < 1e-7);
+        // Turned back, it is as it was, and nothing is written for no turn.
+        builder.turn_root(&catalog, turn.inverse()).unwrap();
+        assert_eq!(builder.draft().parts[0].points, None);
+        assert_eq!(builder.draft().parts[0].roll, 0.0);
+        assert!(builder.undo() && builder.undo());
+        assert_eq!(poses(&builder, &catalog), before);
+    }
+
+    #[test]
+    fn a_part_and_its_copies_go_on_as_one_change_and_are_found_again() {
+        let catalog = catalog();
+        let mut builder = stack(&catalog);
+        // A tank on each side of the lower tank, by a node of its own on its side, put on as a
+        // set of two, the second the first's mirror image.
+        let mut side = entry("tank", &catalog);
+        side.id = "booster".into();
+        side.nodes.push(NodeDef {
+            name: "held_side".into(),
+            position: [-1.0, 0.0, 2.0],
+            direction: [-1.0, 0.0, 0.0],
+            size: 0.0,
+        });
+        let at = |u: f64| SurfaceAtDef {
+            u,
+            v: 0.5,
+            side: Side::Front,
+            standoff: 0.0,
+        };
+        let mut first = Place::surface("lower.barrel", "held_side", at(0.0));
+        first.roll = 90.0;
+        let mut second = Place::surface("lower.barrel", "held_side", at(0.5));
+        second.roll = -90.0;
+        let (change, tops) = builder
+            .put_set(
+                &catalog,
+                std::slice::from_ref(&side),
+                &[(first, false), (second, true)],
+                &BTreeSet::new(),
+            )
+            .unwrap();
+        assert_eq!(tops, ["booster", "booster_2"]);
+        assert_eq!(change.added.len(), 2);
+        assert_eq!(
+            alike(builder.draft(), "booster"),
+            [("booster_2".to_owned(), true)]
+        );
+        // A nose cone on one goes on as a set with one on the other, found by matching.
+        let mut nose = entry("nose_cone", &catalog);
+        nose.id = "nose".into();
+        let places = [
+            (Place::node("booster.top", "bottom"), false),
+            (Place::node("booster_2.top", "bottom"), true),
+        ];
+        builder
+            .put_set(&catalog, &[nose], &places, &BTreeSet::new())
+            .unwrap();
+        assert_eq!(
+            alike(builder.draft(), "nose"),
+            [("nose_2".to_owned(), true)]
+        );
+        // The cones stand on opposite sides of the axis, at the same height.
+        let all = poses(&builder, &catalog);
+        let (a, b) = (pose(&all, "nose"), pose(&all, "nose_2"));
+        assert!((a.position.z - b.position.z).abs() < 1e-6);
+        assert!(near(
+            a.position.truncate().extend(0.0),
+            -b.position.truncate().extend(0.0)
+        ));
+        // Put back elsewhere as one, the copies taken off with what they hold.
+        let replacing = BTreeSet::from(["booster".to_owned(), "booster_2".to_owned()]);
+        let subtree: Vec<CraftPartDef> = (builder.draft().parts.iter())
+            .filter(|p| p.id == "booster" || p.id == "nose")
+            .cloned()
+            .collect();
+        let mut one = Place::surface("lower.barrel", "held_side", at(0.25));
+        one.roll = 90.0;
+        builder
+            .put_set(&catalog, &subtree, &[(one, false)], &replacing)
+            .unwrap();
+        let ids: Vec<&str> = (builder.draft().parts.iter())
+            .map(|p| p.id.as_str())
+            .collect();
+        assert!(ids.contains(&"booster") && ids.contains(&"nose"));
+        assert!(!ids.contains(&"booster_2") && !ids.contains(&"nose_2"));
+        assert!(builder.undo());
+        assert!(alike(builder.draft(), "nose").len() == 1);
+    }
+
+    #[test]
+    fn a_tank_on_the_side_of_another_stands_upright_against_it_and_has_a_mirror_place() {
+        let catalog = catalog();
+        let builder = stack(&catalog);
+        let craft = Craft::build(builder.draft(), &catalog).unwrap();
+        let lower = craft.find("lower").unwrap();
+        let mut booster = entry("tank", &catalog);
+        booster.id = "booster".into();
+        let node = side_node(&alone(&booster, &catalog).unwrap());
+        assert_eq!(node.name, SIDE);
+        assert!(node.position[0] < -0.9 && node.direction == [-1.0, 0.0, 0.0]);
+        booster.nodes.push(node.clone());
+        let at = SurfaceAtDef {
+            u: 0.1,
+            v: 0.5,
+            side: Side::Front,
+            standoff: 0.0,
+        };
+        let mount = Mount::Surface {
+            surface: "barrel".into(),
+            side: Side::Front,
+            u: at.u,
+            v: at.v,
+            standoff: 0.0,
+        };
+        let roll = upright_roll(&craft, lower, &mount, &node, DVec3::Z).unwrap();
+        let mut place = Place::surface("lower.barrel", SIDE, at);
+        place.roll = roll;
+        let mut placed = builder.clone();
+        let (_, tops) = placed
+            .put_set(
+                &catalog,
+                std::slice::from_ref(&booster),
+                &[(place, false)],
+                &BTreeSet::new(),
+            )
+            .unwrap();
+        let all = poses(&placed, &catalog);
+        let (core, side) = (pose(&all, "lower"), pose(&all, &tops[0]));
+        // Upright, beside the core, its axis two radii off the core's.
+        assert!((side.rotation * DVec3::Z).angle_between(DVec3::Z) < 1e-6);
+        let apart = (side.position - core.position).truncate().length();
+        assert!((apart - 2.0).abs() < 0.05, "{apart}");
+        // Its mirror image across the craft's middle plane is on the same barrel.
+        let u = mirrored_u(&craft, lower, "barrel", at).unwrap();
+        assert!((u - 0.4).abs() < 1e-6, "{u}");
+        // Half way round from +X, on the plane itself, there is none.
+        let on_plane = SurfaceAtDef { u: 0.25, ..at };
+        assert_eq!(mirrored_u(&craft, lower, "barrel", on_plane), None);
     }
 }

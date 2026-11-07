@@ -12,20 +12,35 @@
 // `editor.place:<pad|runway|orbit>` picks where it goes from (`editor.place` is the one picked,
 // `editor.place_name` says which site or orbit that is, and `editor.pad`, `editor.runway` and
 // `editor.orbit` are empty when there is none), `editor.launch` launches it, and Back or Esc goes
-// back to the menu. `editor.can_launch` says whether it can go: not with nothing on show, nor from
-// a pad or runway with a vessel on it. `editor.occupied` says what is there and `editor.clear`
+// back to the menu. Showing another, `editor.new`, Back and Esc ask first while the craft on show
+// has changes (`editor.ask_discard`, `editor.discard`). `editor.can_launch` says whether it can
+// go: not with nothing on show, nor from a pad or runway with a vessel on it.
+// `editor.occupied` says what is there and `editor.clear`
 // removes it, once `editor.clearing` has asked (`editor.clear_label`, `editor.clear_question`).
 // `editor.heading` says what the player came for, `editor.has_vessel` whether one is on show,
 // `editor.name`, `editor.height`, `editor.mass` and `editor.parts` describe it, and
 // `editor.notice` says why a launch or a change failed.
 //
-// `editor.new` starts a vessel from nothing, and `editor.parts` shows the parts it is built from
-// (`osp_editor::building`), or brings them back in place of a part's settings:
-// `editor.palette_open`, `editor.group` (`editor.group:<group>` picks one), `editor.palette` (`id`,
-// `name`, `detail`, `held`), `editor.palette_more`, and `editor.search:<text>` with
-// `editor.search_shown`. `editor.add:<id>` takes one in hand, and a row dragged out
-// (`palette:<id>`) takes it to go where it is let go; `editor.has_parts` says whether the craft has
-// any.
+// `editor.new` starts a rocket from nothing, `editor.new:plane` a plane (shown lying, as on the
+// runway, with mirror symmetry on), and `editor.parts` shows the parts it is built from
+// (`osp_editor::parts_list`), or brings them back in place of a part's settings
+// (`editor.palette_open`). They are a grid of pictures (`editor.palette`, each `id`, `name` and
+// `held`; a `part_picture` shows the picture of the `part` it names), a tab at a time by what they
+// do (`editor.group:<pods|tanks|engines|structure|aero|control>`, `editor.group` the one shown, or
+// `search` while searching), or what `editor.search:<text>` finds in all of them
+// (`editor.search_shown`); `editor.palette_more` says how many more there are, or that nothing is
+// found. Two filters narrow them, while the tab has anything they could narrow: by width,
+// `editor.size:<id|any>` (`editor.size`, the choices `editor.sizes`, shown while
+// `editor.sizes_shown`), and by what they burn, `editor.propellant:<id|any>` (`editor.propellant`,
+// `editor.propellants`, `editor.propellants_shown`); each choice has `id`, `label`, `on` and the
+// `action` a click on it fires, which takes it off again if it is on. A tile says it is pointed
+// at (`hover`, `part:<id>`): `editor.pointed`, with `editor.pointed_name`,
+// `editor.pointed_detail` (its figures) and `editor.pointed_about`, show under the grid.
+// `editor.add:<id>` takes one in hand, and a tile dragged out (`palette:<id>`) takes it to go
+// where it is let go (`osp_editor::building`); `editor.has_parts` says whether the craft has any.
+// As data `editor.symmetry` reads the radial count (`1`, `x4`), and as an action it steps it;
+// `editor.mirror` says whether mirror symmetry is on instead, and `editor.symmetry_mode` switches.
+// `editor.snap` steps how far a turn goes in a step, which the data `editor.snap` reads (`15°`).
 //
 // A click on a part picks it and shows its settings in the rail (`osp_editor::part_settings`):
 // `editor.part.name`, and `editor.part.rows`, each with a `kind`: `section` (a heading, `label`);
@@ -54,7 +69,8 @@
         title_if: "!editor.has_vessel",
         visible: "editor.rail == vessels",
         children: [
-          { widget: "menu_row", text: "New vessel", meta: "From nothing", action: "editor.new" },
+          { widget: "menu_row", text: "New rocket", meta: "Stands on the pad", action: "editor.new" },
+          { widget: "menu_row", text: "New plane", meta: "Lies on the runway", action: "editor.new:plane" },
           {
             widget: "column",
             repeat: "editor.vessels",
@@ -71,32 +87,114 @@
           },
         ],
       },
-      // The parts a craft is built from (osp_editor::building).
+      // The parts a craft is built from (osp_editor::parts_list): a search, tabs, the filters, a
+      // grid of pictures that scrolls, and what the pointer is on under it.
       {
-        widget: "screen",
-        class: "editor_rail",
-        shade: false,
-        back: false,
+        widget: "column",
+        class: "menu_rail editor_rail editor_parts",
         visible: "editor.rail == parts",
         children: [
-          { widget: "input", text: "{editor.search_shown}", action: "editor.search:$text", style: { width: 300, margin: [0, 0, 10, 0] } },
           {
             widget: "row",
+            class: "editor_search_row",
             children: [
-              { widget: "button", class: "tab", text: "Procedural", action: "editor.group:procedural", active: "editor.group == procedural" },
-              { widget: "button", class: "tab", text: "Pods", action: "editor.group:pods", active: "editor.group == pods" },
-              { widget: "button", class: "tab", text: "Engines", action: "editor.group:engines", active: "editor.group == engines" },
-              { widget: "button", class: "tab", text: "Control", action: "editor.group:control", active: "editor.group == control" },
+              { widget: "image", class: "editor_search_icon", image: "icons/editor/search.svg" },
+              { widget: "input", class: "editor_search", text: "{editor.search_shown}", action: "editor.search:$text" },
+            ],
+          },
+          {
+            widget: "row",
+            class: "editor_tabs",
+            children: [
+              {
+                widget: "button", class: "tab editor_tab", action: "editor.group:pods", active: "editor.group == pods", tooltip: "Pods",
+                children: [{ widget: "image", class: "editor_tab_icon", image: "icons/editor/pod.svg", active: "editor.group == pods" }],
+              },
+              {
+                widget: "button", class: "tab editor_tab", action: "editor.group:tanks", active: "editor.group == tanks", tooltip: "Tanks",
+                children: [{ widget: "image", class: "editor_tab_icon", image: "icons/editor/tank.svg", active: "editor.group == tanks" }],
+              },
+              {
+                widget: "button", class: "tab editor_tab", action: "editor.group:engines", active: "editor.group == engines", tooltip: "Engines",
+                children: [{ widget: "image", class: "editor_tab_icon", image: "icons/engine.svg", active: "editor.group == engines" }],
+              },
+              {
+                widget: "button", class: "tab editor_tab", action: "editor.group:structure", active: "editor.group == structure", tooltip: "Structure: tubes, nose cones, decouplers",
+                children: [{ widget: "image", class: "editor_tab_icon", image: "icons/editor/structure.svg", active: "editor.group == structure" }],
+              },
+              {
+                widget: "button", class: "tab editor_tab", action: "editor.group:aero", active: "editor.group == aero", tooltip: "Aero: fins and wings",
+                children: [{ widget: "image", class: "editor_tab_icon", image: "icons/editor/aero.svg", active: "editor.group == aero" }],
+              },
+              {
+                widget: "button", class: "tab editor_tab", action: "editor.group:control", active: "editor.group == control", tooltip: "Control: RCS and reaction wheels",
+                children: [{ widget: "image", class: "editor_tab_icon", image: "icons/rcs.svg", active: "editor.group == control" }],
+              },
+            ],
+          },
+          {
+            widget: "row",
+            class: "editor_filter",
+            visible: "editor.sizes_shown",
+            children: [
+              { widget: "image", class: "editor_filter_icon", image: "icons/editor/width.svg", tooltip: "Width" },
+              {
+                widget: "row",
+                class: "choice editor_chips",
+                repeat: "editor.sizes",
+                children: [
+                  { widget: "button", class: "choice_item editor_chip", text: "{item.label}", action: "{item.action}", active: "item.on" },
+                ],
+              },
+            ],
+          },
+          {
+            widget: "row",
+            class: "editor_filter",
+            visible: "editor.propellants_shown",
+            children: [
+              { widget: "image", class: "editor_filter_icon", image: "icons/editor/propellant.svg", tooltip: "What it burns" },
+              {
+                widget: "row",
+                class: "choice editor_chips",
+                repeat: "editor.propellants",
+                children: [
+                  { widget: "button", class: "choice_item editor_chip", text: "{item.label}", action: "{item.action}", active: "item.on" },
+                ],
+              },
             ],
           },
           {
             widget: "column",
-            repeat: "editor.palette",
+            class: "menu_body editor_parts_body",
             children: [
-              { widget: "menu_row", text: "{item.name}", meta: "{item.detail}", active: "item.held", action: "editor.add:{item.id}", drag: "palette:{item.id}" },
+              {
+                widget: "row",
+                class: "editor_grid",
+                repeat: "editor.palette",
+                children: [
+                  {
+                    widget: "button", class: "btn editor_tile", action: "editor.add:{item.id}", drag: "palette:{item.id}", hover: "part:{item.id}", active: "item.held",
+                    children: [
+                      { widget: "part_picture", class: "editor_tile_picture", part: "{item.id}" },
+                      { widget: "label", class: "editor_tile_name", text: "{item.name}" },
+                    ],
+                  },
+                ],
+              },
+              { widget: "label", class: "menu_subtitle editor_parts_more", text: "{editor.palette_more}", visible: "editor.palette_more" },
             ],
           },
-          { widget: "label", class: "menu_subtitle", text: "{editor.palette_more}", visible: "editor.palette_more" },
+          {
+            widget: "column",
+            class: "editor_card",
+            children: [
+              { widget: "label", class: "editor_card_name", text: "{editor.pointed_name}", visible: "editor.pointed" },
+              { widget: "label", class: "editor_card_detail", text: "{editor.pointed_detail}", visible: "editor.pointed" },
+              { widget: "label", class: "editor_card_about", text: "{editor.pointed_about}", visible: "editor.pointed_about" },
+              { widget: "label", class: "editor_card_about", text: "Point at a part for its figures. Click it, or drag it out, to take it.", visible: "!editor.pointed" },
+            ],
+          },
         ],
       },
       // The picked part's settings (osp_editor::part_settings), in place of the parts list.
@@ -205,6 +303,17 @@
               { widget: "button", class: "choice_item", text: "Turn", action: "editor.tool:turn", active: "editor.tool == turn", tooltip: "Turn it by its rings (3)" },
             ],
           },
+          // How many go on at once (osp_editor::building).
+          {
+            widget: "row",
+            class: "choice editor_tools",
+            visible: "editor.has_vessel",
+            children: [
+              { widget: "button", class: "choice_item", text: "{editor.symmetry}", action: "editor.symmetry", active: "!editor.mirror", tooltip: "Radial symmetry: how many go round (X, Shift+X back)" },
+              { widget: "button", class: "choice_item", text: "Mirror", action: "editor.symmetry_mode", active: "editor.mirror", tooltip: "Mirror symmetry across the middle (R)" },
+            ],
+          },
+          { widget: "button", class: "btn", text: "{editor.snap}", action: "editor.snap", visible: "editor.has_vessel", tooltip: "How far a turn goes in a step (C, Shift+C back)" },
         ],
       },
       {
@@ -217,7 +326,8 @@
             children: [
               { widget: "label", class: "menu_heading", text: "No vessel chosen" },
               { widget: "label", class: "menu_subtitle", text: "Choose one from the Vessels list, or build a new one." },
-              { widget: "button", class: "btn btn_wide", text: "New vessel", action: "editor.new" },
+              { widget: "button", class: "btn btn_wide", text: "New rocket", action: "editor.new" },
+              { widget: "button", class: "btn btn_wide", text: "New plane", action: "editor.new:plane" },
             ],
           },
           {
