@@ -11,6 +11,7 @@
     style: { left: 300, top: 120, width: 300 },
     children: [
       { widget: "label", class: "dim", visible: "!vessel.has_radio", text: "No radio on this vessel" },
+      { widget: "label", class: "dim", visible: "!vessel.commandable", text: "It cannot be told what to do: no crew and no link" },
       {
         widget: "column",
         visible: "vessel.has_radio",

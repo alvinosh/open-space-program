@@ -151,6 +151,56 @@ fn the_capsule_flies_home_on_its_lift_and_splashes_down() {
     let _ = DVec3::ZERO;
 }
 
+/// A capsule behind its shield with a fin sticking out into the air past it.
+const FINNED: &str = r#"{ id: "finned", name: "Finned", parts: [
+    { id: "capsule",
+      shape: { shell: { bottom_diameter: 3.9, sections: [{ length: 3, top_diameter: 0.8 }],
+          cap_bottom: true, cap_top: true } },
+      structure: { mass: 5500 },
+      nodes: [{ name: "side", position: [1.2, 0, 1.5], direction: [1, 0, 0], size: 0.5 }],
+      components: [{ heat_shield: { ablator: 850 } }, { crew: { seats: 3 } }] },
+    { id: "fin", name: "Fin", on: "capsule.side", by: "root",
+      shape: { wing: { root_chord: 1.6, tip_chord: 0.7, span: 2.5, sweep: 0.8,
+          airfoil: { plate: { thickness: 0.02 } } } },
+      structure: { material: "Al 2219-T87" },
+      components: [{ lifting_surface: {} }] },
+] }"#;
+
+#[test]
+fn a_fin_burns_off_while_the_shielded_capsule_lives() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let content = osp_mods::load(&root.join("assets/core"), Some(&root.join("mods")));
+    let registry = &content.registry;
+    let system = SystemDef {
+        bodies: registry.all::<BodyDef>("bodies", &mut Vec::new()),
+    };
+    let sites = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
+    let catalog = record::catalog(registry);
+    let mut scenario: ScenarioDef = registry.get("scenarios", "apollo11_entry").unwrap();
+    scenario.craft = "finned".into();
+    scenario.sequences_done = 0;
+    let craft_of = |_: &str| json5::from_str::<CraftDef>(FINNED).map_err(|e| e.to_string());
+    let mut universe =
+        Universe::new_game(&system, Vec::new(), &sites, &catalog, craft_of, &scenario).unwrap();
+    universe
+        .colliders
+        .set_files(Arc::new(content.file_reader()));
+    let id = universe.focus.unwrap();
+    let parts = |universe: &Universe| {
+        let v = &universe.vessels[universe.find_vessel(id).unwrap()];
+        v.propulsion.parts().parts().len()
+    };
+    assert_eq!(parts(&universe), 2);
+    let result = fly(&mut universe, Guidance::Entry, None, false);
+    assert!(
+        result.log.iter().any(|m| m == "Fin burned off"),
+        "{result:#?}"
+    );
+    assert_eq!(parts(&universe), 1, "{result:#?}");
+    assert!(!result.burned, "{result:#?}");
+    assert_eq!(result.crew, 3, "{result:#?}");
+}
+
 #[test]
 #[ignore = "prints what the air does to the capsule at each angle"]
 fn print_the_capsule_in_the_air() {

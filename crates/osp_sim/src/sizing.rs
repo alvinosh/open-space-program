@@ -361,6 +361,7 @@ impl AvionicsRequirement {
             controlled_mass: self.controlled_mass,
             power: watts,
             interplanetary: record.interplanetary,
+            needs_link: false,
         })];
         if let Some(charge) = self.battery {
             components.push(ComponentDef::Battery(BatteryPackDef {

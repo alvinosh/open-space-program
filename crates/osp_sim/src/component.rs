@@ -495,6 +495,9 @@ pub struct AvionicsUnitDef {
     /// It works beyond the Earth's sphere of influence.
     #[serde(default, skip_serializing_if = "is_false")]
     pub interplanetary: bool,
+    /// A probe core: in a Realistic game it answers only over a link.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub needs_link: bool,
 }
 
 /// Burns hydrogen and oxygen from the tanks its part can reach for electricity.
@@ -755,6 +758,11 @@ pub struct BuiltPart {
     pub pieces: Vec<Piece>,
     /// Dry, in the part's frame: its structure, tank walls and the components' hardware.
     pub mass: Mass,
+    /// How hot it can get, K, and J/kg K: those of what most of it is made of, if that is known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_temperature: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specific_heat: Option<f64>,
 }
 
 /// A piece of a part's geometry as built.
@@ -888,7 +896,9 @@ fn trim_layers(shape: &ShapeDef) -> Vec<LayerDef> {
         ShapeDef::CylinderTank(d) => {
             let dome = d.dome * d.diameter / 2.0;
             let (low, high) = (dome + d.aft_skirt, d.length - dome - d.forward_skirt);
-            let width = (0.1 * d.diameter).clamp(0.06, 0.6).min(0.2 * (high - low).max(0.0));
+            let width = (0.1 * d.diameter)
+                .clamp(0.06, 0.6)
+                .min(0.2 * (high - low).max(0.0));
             vec![
                 panels(d.diameter),
                 band(low, low + width, TRIM_DARK),
@@ -904,7 +914,11 @@ fn trim_layers(shape: &ShapeDef) -> Vec<LayerDef> {
             let mut layers = vec![panels(d.bottom_diameter), band(0.0, width, TRIM_DARK)];
             if closes {
                 layers.push(band(0.84 * length, length + 1.0, TRIM_DARK));
-                layers.push(band(0.84 * length - 0.25 * width, 0.84 * length, TRIM_ACCENT));
+                layers.push(band(
+                    0.84 * length - 0.25 * width,
+                    0.84 * length,
+                    TRIM_ACCENT,
+                ));
             } else {
                 layers.push(band(length - width, length, TRIM_DARK));
                 layers.push(LayerDef::Stringers {
@@ -1234,6 +1248,7 @@ impl PartDef {
         let (structure, unspread) = structure(&self.structure, &rest, catalog).map_err(&bad)?;
         pieces.extend(structure);
         let mass = pieces.iter().map(|p| p.mass).sum::<Mass>() + hardware + unspread;
+        let made_of = main_material(&pieces, catalog);
         Ok(BuiltPart {
             name: self.name.clone(),
             geometry,
@@ -1255,6 +1270,8 @@ impl PartDef {
                 .map_or(DRAWN_MEMBER, |a| 2.0 * (a / std::f64::consts::PI).sqrt()),
             pieces,
             mass,
+            max_temperature: made_of.map(|m| m.max_temperature),
+            specific_heat: made_of.map(|m| m.specific_heat),
         })
     }
 
@@ -1784,6 +1801,21 @@ fn structure(
         (m.mass, m.inertia) = (m.mass * total / sum, m.inertia * (total / sum));
     }
     Ok((pieces, Mass::ZERO))
+}
+
+/// What most of `pieces` is made of, by weight.
+fn main_material<'a>(
+    pieces: &[Piece],
+    catalog: &'a PartCatalog,
+) -> Option<&'a crate::data::MaterialDef> {
+    let mut by_weight: BTreeMap<&str, f64> = BTreeMap::new();
+    for piece in pieces {
+        if let Some(material) = &piece.material {
+            *by_weight.entry(material).or_default() += piece.mass.mass;
+        }
+    }
+    let (id, _) = (by_weight.into_iter()).max_by(|a, b| a.1.total_cmp(&b.1))?;
+    catalog.materials.iter().find(|m| m.id == id)
 }
 
 fn node(name: &str, position: [f64; 3], direction: [f64; 3], size: f64) -> NodeDef {

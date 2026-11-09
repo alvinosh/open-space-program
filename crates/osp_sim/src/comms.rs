@@ -505,7 +505,7 @@ mod tests {
     mod policy {
         use super::*;
         use crate::{
-            data::{CraftDef, OrbitStartDef},
+            data::{CraftDef, OrbitStartDef, RulesDef},
             plan::Burn,
             systems::Antenna,
             test_data::records,
@@ -593,6 +593,52 @@ mod tests {
             universe.update_links();
             assert!(universe.vessels[0].link().is_none());
             assert!(!universe.vessels[0].commandable());
+        }
+
+        #[test]
+        fn a_probe_core_with_no_radio_answers_only_in_a_casual_game() {
+            let system = rss();
+            let start = OrbitStartDef {
+                body: "Earth".into(),
+                periapsis_altitude: 200e3,
+                apoapsis_altitude: 200e3,
+                inclination: 0.0,
+                longitude_of_ascending_node: 0.0,
+                plane: None,
+                argument_of_periapsis: 0.0,
+                mean_anomaly: 0.0,
+                spin: [0.0; 3],
+            };
+            let craft = |crew: &str, probe: bool| -> Vessel {
+                let def: CraftDef = records(&format!(
+                    r#"{{ id: "x", name: "", parts: [{{ id: "bus",
+                        shape: {{ shell: {{ bottom_diameter: 1, sections: [{{ length: 1 }}],
+                            cap_bottom: true, cap_top: true }} }},
+                        structure: {{ mass: 100 }},
+                        components: [{{ container: {{}} }},
+                            {{ avionics: {{ controlled_mass: 1000, needs_link: {probe} }} }} {crew}] }}] }}"#
+                ))
+                .remove(0);
+                Vessel::in_orbit(&def, &catalog(), &system, &start, SimTime::J2000).unwrap()
+            };
+            let realistic = RulesDef::default();
+            let casual = RulesDef {
+                avionics: false,
+                ..RulesDef::default()
+            };
+            let mut probe = craft("", true);
+            assert!(probe.commandable(), "outside a game it flies as it did");
+            probe.propulsion.require_control_under(&realistic);
+            assert!(!probe.commandable());
+            probe.propulsion.require_control_under(&casual);
+            assert!(probe.commandable());
+            let mut crewed = craft(", { crew: { seats: 1 } }", true);
+            crewed.propulsion.require_control_under(&realistic);
+            assert!(crewed.commandable(), "someone aboard needs no radio");
+            // A launcher's own flight computer is not a probe core.
+            let mut launcher = craft("", false);
+            launcher.propulsion.require_control_under(&realistic);
+            assert!(launcher.commandable());
         }
 
         #[test]

@@ -51,7 +51,7 @@ use crate::{
     staging::Activation,
     structure::{self, Conditions, Part, PartLoad},
     system::SolarSystem,
-    systems::{Antenna, Crew, FlightNow, PartHeat},
+    systems::{Antenna, Avionics, Crew, FlightNow, PartHeat},
     terrain,
     time::{SimTime, Ticks},
 };
@@ -1558,13 +1558,17 @@ impl Vessel {
         }
     }
 
-    /// Whether anyone can tell the vessel what to do: its crew, or the ground with a link. A
-    /// vessel with neither a radio nor a crew is flown as it always has been (T087).
+    /// Whether anyone can tell the vessel what to do: its crew, or the ground with a link. In a
+    /// Realistic game a probe core has to be reached by radio, and taking the antenna off does not
+    /// get round that; otherwise a vessel with neither is flown as it always has been (a launcher's
+    /// own flight computer, say).
     pub fn commandable(&self) -> bool {
         let systems = &self.propulsion.systems;
         let crew = systems.all::<Crew>().any(|(_, crew)| crew.aboard > 0);
         let antennas = systems.all::<Antenna>().next().is_some();
-        crew || !antennas || self.link.is_some()
+        let probe = systems.all::<Avionics>().any(|(_, unit)| unit.needs_link);
+        let reached_by_radio = antennas || (probe && self.propulsion.needs_a_radio());
+        crew || self.link.is_some() || !reached_by_radio
     }
 
     /// Send a burn up: it joins the plan once the signal has got there, or at once for a crew;
@@ -2248,6 +2252,7 @@ impl Vessel {
             dynamic_pressure: 0.5 * density * air_speed * air_speed,
             acceleration,
             stagnation_heating: heating,
+            recovery_temperature: recovery_temperature(air_speed),
             on_the_ground: self.on_the_ground(),
         };
         let mut heat = BTreeMap::new();
@@ -2269,13 +2274,34 @@ impl Vessel {
         for message in said {
             self.record(time, message);
         }
-        if !self.destroyed && self.propulsion.systems.overheated() {
+        let root = self.propulsion.parts().root().map(|part| part.id);
+        let systems = &self.propulsion.systems;
+        let root_gone = root.is_some_and(|root| systems.burned_through().contains(&root));
+        if !self.destroyed && (systems.overheated() || root_gone) {
             self.break_up(time, format!("Burned up in the air of {}", body.name));
             out.push(VesselEvent {
                 time,
                 kind: VesselEventKind::Destroyed,
             });
         }
+    }
+
+    /// Take off the parts that got too hot to stay on. What hung from them goes on by itself, and
+    /// is what this returns. A destroyed vessel has nothing left to lose them from.
+    pub fn burn_off(&mut self, system: &SolarSystem, time: SimTime) -> Vec<Vessel> {
+        let mut debris = Vec::new();
+        if self.destroyed {
+            return debris;
+        }
+        for part in self.propulsion.systems.burned_through() {
+            // It may have gone with something it hung from.
+            if self.propulsion.parts().get(part).is_some()
+                && let Some(staged) = self.propulsion.burn_off(part)
+            {
+                debris.extend(self.staged(staged, system, time));
+            }
+        }
+        debris
     }
 
     /// Check every tank and fin set against its strength. Overloaded fins tear off; an
@@ -2507,6 +2533,15 @@ impl Vessel {
 /// from the stage it hung beside, or back down the axis from the one it hung under. A vessel
 /// that joined goes straight out of the node it joined, and what came off one, in the frame it
 /// was built in, goes along its axis away from what is left.
+/// As hot as air met at `speed`, m/s, can make a surface, K: the kinetic energy it brings, less
+/// what a boundary layer loses on the way. Air is taken as about as cold as it is high up.
+fn recovery_temperature(speed: f64) -> f64 {
+    const AIR: f64 = 250.0;
+    const RECOVERY: f64 = 0.9;
+    const AIR_SPECIFIC_HEAT: f64 = 1005.0;
+    AIR + RECOVERY * speed * speed / (2.0 * AIR_SPECIFIC_HEAT)
+}
+
 fn release_direction(released: &Released, rest: &Propulsion) -> DVec3 {
     if let Some(joined) = &released.undocked {
         return joined.away;
@@ -2684,7 +2719,11 @@ pub(crate) mod tests {
     }
 
     pub fn pathfinder() -> CraftDef {
-        crate::test_data::realistic(include_str!("../../../assets/core/craft/pathfinder.json5"), "craft").remove(0)
+        crate::test_data::realistic(
+            include_str!("../../../assets/core/craft/pathfinder.json5"),
+            "craft",
+        )
+        .remove(0)
     }
 
     /// Pathfinder as the stack of stages it was converted from, for tests of the stage
@@ -2748,11 +2787,19 @@ pub(crate) mod tests {
 }"#;
 
     pub fn upper_stage() -> CraftDef {
-        crate::test_data::realistic(include_str!("../../../assets/core/craft/upper_stage.json5"), "craft").remove(0)
+        crate::test_data::realistic(
+            include_str!("../../../assets/core/craft/upper_stage.json5"),
+            "craft",
+        )
+        .remove(0)
     }
 
     pub fn lunar_upper() -> CraftDef {
-        crate::test_data::realistic(include_str!("../../../assets/core/craft/lunar_upper.json5"), "craft").remove(0)
+        crate::test_data::realistic(
+            include_str!("../../../assets/core/craft/lunar_upper.json5"),
+            "craft",
+        )
+        .remove(0)
     }
 
     pub fn launch_sites() -> Vec<LaunchSiteDef> {
@@ -3645,8 +3692,11 @@ pub(crate) mod tests {
     #[test]
     fn fins_tear_off_in_a_hard_turn_at_speed() {
         let system = rss();
-        let craft: CraftDef =
-            crate::test_data::realistic(include_str!("../../../assets/core/craft/sounder.json5"), "craft").remove(0);
+        let craft: CraftDef = crate::test_data::realistic(
+            include_str!("../../../assets/core/craft/sounder.json5"),
+            "craft",
+        )
+        .remove(0);
         let start = OrbitStartDef {
             body: "Earth".into(),
             periapsis_altitude: 300e3,
@@ -3698,8 +3748,11 @@ pub(crate) mod tests {
         direction: f64,
         angle: f64,
     ) -> (Vessel, SimTime) {
-        let mut craft: CraftDef =
-            crate::test_data::realistic(include_str!("../../../assets/core/craft/sounder.json5"), "craft").remove(0);
+        let mut craft: CraftDef = crate::test_data::realistic(
+            include_str!("../../../assets/core/craft/sounder.json5"),
+            "craft",
+        )
+        .remove(0);
         // Its stages' bodies from the bottom, each with its parts named after it.
         for stage in ["sounder", "capsule"].into_iter().take(drop) {
             let prefix = format!("{stage}_");
@@ -3740,7 +3793,11 @@ pub(crate) mod tests {
     }
 
     pub fn glider() -> CraftDef {
-        crate::test_data::realistic(include_str!("../../../assets/core/craft/glider.json5"), "craft").remove(0)
+        crate::test_data::realistic(
+            include_str!("../../../assets/core/craft/glider.json5"),
+            "craft",
+        )
+        .remove(0)
     }
 
     /// The glider released at `altitude` over the Cape, heading east at `speed`, with its
@@ -3784,7 +3841,11 @@ pub(crate) mod tests {
     }
 
     pub fn comet() -> CraftDef {
-        crate::test_data::realistic(include_str!("../../../assets/core/craft/comet.json5"), "craft").remove(0)
+        crate::test_data::realistic(
+            include_str!("../../../assets/core/craft/comet.json5"),
+            "craft",
+        )
+        .remove(0)
     }
 
     /// The Comet at the start of the Shuttle Landing Facility's runway.
@@ -4113,8 +4174,11 @@ pub(crate) mod tests {
         let StartDef::Orbit(start) = &scenario.start else {
             panic!("an orbit start")
         };
-        let craft: CraftDef =
-            crate::test_data::realistic(include_str!("../../../assets/core/craft/satellite.json5"), "craft").remove(0);
+        let craft: CraftDef = crate::test_data::realistic(
+            include_str!("../../../assets/core/craft/satellite.json5"),
+            "craft",
+        )
+        .remove(0);
         let t = SimTime::from_seconds(scenario.start_time);
         let v = Vessel::in_orbit(&craft, &catalog(), &system, start, t).unwrap();
         // Roll, the bus's long axis, is its middle moment: spun about it, the satellite

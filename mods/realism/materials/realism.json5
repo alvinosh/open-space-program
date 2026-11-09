@@ -6,6 +6,8 @@
     "density": 7850,
     "yield_strength": 460000000.0,
     "elastic_modulus": 205000000000.0,
+    "max_temperature": 1400,
+    "specific_heat": 480,
     "description": "Chromoly aircraft steel: the V-2 and its copies."
   },
   {
@@ -13,6 +15,8 @@
     "density": 2680,
     "yield_strength": 193000000.0,
     "elastic_modulus": 70300000000.0,
+    "max_temperature": 800,
+    "specific_heat": 900,
     "description": "Weldable magnesium alloy aluminium: Redstone's tanks."
   },
   {
@@ -20,6 +24,8 @@
     "density": 2800,
     "yield_strength": 414000000.0,
     "elastic_modulus": 72400000000.0,
+    "max_temperature": 800,
+    "specific_heat": 900,
     "description": "Copper alloy aluminium of the late 1950s: Thor, Titan I, the S-IC's first tanks."
   },
   {
@@ -27,6 +33,8 @@
     "density": 7900,
     "yield_strength": 800000000.0,
     "elastic_modulus": 193000000000.0,
+    "max_temperature": 1400,
+    "specific_heat": 500,
     "description": "Cold-worked austenitic stainless, stronger at cryogenic temperatures (Starship)."
   }
 ]

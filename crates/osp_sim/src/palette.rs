@@ -533,7 +533,9 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
                     "shape": { "ring": { "diameter": 0.6, "height": 0.2, "thickness": 0.3 } },
                     "model": { "path": "models/systems/probe_core.glb" },
                     "structure": { "mass": 30.0 },
-                    "components": [{ "avionics": { "controlled_mass": 20000.0, "interplanetary": true } }],
+                    "components": [{ "avionics": {
+                        "controlled_mass": 20000.0, "interplanetary": true, "needs_link": true,
+                    } }],
                 }),
                 None,
             ),

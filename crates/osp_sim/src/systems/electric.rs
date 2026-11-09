@@ -303,6 +303,8 @@ pub struct Avionics {
     /// W.
     pub watts: f64,
     pub interplanetary: bool,
+    /// A probe core: in a Realistic game it answers only over a link.
+    pub needs_link: bool,
     /// It had power on the last step.
     pub on: bool,
 }
@@ -467,6 +469,7 @@ pub(super) fn avionics(component: &Component, _part: &Part) -> Option<Box<dyn Sy
         controlled_mass,
         power,
         interplanetary,
+        needs_link,
     }) = component
     else {
         return None;
@@ -475,6 +478,7 @@ pub(super) fn avionics(component: &Component, _part: &Part) -> Option<Box<dyn Sy
         controlled_mass: *controlled_mass,
         watts: *power,
         interplanetary: *interplanetary,
+        needs_link: *needs_link,
         on: true,
     }))
 }

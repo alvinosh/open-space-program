@@ -72,7 +72,7 @@ parts of it instead.
 | `game_modes` | What a new game can be | `name`, `description`, `mods` (what it turns on, everything else is off), `default` (what a player who has not chosen yet gets) |
 | `plumes` | Exhaust looks | `propellants` it is the exhaust of (alternatives with `\|`), `kinds`, `fallback`, `core`, `flame` and `shock` colours (linear RGB), `luminance` (cd/m² per m at full thrust), `soot` (0..1), `temperature` (K), `smoke` (colour), `haze` (0..1); see [Engine response and plumes](#engine-response-and-plumes) |
 | `resources` | Propellants and gases | `density` (kg/m³ as stored), storage `temperature` (K) and `pressure` (Pa) |
-| `materials` | Structural materials | `density` (kg/m³), `yield_strength` and `elastic_modulus` (Pa) |
+| `materials` | Structural materials | `density` (kg/m³), `yield_strength` and `elastic_modulus` (Pa), `max_temperature` (K, 1200 if left out), `specific_heat` (J/kg K, 900 if left out) |
 | `liveries` | Paint schemes for stages, which the stage converter copies into parts | `name`, `paint`; see [Stage appearance](#stage-appearance) |
 | `tank_types` | How procedural tanks are built | `material`, operating `pressure` (Pa), `min_gauge` (m), `stiffening`, `buckling_factor`, `insulation` (kg/m²), `min_temperature` (K), `utilization`, `safety_factor`, `design_load` (g), optional `propellants` allowlist, `cast` for a solid motor's grain; see [Procedural tanks and fins](#procedural-tanks-and-fins) |
 | `reaction_wheels` | Reaction wheels | `mass` (kg), `torque` (N·m about each axis) |

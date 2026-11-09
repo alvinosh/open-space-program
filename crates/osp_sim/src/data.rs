@@ -183,6 +183,20 @@ pub struct MaterialDef {
     pub yield_strength: f64,
     /// Young's modulus, Pa.
     pub elastic_modulus: f64,
+    /// How hot it can get before a part made of it fails, K.
+    #[serde(default = "default_max_temperature")]
+    pub max_temperature: f64,
+    /// J/kg K.
+    #[serde(default = "default_specific_heat")]
+    pub specific_heat: f64,
+}
+
+fn default_max_temperature() -> f64 {
+    1200.0
+}
+
+fn default_specific_heat() -> f64 {
+    900.0
 }
 
 /// How a procedural tank is built. Its wall is sized from these (see [`crate::structure`]).

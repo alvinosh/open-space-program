@@ -1092,11 +1092,27 @@ impl Universe {
                 }
             }
         }
+        // Parts too hot to stay on come off; what hung from them flies on.
+        for k in 0..self.vessels.len() {
+            if !self.vessels[k]
+                .propulsion
+                .systems
+                .burned_through()
+                .is_empty()
+            {
+                let debris = self.vessels[k].burn_off(&self.system, t1);
+                for d in debris {
+                    self.add_vessel(d);
+                }
+            }
+        }
         for event in &events {
-            if matches!(event.event.kind, VesselEventKind::Crashed { .. })
-                && self
-                    .vessel(event.vessel)
-                    .is_some_and(|v| self.expendable(v))
+            if matches!(
+                event.event.kind,
+                VesselEventKind::Crashed { .. } | VesselEventKind::Destroyed
+            ) && self
+                .vessel(event.vessel)
+                .is_some_and(|v| self.expendable(v))
             {
                 self.remove_vessel(event.vessel);
             }

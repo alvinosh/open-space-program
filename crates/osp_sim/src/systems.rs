@@ -73,6 +73,8 @@ pub struct FlightNow {
     pub acceleration: f64,
     /// W/m² at a blunt nose of the vessel's size.
     pub stagnation_heating: f64,
+    /// As hot as the air it is moving through can make a surface, K.
+    pub recovery_temperature: f64,
     pub on_the_ground: bool,
 }
 
@@ -217,6 +219,14 @@ pub trait System: SavedState + Debug + Send + Sync {
     fn act(&mut self, _action: Action) -> Option<String> {
         None
     }
+
+    /// Its temperature, K, and heat capacity, J/K, if it holds heat.
+    fn heat(&self) -> Option<(f64, f64)> {
+        None
+    }
+
+    /// Take in `joules`, or give them up if negative.
+    fn warm(&mut self, _joules: f64) {}
 
     fn boxed(&self) -> Box<dyn System>;
     fn any(&self) -> &dyn Any;
@@ -366,12 +376,18 @@ pub const KINDS: &[Kind] = &[
     },
 ];
 
+/// How readily heat crosses a joint, W/K: a small part on a big one comes down to it in minutes.
+const JOINT_CONDUCTANCE: f64 = 100.0;
+
 /// The systems of a vessel, by the part each is on.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Systems {
     parts: BTreeMap<PartId, Vec<Box<dyn System>>>,
     /// The parts with systems on them that power and data pass between.
     networks: Vec<Vec<PartId>>,
+    /// Each part that holds on to another and that other, for heat to cross.
+    #[serde(default)]
+    joints: Vec<(PartId, PartId)>,
 }
 
 /// One system's part in one power network for one step.
@@ -423,6 +439,7 @@ impl Systems {
         let mut systems = Self {
             parts,
             networks: Vec::new(),
+            joints: Vec::new(),
         };
         systems.wire(tree);
         systems
@@ -436,6 +453,12 @@ impl Systems {
                 group.into_iter().filter(on).collect::<Vec<_>>()
             })
             .filter(|group| !group.is_empty())
+            .collect();
+        self.joints = (tree.parts().iter())
+            .filter_map(|part| Some((part.id, part.joint?.parent)))
+            .filter(|(part, parent)| {
+                self.parts.contains_key(part) && self.parts.contains_key(parent)
+            })
             .collect();
     }
 
@@ -462,6 +485,7 @@ impl Systems {
         Systems {
             parts: leaving,
             networks: Vec::new(),
+            joints: Vec::new(),
         }
     }
 
@@ -526,6 +550,51 @@ impl Systems {
         self.all::<Thermal>().any(|(_, thermal)| thermal.failed())
     }
 
+    /// The parts too hot to stay on.
+    pub fn burned_through(&self) -> Vec<PartId> {
+        (self.all::<Thermal>())
+            .filter(|(_, thermal)| thermal.burned_through())
+            .map(|(part, _)| part)
+            .collect()
+    }
+
+    /// How close the hottest part is to failing: 0 cold, 1 at its limit.
+    pub fn heat_load(&self) -> f64 {
+        (self.all::<Thermal>())
+            .map(|(_, thermal)| thermal.load())
+            .fold(0.0, f64::max)
+    }
+
+    /// Let heat flow across the joints for `dt` seconds.
+    fn conduct(&mut self, dt: f64) {
+        for k in 0..self.joints.len() {
+            let (a, b) = self.joints[k];
+            let (Some((hot, of_a)), Some((cold, of_b))) = (self.heat_of(a), self.heat_of(b)) else {
+                continue;
+            };
+            if (hot - cold).abs() < 0.1 {
+                continue;
+            }
+            // Exact for any step, as time warp takes long ones: never past level.
+            let ease = 1.0 / of_a + 1.0 / of_b;
+            let joules = (hot - cold) * (1.0 - (-JOINT_CONDUCTANCE * ease * dt).exp()) / ease;
+            self.warm(a, -joules);
+            self.warm(b, joules);
+        }
+    }
+
+    fn heat_of(&self, part: PartId) -> Option<(f64, f64)> {
+        self.on(part).iter().find_map(|system| system.heat())
+    }
+
+    fn warm(&mut self, part: PartId, joules: f64) {
+        let holder = (self.parts.get_mut(&part).into_iter().flatten())
+            .find(|system| system.heat().is_some());
+        if let Some(holder) = holder {
+            holder.warm(joules);
+        }
+    }
+
     /// Everyone aboard, alive.
     pub fn crew_aboard(&self) -> u32 {
         self.all::<Crew>().map(|(_, crew)| crew.aboard).sum()
@@ -579,6 +648,7 @@ impl Systems {
         for system in self.parts.values_mut().flatten() {
             system.step(dt);
         }
+        self.conduct(dt);
     }
 
     /// Run one power network for `dt` seconds. What it makes goes to the loads, the highest
@@ -1082,6 +1152,7 @@ mod tests {
             controlled_mass: 1e6,
             watts: 300.0,
             interplanetary: false,
+            needs_link: false,
             on: true,
         };
         add(&mut p, part, Box::new(unit));

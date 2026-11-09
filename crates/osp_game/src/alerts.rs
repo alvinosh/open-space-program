@@ -12,6 +12,8 @@ use crate::{FrameSet, settings::InterfaceSettings, sim::Sim};
 const LOW_POWER: f64 = 300.0;
 /// Share of its strength a structure is warned about at.
 const STRUCTURE: f64 = 0.85;
+/// Share of the way to its limit the hottest part is warned about at.
+const HOT: f64 = 0.85;
 /// Share of the propellant feeding the lit engines that is warned about.
 const LOW_PROPELLANT: f64 = 0.05;
 /// What a crew is warned of for, in g: sustained, the Saturn V peaked at about 4.
@@ -38,6 +40,8 @@ pub struct ActiveAlerts(pub Vec<&'static str>);
 struct Readings {
     /// Load on the structure, as a share of its strength.
     structure: f64,
+    /// How close the hottest part is to its limit, as a share of the way there.
+    heat: f64,
     no_power: bool,
     /// Seconds until the power runs out, if it is running down.
     power_left: Option<f64>,
@@ -66,6 +70,9 @@ fn judge(readings: &Readings) -> Vec<&'static str> {
     }
     if readings.structure > STRUCTURE {
         alerts.push("Structure near its limit");
+    }
+    if readings.heat > HOT {
+        alerts.push("Overheating");
     }
     if readings.crew_g.is_some_and(|g| g > HIGH_G) {
         alerts.push("High g");
@@ -106,12 +113,13 @@ fn readings(vessel: &Vessel, sim: &Sim) -> Readings {
     let power = vessel.power_state(system, time);
     Readings {
         structure: vessel.flight.structure_load,
+        heat: propulsion.systems.heat_load(),
         no_power: power.browned_out,
         power_left: power.runs_out_in,
         // Flat, it is on whatever it makes, with nothing to fall back on.
         shedding: power.shedding || power.is_flat(),
         no_control: !vessel.controlled(system),
-        no_signal: vessel.radio().is_some() && vessel.link().is_none(),
+        no_signal: (vessel.radio().is_some() && vessel.link().is_none()) || !vessel.commandable(),
         propellant: propulsion.feed_fraction(&lit),
         crew_g: crewed.then(|| vessel.flight.proper_acceleration / G0),
         height: (!landed)
@@ -171,6 +179,7 @@ mod tests {
             }),
             ["Structure near its limit"]
         );
+        assert_eq!(says(Readings { heat: 0.9, ..some }), ["Overheating"]);
         assert_eq!(
             says(Readings {
                 no_power: true,

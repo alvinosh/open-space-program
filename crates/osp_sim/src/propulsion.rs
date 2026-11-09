@@ -899,6 +899,11 @@ impl Propulsion {
         self.any_pod_controls = !rules.avionics;
     }
 
+    /// In a game with avionics rules, where the ground can only reach it by radio.
+    pub fn needs_a_radio(&self) -> bool {
+        self.needs_control && !self.any_pod_controls
+    }
+
     /// Any pod flies it, whatever it weighs: a game without avionics rules.
     pub fn any_pod_controls(&self) -> bool {
         self.any_pod_controls
@@ -1579,8 +1584,10 @@ impl Propulsion {
             return (0.0, 0.0);
         };
         let all: Vec<usize> = std::iter::once(id).chain(beside.iter().copied()).collect();
-        let mut left: BTreeMap<usize, f64> =
-            all.iter().map(|&s| (s, self.burnable(s, mixture))).collect();
+        let mut left: BTreeMap<usize, f64> = all
+            .iter()
+            .map(|&s| (s, self.burnable(s, mixture)))
+            .collect();
         let full = left.clone();
         let order = |e: &Engine| -> Vec<usize> {
             let mut sections: Vec<usize> = Vec::new();
@@ -2394,6 +2401,35 @@ impl Propulsion {
         self.rebuild();
     }
 
+    /// Lose `part` to the heat. What hung from it goes on by itself, released with no push. Not
+    /// the root: a vessel losing that is breaking up.
+    pub fn burn_off(&mut self, part: PartId) -> Option<Staged> {
+        let (name, joint) = self.parts.get(part).map(|p| (p.name.clone(), p.joint))?;
+        joint?;
+        let before = self.parts.base();
+        let mut staged = Staged::default();
+        let hanging: Vec<_> = self.parts.children(part).map(|p| p.id).collect();
+        for child in hanging {
+            let Some(parts) = self.parts.break_off(child) else {
+                continue;
+            };
+            let base = parts.base() - before;
+            let released = self.release(parts, base, 0.0);
+            let gone = &released.parts;
+            self.sequences.forget(|p| gone.get(p).is_some());
+            staged.released.push(released);
+        }
+        let burned = self.parts.break_off(part)?;
+        let released = self.release(burned, 0.0, 0.0);
+        let gone = &released.parts;
+        self.sequences.forget(|p| gone.get(p).is_some());
+        self.rebuild();
+        staged.dropped_length = self.parts.base() - before;
+        staged.mass_changed = true;
+        staged.messages.push(format!("{name} burned off"));
+        Some(staged)
+    }
+
     /// Cut the throttle and stop every engine for good (the vessel broke up).
     pub fn shut_down(&mut self) {
         self.throttle = 0.0;
@@ -2514,10 +2550,12 @@ impl Propulsion {
                 }
                 // Fuel lines between them: worked through as it would burn.
                 let side_ids: Vec<usize> = sides.iter().map(|s| s.id).collect();
-                let lined = std::iter::once(id).chain(side_ids.iter().copied()).any(|s| {
-                    (self.main_engines_of(s))
-                        .any(|e| self.tiers.get(&e.part).is_some_and(|tiers| tiers.len() > 1))
-                });
+                let lined = std::iter::once(id)
+                    .chain(side_ids.iter().copied())
+                    .any(|s| {
+                        (self.main_engines_of(s))
+                            .any(|e| self.tiers.get(&e.part).is_some_and(|tiers| tiers.len() > 1))
+                    });
                 if lined {
                     (row.delta_v_vac, row.burn_time) =
                         self.burn_through_lines(id, &side_ids, start_mass);
@@ -2591,6 +2629,37 @@ fn ignite(engine: &mut Engine, settled: bool, log: &mut Vec<String>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_burned_part_goes_and_what_hung_from_it_flies_on() {
+        use crate::vessel::tests::catalog;
+        let bus = "{ shell: { bottom_diameter: 1, sections: [{ length: 1 }], \
+                   cap_bottom: true, cap_top: true } }";
+        let def: CraftDef = crate::test_data::records(&format!(
+            "{{ id: 'x', name: '', parts: [\
+             {{ id: 'top', shape: {bus}, structure: {{ mass: 100 }} }},\
+             {{ id: 'mid', on: 'top.bottom', by: 'top', shape: {bus}, \
+                structure: {{ mass: 100 }} }},\
+             {{ id: 'low', on: 'mid.bottom', by: 'top', shape: {bus}, \
+                structure: {{ mass: 100 }} }}] }}"
+        ))
+        .remove(0);
+        let mut p = Propulsion::from_craft(&def, &catalog()).unwrap();
+        let id = |p: &Propulsion, name: &str| {
+            let found = p.parts().parts().iter().find(|q| q.name == name);
+            found.unwrap().id
+        };
+        let (top, mid, low) = (id(&p, "top"), id(&p, "mid"), id(&p, "low"));
+        assert!(p.burn_off(top).is_none(), "the root is the vessel");
+        let staged = p.burn_off(mid).unwrap();
+        assert_eq!(staged.messages, ["mid burned off"]);
+        assert_eq!(p.parts().parts().len(), 1);
+        assert!(p.parts().get(top).is_some() && p.systems.on(mid).is_empty());
+        let [left] = staged.released.as_slice() else {
+            panic!("{}", staged.released.len());
+        };
+        assert!(left.parts.get(low).is_some() && left.parts.get(mid).is_none());
+    }
 
     fn engine(id: &str) -> Engine {
         let engines = crate::test_data::realistic_engines();
