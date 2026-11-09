@@ -280,7 +280,7 @@
         {
           storage: {
             type: "Insulated Al-Li",
-            contents: { LqdMethane: 1, LqdOxygen: 3.6 },
+            contents: { "Liquid Fuel": 1, Oxidiser: 2.36 },
             design_load: 6.5,
           },
         },
@@ -292,7 +292,7 @@
       name: "COPV",
       on: "upper_stage.tank_2",
       shape: { sphere: { diameter: 1.35 } },
-      components: [{ storage: { type: "COPV", contents: { Nitrogen: 1 } } }],
+      components: [{ storage: { type: "COPV", contents: { "Liquid Fuel": 1, Oxidiser: 2.36 } } }],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
@@ -467,7 +467,7 @@
           // Its walls also carry the full upper stage at 6 g near burnout.
           storage: {
             type: "Insulated Al-Li",
-            contents: { LqdMethane: 1, LqdOxygen: 3.6 },
+            contents: { "Liquid Fuel": 1, Oxidiser: 2.36 },
             design_load: 3.5,
           },
         },

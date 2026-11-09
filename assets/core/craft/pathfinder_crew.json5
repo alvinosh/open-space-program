@@ -177,7 +177,7 @@
         {
           storage: {
             type: "Isogrid Al-Li",
-            contents: { Kerosene: 1, LqdOxygen: 2.36 },
+            contents: { "Liquid Fuel": 1, Oxidiser: 2.36 },
             design_load: 6.5,
           },
         },
@@ -190,7 +190,7 @@
       name: "COPV",
       on: "upper_stage.tank_2",
       shape: { sphere: { diameter: 1.35 } },
-      components: [{ storage: { type: "COPV", contents: { Nitrogen: 1 } } }],
+      components: [{ storage: { type: "COPV", contents: { "Liquid Fuel": 1, Oxidiser: 2.36 } } }],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
@@ -369,7 +369,7 @@
       on: "booster.tank_1",
       shape: { cylinder_tank: { diameter: 3.7, length: 38 } },
       components: [
-        { storage: { type: "Isogrid Al-Li", contents: { Kerosene: 1, LqdOxygen: 2.36 } } },
+        { storage: { type: "Isogrid Al-Li", contents: { "Liquid Fuel": 1, Oxidiser: 2.36 } } },
       ],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },

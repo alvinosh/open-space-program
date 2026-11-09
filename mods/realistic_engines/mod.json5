@@ -1,0 +1,10 @@
+// Engines that behave like engines: slow starts, throttle floors, limited ignitions and propellant
+// that has to be settled before a start. The base game's engines have none of that.
+{
+  id: "realistic_engines",
+  name: "Realistic Engines",
+  version: "0.1.0",
+  authors: ["Open Space Program"],
+  description: "Engines take time to start and stop, cannot throttle below a floor, have limited ignitions and need settled propellant to light.",
+  dependencies: ["core"],
+}

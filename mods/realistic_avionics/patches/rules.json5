@@ -1,0 +1,3 @@
+[
+  { op: "set", collection: "rules", target: "game", path: "avionics", value: true, pass: "first" },
+]

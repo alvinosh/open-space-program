@@ -12,6 +12,9 @@
 //! fired from a button does it at once. Neither touches the save itself, so leaving after either
 //! still asks to save the game. Deleting a save deletes its quicksaves with it.
 //!
+//! A save says which mods it was played with. Carrying on from one loads those, whatever the Mods
+//! screen says, and the list says so if one of them is not installed.
+//!
 //! Saves live in `saves/` in `OSP_USER_DIR`, or beside the settings file. Scripted captures
 //! (`OSP_CAPTURE`) only touch them with `OSP_USER_DIR` set, so they stay reproducible and
 //! leave the player's games alone.
@@ -29,6 +32,7 @@ use osp_ui::{ActionState, LayoutVisibility, UiAction, UiData};
 use crate::{
     FrameSet,
     camera::CameraRig,
+    content::{GameContent, ModSwitch},
     editing::{EditorStatus, LastLaunch},
     menu::Menu,
     sim::{Sim, SimRestarted, TimeWarp},
@@ -51,6 +55,7 @@ pub struct SavesPlugin;
 impl Plugin for SavesPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Saves::new(saves_dir()))
+            .add_systems(Update, follow_mods.before(FrameSet::Input))
             .add_systems(Update, save_actions.in_set(FrameSet::Input))
             .add_systems(Update, publish_flash.in_set(FrameSet::Render));
     }
@@ -92,6 +97,10 @@ pub struct Saves {
     pub notice: String,
     /// What a quicksave or quickload just said over the flight, and the real time it did.
     flash: Option<(String, f64)>,
+    /// The mods loaded now, which a save written now is played with.
+    mods: Vec<String>,
+    /// The mods there are to load.
+    installed: Vec<String>,
 }
 
 impl Saves {
@@ -103,6 +112,8 @@ impl Saves {
             saved: None,
             notice: String::new(),
             flash: None,
+            mods: Vec::new(),
+            installed: Vec::new(),
         };
         saves.refresh();
         saves
@@ -111,6 +122,13 @@ impl Saves {
     /// Look at what is in the folder.
     pub fn refresh(&mut self) {
         self.list = self.dir.as_deref().map(read_list).unwrap_or_default();
+        let installed = &self.installed;
+        for game in &mut self.list {
+            note_missing_mod(game, installed);
+            for quick in &mut game.quicksaves {
+                note_missing_mod(quick, installed);
+            }
+        }
     }
 
     /// The game in progress is a new one, with no save yet.
@@ -254,7 +272,8 @@ impl Saves {
     fn write(&self, file: &str, name: &str, sim: &Sim) -> Result<(), String> {
         let path = self.path_of(file)?;
         let now = SystemTime::now().duration_since(UNIX_EPOCH);
-        let header = Header::new(name, now.map_or(0, |t| t.as_secs()), &sim.universe);
+        let mut header = Header::new(name, now.map_or(0, |t| t.as_secs()), &sim.universe);
+        header.mods = Some(self.mods.clone());
         let bytes = save::write(&header, &sim.universe)?;
         if let Some(folder) = path.parent() {
             std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
@@ -265,12 +284,17 @@ impl Saves {
     }
 
     /// Carry on from the save or quicksave `file`; nothing changes if it cannot be loaded. After a
-    /// quicksave the game goes to the save it is in, which does not hold what was loaded.
-    fn load(&mut self, file: &str, sim: &mut Sim) -> Result<(), String> {
+    /// quicksave the game goes to the save it is in, which does not hold what was loaded. The mods
+    /// it was played with, if it says.
+    fn load(&mut self, file: &str, sim: &mut Sim) -> Result<Option<Vec<String>>, String> {
         let path = self.path_of(file)?;
         let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
         let header = save::read_header(&bytes)?;
+        if let Some(id) = missing_mod(&header, &self.installed) {
+            return Err(format!("it needs the mod `{id}`, which is not installed"));
+        }
         sim.universe.restore(save::read(&bytes)?)?;
+        let mods = header.mods.clone();
         match file.split_once('/') {
             Some((game, _)) => {
                 self.current = Some((game.to_owned(), self.name_of(game).to_owned()));
@@ -281,7 +305,7 @@ impl Saves {
                 self.saved = save::fingerprint(&sim.universe).ok();
             }
         }
-        Ok(())
+        Ok(mods)
     }
 
     /// Delete the save or quicksave `file`; a save's quicksaves go with it.
@@ -313,6 +337,23 @@ impl Saves {
     /// Say this over the flight for a few seconds, from the real time `now`.
     fn flash(&mut self, text: String, now: f64) {
         self.flash = Some((text, now));
+    }
+}
+
+/// The first mod a save was played with that is not installed.
+fn missing_mod<'a>(header: &'a Header, installed: &[String]) -> Option<&'a str> {
+    let mods = header.mods.as_deref().unwrap_or_default();
+    let missing = mods.iter().find(|id| !installed.contains(id));
+    missing.map(String::as_str)
+}
+
+/// Say so in the list if a save cannot be loaded for want of a mod.
+fn note_missing_mod(entry: &mut SaveEntry, installed: &[String]) {
+    if entry.problem.is_none() {
+        let header = entry.header.as_ref();
+        entry.problem = header
+            .and_then(|header| missing_mod(header, installed))
+            .map(|id| format!("Needs the mod {id}"));
     }
 }
 
@@ -414,17 +455,23 @@ struct Carry<'w> {
     ui: ResMut<'w, LayoutVisibility>,
     last_launch: ResMut<'w, LastLaunch>,
     restarted: MessageWriter<'w, SimRestarted>,
+    mods: ModSwitch<'w>,
 }
 
 impl Carry<'_> {
     /// Carry on flying from the save or quicksave `file`, out of the menu; if it cannot be loaded
     /// nothing changes and the error says why.
     fn load(&mut self, saves: &mut Saves, file: &str, sim: &mut Sim) -> Result<(), String> {
-        if let Err(e) = saves.load(file, sim) {
-            error!("cannot load `{file}`: {e}");
-            return Err(e);
-        }
+        let mods = match saves.load(file, sim) {
+            Ok(mods) => mods,
+            Err(e) => {
+                error!("cannot load `{file}`: {e}");
+                return Err(e);
+            }
+        };
         info!("loaded `{file}`");
+        // Before anything is drawn, so that the vessels find their models.
+        self.mods.carry_on_with(mods.as_deref());
         saves.notice.clear();
         self.last_launch.forget();
         sim.restarted();
@@ -437,6 +484,15 @@ impl Carry<'_> {
         self.menu.back_to_root();
         self.menu.show(false, sim, &mut self.ui);
         Ok(())
+    }
+}
+
+/// Keep up with which mods are loaded and installed.
+fn follow_mods(content: Res<GameContent>, mut saves: ResMut<Saves>) {
+    if content.is_changed() {
+        saves.mods = content.0.added_mods();
+        saves.installed = (content.0.available.iter()).map(|m| m.id.clone()).collect();
+        saves.refresh();
     }
 }
 
@@ -613,6 +669,7 @@ mod tests {
                 time: SimTime::J2000,
                 flying: String::new(),
                 vessels: 0,
+                mods: None,
             }),
             problem: None,
             quicksaves: Vec::new(),
@@ -827,6 +884,41 @@ mod tests {
         assert_eq!(hold.step(true, 10.0), HoldStep::Nothing);
         assert_eq!(hold.step(false, 10.1), HoldStep::Nothing);
         assert_eq!(hold.step(true, 10.2), HoldStep::Began);
+    }
+
+    #[test]
+    fn a_save_needing_a_mod_that_is_not_installed_says_which() {
+        let dir = empty_dir("missing_mod");
+        // Saved before saves said which mods they had: it is taken as it comes.
+        write_header(&dir, "old", "Old", 400);
+        let with_mod = |file: &str, name: &str, saved_at: u64, mods: &[&str]| {
+            let mut header = entry("", name).header.unwrap();
+            (header.saved_at, header.mods) = (
+                saved_at,
+                Some(mods.iter().map(|id| id.to_string()).collect()),
+            );
+            let mut bytes = serde_json::to_vec(&header).unwrap();
+            bytes.push(b'\n');
+            std::fs::create_dir_all(dir.join("gone")).unwrap();
+            std::fs::write(dir.join(format!("{file}.{EXTENSION}")), bytes).unwrap();
+        };
+        with_mod("gone", "Gone", 300, &["realism", "deleted_mod"]);
+        with_mod("gone/quicksave_1", "Quicksave 1", 300, &["deleted_mod"]);
+        with_mod("fine", "Fine", 200, &["realism"]);
+
+        let mut saves = Saves::new(Some(dir.clone()));
+        saves.installed = vec!["realism".to_owned()];
+        saves.refresh();
+        let of = |file: &str| saves.entry(file).unwrap().problem.as_deref();
+        assert_eq!(of("gone"), Some("Needs the mod deleted_mod"));
+        assert_eq!(of("gone/quicksave_1"), Some("Needs the mod deleted_mod"));
+        assert_eq!(of("fine"), None);
+        assert_eq!(of("old"), None);
+
+        // Continuing passes over it, and the mods say nothing about a save that is not one.
+        saves.list.retain(|entry| entry.file != "old");
+        assert_eq!(saves.newest().map(|e| e.file.as_str()), Some("fine"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

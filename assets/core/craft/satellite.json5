@@ -108,7 +108,7 @@
       name: "COPV",
       on: "bus.tank_1",
       shape: { sphere: { diameter: 0.8 } },
-      components: [{ storage: { type: "COPV", contents: { Nitrogen: 1 } } }],
+      components: [{ storage: { type: "COPV", contents: { "Liquid Fuel": 1, Oxidiser: 2.36 } } }],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
   ],

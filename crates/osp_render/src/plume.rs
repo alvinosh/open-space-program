@@ -738,6 +738,31 @@ mod tests {
         }
     }
 
+    /// All the base game's engines burn the same mix, and each still looks like what it is.
+    #[test]
+    fn the_base_games_engines_keep_their_looks_on_one_mix() {
+        use crate::content::asset_root;
+        use osp_sim::data::EngineDef;
+
+        let content = osp_mods::load(&asset_root().join("core"), None);
+        let looks = content.registry.all::<PlumeDef>("plumes", &mut Vec::new());
+        let engines = (content.registry).all::<EngineDef>("engines", &mut Vec::new());
+        assert!(engines.len() > 10);
+        for e in &engines {
+            let burns: Vec<&str> = e.propellants.keys().map(String::as_str).collect();
+            let look = PlumeDef::for_engine(&looks, e.plume.as_deref(), &burns, e.kind.as_deref());
+            let wanted = match e.id.split('-').next().unwrap() {
+                _ if e.id == "K-19" => "Kerolox Staged",
+                "H" => "Hydrolox",
+                "M" => "Methalox",
+                "A" => "Hypergolic",
+                "S" => "Solid",
+                _ => "Kerolox",
+            };
+            assert_eq!(look.map(|l| l.id.as_str()), Some(wanted), "{}", e.id);
+        }
+    }
+
     /// Every engine of every shipped mod has a look, except the electric ones; so none is
     /// drawn without exhaust.
     #[test]

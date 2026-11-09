@@ -13,7 +13,7 @@
     back: false,
     children: [
       { widget: "menu_row", text: "Continue", meta: "{menu.continue_line}", action: "game.continue", visible: "menu.can_continue" },
-      { widget: "menu_row", text: "New game", action: "game.new" },
+      { widget: "menu_row", text: "New game", action: "menu.open:new_game" },
       { widget: "menu_row", text: "Load game", action: "menu.open:load" },
       { widget: "menu_row", text: "Tutorials", action: "menu.open:tutorials", visible: "menu.tutorials" },
       { widget: "menu_divider" },

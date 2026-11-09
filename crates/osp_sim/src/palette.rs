@@ -77,6 +77,8 @@ impl Group {
 /// What an engine or an RCS block burns, by kind, as players name it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Propellant {
+    /// The base game's one mix of liquid fuel and oxidiser.
+    LiquidFuel,
     /// Liquid oxygen and kerosene (RP-1, RG-1, syntin).
     Kerolox,
     /// Liquid oxygen and liquid hydrogen.
@@ -100,7 +102,8 @@ pub enum Propellant {
 }
 
 impl Propellant {
-    pub const ALL: [Propellant; 10] = [
+    pub const ALL: [Propellant; 11] = [
+        Propellant::LiquidFuel,
         Propellant::Kerolox,
         Propellant::Hydrolox,
         Propellant::Methalox,
@@ -116,6 +119,7 @@ impl Propellant {
     /// As actions write it.
     pub fn id(self) -> &'static str {
         match self {
+            Propellant::LiquidFuel => "liquid_fuel",
             Propellant::Kerolox => "kerolox",
             Propellant::Hydrolox => "hydrolox",
             Propellant::Methalox => "methalox",
@@ -136,6 +140,7 @@ impl Propellant {
     /// What the player reads.
     pub fn name(self) -> &'static str {
         match self {
+            Propellant::LiquidFuel => "Liquid fuel",
             Propellant::Kerolox => "Kerolox",
             Propellant::Hydrolox => "Hydrolox",
             Propellant::Methalox => "Methalox",
@@ -168,7 +173,9 @@ impl Propellant {
                 .iter()
                 .any(|s| r.starts_with(s))
         });
-        if has(&["EnrichedUranium"]) {
+        if has(&["Liquid Fuel"]) {
+            Propellant::LiquidFuel
+        } else if has(&["EnrichedUranium"]) {
             Propellant::Nuclear
         } else if has(&["XenonGas", "KryptonGas", "ArgonGas"]) {
             Propellant::Electric
@@ -297,7 +304,8 @@ const GREY: [f64; 3] = [0.55, 0.57, 0.6];
 
 /// The procedural parts, in the order they are listed, each with its size as it starts, which its
 /// figures begin with.
-fn procedural() -> Vec<(Entry, &'static str)> {
+fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
+    let new_tank = crate::properties::new_tank(catalog);
     let entry =
         |id: &str, name: &str, group, about: &str, value, surface: Option<(&str, f64)>| Entry {
             id: id.into(),
@@ -317,13 +325,16 @@ fn procedural() -> Vec<(Entry, &'static str)> {
                 "tank",
                 "Tank",
                 Group::Tanks,
-                "Kerosene and liquid oxygen, or what it is set to hold. As wide as what it goes on",
+                &format!(
+                    "{}, or what it is set to hold. As wide as what it goes on",
+                    new_tank.label
+                ),
                 json!({
                     "id": "", "name": "Tank",
                     "shape": { "cylinder_tank": { "diameter": 2.0, "length": 4.0 } },
                     "components": [{ "storage": {
                         "type": "Stiffened Al 2219",
-                        "contents": { "Kerosene": 1.0, "LqdOxygen": 2.36 },
+                        "contents": new_tank.contents,
                     } }],
                     "paint": { "color": WHITE },
                 }),
@@ -498,7 +509,7 @@ fn built_figures(part: &CraftPartDef, size: &str, catalog: &PartCatalog) -> Stri
 /// by name.
 pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
     let template = |id: &str, name: &str| part(json!({ "id": "", "name": name, "template": id }));
-    let mut out: Vec<Entry> = (procedural().into_iter())
+    let mut out: Vec<Entry> = (procedural(catalog).into_iter())
         .map(|(mut entry, size)| {
             entry.detail = built_figures(&entry.part, size, catalog);
             entry
@@ -827,6 +838,10 @@ mod tests {
     #[test]
     fn propellants_are_known_by_their_kind() {
         let of = |kind: Option<&str>, burns: &[&str]| Propellant::of(kind, burns.iter().copied());
+        assert_eq!(
+            of(None, &["Liquid Fuel", "Oxidiser"]),
+            Propellant::LiquidFuel
+        );
         assert_eq!(of(None, &["LqdOxygen", "RP-1"]), Propellant::Kerolox);
         assert_eq!(
             of(None, &["CooledLqdOxygen", "CooledRG-1"]),

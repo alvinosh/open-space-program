@@ -1,0 +1,36 @@
+// What a new game will have, before it starts: a mode (`mods.modes`, `mods.mode:<id>`) or the mods one
+// at a time (`mods.available`, `mods.toggle:<id>`), which is Custom when it is no mode (`mods.custom`).
+// Turning a mod on brings what it depends on, turning one off takes what depends on it. The choice
+// is remembered for the next new game, and the save keeps it for this one. Start asks to save a game
+// in progress first.
+{
+  id: "menu_new_game",
+  group: "menu",
+  visible: false,
+  root: {
+    widget: "screen",
+    title: "New game",
+    subtitle: "How real should it be? The game keeps these mods for as long as you play it.",
+    children: [
+      {
+        widget: "column",
+        repeat: "mods.modes",
+        children: [
+          { widget: "menu_row", text: "{item.name}", detail: "{item.description}", action: "mods.mode:{item.id}", active: "item.on" },
+        ],
+      },
+      { widget: "label", class: "menu_section", text: "Mods" },
+      { widget: "label", class: "menu_text", text: "Custom: not one of the modes above.", visible: "mods.custom" },
+      { widget: "label", class: "menu_text", text: "No mods are installed.", visible: "!mods.available" },
+      {
+        widget: "column",
+        repeat: "mods.available",
+        children: [
+          { widget: "menu_row", text: "{item.name}", meta: "{item.state}", detail: "{item.description}", action: "mods.toggle:{item.id}", active: "item.on" },
+        ],
+      },
+      { widget: "menu_divider" },
+      { widget: "button", class: "btn btn_primary", text: "Start", action: "ask.leave:game.new" },
+    ],
+  },
+}

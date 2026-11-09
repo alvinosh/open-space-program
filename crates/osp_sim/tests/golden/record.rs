@@ -25,6 +25,7 @@ const FLOWS: [(f64, f64, f64, [f64; 3]); 3] = [
 pub fn catalog(registry: &Registry) -> PartCatalog {
     let mut diagnostics = Vec::new();
     let catalog = PartCatalog {
+        rules: registry.get("rules", "game").unwrap_or_default(),
         engines: registry.all::<EngineDef>("engines", &mut diagnostics),
         resources: registry.all::<ResourceDef>("resources", &mut diagnostics),
         materials: registry.all::<MaterialDef>("materials", &mut diagnostics),

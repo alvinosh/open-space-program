@@ -35,7 +35,9 @@ use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-pub use manifest::{ModManifest, ModSource};
+pub use manifest::{
+    ModChoices, ModManifest, ModSource, choose, exactly, missing_dependency, resolved,
+};
 pub use patch::Patch;
 
 /// Directory name reserved for patch files.
@@ -201,6 +203,8 @@ fn typed<T: DeserializeOwned>(record: &Record) -> Result<T, Diagnostic> {
 #[derive(Debug, Clone, Default)]
 pub struct Content {
     pub mods: Vec<ModSource>,
+    /// Every mod installed, on or off (not the base game): what a player can choose from.
+    pub available: Vec<ModManifest>,
     pub registry: Registry,
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -228,6 +232,12 @@ impl Content {
         }
     }
 
+    /// The mods loaded, the base game aside, which is always first and always there.
+    pub fn added_mods(&self) -> Vec<String> {
+        let added = self.mods.iter().skip(1);
+        added.map(|m| m.id().to_owned()).collect()
+    }
+
     pub fn error_count(&self) -> usize {
         self.diagnostics
             .iter()
@@ -236,8 +246,20 @@ impl Content {
     }
 }
 
-/// Load the base game from `core_root` plus every enabled mod in `mods_dir`.
+/// Every mod in `mods_dir`, on or off.
+pub fn installed(mods_dir: &Path) -> Vec<ModManifest> {
+    let found = manifest::discover(mods_dir, &mut Vec::new());
+    found.into_iter().map(|source| source.manifest).collect()
+}
+
+/// Load the base game from `core_root` plus every mod in `mods_dir` that its manifest leaves on.
 pub fn load(core_root: &Path, mods_dir: Option<&Path>) -> Content {
+    load_chosen(core_root, mods_dir, &ModChoices::new())
+}
+
+/// Load the base game from `core_root` plus the mods in `mods_dir` that are on, given what the
+/// player has chosen.
+pub fn load_chosen(core_root: &Path, mods_dir: Option<&Path>, choices: &ModChoices) -> Content {
     let mut diagnostics = Vec::new();
     let core = match manifest::read_mod(core_root) {
         Ok(core) => core,
@@ -262,7 +284,21 @@ pub fn load(core_root: &Path, mods_dir: Option<&Path>) -> Content {
     let found = mods_dir
         .map(|dir| manifest::discover(dir, &mut diagnostics))
         .unwrap_or_default();
-    let mods = manifest::resolve_order(core, found, &mut diagnostics);
+    let mut available: Vec<ModManifest> = Vec::new();
+    for source in &found {
+        if source.id() != core.id() && !available.iter().any(|m| m.id == source.id()) {
+            available.push(source.manifest.clone());
+        }
+    }
+    let (on, off): (Vec<_>, Vec<_>) = found.into_iter().partition(|m| m.manifest.is_on(choices));
+    for source in &off {
+        diagnostics.push(Diagnostic::info(
+            Some(source.id()),
+            None,
+            "turned off".into(),
+        ));
+    }
+    let mods = manifest::resolve_order(core, on, &mut diagnostics);
 
     let mut registry = Registry::default();
     let mut patches: Vec<(String, PathBuf, Patch)> = Vec::new();
@@ -338,6 +374,7 @@ pub fn load(core_root: &Path, mods_dir: Option<&Path>) -> Content {
 
     Content {
         mods,
+        available,
         registry,
         diagnostics,
     }
@@ -589,6 +626,108 @@ mod tests {
         let engines: Vec<Engine> = content.registry.all("engines", &mut diags);
         assert_eq!(engines.len(), 2); // A, B; Y fails to deserialize
         assert!(diags[0].to_string().contains("record `Y`"));
+    }
+
+    fn choosing_tree(name: &str) -> Tree {
+        let tree = Tree::new(name);
+        base(&tree);
+        tree.file("mods/fuels/mod.json5", "{ id: 'fuels' }")
+            .file("mods/fuels/engines/f.json5", "{ id: 'F', thrust: 1 }")
+            .file(
+                "mods/parts/mod.json5",
+                "{ id: 'parts', dependencies: ['core', 'fuels'] }",
+            )
+            .file("mods/parts/engines/p.json5", "{ id: 'P', thrust: 1 }")
+            .file("mods/spare/mod.json5", "{ id: 'spare', enabled: false }")
+            .file("mods/spare/engines/s.json5", "{ id: 'S', thrust: 1 }")
+            .file(
+                "mods/broken/mod.json5",
+                "{ id: 'broken', dependencies: ['gone'], enabled: false }",
+            );
+        tree
+    }
+
+    fn loaded(content: &Content) -> Vec<&str> {
+        content.mods.iter().map(ModSource::id).collect()
+    }
+
+    #[test]
+    fn the_players_choices_override_the_manifests() {
+        let tree = choosing_tree("choices");
+        let (core, mods) = (tree.0.join("core"), tree.0.join("mods"));
+
+        let content = load(&core, Some(&mods));
+        assert_eq!(loaded(&content), ["core", "fuels", "parts"]);
+        let mut every: Vec<_> = content.available.iter().map(|m| m.id.as_str()).collect();
+        every.sort();
+        assert_eq!(every, ["broken", "fuels", "parts", "spare"]);
+
+        let choices = ModChoices::from([("parts".into(), false), ("spare".into(), true)]);
+        let content = load_chosen(&core, Some(&mods), &choices);
+        assert_eq!(loaded(&content), ["core", "fuels", "spare"]);
+        assert!(content.registry.record("engines", "P").is_none());
+        assert!(content.registry.record("engines", "S").is_some());
+        assert_eq!(content.available.len(), 4, "the list keeps what is off");
+    }
+
+    #[test]
+    fn a_saved_list_of_mods_loads_those_and_no_others() {
+        let tree = choosing_tree("exactly");
+        let (core, mods) = (tree.0.join("core"), tree.0.join("mods"));
+        let content = load(&core, Some(&mods));
+        assert_eq!(content.added_mods(), ["fuels", "parts"]);
+
+        // A mod turned on since the save was made stays off for it, and one left on comes back.
+        let saved = ["spare".to_owned()];
+        let choices = exactly(&content.available, &saved);
+        let again = load_chosen(&core, Some(&mods), &choices);
+        assert_eq!(again.added_mods(), saved);
+
+        // A list from before a mod needed another brings that one too.
+        let older = ["parts".to_owned()];
+        let choices = exactly(&content.available, &older);
+        let again = load_chosen(&core, Some(&mods), &choices);
+        assert_eq!(again.added_mods(), ["fuels", "parts"]);
+        let choices = exactly(&content.available, &saved);
+
+        // Choices that say the same thing in different words are the same mods.
+        let none = ModChoices::new();
+        let spelled_out = resolved(&content.available, &none);
+        assert_eq!(resolved(&content.available, &spelled_out), spelled_out);
+        assert_ne!(resolved(&content.available, &choices), spelled_out);
+    }
+
+    #[test]
+    fn choosing_a_mod_brings_what_goes_with_it() {
+        let tree = choosing_tree("cascade");
+        let available = load(&tree.0.join("core"), Some(&tree.0.join("mods"))).available;
+
+        // Off takes what depends on it; the mod it depends on stays.
+        let choices = choose(&available, &ModChoices::new(), "fuels", false);
+        assert_eq!(
+            choices,
+            ModChoices::from([("fuels".into(), false), ("parts".into(), false)])
+        );
+        let choices = choose(&available, &ModChoices::new(), "parts", false);
+        assert_eq!(choices, ModChoices::from([("parts".into(), false)]));
+
+        // On brings what it depends on.
+        let off = ModChoices::from([("fuels".into(), false), ("parts".into(), false)]);
+        let choices = choose(&available, &off, "parts", true);
+        assert_eq!(
+            choices,
+            ModChoices::from([("fuels".into(), true), ("parts".into(), true)])
+        );
+
+        // What cannot load cannot be turned on, and what is not there is no choice at all.
+        assert_eq!(
+            missing_dependency(&available, "broken").as_deref(),
+            Some("gone")
+        );
+        assert_eq!(missing_dependency(&available, "parts"), None);
+        let none = ModChoices::new();
+        assert_eq!(choose(&available, &none, "broken", true), none);
+        assert_eq!(choose(&available, &none, "nonesuch", false), none);
     }
 
     #[test]

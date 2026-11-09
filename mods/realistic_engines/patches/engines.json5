@@ -1,0 +1,217 @@
+// What the base game's engines leave out. In the first pass, so a mod that copies a stock engine
+// copies it with all of this.
+[
+  {
+    op: "merge",
+    collection: "engines",
+    target: "K-1 Booster",
+    pass: "first",
+    value: {
+      min_throttle: 0.4,
+      // Gas generator: the start cartridge lights it at once, then the turbopump spins up.
+      response: {
+        spool_up: 1.4,
+        startup: [[0, 0], [0.08, 0.3], [0.3, 0.42], [0.65, 0.82], [1, 1]],
+        spool_down: 0.6,
+        throttle_time: 2.5,
+      },
+      ignitions: 3,
+      requires_ullage: true,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "K-1 Vacuum",
+    pass: "first",
+    value: {
+      min_throttle: 0.39,
+      response: {
+        spool_up: 1.6,
+        startup: [[0, 0], [0.08, 0.25], [0.3, 0.4], [0.7, 0.85], [1, 1]],
+        spool_down: 0.8,
+        throttle_time: 3,
+      },
+      ignitions: 4,
+      requires_ullage: true,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "H-10",
+    pass: "first",
+    value: {
+      min_throttle: 1.0,
+      // Expander cycle: bootstraps slowly on the heat the chamber picks up.
+      response: {
+        spool_up: 2.5,
+        startup: [[0, 0], [0.35, 0.06], [0.7, 0.45], [0.9, 0.9], [1, 1]],
+        spool_down: 0.5,
+      },
+      ignitions: 15,
+      requires_ullage: true,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "A-10",
+    pass: "first",
+    value: {
+      min_throttle: 1.0,
+      // Pressure-fed hypergolic: opens the valves and it is lit.
+      response: { spool_up: 0.15, spool_down: 0.1 },
+      ignitions: 50,
+      requires_ullage: false,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "R-6",
+    pass: "first",
+    value: {
+      min_throttle: 0.2,
+      response: { spool_up: 1.0, spool_down: 0.5, throttle_time: 1.0 },
+      ignitions: 20,
+      requires_ullage: false,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "H-25",
+    pass: "first",
+    value: {
+      min_throttle: 0.67,
+      // Staged combustion: a slow, carefully sequenced start.
+      response: {
+        spool_up: 4.0,
+        startup: [[0, 0], [0.15, 0.04], [0.35, 0.25], [0.7, 0.8], [1, 1]],
+        spool_down: 1.2,
+        throttle_time: 3.0,
+      },
+      ignitions: 1,
+      requires_ullage: false,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "H-2",
+    pass: "first",
+    value: {
+      min_throttle: 1.0,
+      response: {
+        spool_up: 3.0,
+        startup: [[0, 0], [0.2, 0.08], [0.5, 0.5], [0.8, 0.9], [1, 1]],
+        spool_down: 0.8,
+      },
+      ignitions: 2,
+      requires_ullage: true,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "M-2",
+    pass: "first",
+    value: {
+      min_throttle: 0.4,
+      response: {
+        spool_up: 2.0,
+        startup: [[0, 0], [0.15, 0.1], [0.45, 0.5], [0.8, 0.92], [1, 1]],
+        spool_down: 0.7,
+        throttle_time: 2.0,
+      },
+      ignitions: 10,
+      requires_ullage: true,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "M-2 Vacuum",
+    pass: "first",
+    value: {
+      min_throttle: 0.4,
+      response: {
+        spool_up: 2.0,
+        startup: [[0, 0], [0.15, 0.1], [0.45, 0.5], [0.8, 0.92], [1, 1]],
+        spool_down: 0.7,
+        throttle_time: 2.0,
+      },
+      ignitions: 10,
+      requires_ullage: true,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "K-5",
+    pass: "first",
+    value: {
+      min_throttle: 1.0,
+      response: {
+        spool_up: 3.0,
+        startup: [[0, 0], [0.1, 0.1], [0.4, 0.45], [0.75, 0.88], [1, 1]],
+        spool_down: 1.0,
+      },
+      ignitions: 1,
+      requires_ullage: true,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "K-19",
+    pass: "first",
+    value: {
+      min_throttle: 0.27,
+      response: {
+        spool_up: 2.5,
+        startup: [[0, 0], [0.12, 0.08], [0.4, 0.45], [0.8, 0.9], [1, 1]],
+        spool_down: 0.8,
+        throttle_time: 3.0,
+      },
+      ignitions: 1,
+      requires_ullage: true,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "A-87",
+    pass: "first",
+    value: {
+      min_throttle: 1.0,
+      // Hypergolic: lit the moment the propellants meet; the turbopump spins up quickly.
+      response: { spool_up: 1.2, spool_down: 0.4 },
+      ignitions: 1,
+      requires_ullage: true,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "K-0",
+    pass: "first",
+    value: {
+      min_throttle: 0.5,
+      // Battery-driven pumps: no turbine to spin up.
+      response: { spool_up: 0.5, spool_down: 0.2, throttle_time: 1.0 },
+      ignitions: 10,
+      requires_ullage: true,
+    },
+  },
+  {
+    op: "merge",
+    collection: "engines",
+    target: "S-1",
+    pass: "first",
+    value: {
+      response: { spool_up: 0.15, spool_down: 0.15 },
+    },
+  },
+]

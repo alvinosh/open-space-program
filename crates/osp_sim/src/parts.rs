@@ -1080,7 +1080,7 @@ mod tests {
             include_str!("../../../assets/core/craft/upper_stage.json5"),
         ]
         .into_iter()
-        .map(|text| records(text).remove(0))
+        .map(|text| crate::test_data::realistic(text, "craft").remove(0))
         .collect()
     }
 

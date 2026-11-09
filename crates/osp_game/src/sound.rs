@@ -1283,10 +1283,13 @@ mod tests {
         }
     }
 
-    /// The Pathfinder on the pad with its first engines lit and up to full thrust.
+    /// The Pathfinder on the pad with its first engines lit and up to full thrust, with the
+    /// Realistic Engines mod, as a sound that dies away needs an engine that does.
     fn lit_pathfinder() -> osp_sim::propulsion::Propulsion {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/core");
-        let registry = osp_mods::load(&root, None).registry;
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let others = ["realism", "example_mod"].map(|id| (id.to_owned(), false));
+        let (core, mods) = (root.join("assets/core"), root.join("mods"));
+        let registry = osp_mods::load_chosen(&core, Some(&mods), &others.into()).registry;
         let catalog = content::catalog(&registry, &mut Vec::new());
         let def = registry.get("craft", "pathfinder").unwrap();
         let mut rocket = osp_sim::propulsion::Propulsion::from_craft(&def, &catalog).unwrap();

@@ -66,6 +66,22 @@ impl Plugin for ControlsPlugin {
 #[derive(Resource, Default)]
 pub struct InputLocked(pub bool);
 
+/// Whether an action is an order to the vessel, which one with no pod does not take.
+fn commands_the_vessel(action: &str) -> bool {
+    action.starts_with("guidance.")
+        || matches!(
+            action,
+            "vessel.stage"
+                | "vessel.abort"
+                | "part.do"
+                | "vessel.throttle_full"
+                | "vessel.throttle_cut"
+                | "vessel.sas_toggle"
+                | "vessel.sas_mode"
+                | "vessel.rcs_toggle"
+        )
+}
+
 /// What the staging window keeps between edits.
 #[derive(Resource, Default)]
 pub struct SequenceEdits {
@@ -122,7 +138,9 @@ fn apply_actions(
     // A craft in the editor is only looked at, and its sequences changed.
     if !editor.is_open() {
         let vessel = sim.active_vessel_mut();
-        let mut throttle_input = held.axis("vessel.throttle_up", "vessel.throttle_down");
+        let obeys = !vessel.propulsion.no_pod();
+        let axis = |up: &str, down: &str| if obeys { held.axis(up, down) } else { 0.0 };
+        let mut throttle_input = axis("vessel.throttle_up", "vessel.throttle_down");
         // Raising the throttle starts what is lit.
         if throttle_input > 0.0 && !warp.engines_may_start(now) {
             throttle_input = 0.0;
@@ -134,20 +152,23 @@ fn apply_actions(
         let throttle = vessel.propulsion.throttle() + throttle_input * THROTTLE_RATE * dt;
         vessel.set_throttle(throttle);
         vessel.rotation_input = DVec3::new(
-            held.axis("vessel.pitch_up", "vessel.pitch_down"),
-            held.axis("vessel.yaw_right", "vessel.yaw_left"),
-            held.axis("vessel.roll_right", "vessel.roll_left"),
+            axis("vessel.pitch_up", "vessel.pitch_down"),
+            axis("vessel.yaw_right", "vessel.yaw_left"),
+            axis("vessel.roll_right", "vessel.roll_left"),
         );
-        vessel.brakes = held.held("vessel.brakes");
+        vessel.brakes = obeys && held.held("vessel.brakes");
         vessel.translation_input = DVec3::new(
-            held.axis("vessel.translate_right", "vessel.translate_left"),
-            held.axis("vessel.translate_down", "vessel.translate_up"),
-            held.axis("vessel.translate_forward", "vessel.translate_back"),
+            axis("vessel.translate_right", "vessel.translate_left"),
+            axis("vessel.translate_down", "vessel.translate_up"),
+            axis("vessel.translate_forward", "vessel.translate_back"),
         );
     }
 
     for action in actions.read() {
         if editor.is_open() && !action.name().starts_with("staging.") {
+            continue;
+        }
+        if commands_the_vessel(action.name()) && sim.active_vessel().propulsion.no_pod() {
             continue;
         }
         match action.name() {

@@ -252,7 +252,7 @@
         {
           storage: {
             type: "Stiffened Al 2219",
-            contents: { Aerozine50: 1, NTO: 1.9 },
+            contents: { "Liquid Fuel": 1, Oxidiser: 2.36 },
             design_load: 4,
           },
         },
@@ -353,7 +353,7 @@
       on: "first_stage.tank_1",
       shape: { cylinder_tank: { diameter: 3.05, length: 13.8 } },
       components: [
-        { storage: { type: "Stiffened Al 2219", contents: { Aerozine50: 1, NTO: 1.9 } } },
+        { storage: { type: "Stiffened Al 2219", contents: { "Liquid Fuel": 1, Oxidiser: 2.36 } } },
       ],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },

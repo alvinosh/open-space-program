@@ -318,7 +318,7 @@
       name: "Solid Grain",
       on: "booster_right.tank",
       shape: { cylinder_tank: { diameter: 0.2, length: 0.35 } },
-      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      components: [{ storage: { type: "Solid Grain", contents: { "Solid Fuel": 1 } } }],
     },
     // A RATO bottle on the tail boom's left, its nozzle just behind the wing's trailing
     // edge and level with the centre of mass, so its thrust does not pitch the nose.
@@ -361,7 +361,7 @@
       name: "Solid Grain",
       on: "booster_left.tank",
       shape: { cylinder_tank: { diameter: 0.2, length: 0.35 } },
-      components: [{ storage: { type: "Solid Grain", contents: { HTPB: 1 } } }],
+      components: [{ storage: { type: "Solid Grain", contents: { "Solid Fuel": 1 } } }],
     },
     // The dolly it rolls off the runway on, held to the cabin's belly: a slim beam with
     // a nose wheel at its front and the main wheels, splayed to a 1.7 m track, just behind

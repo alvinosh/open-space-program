@@ -344,7 +344,7 @@
         {
           storage: {
             type: "Isogrid Al-Li",
-            contents: { Kerosene: 1, LqdOxygen: 2.36 },
+            contents: { "Liquid Fuel": 1, Oxidiser: 2.36 },
             design_load: 6.5,
           },
         },
@@ -358,7 +358,7 @@
       on: "upper_stage.tank_2",
       shape: { sphere: { diameter: 2 } },
       components: [
-        { storage: { type: "Titanium Sphere", contents: { Aerozine50: 1, NTO: 1.6 } } },
+        { storage: { type: "Titanium Sphere", contents: { "Liquid Fuel": 1, Oxidiser: 2.36 } } },
       ],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },

@@ -8,7 +8,8 @@
 //! A vessel in flight is saved whole, parts and all, not as the craft it was built from: it has
 //! lost stages and burned fuel, and a craft file changed since must not change it. So loading
 //! needs no records but the solar system's, and a mod can change or go without touching what
-//! is already flying.
+//! is already flying. The header names the mods the game was played with, so that what the game
+//! draws and what the editor offers can follow it.
 
 use std::{
     collections::BTreeSet,
@@ -39,6 +40,10 @@ pub struct Header {
     pub flying: String,
     /// How many vessels are in the game, debris left out.
     pub vessels: usize,
+    /// The mods the game is played with, the base game aside; `None` in a save from before saves
+    /// said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mods: Option<Vec<String>>,
 }
 
 impl Header {
@@ -52,6 +57,7 @@ impl Header {
             time: universe.time(),
             flying: flying.map_or(String::new(), |v| v.name.clone()),
             vessels: universe.vessels.iter().filter(|v| !v.is_debris()).count(),
+            mods: None,
         }
     }
 }

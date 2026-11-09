@@ -6,8 +6,8 @@ use std::{
     sync::Arc,
 };
 
-use bevy::{math::DVec3, prelude::*};
-use osp_mods::{Content, Diagnostic, Registry, Severity};
+use bevy::{ecs::system::SystemParam, math::DVec3, prelude::*};
+use osp_mods::{Content, Diagnostic, ModChoices, ModManifest, Registry, Severity};
 use osp_sim::{
     data::{
         AirBreathingEngineDef, AvionicsDef, BatteryDef, BodyDef, CraftDef, EngineDef,
@@ -23,12 +23,24 @@ use osp_sim::{
 };
 use osp_terrain::{Dataset, dataset::META_FILE};
 use osp_ui::{LayoutVisibility, UiAction, UiDocuments, UiImage, UiSet};
+use serde::Deserialize;
+
+use crate::{
+    menu::Menu,
+    settings::{SettingsSource, chosen_mods, remember_mods},
+};
 
 pub struct ContentPlugin;
 
 impl Plugin for ContentPlugin {
     fn build(&self, app: &mut App) {
-        let content = load_content();
+        let choices = match chosen_mods() {
+            Some(saved) if saved.is_empty() => default_choices(),
+            Some(saved) => saved,
+            None => ModChoices::new(),
+        };
+        let content = load_content(&choices);
+        let loaded = osp_mods::resolved(&content.available, &choices);
         let mut diagnostics = Vec::new();
         let documents = UiDocuments::from_registry(&content.registry, &mut diagnostics);
         let library = Library::load(&content.registry, &mut diagnostics);
@@ -52,13 +64,132 @@ impl Plugin for ContentPlugin {
         app.insert_resource(content)
             .insert_resource(library)
             .insert_resource(documents)
-            .add_systems(Update, reload_on_request.after(UiSet::Input))
+            .insert_resource(PlayerMods {
+                choices,
+                game: None,
+                loaded,
+            })
+            .add_systems(
+                Update,
+                (choose_mods, reload_on_request, follow_the_game)
+                    .chain()
+                    .after(UiSet::Input),
+            )
             .add_systems(Update, (load_ui_images, load_ui_fonts).after(UiSet::Update));
     }
 }
 
 #[derive(Resource)]
 pub struct GameContent(pub Content);
+
+/// The menu screen that says which mods a new game has.
+const NEW_GAME_SCREEN: &str = "new_game";
+
+/// A named set of mods, offered for a new game. Anything but the mods it names is off.
+#[derive(Debug, Clone, Deserialize)]
+pub struct GameModeDef {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// What it turns on; what those depend on comes too.
+    #[serde(default)]
+    pub mods: Vec<String>,
+    /// What a player who has not chosen yet gets.
+    #[serde(default)]
+    pub default: bool,
+}
+
+/// The mode that turns on what `choices` does, if there is one.
+pub fn mode_of<'a>(
+    modes: &'a [GameModeDef],
+    available: &[ModManifest],
+    choices: &ModChoices,
+) -> Option<&'a GameModeDef> {
+    let on = osp_mods::resolved(available, choices);
+    (modes.iter()).find(|mode| osp_mods::exactly(available, &mode.mods) == on)
+}
+
+/// Whether every mod of `mode` is installed, so that it can be offered.
+pub fn can_offer(mode: &GameModeDef, available: &[ModManifest]) -> bool {
+    (mode.mods.iter()).all(|id| available.iter().any(|m| m.id == *id))
+}
+
+/// What a player who has not chosen yet starts with: the base game's default mode.
+fn default_choices() -> ModChoices {
+    let base = osp_mods::load(&asset_root().join("core"), None);
+    let modes = (base.registry).all::<GameModeDef>("game_modes", &mut Vec::new());
+    match modes.iter().find(|mode| mode.default) {
+        Some(mode) => osp_mods::exactly(&osp_mods::installed(&mods_root()), &mode.mods),
+        None => ModChoices::new(),
+    }
+}
+
+/// Which mods the game uses: a new game has what was chosen on the New game screen, and a game
+/// from a save keeps the mods it was saved with. Choices wait for the player to start the game or
+/// leave the screen: loading every record takes a moment, and one click often leads to another.
+#[derive(Resource)]
+pub struct PlayerMods {
+    /// What new games start with, kept in the settings.
+    pub choices: ModChoices,
+    /// The mods of the game in progress, if it came from a save; otherwise it has `choices`.
+    game: Option<ModChoices>,
+    /// Whether each installed mod is on in what is loaded now.
+    loaded: ModChoices,
+}
+
+impl PlayerMods {
+    /// The game in progress is a new one, with the mods new games start with.
+    pub fn new_game_starts(&mut self) {
+        self.game = None;
+    }
+}
+
+/// What changing the loaded mods changes.
+#[derive(SystemParam)]
+pub struct ModSwitch<'w> {
+    content: ResMut<'w, GameContent>,
+    library: ResMut<'w, Library>,
+    documents: ResMut<'w, UiDocuments>,
+    mods: ResMut<'w, PlayerMods>,
+}
+
+impl ModSwitch<'_> {
+    /// Reload every mod from disk and rebuild the UI. Physics data already in use (bodies, parts in
+    /// flight) is not swapped mid-flight.
+    fn reload(&mut self, choices: &ModChoices) {
+        let mut fresh = load_content(choices);
+        let mut diagnostics = Vec::new();
+        *self.documents = UiDocuments::from_registry(&fresh.registry, &mut diagnostics);
+        *self.library = Library::load(&fresh.registry, &mut diagnostics);
+        fresh.diagnostics.extend(diagnostics);
+        info!(
+            "reloaded {} mods ({} errors)",
+            fresh.mods.len(),
+            fresh.error_count()
+        );
+        self.mods.loaded = osp_mods::resolved(&fresh.available, choices);
+        self.content.0 = fresh;
+    }
+
+    /// Load `wanted`, unless those are the mods loaded already.
+    fn switch_to(&mut self, wanted: &ModChoices) {
+        if osp_mods::resolved(&self.content.0.available, wanted) != self.mods.loaded {
+            self.reload(wanted);
+        }
+    }
+
+    /// The game in progress now comes from a save with the mods `ids`, or, from a save too old to
+    /// say, with whatever is loaded.
+    pub fn carry_on_with(&mut self, ids: Option<&[String]>) {
+        let wanted = match ids {
+            Some(ids) => osp_mods::exactly(&self.content.0.available, ids),
+            None => self.mods.loaded.clone(),
+        };
+        self.switch_to(&wanted);
+        self.mods.game = Some(wanted);
+    }
+}
 
 /// The catalogue records the physics doesn't use yet (batteries, avionics, solar cells, jet
 /// engines, engine families) and the tech tree that dates everything. Loading them here
@@ -71,6 +202,8 @@ pub struct Library {
     pub batteries: Vec<BatteryDef>,
     pub avionics: Vec<AvionicsDef>,
     pub solar_panels: Vec<SolarPanelDef>,
+    /// What a new game can be.
+    pub modes: Vec<GameModeDef>,
 }
 
 impl Library {
@@ -82,6 +215,7 @@ impl Library {
             batteries: registry.all("batteries", diagnostics),
             avionics: registry.all("avionics", diagnostics),
             solar_panels: registry.all("solar_panels", diagnostics),
+            modes: registry.all("game_modes", diagnostics),
         }
     }
 
@@ -126,8 +260,8 @@ pub fn mods_root() -> PathBuf {
     game_root().join("mods")
 }
 
-fn load_content() -> Content {
-    osp_mods::load(&asset_root().join("core"), Some(&mods_root()))
+fn load_content(choices: &ModChoices) -> Content {
+    osp_mods::load_chosen(&asset_root().join("core"), Some(&mods_root()), choices)
 }
 
 /// Bevy asset path of a file that a mod ships (a model, say), from its path relative to the
@@ -295,6 +429,7 @@ pub fn restart_tutorial(
 
 pub fn catalog(registry: &Registry, diagnostics: &mut Vec<Diagnostic>) -> PartCatalog {
     PartCatalog {
+        rules: registry.get("rules", "game").unwrap_or_default(),
         engines: registry.all::<EngineDef>("engines", diagnostics),
         resources: registry.all::<ResourceDef>("resources", diagnostics),
         materials: registry.all::<MaterialDef>("materials", diagnostics),
@@ -404,26 +539,110 @@ fn load_ui_fonts(
         .collect();
 }
 
-/// `game.reload`: reload every mod from disk and rebuild the UI. Physics data already in
-/// use (bodies, parts in flight) is not swapped mid-flight.
-fn reload_on_request(
+/// `mods.toggle:<id>` and `mods.mode:<id>`, on the New game screen only: what a new game will have.
+fn choose_mods(
     mut actions: MessageReader<UiAction>,
-    mut content: ResMut<GameContent>,
-    mut library: ResMut<Library>,
-    mut documents: ResMut<UiDocuments>,
+    content: Res<GameContent>,
+    library: Res<Library>,
+    menu: Res<Menu>,
+    mut mods: ResMut<PlayerMods>,
+    mut source: ResMut<SettingsSource>,
 ) {
-    if !actions.read().any(|a| a.name() == "game.reload") {
+    for action in actions.read() {
+        let Some(id) = action.arg().filter(|_| menu.screen() == NEW_GAME_SCREEN) else {
+            continue;
+        };
+        let available = &content.0.available;
+        let next = match action.name() {
+            "mods.toggle" => {
+                let on = available.iter().find(|m| m.id == id);
+                let on = !on.is_some_and(|m| m.is_on(&mods.choices));
+                osp_mods::choose(available, &mods.choices, id, on)
+            }
+            "mods.mode" => match library.modes.iter().find(|mode| mode.id == id) {
+                Some(mode) if can_offer(mode, available) => {
+                    osp_mods::exactly(available, &mode.mods)
+                }
+                _ => continue,
+            },
+            _ => continue,
+        };
+        if next != mods.choices {
+            remember_mods(&mut source, &next);
+            mods.choices = next;
+        }
+    }
+}
+
+/// `game.reload`: reload the mods in use from disk.
+fn reload_on_request(mut actions: MessageReader<UiAction>, mut switch: ModSwitch) {
+    if actions.read().any(|a| a.name() == "game.reload") {
+        let loaded = switch.mods.loaded.clone();
+        switch.reload(&loaded);
+    }
+}
+
+/// Keep the loaded mods those of what the player is doing: the game in progress's while in it, and
+/// what a new game will have on the first screen and in the editor of a new game.
+fn follow_the_game(menu: Res<Menu>, mut switch: ModSwitch) {
+    if menu.screen() == NEW_GAME_SCREEN && !menu.new_game {
         return;
     }
-    let mut fresh = load_content();
-    let mut diagnostics = Vec::new();
-    *documents = UiDocuments::from_registry(&fresh.registry, &mut diagnostics);
-    *library = Library::load(&fresh.registry, &mut diagnostics);
-    fresh.diagnostics.extend(diagnostics);
-    info!(
-        "reloaded {} mods ({} errors)",
-        fresh.mods.len(),
-        fresh.error_count()
-    );
-    content.0 = fresh;
+    if !menu.playing && switch.mods.game.is_some() {
+        switch.mods.game = None;
+    }
+    let game = (menu.playing && !menu.new_game)
+        .then(|| switch.mods.game.clone())
+        .flatten();
+    let wanted = game.unwrap_or_else(|| switch.mods.choices.clone());
+    switch.switch_to(&wanted);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shipped() -> (Vec<GameModeDef>, Vec<ModManifest>) {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let content = osp_mods::load(&root.join("assets/core"), Some(&root.join("mods")));
+        let modes = (content.registry).all::<GameModeDef>("game_modes", &mut Vec::new());
+        (modes, content.available)
+    }
+
+    #[test]
+    fn a_new_player_gets_casual_and_realistic_is_all_there() {
+        let (modes, available) = shipped();
+        let mode = |id: &str| modes.iter().find(|m| m.id == id).unwrap();
+        let defaults: Vec<_> = modes.iter().filter(|m| m.default).collect();
+        assert_eq!(defaults.len(), 1);
+        assert_eq!(defaults[0].id, "casual");
+        assert!(mode("casual").mods.is_empty());
+        assert!(can_offer(mode("casual"), &available));
+        assert!(can_offer(mode("realistic"), &available));
+        for id in [
+            "realistic_engines",
+            "realistic_fuels",
+            "realistic_avionics",
+            "realism",
+        ] {
+            assert!(mode("realistic").mods.iter().any(|m| m == id), "{id}");
+        }
+    }
+
+    #[test]
+    fn choices_are_a_mode_only_if_they_turn_on_just_what_it_does() {
+        let (modes, available) = shipped();
+        let name =
+            |choices: &ModChoices| mode_of(&modes, &available, choices).map(|m| m.id.as_str());
+        let casual = osp_mods::exactly(&available, &[]);
+        assert_eq!(name(&casual), Some("casual"));
+        let realism = ["realism".to_owned()];
+        assert_eq!(
+            name(&osp_mods::exactly(&available, &realism)),
+            Some("realistic"),
+            "Realism brings the mods it depends on"
+        );
+        let engines = ["realistic_engines".to_owned()];
+        assert_eq!(name(&osp_mods::exactly(&available, &engines)), None);
+    }
 }

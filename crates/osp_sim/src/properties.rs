@@ -112,7 +112,8 @@ fn choice(value: &str, options: &[(&str, &str)]) -> Value {
 }
 
 /// The mixes the game has names for: an id, what the player reads, and the mass ratio. They name
-/// what an engine burns when it burns the same resources.
+/// what an engine burns when it burns the same resources. The first that the mods loaded have all
+/// the resources of is what a new tank holds ([`new_tank`]).
 const MIXES: &[(&str, &str, &[(&str, f64)])] = &[
     (
         "kerolox",
@@ -141,6 +142,11 @@ const MIXES: &[(&str, &str, &[(&str, f64)])] = &[
     ),
     ("mmh_nto", "MMH and NTO", &[("MMH", 1.0), ("NTO", 1.65)]),
     ("udmh_nto", "UDMH and NTO", &[("UDMH", 1.0), ("NTO", 2.6)]),
+    (
+        "liquid_fuel",
+        "Liquid fuel and oxidiser",
+        &[("Liquid Fuel", 1.0), ("Oxidiser", 2.36)],
+    ),
     ("kerosene", "Kerosene", &[("Kerosene", 1.0)]),
     ("lox", "Liquid oxygen", &[("LqdOxygen", 1.0)]),
     ("lh2", "Liquid hydrogen", &[("LqdHydrogen", 1.0)]),
@@ -163,9 +169,16 @@ pub struct Mix {
     pub contents: BTreeMap<String, f64>,
 }
 
-/// What a tank from the parts list holds, by mass (`palette`'s tank). A tank that still holds it
-/// follows the engines it feeds ([`fill_from_engines`]); one the player filled keeps what it has.
-pub const NEW_TANK: &[(&str, f64)] = &[("Kerosene", 1.0), ("LqdOxygen", 2.36)];
+/// What a tank from the parts list holds (`palette`'s tank): the first of [`MIXES`] that `catalog`
+/// has, or nothing if it has none. A tank that still holds it follows the engines it feeds
+/// ([`fill_from_engines`]); one the player filled keeps what it has.
+pub fn new_tank(catalog: &PartCatalog) -> Mix {
+    usual(catalog).into_iter().next().unwrap_or(Mix {
+        id: NOTHING.to_owned(),
+        label: "Nothing".to_owned(),
+        contents: BTreeMap::new(),
+    })
+}
 
 /// What tank `part` of `craft` can be filled with: what the engines and thrusters it feeds burn,
 /// those joined to it through joints that pass propellant ([`fed_from`]), each mix once and at its
@@ -250,7 +263,7 @@ fn engine_name(part: &CraftPartDef) -> String {
 }
 
 /// Fill the tanks that the parts `put`, just put on `craft`, are joined to through joints that pass
-/// propellant: a tank that still holds what a new one comes with ([`NEW_TANK`]) takes what the
+/// propellant: a tank that still holds what a new one comes with ([`new_tank`]) takes what the
 /// engines it feeds burn, at their ratio, an engine's mix before thrusters'. So a tank put on an
 /// engine, and an engine put under a tank, need nothing set. A tank the player filled stays as it
 /// is, and so does one that feeds nothing. The ids of the tanks filled.
@@ -271,9 +284,7 @@ pub fn fill_from_engines(
     let Ok(built) = Craft::build(craft, catalog) else {
         return Vec::new();
     };
-    let new_tank: BTreeMap<String, f64> = (NEW_TANK.iter())
-        .map(|(name, ratio)| ((*name).to_owned(), *ratio))
-        .collect();
+    let new_tank = new_tank(catalog).contents;
     let mut seen = std::collections::BTreeSet::new();
     let mut filled = Vec::new();
     for start in starts {
@@ -312,7 +323,6 @@ pub fn fill_from_engines(
 }
 
 /// The usual mixes: those of [`MIXES`] `catalog` has every resource of.
-#[cfg(test)]
 fn usual(catalog: &PartCatalog) -> Vec<Mix> {
     (MIXES.iter())
         .filter(|(_, _, parts)| {
@@ -1261,9 +1271,7 @@ mod tests {
 
     #[test]
     fn the_parts_list_tank_holds_what_a_new_tank_is_said_to() {
-        let new_tank: BTreeMap<String, f64> = (NEW_TANK.iter())
-            .map(|(name, ratio)| ((*name).to_owned(), *ratio))
-            .collect();
+        let new_tank = new_tank(&catalog()).contents;
         assert!(storage(&part("tank")).is_some_and(|s| same_mix(&s.contents, &new_tank)));
     }
 

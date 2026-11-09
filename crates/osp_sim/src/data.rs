@@ -100,8 +100,31 @@ pub struct OrbitDef {
     pub epoch: f64,
 }
 
+/// How much of the real thing a game asks for where that is not a matter of its parts' data (the
+/// record `game` of the collection `rules`). Without a record, all of it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RulesDef {
+    pub id: String,
+    /// Control takes avionics rated for the vessel's mass and where it is, or a crew for a small
+    /// one by hand. Without this, any pod or avionics unit flies whatever it is on, and a vessel
+    /// with neither does nothing it is told.
+    pub avionics: bool,
+}
+
+impl Default for RulesDef {
+    fn default() -> Self {
+        Self {
+            id: "game".to_owned(),
+            avionics: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartCatalog {
+    #[serde(default)]
+    pub rules: RulesDef,
     pub engines: Vec<EngineDef>,
     #[serde(default)]
     pub resources: Vec<ResourceDef>,

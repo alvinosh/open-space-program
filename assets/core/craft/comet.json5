@@ -363,7 +363,7 @@
       shape: { cylinder_tank: { diameter: 1.4, length: 2.2 } },
       components: [
         {
-          storage: { type: "Stiffened Al 2219", contents: { Kerosene: 1, LqdOxygen: 2.3 } },
+          storage: { type: "Stiffened Al 2219", contents: { "Liquid Fuel": 1, Oxidiser: 2.36 } },
         },
       ],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },

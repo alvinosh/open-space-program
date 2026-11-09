@@ -22,6 +22,7 @@ use bevy::{
     render::renderer::RenderAdapterInfo,
     window::{PresentMode, PrimaryWindow},
 };
+use osp_mods::ModChoices;
 use osp_ui::{ActionState, KeyBindingDef, UiAction, UiData, UiDocuments, record};
 use serde::{Deserialize, Serialize};
 
@@ -66,6 +67,9 @@ struct Settings {
     /// Keys the player has rebound, by [`binding_ids`].
     #[serde(default)]
     keys: BTreeMap<String, KeyCode>,
+    /// Mods turned on or off for a new game, by id.
+    #[serde(default)]
+    mods: ModChoices,
 }
 
 /// The interface, and what it warns of.
@@ -376,7 +380,7 @@ fn on_off(on: bool) -> &'static str {
 
 /// Where the settings came from, and whether changes are saved.
 #[derive(Resource)]
-struct SettingsSource {
+pub(crate) struct SettingsSource {
     file: Option<PathBuf>,
     /// No settings were saved yet: pick a preset from the GPU once it is known.
     detect: bool,
@@ -494,6 +498,35 @@ fn load() -> (Settings, SettingsSource) {
         info!("graphics: {}", settings.graphics.describe());
     }
     (settings, source)
+}
+
+/// The mods the player last chose for a new game, read before anything else loads; empty if they
+/// have not chosen yet. `None` in runs that a script drives (`OSP_CAPTURE`, `OSP_SCENARIO`,
+/// `OSP_TUTORIAL`, `--watch`) and `OSP_GRAPHICS` runs, which have every mod its manifest leaves on,
+/// so they stay reproducible and find the vessels they start with.
+pub fn chosen_mods() -> Option<ModChoices> {
+    let vars = [
+        "OSP_CAPTURE",
+        "OSP_SCENARIO",
+        "OSP_TUTORIAL",
+        "OSP_GRAPHICS",
+    ];
+    if vars.iter().any(|var| std::env::var_os(var).is_some())
+        || std::env::args().any(|a| a == "--watch")
+    {
+        return None;
+    }
+    let saved = (settings_file())
+        .and_then(|file| std::fs::read_to_string(file).ok())
+        .and_then(|text| serde_json::from_str::<Settings>(&text).ok())
+        .map(|settings| settings.mods);
+    Some(saved.unwrap_or_default())
+}
+
+/// Keep what the player has chosen for a new game.
+pub(crate) fn remember_mods(source: &mut SettingsSource, choices: &ModChoices) {
+    source.saved.mods = choices.clone();
+    save(source);
 }
 
 /// Write out what the file should hold.

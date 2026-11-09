@@ -1293,6 +1293,40 @@ mod tests {
         );
     }
 
+    /// Without avionics rules any pod or unit flies whatever it is on, powered or not, and with
+    /// neither the vessel takes no commands at all.
+    #[test]
+    fn without_avionics_rules_any_pod_flies_and_no_pod_takes_no_commands() {
+        let rules = crate::data::RulesDef {
+            avionics: false,
+            ..Default::default()
+        };
+        let craft = |components: &str, mass: f64| -> Propulsion {
+            let text = format!(
+                r#"{{ id: "x", name: "", parts: [{{ id: "bus",
+                    shape: {{ shell: {{ bottom_diameter: 1, sections: [{{ length: 2 }}],
+                        cap_bottom: true, cap_top: true }} }},
+                    structure: {{ mass: {mass} }},
+                    components: [{{ container: {{}} }} {components}] }}] }}"#
+            );
+            let mut p =
+                Propulsion::from_craft(&records::<CraftDef>(&text).remove(0), &catalog()).unwrap();
+            p.require_control_under(&rules);
+            p
+        };
+        let pod = craft(", { crew: { seats: 1 } }", 500_000.0);
+        assert!(pod.controlled(true) && !pod.no_pod());
+        assert!(pod.controlled(false), "and anywhere");
+        let unit = craft(", { avionics: { controlled_mass: 1 } }", 500_000.0);
+        assert!(unit.controlled(true) && !unit.no_pod());
+        let nothing = craft("", 1000.0);
+        assert!(!nothing.controlled(true) && nothing.no_pod());
+        // A game with the rules is as it was.
+        let mut limited = craft(", { crew: { seats: 1 } }", 500_000.0);
+        limited.require_control_under(&crate::data::RulesDef::default());
+        assert!(!limited.controlled(true) && !limited.no_pod());
+    }
+
     /// A part with avionics or a crew offers to be flown from, and the vessel's control frame is
     /// then that part's.
     #[test]

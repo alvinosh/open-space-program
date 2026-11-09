@@ -1,0 +1,18 @@
+// What a new game can be, offered on the New game screen. `mods` is what it turns on (with what
+// those depend on) and everything else is off. It is only offered if they are all installed. A mod
+// can add a mode. `default: true` is what a player who has not chosen yet gets.
+[
+  {
+    id: "casual",
+    name: "Casual",
+    description: "Liquid fuel and oxidiser, engines that light whenever you ask, and any pod flies any rocket.",
+    mods: [],
+    default: true,
+  },
+  {
+    id: "realistic",
+    name: "Realistic",
+    description: "Real propellants, real engines and avionics and their limits, the real parts and historical rockets.",
+    mods: ["realistic_engines", "realistic_fuels", "realistic_avionics", "realism"],
+  },
+]

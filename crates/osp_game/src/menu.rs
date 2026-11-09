@@ -24,7 +24,7 @@ use osp_ui::{LayoutVisibility, UiAction, UiData, UiDocuments, UiRecord, record};
 use crate::{
     FrameSet,
     camera::CameraRig,
-    content::GameContent,
+    content::{GameContent, Library},
     dialog::Dialog,
     editing::{EditorStatus, LastLaunch},
     saves::{SaveEntry, Saves, ago, now},
@@ -187,18 +187,21 @@ fn vessel_list(sim: &Sim, menu: &Menu) -> Vec<UiRecord> {
 }
 
 /// A save's line in the list: what is flying, when in the game, and how many vessels.
-fn save_detail(flying: &str, time: &str, vessels: usize) -> String {
+fn save_detail(flying: &str, time: &str, vessels: usize, mode: &str) -> String {
     let vessels = match vessels {
         1 => "1 vessel".to_owned(),
         count => format!("{count} vessels"),
     };
-    let parts = [flying, time, vessels.as_str()];
+    let parts = [flying, time, vessels.as_str(), mode];
     let shown: Vec<_> = parts.into_iter().filter(|part| !part.is_empty()).collect();
     shown.join(", ")
 }
 
+/// What a game with these mods is called: its mode, or Custom.
+type ModeOf<'a> = dyn Fn(&[String]) -> String + 'a;
+
 /// A save's or quicksave's record in `menu.saves`.
-fn save_record(entry: &SaveEntry, current: bool, now: u64) -> UiRecord {
+fn save_record(entry: &SaveEntry, current: bool, now: u64, mode_of: &ModeOf) -> UiRecord {
     let header = entry.header.as_ref();
     let name = header.map_or(entry.file.as_str(), |h| h.name.as_str());
     let saved = header.map_or(String::new(), |h| ago(h.saved_at, now));
@@ -207,11 +210,14 @@ fn save_record(entry: &SaveEntry, current: bool, now: u64) -> UiRecord {
     let vessels = header.map_or(0, |h| h.vessels);
     let problem = entry.problem.as_deref().unwrap_or("");
     let detail = match problem {
-        "" => save_detail(flying, &time, vessels),
+        "" => {
+            let mods = header.and_then(|h| h.mods.as_deref());
+            save_detail(flying, &time, vessels, &mods.map_or(String::new(), mode_of))
+        }
         problem => problem.to_owned(),
     };
     let quicksaves: Vec<_> = (entry.quicksaves.iter())
-        .map(|quick| save_record(quick, false, now))
+        .map(|quick| save_record(quick, false, now, mode_of))
         .collect();
     record([
         ("file", entry.file.as_str().into()),
@@ -231,12 +237,12 @@ fn save_record(entry: &SaveEntry, current: bool, now: u64) -> UiRecord {
 /// `menu.saves` (file, current, name, saved, time, flying, vessels, problem, detail,
 /// has_quicksaves, quicksaves), newest first; `current` is the one the game in progress goes to,
 /// and `quicksaves` are its own, newest first, with the same fields.
-fn save_list(saves: &Saves) -> Vec<UiRecord> {
+fn save_list(saves: &Saves, mode_of: &ModeOf) -> Vec<UiRecord> {
     let now = now();
     (saves.list.iter())
         .map(|entry| {
             let current = saves.current_file() == Some(entry.file.as_str());
-            save_record(entry, current, now)
+            save_record(entry, current, now, mode_of)
         })
         .collect()
 }
@@ -248,6 +254,7 @@ fn save_list(saves: &Saves) -> Vec<UiRecord> {
 /// `docs/modding.md`.
 fn publish_menu(
     content: Res<GameContent>,
+    library: Res<Library>,
     menu: Res<Menu>,
     saves: Res<Saves>,
     sim: Res<Sim>,
@@ -289,7 +296,13 @@ fn publish_menu(
         data.set("menu.revert_line", last_launch.name().unwrap_or(""));
     }
     if menu.is_changed() || saves.is_changed() {
-        data.set("menu.saves", save_list(&saves));
+        let available = &content.0.available;
+        let mode_of = |mods: &[String]| {
+            let choices = osp_mods::exactly(available, mods);
+            let mode = crate::content::mode_of(&library.modes, available, &choices);
+            mode.map_or("Custom", |mode| mode.name.as_str()).to_owned()
+        };
+        data.set("menu.saves", save_list(&saves, &mode_of));
         data.set("menu.has_saves", !saves.list.is_empty());
         data.set("menu.can_continue", saves.newest().is_some());
         let header = saves.newest().and_then(|entry| entry.header.as_ref());
@@ -508,9 +521,13 @@ mod tests {
     #[test]
     fn a_save_says_what_it_knows() {
         assert_eq!(
-            save_detail("Saturn V", "2000-01-01 18:00:12", 2),
+            save_detail("Saturn V", "2000-01-01 18:00:12", 2, ""),
             "Saturn V, 2000-01-01 18:00:12, 2 vessels"
         );
-        assert_eq!(save_detail("", "2000-01-01", 1), "2000-01-01, 1 vessel");
+        assert_eq!(save_detail("", "2000-01-01", 1, ""), "2000-01-01, 1 vessel");
+        assert_eq!(
+            save_detail("", "2000-01-01", 1, "Casual"),
+            "2000-01-01, 1 vessel, Casual"
+        );
     }
 }

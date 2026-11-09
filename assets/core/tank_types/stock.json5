@@ -66,7 +66,7 @@
     stiffening: 1.25, // metal liner
     safety_factor: 1.5,
     utilization: 1.0,
-    propellants: ["Nitrogen", "Helium"],
+    propellants: ["Liquid Fuel", "Oxidiser"],
   },
   {
     // Titanium spheres for pressure-fed storable propellants (RCS, small engines), 20 bar.
@@ -77,7 +77,7 @@
     min_gauge: 0.0008,
     safety_factor: 1.5,
     utilization: 0.95, // the rest is the propellant management device and ullage
-    propellants: ["Aerozine50", "NTO", "Hydrazine"],
+    propellants: ["Liquid Fuel", "Oxidiser"],
   },
   {
     // Propellant cast in a solid motor. The motor's case, insulation and nozzle are its
@@ -87,7 +87,7 @@
     pressure: 0,
     min_gauge: 0.0001,
     utilization: 0.92,
-    propellants: ["HTPB"],
+    propellants: ["Solid Fuel"],
     cast: true,
   },
 ]

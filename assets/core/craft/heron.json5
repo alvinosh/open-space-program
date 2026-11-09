@@ -281,7 +281,7 @@
         {
           storage: {
             type: "Insulated Al-Li",
-            contents: { LqdHydrogen: 1, LqdOxygen: 5.5 },
+            contents: { "Liquid Fuel": 1, Oxidiser: 2.36 },
             design_load: 4,
           },
         },
@@ -293,7 +293,7 @@
       name: "COPV",
       on: "upper_stage.tank_2",
       shape: { sphere: { diameter: 1.35 } },
-      components: [{ storage: { type: "COPV", contents: { Nitrogen: 1 } } }],
+      components: [{ storage: { type: "COPV", contents: { "Liquid Fuel": 1, Oxidiser: 2.36 } } }],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
     },
     {
@@ -393,7 +393,7 @@
       shape: { cylinder_tank: { diameter: 8.4, length: 22 } },
       components: [
         {
-          storage: { type: "Insulated Al-Li", contents: { LqdHydrogen: 1, LqdOxygen: 6 } },
+          storage: { type: "Insulated Al-Li", contents: { "Liquid Fuel": 1, Oxidiser: 2.36 } },
         },
       ],
       paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },

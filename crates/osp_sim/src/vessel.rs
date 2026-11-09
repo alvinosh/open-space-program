@@ -1710,7 +1710,9 @@ impl Vessel {
         if !controlled {
             if self.sas.enabled() {
                 self.sas.set_enabled(false);
-                self.record(t0, "No avionics for this much mass: no SAS".into());
+                if !self.propulsion.any_pod_controls() {
+                    self.record(t0, "No avionics for this much mass: no SAS".into());
+                }
             }
             self.executor.disengage();
         }
@@ -2650,14 +2652,18 @@ pub(crate) mod tests {
 
     pub fn catalog() -> PartCatalog {
         PartCatalog {
-            engines: records(include_str!("../../../assets/core/engines/stock.json5")),
-            resources: records(include_str!("../../../assets/core/resources/stock.json5")),
+            rules: Default::default(),
+            engines: crate::test_data::realistic_engines(),
+            resources: crate::test_data::realistic_resources(),
             materials: records(include_str!("../../../assets/core/materials/stock.json5")),
-            tank_types: records(include_str!("../../../assets/core/tank_types/stock.json5")),
+            tank_types: crate::test_data::realistic_tank_types(),
             reaction_wheels: records(include_str!(
                 "../../../assets/core/reaction_wheels/stock.json5"
             )),
-            rcs: records(include_str!("../../../assets/core/rcs/stock.json5")),
+            rcs: crate::test_data::realistic(
+                include_str!("../../../assets/core/rcs/stock.json5"),
+                "rcs",
+            ),
             pods: records(include_str!("../../../assets/core/pods/stock.json5")),
             batteries: records(include_str!(
                 "../../../mods/realism/batteries/batteries.json5"
@@ -2670,7 +2676,7 @@ pub(crate) mod tests {
     }
 
     pub fn pathfinder() -> CraftDef {
-        records(include_str!("../../../assets/core/craft/pathfinder.json5")).remove(0)
+        crate::test_data::realistic(include_str!("../../../assets/core/craft/pathfinder.json5"), "craft").remove(0)
     }
 
     /// Pathfinder as the stack of stages it was converted from, for tests of the stage
@@ -2734,11 +2740,11 @@ pub(crate) mod tests {
 }"#;
 
     pub fn upper_stage() -> CraftDef {
-        records(include_str!("../../../assets/core/craft/upper_stage.json5")).remove(0)
+        crate::test_data::realistic(include_str!("../../../assets/core/craft/upper_stage.json5"), "craft").remove(0)
     }
 
     pub fn lunar_upper() -> CraftDef {
-        records(include_str!("../../../assets/core/craft/lunar_upper.json5")).remove(0)
+        crate::test_data::realistic(include_str!("../../../assets/core/craft/lunar_upper.json5"), "craft").remove(0)
     }
 
     pub fn launch_sites() -> Vec<LaunchSiteDef> {
@@ -3632,7 +3638,7 @@ pub(crate) mod tests {
     fn fins_tear_off_in_a_hard_turn_at_speed() {
         let system = rss();
         let craft: CraftDef =
-            records(include_str!("../../../assets/core/craft/sounder.json5")).remove(0);
+            crate::test_data::realistic(include_str!("../../../assets/core/craft/sounder.json5"), "craft").remove(0);
         let start = OrbitStartDef {
             body: "Earth".into(),
             periapsis_altitude: 300e3,
@@ -3685,7 +3691,7 @@ pub(crate) mod tests {
         angle: f64,
     ) -> (Vessel, SimTime) {
         let mut craft: CraftDef =
-            records(include_str!("../../../assets/core/craft/sounder.json5")).remove(0);
+            crate::test_data::realistic(include_str!("../../../assets/core/craft/sounder.json5"), "craft").remove(0);
         // Its stages' bodies from the bottom, each with its parts named after it.
         for stage in ["sounder", "capsule"].into_iter().take(drop) {
             let prefix = format!("{stage}_");
@@ -3726,7 +3732,7 @@ pub(crate) mod tests {
     }
 
     pub fn glider() -> CraftDef {
-        records(include_str!("../../../assets/core/craft/glider.json5")).remove(0)
+        crate::test_data::realistic(include_str!("../../../assets/core/craft/glider.json5"), "craft").remove(0)
     }
 
     /// The glider released at `altitude` over the Cape, heading east at `speed`, with its
@@ -3770,7 +3776,7 @@ pub(crate) mod tests {
     }
 
     pub fn comet() -> CraftDef {
-        records(include_str!("../../../assets/core/craft/comet.json5")).remove(0)
+        crate::test_data::realistic(include_str!("../../../assets/core/craft/comet.json5"), "craft").remove(0)
     }
 
     /// The Comet at the start of the Shuttle Landing Facility's runway.
@@ -4100,7 +4106,7 @@ pub(crate) mod tests {
             panic!("an orbit start")
         };
         let craft: CraftDef =
-            records(include_str!("../../../assets/core/craft/satellite.json5")).remove(0);
+            crate::test_data::realistic(include_str!("../../../assets/core/craft/satellite.json5"), "craft").remove(0);
         let t = SimTime::from_seconds(scenario.start_time);
         let v = Vessel::in_orbit(&craft, &catalog(), &system, start, t).unwrap();
         // Roll, the bus's long axis, is its middle moment: spun about it, the satellite

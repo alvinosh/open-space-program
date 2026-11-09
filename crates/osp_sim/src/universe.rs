@@ -840,7 +840,7 @@ impl Universe {
         self.time = time;
         for mut vessel in vessels {
             // In a game, nothing flies without avionics or a crew to fly it.
-            vessel.propulsion.require_control();
+            vessel.propulsion.require_control_under(&catalog.rules);
             self.add_vessel(vessel);
         }
         self.focus = Some(self.vessels[0].id());
@@ -881,7 +881,7 @@ impl Universe {
             vessel.propulsion.sequences = sequences;
         }
         // In a game, nothing flies without avionics or a crew to fly it.
-        vessel.propulsion.require_control();
+        vessel.propulsion.require_control_under(&catalog.rules);
         if new_game.is_some() {
             self.vessels.clear();
             self.clear_of.clear();
@@ -1324,7 +1324,7 @@ mod tests {
                 "comet" => include_str!("../../../assets/core/craft/comet.json5"),
                 _ => return Err(format!("no craft `{id}`")),
             };
-            Ok(crate::test_data::records(text).remove(0))
+            Ok(crate::test_data::realistic(text, "craft").remove(0))
         };
         let mut universe = Universe::new(rss(), Vec::new(), SimTime::J2000);
         universe

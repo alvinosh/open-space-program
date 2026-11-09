@@ -193,6 +193,14 @@ impl Plugin for SmokeTestPlugin {
                 WINDOWS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_WARP").is_some() {
                 WARP_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_MODS").is_some() {
+                MODS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_SAVE_MODS").is_some() {
+                SAVE_MODS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_BASE_ENGINES").is_some() {
+                BASE_ENGINES_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_NO_POD").is_some() {
+                NO_POD_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_SAVE").is_some() {
                 SAVE_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_QUICKSAVE").is_some() {
@@ -1627,6 +1635,159 @@ const MENU_SCRIPT: &[(f64, Action)] = &[
     (26.0, Action::Steer(DVec3::ZERO)),
     (30.0, Action::Capture("climb.png")),
     (31.5, Action::Exit),
+];
+
+/// `OSP_CAPTURE_MODS=1`: New game asks what the game will have. A mod clicked off changes nothing until
+/// the game starts; a mode takes its mods, and Start goes to the editor with them. Back from there comes
+/// to the screen again, and Realistic has the Saturn V.
+const MODS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::Ui("game.exit")),
+    (2.0, Action::ExpectScreen("title")),
+    (2.1, Action::Ui("menu.open:new_game")),
+    (2.2, Action::ExpectScreen("new_game")),
+    (2.3, Action::ExpectData("mods.count == 6")),
+    (2.4, Action::ExpectData("mods.custom")),
+    (3.0, Action::Capture("new_game_custom.png")),
+    (3.1, Action::UiPointAt("mods.toggle:realism")),
+    (3.2, Action::UiPress(PointerButton::Primary)),
+    (3.3, Action::UiRelease(PointerButton::Primary)),
+    (3.9, Action::ExpectData("mods.count == 6")),
+    (4.0, Action::UiPointAt("mods.mode:casual")),
+    (4.1, Action::UiPress(PointerButton::Primary)),
+    (4.2, Action::UiRelease(PointerButton::Primary)),
+    (4.3, Action::ExpectData("!mods.custom")),
+    (4.8, Action::Capture("new_game_casual.png")),
+    (4.9, Action::ExpectData("mods.count == 6")),
+    (5.0, Action::UiPointAt("ask.leave:game.new")),
+    (5.1, Action::UiPress(PointerButton::Primary)),
+    (5.2, Action::UiRelease(PointerButton::Primary)),
+    (10.0, Action::ExpectEditor(Some(""))),
+    (10.1, Action::ExpectData("mods.count == 1")),
+    (10.2, Action::Capture("new_game_casual_editor.png")),
+    (10.3, Action::Ui("menu.back")),
+    (11.0, Action::ExpectEditor(None)),
+    (11.1, Action::ExpectScreen("new_game")),
+    (11.2, Action::Ui("mods.mode:realistic")),
+    (11.3, Action::ExpectData("!mods.custom")),
+    (11.8, Action::Capture("new_game_realistic.png")),
+    (11.9, Action::Ui("ask.leave:game.new")),
+    (16.0, Action::ExpectData("mods.count == 5")),
+    (16.1, Action::Ui("editor.show:saturn_v")),
+    (20.0, Action::ExpectEditor(Some("saturn_v"))),
+    (20.1, Action::Exit),
+];
+
+/// `OSP_CAPTURE_SAVE_MODS=1` (with `OSP_USER_DIR=<empty folder>`): a save keeps its mods. The Saturn V
+/// is launched and saved with Realism on, Realism is turned off, and the save still brings it back
+/// with its models. In that game, the editor of a new game has what new games start with, going back
+/// from it has the save's again, and launching from it starts a game with none of the save's.
+const SAVE_MODS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::Ui("game.new")),
+    (1.3, Action::Ui("editor.show:saturn_v")),
+    (6.0, Action::ExpectEditor(Some("saturn_v"))),
+    (6.1, Action::Ui("editor.place:pad")),
+    (6.4, Action::Ui("editor.launch")),
+    (10.0, Action::ExpectGame(1, "Saturn V")),
+    (10.1, Action::ExpectSaves(1)),
+    (10.2, Action::Capture("save_mods_launched.png")),
+    (10.4, Action::Ui("game.menu")),
+    (10.5, Action::Ui("game.exit")),
+    (11.5, Action::ExpectScreen("title")),
+    (11.6, Action::Ui("menu.open:new_game")),
+    (11.7, Action::Ui("mods.toggle:realism")),
+    (11.8, Action::Ui("menu.back")),
+    (16.0, Action::ExpectData("mods.count == 5")),
+    (16.1, Action::Ui("game.load:game_1")),
+    (20.0, Action::ExpectData("mods.count == 6")),
+    (20.05, Action::ExpectGame(1, "Saturn V")),
+    (20.1, Action::Capture("save_mods_loaded.png")),
+    (20.2, Action::Ui("game.menu")),
+    (20.3, Action::Ui("game.new")),
+    (25.0, Action::ExpectData("mods.count == 5")),
+    (25.1, Action::Capture("save_mods_new_game_editor.png")),
+    (25.2, Action::Ui("menu.back")),
+    (30.0, Action::ExpectData("mods.count == 6")),
+    (30.05, Action::ExpectScreen("pause")),
+    (30.1, Action::Ui("game.new")),
+    (34.0, Action::ExpectData("mods.count == 5")),
+    (34.1, Action::Ui("editor.show:sounder")),
+    (37.0, Action::Ui("editor.place:pad")),
+    (37.3, Action::Ui("editor.launch")),
+    (41.0, Action::ExpectGame(1, "Sounder")),
+    (41.1, Action::ExpectData("mods.count == 5")),
+    (41.2, Action::Ui("game.menu")),
+    (41.3, Action::Ui("game.exit")),
+    (42.5, Action::ExpectData("mods.count == 5")),
+    (42.6, Action::Exit),
+];
+
+/// `OSP_CAPTURE_BASE_ENGINES=1` (with `OSP_USER_DIR=<empty folder>`): Casual chosen, and a rocket flown on the base game's engines and
+/// liquid fuel: cut, they stop at once and open again. Then back to the first screen, which starts
+/// its scene from the base game alone.
+const BASE_ENGINES_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::Ui("game.exit")),
+    (2.0, Action::ExpectScreen("title")),
+    (2.1, Action::Ui("menu.open:new_game")),
+    (2.2, Action::ExpectData("mods.count == 6")),
+    (2.3, Action::Ui("mods.mode:casual")),
+    (2.8, Action::Capture("base_engines_mods.png")),
+    (2.9, Action::Ui("menu.back")),
+    (7.0, Action::ExpectData("mods.count == 1")),
+    (7.1, Action::Ui("game.new")),
+    (7.3, Action::Ui("editor.show:pathfinder")),
+    (11.0, Action::ExpectEditor(Some("pathfinder"))),
+    (11.1, Action::Ui("editor.place:pad")),
+    (11.4, Action::Ui("editor.launch")),
+    (15.0, Action::ExpectGame(1, "Pathfinder")),
+    (15.1, Action::Launch),
+    (15.5, Action::ExpectData("vessel.thrust")),
+    (17.0, Action::Capture("base_engines_liftoff.png")),
+    (17.05, Action::Unlock),
+    (17.1, Action::Ui("vessel.throttle_cut")),
+    (17.5, Action::ExpectData("!vessel.thrust")),
+    (17.6, Action::Ui("vessel.throttle_full")),
+    (18.0, Action::ExpectData("vessel.thrust")),
+    (18.5, Action::Capture("base_engines_relit.png")),
+    (18.6, Action::Ui("game.menu")),
+    (18.7, Action::Ui("game.exit")),
+    (20.0, Action::ExpectScreen("title")),
+    (20.1, Action::Exit),
+];
+
+/// `OSP_CAPTURE_NO_POD=1` (with `OSP_USER_DIR=<empty folder>`): in a Casual game a tank and an engine with
+/// no pod are launched, and neither the throttle nor staging does anything.
+const NO_POD_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::Ui("game.exit")),
+    (2.0, Action::ExpectScreen("title")),
+    (2.1, Action::Ui("menu.open:new_game")),
+    (2.2, Action::Ui("mods.mode:casual")),
+    (2.4, Action::Ui("ask.leave:game.new")),
+    (7.0, Action::ExpectData("mods.count == 1")),
+    (7.1, Action::Ui("editor.new")),
+    (7.6, Action::Unlock),
+    (7.7, Action::Ui("editor.add:tank")),
+    (8.5, Action::ExpectPartCount(1)),
+    (8.6, Action::Ui("editor.add:engine:K-0")),
+    (9.2, Action::EditorPointAtNode("tank", "bottom")),
+    (9.9, Action::Press(MouseButton::Left)),
+    (10.0, Action::Release(MouseButton::Left)),
+    (10.8, Action::ExpectPartCount(2)),
+    (10.9, Action::Ui("editor.launch")),
+    (15.0, Action::Capture("no_pod_on_the_pad.png")),
+    (15.1, Action::Ui("vessel.throttle_full")),
+    (15.2, Action::Ui("vessel.stage")),
+    (16.5, Action::ExpectData("!vessel.throttle")),
+    (16.55, Action::ExpectData("!vessel.thrust")),
+    (16.6, Action::Capture("no_pod_ignores_orders.png")),
+    (16.7, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_MENU_TUTORIAL=1`: the title screen's Tutorials, and a tutorial started from them.

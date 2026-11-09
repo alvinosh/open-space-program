@@ -1,0 +1,38 @@
+// The special tanks, each holding only the propellants it was made for. Whole records and not patches,
+// so that a mod that loads after this one and defines the same tank replaces it.
+[
+  {
+    // Composite-overwrapped pressure vessel for RCS gas and pressurant, 300 bar. Mount
+    // them as spheres.
+    id: "COPV",
+    material: "Carbon Overwrap",
+    pressure: 3.0e7,
+    min_gauge: 0.001,
+    stiffening: 1.25, // metal liner
+    safety_factor: 1.5,
+    utilization: 1.0,
+    propellants: ["Nitrogen", "Helium"],
+  },
+  {
+    // Titanium spheres for pressure-fed storable propellants (RCS, small engines), 20 bar.
+    // Mount them as spheres.
+    id: "Titanium Sphere",
+    material: "Ti-6Al-4V",
+    pressure: 2.0e6,
+    min_gauge: 0.0008,
+    safety_factor: 1.5,
+    utilization: 0.95, // the rest is the propellant management device and ullage
+    propellants: ["Aerozine50", "NTO", "Hydrazine"],
+  },
+  {
+    // Propellant cast in a solid motor. The motor's case, insulation and nozzle are its
+    // engine record's mass; this adds only the grain.
+    id: "Solid Grain",
+    material: "Carbon Composite",
+    pressure: 0,
+    min_gauge: 0.0001,
+    utilization: 0.92,
+    propellants: ["HTPB"],
+    cast: true,
+  },
+]

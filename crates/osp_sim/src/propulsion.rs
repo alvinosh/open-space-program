@@ -611,6 +611,8 @@ pub struct Released {
     pub systems: Systems,
     /// What it left needed something to control it.
     needs_control: bool,
+    /// And any pod would do.
+    any_pod_controls: bool,
     /// Height of its base above the vessel's base before the sequence fired, m.
     pub base: f64,
     /// What its decouplers push it and the vessel apart with, N·s (0 for the usual push).
@@ -714,6 +716,9 @@ pub struct Propulsion {
     abort_clock: Option<f64>,
     /// It was started from a scenario, where a vessel with no unit and no crew has no control.
     needs_control: bool,
+    /// In a game without avionics rules (`RulesDef::avionics`), where any pod flies whatever it is on.
+    #[serde(default)]
+    any_pod_controls: bool,
     /// The part it is flown from, if not its own axes.
     control_part: Option<PartId>,
     /// The vessels that have joined it in flight.
@@ -864,6 +869,9 @@ impl Propulsion {
     /// [`CREW_CONTROLS`] by hand. A vessel with neither flies as it always has unless it was
     /// started from a scenario ([`Self::require_control`]).
     pub fn controlled(&self, near_earth: bool) -> bool {
+        if self.any_pod_controls {
+            return !self.no_pod();
+        }
         let units = || self.systems.all::<Avionics>();
         let crew = self.systems.all::<Crew>().any(|(_, crew)| crew.aboard > 0);
         if units().next().is_none() && !crew {
@@ -879,6 +887,24 @@ impl Propulsion {
     /// From now on it has no control without avionics or a crew.
     pub fn require_control(&mut self) {
         self.needs_control = true;
+    }
+
+    /// From now on it has the control the game's `rules` give it.
+    pub fn require_control_under(&mut self, rules: &crate::data::RulesDef) {
+        self.require_control();
+        self.any_pod_controls = !rules.avionics;
+    }
+
+    /// Any pod flies it, whatever it weighs: a game without avionics rules.
+    pub fn any_pod_controls(&self) -> bool {
+        self.any_pod_controls
+    }
+
+    /// In a game without avionics rules, it has nothing to take commands: it does nothing it is told.
+    pub fn no_pod(&self) -> bool {
+        self.any_pod_controls
+            && self.systems.all::<Avionics>().next().is_none()
+            && self.systems.all::<Crew>().next().is_none()
     }
 
     /// How the part it is flown from is turned on the vessel: its port's frame if it has one, so
@@ -1243,6 +1269,7 @@ impl Propulsion {
             abort: Vec::new(),
             abort_clock: None,
             needs_control: false,
+            any_pod_controls: false,
             control_part: None,
             joined: Vec::new(),
         };
@@ -1279,6 +1306,7 @@ impl Propulsion {
             abort: Vec::new(),
             abort_clock: None,
             needs_control: released.needs_control,
+            any_pod_controls: released.any_pod_controls,
             control_part: None,
             joined: released.joined,
         };
@@ -1381,6 +1409,7 @@ impl Propulsion {
             armed: (self.armed.iter()).copied().filter(|&p| gone(p)).collect(),
             systems: self.systems.split_off(gone),
             needs_control: self.needs_control,
+            any_pod_controls: self.any_pod_controls,
             parts,
             engines,
             rcs,
@@ -2413,12 +2442,16 @@ mod tests {
     use super::*;
 
     fn engine(id: &str) -> Engine {
-        let def = crate::test_data::records::<EngineDef>(include_str!(
-            "../../../assets/core/engines/stock.json5"
-        ))
-        .into_iter()
-        .find(|e| e.id == id)
-        .unwrap();
+        let engines = crate::test_data::realistic_engines();
+        lit(engines.into_iter().find(|e| e.id == id).unwrap())
+    }
+
+    /// The stock engines as the base game has them.
+    fn base_game_engines() -> Vec<EngineDef> {
+        crate::test_data::records(include_str!("../../../assets/core/engines/stock.json5"))
+    }
+
+    fn lit(def: EngineDef) -> Engine {
         Engine {
             ignitions_left: def.ignitions,
             def,
@@ -2465,6 +2498,28 @@ mod tests {
                 e.level
             })
             .collect()
+    }
+
+    #[test]
+    fn the_base_games_engines_start_and_stop_at_once_and_light_whenever_asked() {
+        let engines = base_game_engines();
+        assert!(engines.len() > 10);
+        for def in engines {
+            let id = def.id.clone();
+            let mut e = lit(def);
+            assert_eq!(run(&mut e, 1.0, 0.02, 0.02), [1.0], "{id} starts at once");
+            assert_eq!(run(&mut e, 0.0, 0.02, 0.02), [0.0], "{id} stops at once");
+            if e.is_solid() {
+                assert_eq!(e.def.ignitions, Some(1), "{id} burns until it is gone");
+                continue;
+            }
+            assert_eq!(e.commanded_level(0.05), 0.05, "{id} has no throttle floor");
+            let mut log = Vec::new();
+            for _ in 0..100 {
+                assert!(ignite(&mut e, false, &mut log), "{id} lights in free fall");
+            }
+            assert!(log.is_empty(), "{id}: {log:?}");
+        }
     }
 
     #[test]

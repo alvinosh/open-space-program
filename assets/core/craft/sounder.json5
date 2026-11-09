@@ -217,7 +217,7 @@
         {
           storage: {
             type: "Stiffened Al 2219",
-            contents: { Kerosene: 1, LqdOxygen: 2.36 },
+            contents: { "Liquid Fuel": 1, Oxidiser: 2.36 },
           },
         },
       ],

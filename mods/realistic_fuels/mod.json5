@@ -1,0 +1,11 @@
+// The real propellants in place of the base game's liquid fuel and oxidiser: kerosene, liquid oxygen,
+// hydrogen, methane, hypergolics and pressurised gas, each with its own mixture ratio and the tanks
+// it needs.
+{
+  id: "realistic_fuels",
+  name: "Realistic Fuels",
+  version: "0.1.0",
+  authors: ["Open Space Program"],
+  description: "Real propellants in place of liquid fuel and oxidiser: kerosene, hydrogen, methane, hypergolics and pressurised gas, each with its own mixture ratio and tank.",
+  dependencies: ["core"],
+}

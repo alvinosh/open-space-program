@@ -22,7 +22,7 @@ use osp_ui::{Formatters, UiData, UiValue, record};
 use crate::{
     FrameSet,
     camera::CameraRig,
-    content::GameContent,
+    content::{GameContent, Library, PlayerMods, can_offer, mode_of},
     controls::SequenceEdits,
     editing::EditorStatus,
     orbit_lines::Prediction,
@@ -600,11 +600,49 @@ fn publish_link_change(
     );
 }
 
-fn publish_mods(content: Res<GameContent>, mut data: ResMut<UiData>) {
-    if !content.is_changed() {
+fn publish_mods(
+    content: Res<GameContent>,
+    library: Res<Library>,
+    player: Res<PlayerMods>,
+    mut data: ResMut<UiData>,
+) {
+    if !content.is_changed() && !player.is_changed() {
         return;
     }
     let content = &content.0;
+    let available: Vec<_> = (content.available.iter())
+        .map(|m| {
+            let missing = osp_mods::missing_dependency(&content.available, &m.id);
+            let on = m.is_on(&player.choices) && missing.is_none();
+            let state = match missing {
+                Some(mod_id) => format!("Needs {mod_id}"),
+                None if on => "On".to_owned(),
+                None => "Off".to_owned(),
+            };
+            record([
+                ("id", m.id.as_str().into()),
+                ("name", m.name.as_str().into()),
+                ("description", m.description.as_str().into()),
+                ("on", on.into()),
+                ("state", state.into()),
+            ])
+        })
+        .collect();
+    data.set("mods.available", available);
+    let mode = mode_of(&library.modes, &content.available, &player.choices);
+    let modes: Vec<_> = (library.modes.iter())
+        .filter(|m| can_offer(m, &content.available))
+        .map(|m| {
+            record([
+                ("id", m.id.as_str().into()),
+                ("name", m.name.as_str().into()),
+                ("description", m.description.as_str().into()),
+                ("on", mode.is_some_and(|mode| mode.id == m.id).into()),
+            ])
+        })
+        .collect();
+    data.set("mods.modes", modes);
+    data.set("mods.custom", mode.is_none());
     let mods: Vec<_> = content
         .mods
         .iter()

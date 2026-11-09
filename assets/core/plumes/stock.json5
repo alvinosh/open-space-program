@@ -22,7 +22,7 @@
     // Gas-generator kerosene and oxygen (Merlin): white-hot and yellow-orange from soot,
     // smoky as it cools.
     id: "Kerolox",
-    propellants: ["Kerosene|RP-1|RG-1|Syntin|Turpentine", "LqdOxygen"],
+    propellants: ["Kerosene|RP-1|RG-1|Syntin|Turpentine|Liquid Fuel", "LqdOxygen|Oxidiser"],
     core: [1.0, 0.82, 0.55],
     flame: [1.0, 0.45, 0.13],
     shock: [1.0, 0.9, 0.7],

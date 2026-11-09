@@ -8,5 +8,5 @@
   version: "0.1.0",
   authors: ["Realism Overhaul and RP-1 contributors (data)", "Open Space Program"],
   description: "Every Realism Overhaul engine config, the RO capsules, RealFuels tanks and batteries, the RP-1 tech tree with historical dates, and historical rockets.",
-  dependencies: ["core"],
+  dependencies: ["core", "realistic_engines", "realistic_fuels", "realistic_avionics"],
 }

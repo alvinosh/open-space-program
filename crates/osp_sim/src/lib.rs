@@ -116,4 +116,53 @@ pub(crate) mod test_data {
             .map(|v| serde_json::from_value(v).unwrap())
             .collect()
     }
+
+    /// The base game's records of `collection`, from `text`, as the Realistic Engines and
+    /// Realistic Fuels mods have them: most tests are of the game with both on.
+    pub fn realistic<T: serde::de::DeserializeOwned>(text: &str, collection: &str) -> Vec<T> {
+        let mut items: Vec<serde_json::Value> = records(text);
+        let mut patches: Vec<osp_mods::Patch> = records(include_str!(
+            "../../../mods/realistic_engines/patches/engines.json5"
+        ));
+        patches.extend(records::<osp_mods::Patch>(include_str!(
+            "../../../mods/realistic_fuels/patches/fuels.json5"
+        )));
+        for patch in patches.iter().filter(|p| p.collection == collection) {
+            if let Some(item) = items.iter_mut().find(|e| e["id"] == patch.target) {
+                osp_mods::patch::apply_to_record(item, patch).unwrap();
+            }
+        }
+        let typed = items.into_iter().map(serde_json::from_value);
+        typed.collect::<Result<_, _>>().unwrap()
+    }
+
+    /// The stock engines with both mods on, for the tests of start-ups, throttle floors, ignitions
+    /// and ullage.
+    pub fn realistic_engines() -> Vec<crate::data::EngineDef> {
+        realistic(
+            include_str!("../../../assets/core/engines/stock.json5"),
+            "engines",
+        )
+    }
+
+    /// The base game's tank types, the special ones as Realistic Fuels has them.
+    pub fn realistic_tank_types() -> Vec<crate::data::TankTypeDef> {
+        let mut all: Vec<crate::data::TankTypeDef> =
+            records(include_str!("../../../assets/core/tank_types/stock.json5"));
+        let theirs: Vec<crate::data::TankTypeDef> =
+            records(include_str!("../../../mods/realistic_fuels/tank_types/fuels.json5"));
+        all.retain(|kind| !theirs.iter().any(|t| t.id == kind.id));
+        all.extend(theirs);
+        all
+    }
+
+    /// The base game's resources and the real propellants.
+    pub fn realistic_resources() -> Vec<crate::data::ResourceDef> {
+        let mut all: Vec<crate::data::ResourceDef> =
+            records(include_str!("../../../assets/core/resources/stock.json5"));
+        all.extend(records::<crate::data::ResourceDef>(include_str!(
+            "../../../mods/realistic_fuels/resources/fuels.json5"
+        )));
+        all
+    }
 }

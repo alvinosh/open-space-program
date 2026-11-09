@@ -32,12 +32,100 @@ pub struct ModManifest {
     /// Load before these mods if they are installed (soft ordering).
     #[serde(default)]
     pub load_before: Vec<String>,
+    /// Whether it is on until the player says otherwise.
     #[serde(default = "enabled")]
     pub enabled: bool,
 }
 
 fn enabled() -> bool {
     true
+}
+
+impl ModManifest {
+    /// Whether the mod is on, given what the player has chosen.
+    pub fn is_on(&self, choices: &ModChoices) -> bool {
+        choices.get(&self.id).copied().unwrap_or(self.enabled)
+    }
+}
+
+/// The mod id of the base game, which every mod may depend on and nobody can turn off.
+const CORE_ID: &str = "core";
+
+/// What the player has turned on or off, by mod id. A mod it does not name follows its
+/// manifest's `enabled`.
+pub type ModChoices = BTreeMap<String, bool>;
+
+/// Whether each mod in `available` is on, given `choices`: two sets of choices that give the same
+/// answer load the same mods.
+pub fn resolved(available: &[ModManifest], choices: &ModChoices) -> ModChoices {
+    let is_on = |m: &ModManifest| (m.id.clone(), m.is_on(choices));
+    available.iter().map(is_on).collect()
+}
+
+/// The choices that turn on the mods `ids` and what they depend on, which may be more than when
+/// the list was made, and no others.
+pub fn exactly(available: &[ModManifest], ids: &[String]) -> ModChoices {
+    let needed = ids.iter().flat_map(|id| requirements(available, id));
+    let on: BTreeSet<String> = needed.flatten().collect();
+    let is_listed = |m: &ModManifest| (m.id.clone(), on.contains(&m.id));
+    available.iter().map(is_listed).collect()
+}
+
+/// The mod `id` and all it depends on, at any depth, or the first of those not installed.
+fn requirements(available: &[ModManifest], id: &str) -> Result<BTreeSet<String>, String> {
+    let mut found = BTreeSet::new();
+    let mut queue = vec![id.to_owned()];
+    while let Some(next) = queue.pop() {
+        if next == CORE_ID || found.contains(&next) {
+            continue;
+        }
+        let Some(manifest) = available.iter().find(|m| m.id == next) else {
+            return Err(next);
+        };
+        queue.extend(manifest.dependencies.iter().cloned());
+        found.insert(next);
+    }
+    Ok(found)
+}
+
+/// The mod `id` and all that depend on it, at any depth.
+fn dependents(available: &[ModManifest], id: &str) -> BTreeSet<String> {
+    let mut found = BTreeSet::new();
+    let mut queue = vec![id.to_owned()];
+    while let Some(next) = queue.pop() {
+        if found.contains(&next) {
+            continue;
+        }
+        let users = available.iter().filter(|m| m.dependencies.contains(&next));
+        queue.extend(users.map(|m| m.id.clone()));
+        found.insert(next);
+    }
+    found
+}
+
+/// What `id` needs that is not installed, if anything: a mod that cannot be turned on.
+pub fn missing_dependency(available: &[ModManifest], id: &str) -> Option<String> {
+    requirements(available, id).err()
+}
+
+/// `choices` with the mod `id` turned on or off, and whatever has to go with it: what it depends
+/// on when turned on, what depends on it when turned off. Unchanged if the mod is not installed
+/// or needs one that is not.
+pub fn choose(available: &[ModManifest], choices: &ModChoices, id: &str, on: bool) -> ModChoices {
+    let mut next = choices.clone();
+    if !available.iter().any(|m| m.id == id) {
+        return next;
+    }
+    let changing = if on {
+        match requirements(available, id) {
+            Ok(mods) => mods,
+            Err(_) => return next,
+        }
+    } else {
+        dependents(available, id)
+    };
+    next.extend(changing.into_iter().map(|id| (id, on)));
+    next
 }
 
 /// A mod found on disk.
@@ -69,7 +157,7 @@ pub fn read_mod(root: &Path) -> Result<ModSource, Diagnostic> {
     })
 }
 
-/// Every subdirectory of `mods_dir` containing a manifest.
+/// Every subdirectory of `mods_dir` containing a manifest, on or off.
 pub fn discover(mods_dir: &Path, diagnostics: &mut Vec<Diagnostic>) -> Vec<ModSource> {
     let Ok(entries) = std::fs::read_dir(mods_dir) else {
         return Vec::new();
@@ -83,12 +171,7 @@ pub fn discover(mods_dir: &Path, diagnostics: &mut Vec<Diagnostic>) -> Vec<ModSo
     let mut mods = Vec::new();
     for dir in dirs {
         match read_mod(&dir) {
-            Ok(source) if source.manifest.enabled => mods.push(source),
-            Ok(source) => diagnostics.push(Diagnostic::info(
-                Some(source.id()),
-                None,
-                "disabled in its manifest".into(),
-            )),
+            Ok(source) => mods.push(source),
             Err(d) => diagnostics.push(d),
         }
     }

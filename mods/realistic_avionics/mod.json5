@@ -1,0 +1,10 @@
+// Avionics as they are: rated for so much mass and for where the vessel is, and a crew can only fly a
+// small vessel by hand.
+{
+  id: "realistic_avionics",
+  name: "Realistic Avionics",
+  version: "0.1.0",
+  authors: ["Open Space Program"],
+  description: "Control takes avionics rated for the vessel's mass and where it is. A crew can only fly a small vessel by hand.",
+  dependencies: ["core"],
+}

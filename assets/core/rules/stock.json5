@@ -1,0 +1,7 @@
+// How much of the real thing a game asks for, where that is not a matter of its parts' data. There is
+// one record, `game`, and a mod changes it with a patch. `avionics`: control takes avionics rated for
+// the vessel's mass and where it is, or a crew for a small one by hand. Off, any pod or avionics unit
+// flies whatever it is on, and a vessel with neither does nothing it is told.
+[
+  { id: "game", avionics: false },
+]

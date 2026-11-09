@@ -609,7 +609,7 @@ mod tests {
     #[test]
     fn fitting_a_craft_s_fairings_keeps_it_flying() {
         let mut craft: CraftDef =
-            records(include_str!("../../../assets/core/craft/pathfinder.json5")).remove(0);
+            crate::test_data::realistic(include_str!("../../../assets/core/craft/pathfinder.json5"), "craft").remove(0);
         let fitted = craft.fit_fairings(&catalog()).unwrap();
         assert_eq!(fitted.len(), 2, "{fitted:?}");
         let p = Propulsion::from_craft(&craft, &catalog()).unwrap();

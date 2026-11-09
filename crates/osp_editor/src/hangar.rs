@@ -56,7 +56,7 @@ use osp_ui::{LayoutVisibility, PointerOverUi, UiAction, UiData, UiDocuments, UiR
 use osp_game::{
     FrameSet,
     camera::{CameraRig, MainCamera, update_camera},
-    content::{GameContent, catalog},
+    content::{GameContent, PlayerMods, catalog},
     controls::InputLocked,
     dialog::{Dialog, Question},
     editing::{EditorActions, EditorStatus, LastLaunch, LaunchPlace as Place, LaunchPoint},
@@ -1047,7 +1047,7 @@ pub(crate) fn editor_actions(
     mut rig: ResMut<CameraRig>,
     mut ui: ResMut<LayoutVisibility>,
     mut ambient: ResMut<GlobalAmbientLight>,
-    mut saves: ResMut<Saves>,
+    (mut saves, mut mods): (ResMut<Saves>, ResMut<PlayerMods>),
     (mut meshes, mut materials, mut images): (
         ResMut<Assets<Mesh>>,
         ResMut<Assets<StandardMaterial>>,
@@ -1316,6 +1316,7 @@ pub(crate) fn editor_actions(
                 restarted.write(SimRestarted);
                 if menu.new_game {
                     saves.forget_current();
+                    mods.new_game_starts();
                 }
                 last_launch.set(LaunchPoint {
                     game: sim.universe.snapshot(),

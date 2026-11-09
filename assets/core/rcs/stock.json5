@@ -11,7 +11,7 @@
     thrust: 400,
     isp_vac: 70,
     isp_sl: 45,
-    propellants: { Nitrogen: 1.0 },
+    propellants: { "Liquid Fuel": 1.0, Oxidiser: 2.36 },
     model: "models/rcs/cold_gas_quad.glb",
   },
   {
@@ -23,7 +23,7 @@
     thrust: 3870,
     isp_vac: 280,
     isp_sl: 120,
-    propellants: { Aerozine50: 1.0, NTO: 1.6 },
+    propellants: { "Liquid Fuel": 1.0, Oxidiser: 2.36 },
     model: "models/rcs/cold_gas_quad.glb",
   },
 ]

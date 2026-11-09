@@ -60,6 +60,8 @@ pub(crate) struct Joined {
     triggers: Vec<Trigger>,
     control_part: Option<PartId>,
     needs_control: bool,
+    #[serde(default)]
+    any_pod_controls: bool,
     throttle: f64,
     /// How many of its sequences had fired.
     fired: usize,
@@ -178,6 +180,7 @@ impl Propulsion {
             triggers: other.triggers,
             control_part: other.control_part,
             needs_control: other.needs_control,
+            any_pod_controls: other.any_pod_controls,
             throttle: other.throttle,
             fired,
             vessel: None,
@@ -291,6 +294,7 @@ impl Propulsion {
                 triggers,
                 control_part,
                 needs_control,
+                any_pod_controls,
                 throttle,
                 ..
             } = joined;
@@ -333,6 +337,7 @@ impl Propulsion {
             self.triggers = triggers;
             self.control_part = control_part;
             self.needs_control = needs_control;
+            self.any_pod_controls = any_pod_controls;
             self.throttle = throttle;
             self.ignition_pending = false;
             let root = own(root);
