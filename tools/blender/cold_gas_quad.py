@@ -19,12 +19,13 @@ from mathutils import Matrix, Vector
 NAME, OUT = "cold_gas_quad", "models/rcs/cold_gas_quad.glb"
 SZ, SY, DEPTH = 0.30, 0.24, 0.14
 PLATE = 0.01
-NOZZLE_LEN, NOZZLE_EXIT_R = 0.06, 0.025
+NOZZLE_LEN, NOZZLE_EXIT_R = 0.075, 0.042
 
 sc, coll = osp.new_scene("osp_" + NAME)
 m = osp.material
 mats = {
-    "housing": m("RCS_Housing_LightGrey", "#c9cacc", 0.15, 0.5),
+    "housing": m("RCS_Housing_OffWhite", "#dad9d2", 0.05, 0.55),
+    "stripe": m("RCS_Stripe_WarningYellow", "#f0b410", 0.0, 0.45),
     "plate": m("RCS_MountingPlate_Dark", "#2d2e30", 0.6, 0.5),
     "steel": m("RCS_Nozzle_Steel", "#a8a8a6", 1.0, 0.3),
 }
@@ -44,17 +45,25 @@ housing = osp.make_object("RCS_Housing", osp.Geo().add(
     osp.box((DEPTH - 0.004, SY, SZ), (xc, 0, 0), bevel=0.016, bevel_segs=2)), [mats["housing"]], coll, 40)
 objs.append(housing)
 
+# A yellow band round the housing and a dark panel on its face, so it reads at a distance.
+g = osp.Geo().add(osp.box((DEPTH - 0.02, SY + 0.006, 0.05), (xc - 0.004, 0, 0), bevel=0.004, bevel_segs=1))
+g.add(osp.box((DEPTH - 0.02, 0.05, SZ + 0.006), (xc - 0.004, 0, 0), bevel=0.004, bevel_segs=1))
+objs.append(osp.make_object("RCS_Stripe", g, [mats["stripe"]], coll, 40))
+objs.append(osp.make_object("RCS_FacePanel", osp.Geo().add(
+    osp.box((0.008, SY * 0.62, SZ * 0.62), (DEPTH + 0.003, 0, 0), bevel=0.003, bevel_segs=1)),
+    [mats["plate"]], coll, 40))
+
 # Nozzle bosses on the four side faces.
 mounts = [((xc, 0, SZ / 2), (0, 0, 1)), ((xc, 0, -SZ / 2), (0, 0, -1)),
           ((xc, SY / 2, 0), (0, 1, 0)), ((xc, -SY / 2, 0), (0, -1, 0))]
 g = osp.Geo()
 for p, d in mounts:
-    g.add(osp.lathe([(0.0, -0.004), (0.018, -0.004), (0.018, 0.004), (0.015, 0.007), (0.0, 0.007)], 16),
+    g.add(osp.lathe([(0.0, -0.004), (0.03, -0.004), (0.03, 0.005), (0.024, 0.009), (0.0, 0.009)], 16),
           matrix=osp.align_z(p, d))
 objs.append(osp.make_object("RCS_NozzleBosses", g, [mats["housing"]], coll, 40))
 
 # Thin-walled conical nozzles: throat just above the boss, exit 0.06 m from the housing face.
-noz = [(0.009, 0.0), (0.009, 0.007), (0.0055, 0.013), (0.011, 0.024), (NOZZLE_EXIT_R, NOZZLE_LEN)]
+noz = [(0.016, 0.0), (0.016, 0.009), (0.011, 0.018), (0.022, 0.036), (NOZZLE_EXIT_R, NOZZLE_LEN)]
 g = osp.Geo()
 for p, d in mounts:
     g.add(osp.lathe(noz, 16), matrix=osp.align_z(p, d))

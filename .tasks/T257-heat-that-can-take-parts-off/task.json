@@ -1,0 +1,19 @@
+{
+  "id": "T257",
+  "title": "Aerodynamic heating that takes parts off, by material",
+  "kind": "feature",
+  "status": "todo",
+  "area": "thermal",
+  "size": "L",
+  "parent": "T253",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/systems/thermal.rs",
+    "crates/osp_sim/src/heating.rs"
+  ],
+  "created": "2026-11-09",
+  "updated": "2026-11-09",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.0104
+}

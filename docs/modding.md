@@ -465,6 +465,14 @@ so give the stage a tank of it. RCS only fires while the player has it on (R). E
 `requires_ullage` only light while the vessel is being pushed forward, and after a coast
 the RCS forward translation (H) is what does that.
 
+### Fuel lines
+
+A part with `fuel_line: { to: "<part id>" }` carries propellant one way, from what it is on to that part, across decouplers. What it feeds drains what feeds it first, the furthest up a chain of lines first, which is how pairs of boosters feeding inward (asparagus staging) work. If either end goes, the line does nothing.
+
+### Trim
+
+`paint: { trim: true }` gives a part panel seams, rivets, end bands and the like to suit its shape (a tank, shell, ring or wing), worked out from its size each time it is built, so it stays in proportion when the part is resized. The part's own `layers` go over it. The layer it uses is `panels: { rings, around, across, seam }`: seams `rings` m apart up the part and `around` to the turn, each row offset from the last, `seam` m wide; with `around: 0` they follow the surface's own coordinates, `across` m apart that way.
+
 ### Procedural tanks and fins
 
 Tanks and fins are not catalogue parts: a stage describes them, and the game sizes them
@@ -1456,7 +1464,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.temperature`, `vessel.has_shield`, `vessel.ablator`, `vessel.heat_flux`, `vessel.has_parachutes`, `vessel.parachutes_open`, `vessel.afloat` | Its hottest part, K; its heat shield: ablator left, kg, and the heat on it, kW/m²; how many canopies are open; whether it floats on a sea |
 | `dialog.title`, `dialog.text`, `dialog.answers[]` | The question being asked: its answers have `index`, `label`, and `plain`, `primary` or `danger` for how the button looks |
 | `editor.heading`, `editor.has_vessel`, `editor.can_launch`, `editor.occupied`, `editor.clear_label`, `editor.list_open`, `editor.vessels[]`, `editor.place_name`, `editor.name`, `editor.height`, `editor.mass`, `editor.parts`, `editor.place`, `editor.pad`, `editor.runway`, `editor.orbit`, `editor.notice` | The craft on show in the editor (see the `editor` layout); where it will launch from (`pad`, `runway`, `orbit`); which site or orbit each of those is, empty if there is none; why a launch or a change failed |
-| `editor.palette_open`, `editor.group`, `editor.palette[]` (`id`, `name`, `detail`, `held`), `editor.palette_more`, `editor.search_shown`, `editor.holding`, `editor.has_parts` | The editor's parts list: whether it is out, the group shown, its rows (at most 60), how many more a search would find, what the search box shows; whether a part is in hand; whether the craft has any parts |
+| `editor.palette_open`, `editor.group`, `editor.palette[]` (`id`, `name`, `detail`, `held`), `editor.palette_more`, `editor.search_shown`, `editor.floating` (what is in hand is drawn at the pointer), `editor.holding`, `editor.has_parts` | The editor's parts list: whether it is out, the group shown, its rows (at most 60), how many more a search would find, what the search box shows; whether a part is in hand; whether the craft has any parts |
 | `editor.rail` | Which screen the editor's rail on the left shows: `vessels` (the list of vessels), `part` (the picked part's settings), `parts` (the parts list), or nothing |
 | `editor.tool` | What the pointer does to a picked part in the editor: `shape` (the handles that size it), `move` (arrows that slide it) or `turn` (rings that turn it) |
 | `editor.symmetry`, `editor.mirror`, `editor.snap` | How parts go on in the editor: the radial count (`1`, `x4`), whether mirror symmetry is on instead, and how far a turn goes in a step (`15°`) |

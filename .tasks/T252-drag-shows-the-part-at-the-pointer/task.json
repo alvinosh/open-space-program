@@ -1,0 +1,19 @@
+{
+  "id": "T252",
+  "title": "A part in hand is drawn at the pointer",
+  "kind": "feature",
+  "status": "done",
+  "area": "editor",
+  "size": "S",
+  "parent": "T002",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/building.rs (show_in_hand)",
+    "crates/osp_render/src/part_pictures.rs (draw_part_in_hand)"
+  ],
+  "created": "2026-11-09",
+  "updated": "2026-11-09",
+  "done": "2026-11-09",
+  "milestone": "M3",
+  "priority": 57.003
+}

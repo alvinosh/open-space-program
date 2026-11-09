@@ -1,0 +1,22 @@
+{
+  "id": "T256",
+  "title": "Antenna types and relays for unmanned probes",
+  "kind": "feature",
+  "status": "todo",
+  "area": "comms",
+  "size": "L",
+  "parent": "T253",
+  "depends_on": [
+    "T255"
+  ],
+  "refs": [
+    "crates/osp_sim/src/comms.rs",
+    "crates/osp_sim/src/universe.rs (update links)",
+    "T006"
+  ],
+  "created": "2026-11-09",
+  "updated": "2026-11-09",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.0103
+}
