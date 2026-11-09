@@ -239,6 +239,38 @@ def dish():
     osp.report(sc, objs, path, [])
 
 
+def relay_dish():
+    """A relay dish 1 m across, facing +Z: a second reflector and a bright rim set it apart."""
+    name, out = "relay_dish", "models/systems/relay_dish.glb"
+    sc, coll = osp.new_scene("osp_" + name)
+    mats = palette("Relay")
+    objs = []
+    n = 14
+    inner = [(0.5 * i / n, 0.2 + 0.2 * (i / n) ** 2) for i in range(n + 1)]
+    outer = [(r, z - 0.012) for r, z in reversed(inner)]
+    objs.append(osp.make_object("Bowl", osp.Geo().add(osp.lathe(inner + outer, SEGS, closed=True)), [mats["dark"]], coll, 50))
+    rim = [(0.5, 0.392), (0.518, 0.398), (0.518, 0.414), (0.495, 0.414)]
+    objs.append(osp.make_object("Rim", osp.Geo().add(osp.lathe(rim, SEGS)), [mats["orange"]], coll))
+    # A squat equipment drum under the dish, ringed in yellow.
+    drum = [(0.0, 0.0), (0.16, 0.0), (0.16, 0.02), (0.13, 0.04), (0.13, 0.17), (0.09, 0.2), (0.0, 0.2)]
+    objs.append(osp.make_object("Drum", osp.Geo().add(osp.lathe(drum, 24)), [mats["white"]], coll))
+    band = [(0.13, 0.09), (0.137, 0.095), (0.137, 0.125), (0.13, 0.13)]
+    objs.append(osp.make_object("Band", osp.Geo().add(osp.lathe(band, 24)), [mats["yellow"]], coll))
+    # The feed horn at the focus and a sub-reflector above it, on four struts.
+    g = osp.Geo()
+    top = 0.56
+    for i in range(4):
+        a = osp.TAU * i / 4 + 0.4
+        g.add(osp.cyl_between((0.33 * math.cos(a), 0.33 * math.sin(a), 0.285), (0.09 * math.cos(a), 0.09 * math.sin(a), top), 0.008, 8))
+    objs.append(osp.make_object("Struts", g, [mats["steel"]], coll))
+    sub = [(0.0, top + 0.02), (0.1, top), (0.11, top + 0.012), (0.0, top + 0.04)]
+    objs.append(osp.make_object("Subreflector", osp.Geo().add(osp.lathe(sub, 24)), [mats["steel"]], coll))
+    horn = [(0.0, 0.28), (0.035, 0.28), (0.06, 0.4), (0.05, 0.4), (0.0, 0.3)]
+    objs.append(osp.make_object("Horn", osp.Geo().add(osp.lathe(horn, 16)), [mats["yellow"]], coll))
+    path = osp.export_glb(sc, objs, out)
+    osp.report(sc, objs, path, [])
+
+
 def rtg():
     """1 m across its fins and 1.5 m tall, as the sizer makes it: the game scales it."""
     name, out = "rtg", "models/systems/rtg.glb"
@@ -307,6 +339,7 @@ battery()
 solar_panel()
 antenna_omni()
 dish()
+relay_dish()
 rtg()
 fuel_cell()
 probe_core()

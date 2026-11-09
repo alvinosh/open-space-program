@@ -469,6 +469,10 @@ the RCS forward translation (H) is what does that.
 
 A part with `fuel_line: { to: "<part id>" }` carries propellant one way, from what it is on to that part, across decouplers. What it feeds drains what feeds it first, the furthest up a chain of lines first, which is how pairs of boosters feeding inward (asparagus staging) work. If either end goes, the line does nothing.
 
+### Antennas and relays
+
+`antenna: { diameter, power, data_rate, relay }` on a part, or `procedural: { antenna: ... }` to have it sized. No `diameter` is an omni. It draws four times what it sends and 4 W for each metre across. `relay: true` passes other vessels' signals to the ground, or on to the next relay; each hop has to work both ways. It can be shut down in flight.
+
 ### A model on a sized part
 
 A part with `procedural` can be drawn by a `model`, and `fit` (m) says how wide the model was made: it is scaled to the part's sized width, so it follows the size the player sets. A part's own `nodes` replace any of its shape's with the same name, for a dish whose mount is narrower than its bowl.

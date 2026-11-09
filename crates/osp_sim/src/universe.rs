@@ -26,7 +26,7 @@ use crate::{
     attitude::SasMode,
     body::BodyId,
     collision::Colliders,
-    comms::{self, Link, Station, best_link, relay_link},
+    comms::{self, Link, OnTheAir, Station, best_link},
     contact,
     contact::{Contacts, Member},
     data::{
@@ -1017,55 +1017,27 @@ impl Universe {
         self.update_links();
     }
 
-    /// Work out each vessel's link: straight to the ground, or else by way of another vessel with
-    /// a link of its own.
+    /// Work out each vessel's link: straight to the ground, or else through vessels with relay
+    /// antennas that have a link of their own, by as many hops as it takes.
     pub fn update_links(&mut self) {
         let time = self.time;
-        let positions: Vec<_> = (self.vessels.iter())
-            .map(|v| {
-                let at = v.state_at(&self.system, time).position;
-                self.system
-                    .relative_state(v.parent(), self.system.root(), time)
-                    .position
-                    + at
+        let root = self.system.root();
+        let on_the_air: Vec<OnTheAir> = (self.vessels.iter())
+            .map(|v| OnTheAir {
+                position: self.system.relative_state(v.parent(), root, time).position
+                    + v.state_at(&self.system, time).position,
+                radio: v.radio(),
+                relay: v.relay_radio(),
             })
             .collect();
-        let root = self.system.root();
-        let radios: Vec<_> = self.vessels.iter().map(Vessel::radio).collect();
-        let mut links: Vec<Option<Link>> = (self.vessels.iter().zip(&radios))
-            .map(|(v, radio)| {
-                let radio = radio.as_ref()?;
+        let direct: Vec<Option<Link>> = (self.vessels.iter().zip(&on_the_air))
+            .map(|(v, air)| {
+                let radio = air.radio.as_ref()?;
                 let at = v.state_at(&self.system, time).position;
                 best_link(&self.system, &self.stations, v.parent(), at, radio, time)
             })
             .collect();
-        let direct = links.clone();
-        for i in 0..self.vessels.len() {
-            let Some(radio) = &radios[i] else { continue };
-            if links[i].is_some() {
-                continue;
-            }
-            for j in (0..self.vessels.len()).filter(|&j| j != i) {
-                let (Some(other), Some(ground)) = (&radios[j], &direct[j]) else {
-                    continue;
-                };
-                let hop = relay_link(
-                    &self.system,
-                    root,
-                    (positions[i], radio),
-                    (positions[j], other),
-                    time,
-                );
-                if let Some(delay) = hop {
-                    links[i] = Some(Link {
-                        station: ground.station.clone(),
-                        margin: ground.margin,
-                        delay: delay + ground.delay,
-                    });
-                    break;
-                }
-            }
-        }
+        let links = comms::spread_links(&self.system, root, &on_the_air, direct, time);
         for (vessel, link) in self.vessels.iter_mut().zip(links) {
             vessel.set_link(link);
         }

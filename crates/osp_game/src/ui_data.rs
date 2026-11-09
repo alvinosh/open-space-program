@@ -253,6 +253,8 @@ fn publish_flight(
     );
     data.set("vessel.link_margin", link.map_or(0.0, |l| l.margin));
     data.set("vessel.link_delay", link.map_or(0.0, |l| l.delay));
+    data.set("vessel.link_hops", link.map_or(0, |l| l.hops));
+    data.set("vessel.is_relay", vessel.relay_radio().is_some());
     let rcs_fuel = vessel
         .propulsion
         .sections

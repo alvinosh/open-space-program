@@ -14,6 +14,7 @@
 use serde_json::json;
 
 use crate::{
+    comms,
     component::ComponentDef,
     craft::Craft,
     data::{CatalogInfo, CraftDef, CraftPartDef, PartCatalog},
@@ -579,47 +580,130 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
                 "antenna",
                 "Antenna",
                 Group::Systems,
-                "A whip that sends all ways: no need to point it, for short range",
-                json!({
-                    "id": "", "name": "Antenna",
-                    "procedural": { "antenna": { "power": 2.0, "data_rate": 1000.0 } },
-                    "model": { "path": "models/systems/antenna_omni.glb", "fit": 0.1 },
-                    "nodes": [{
-                        "name": "bottom",
-                        "position": [0.0, 0.0, 0.0],
-                        "direction": [0.0, 0.0, -1.0],
-                        "size": 0.1,
-                    }],
-                }),
+                &reach("A whip that sends all ways, for short range", 0.0, 2.0, 1000.0),
+                antenna_part("Antenna", 0.0, 2.0, 1000.0, false),
                 Some(("bottom", 0.0)),
             ),
             "2 W",
         ),
         (
             entry(
+                "small_dish",
+                "Small dish",
+                Group::Systems,
+                &reach("Light, for near the Earth", 0.5, 5.0, 2000.0),
+                antenna_part("Small dish", 0.5, 5.0, 2000.0, false),
+                Some(("bottom", 0.0)),
+            ),
+            "0.5 m",
+        ),
+        (
+            entry(
                 "dish",
                 "Dish",
                 Group::Systems,
-                "Reaches much further the bigger it is, and draws more power the more it sends",
-                json!({
-                    "id": "", "name": "Dish",
-                    "procedural": { "antenna": { "diameter": 1.0, "power": 20.0, "data_rate": 10000.0 } },
-                    "model": { "path": "models/systems/dish.glb", "fit": 1.0 },
-                    "nodes": [{
-                        "name": "bottom",
-                        "position": [0.0, 0.0, 0.0],
-                        "direction": [0.0, 0.0, -1.0],
-                        "size": 0.16,
-                    }],
-                }),
+                &reach("For the Moon and the planets nearby", 1.0, 20.0, 10000.0),
+                antenna_part("Dish", 1.0, 20.0, 10000.0, false),
                 Some(("bottom", 0.0)),
             ),
             "1 m",
+        ),
+        (
+            entry(
+                "large_dish",
+                "Large dish",
+                Group::Systems,
+                &reach("Deep space, at a good deal of power", 3.0, 60.0, 10000.0),
+                antenna_part("Large dish", 3.0, 60.0, 10000.0, false),
+                Some(("bottom", 0.0)),
+            ),
+            "3 m",
+        ),
+        (
+            entry(
+                "relay_dish",
+                "Relay dish",
+                Group::Systems,
+                &reach(
+                    "Passes other vessels' signals to the ground, or on to the next relay",
+                    2.0,
+                    40.0,
+                    10000.0,
+                ),
+                antenna_part("Relay dish", 2.0, 40.0, 10000.0, true),
+                Some(("bottom", 0.0)),
+            ),
+            "2 m",
+        ),
+        (
+            entry(
+                "deep_relay",
+                "Deep space relay",
+                Group::Systems,
+                &reach("A relay for the far planets. Heavy and hungry", 5.0, 150.0, 10000.0),
+                antenna_part("Deep space relay", 5.0, 150.0, 10000.0, true),
+                Some(("bottom", 0.0)),
+            ),
+            "5 m",
         ),
     ]
     .into_iter()
     .chain(systems(catalog))
     .collect()
+}
+
+/// An antenna of the parts list: a whip with no `diameter`, and a dish, its model scaled to it.
+fn antenna_part(
+    name: &str,
+    diameter: f64,
+    power: f64,
+    data_rate: f64,
+    relay: bool,
+) -> serde_json::Value {
+    let (model, fit, mount) = if relay {
+        ("models/systems/relay_dish.glb", 1.0, 0.32)
+    } else if diameter > 0.0 {
+        ("models/systems/dish.glb", 1.0, 0.16)
+    } else {
+        ("models/systems/antenna_omni.glb", 0.1, 0.1)
+    };
+    json!({
+        "id": "", "name": name,
+        "procedural": { "antenna": {
+            "diameter": diameter, "power": power, "data_rate": data_rate, "relay": relay,
+        } },
+        "model": { "path": model, "fit": fit },
+        "nodes": [{
+            "name": "bottom",
+            "position": [0.0, 0.0, 0.0],
+            "direction": [0.0, 0.0, -1.0],
+            "size": mount * diameter.max(1.0),
+        }],
+    })
+}
+
+/// What an antenna is for, and how far it reaches a 26 m ground station.
+fn reach(about: &str, diameter: f64, power: f64, data_rate: f64) -> String {
+    let gain = if diameter > 0.0 {
+        comms::dish_gain(diameter, comms::S_BAND)
+    } else {
+        1.0
+    };
+    let radio = comms::Radio {
+        power,
+        gain,
+        data_rate,
+    };
+    let metres = comms::reach(&radio, comms::dish_gain(26.0, comms::S_BAND), 50.0);
+    let distance = if metres < 1e9 {
+        format!("{:.0} thousand km", metres / 1e6)
+    } else {
+        format!("{:.1} million km", metres / 1e9)
+    };
+    format!(
+        "{about}. Reaches the ground from {distance}, drawing {:.0} W",
+        4.0 * power + 4.0 * diameter
+    )
 }
 
 /// The parts of the list that need records or resources not every game has.

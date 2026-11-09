@@ -1523,6 +1523,14 @@ impl Vessel {
             .max_by(|a, b| a.gain.total_cmp(&b.gain))
     }
 
+    /// The best relay antenna it has working, if any: what it passes other vessels' signals on with.
+    pub fn relay_radio(&self) -> Option<Radio> {
+        (self.propulsion.systems.all::<Antenna>())
+            .filter(|(_, antenna)| antenna.on && antenna.relay)
+            .map(|(_, antenna)| antenna.radio)
+            .max_by(|a, b| a.gain.total_cmp(&b.gain))
+    }
+
     /// Whether the ground holds it up: gravity settles its propellant whatever it last did.
     fn on_the_ground(&self) -> bool {
         self.is_landed() || self.wheels_down

@@ -18,6 +18,8 @@
           { widget: "row", class: "kv", visible: "vessel.link", children: [{ widget: "label", class: "key", text: "Station" }, { widget: "label", text: "{vessel.link_station}" }] },
           { widget: "row", class: "kv", visible: "vessel.link", children: [{ widget: "label", class: "key", text: "Margin" }, { widget: "label", text: "{vessel.link_margin|fixed:1} dB" }] },
           { widget: "row", class: "kv", visible: "vessel.link", children: [{ widget: "label", class: "key", text: "Delay" }, { widget: "label", text: "{vessel.link_delay|fixed:3} s" }] },
+          { widget: "row", class: "kv", visible: "vessel.link_hops", children: [{ widget: "label", class: "key", text: "Through" }, { widget: "label", text: "{vessel.link_hops|int} relays" }] },
+          { widget: "label", class: "dim", visible: "vessel.is_relay", text: "This vessel relays others' signals" },
           { widget: "label", class: "dim", visible: "!vessel.link", text: "No link" },
           { widget: "row", class: "kv", visible: "vessel.link_next", children: [{ widget: "label", class: "key", text: "Changes in" }, { widget: "label", text: "{vessel.link_next|fixed:0} s" }] },
           { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Commands" }, { widget: "label", visible: "vessel.commandable", text: "Answered" }, { widget: "label", visible: "!vessel.commandable", text: "No link, no crew" }] },

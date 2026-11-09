@@ -25,7 +25,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Deserializ
 pub use self::{
     battery::Battery,
     crew::{BOARD, Crew},
-    electric::{Antenna, Avionics, FuelCell, Load, Rtg, SolarArray},
+    electric::{ANTENNA_OFF, ANTENNA_ON, Antenna, Avionics, FuelCell, Load, Rtg, SolarArray},
     leg::{DEPLOY_LEG, Leg},
     parachute::{ARM, CUT, ChuteState, DEPLOY, Parachute},
     swing::{Swing, UNFOLD},

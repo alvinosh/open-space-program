@@ -399,6 +399,9 @@ pub struct AntennaRequirement {
     pub power: f64,
     /// bit/s.
     pub data_rate: f64,
+    /// It passes on other vessels' signals to the ground.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub relay: bool,
 }
 
 impl AntennaRequirement {
@@ -442,6 +445,7 @@ impl AntennaRequirement {
                 diameter: self.diameter,
                 power: self.power,
                 data_rate: self.data_rate,
+                relay: self.relay,
             })],
         })
     }

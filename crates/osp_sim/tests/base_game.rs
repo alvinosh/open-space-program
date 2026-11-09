@@ -16,7 +16,7 @@ use osp_sim::{
     propulsion::Propulsion,
     sizing::ProceduralDef,
     system::SolarSystem,
-    systems::{Antenna, Avionics, Battery},
+    systems::{ANTENNA_OFF, ANTENNA_ON, Antenna, Avionics, Battery},
     time::SimTime,
 };
 
@@ -219,6 +219,75 @@ fn a_probe_built_from_the_parts_list_has_power_and_a_radio() {
     };
     assert_eq!(scale(&part("dish", "dish", None)), 1.0);
     assert_eq!(scale(&big), 2.0);
+}
+
+#[test]
+fn antennas_differ_in_reach_and_draw_and_relays_are_marked() {
+    let content = base_game();
+    let catalog = record::catalog(&content.registry);
+    let entries = palette::entries(&catalog);
+    let antenna = |entry: &str| -> Antenna {
+        let mut part = (entries.iter().find(|e| e.id == entry))
+            .unwrap()
+            .part
+            .clone();
+        part.id = "x".to_owned();
+        let craft = CraftDef {
+            id: "x".into(),
+            name: String::new(),
+            parts: vec![part],
+            sequences: None,
+            triggers: Vec::new(),
+            rcs_shut: Vec::new(),
+            abort: Vec::new(),
+        };
+        let p = Propulsion::from_craft(&craft, &catalog).unwrap();
+        let (_, antenna) = p.systems.all::<Antenna>().next().unwrap();
+        antenna.clone()
+    };
+    let station = comms::dish_gain(26.0, comms::S_BAND);
+    let reach = |a: &Antenna| comms::reach(&a.radio, station, 50.0);
+    let order = ["antenna", "small_dish", "dish", "large_dish"].map(antenna);
+    for pair in order.windows(2) {
+        assert!(reach(&pair[1]) > reach(&pair[0]), "bigger reaches further");
+        assert!(pair[1].watts() > pair[0].watts(), "and draws more");
+        assert!(!pair[1].relay);
+    }
+    assert!(antenna("relay_dish").relay && antenna("deep_relay").relay);
+}
+
+#[test]
+fn a_shut_down_antenna_gives_no_radio_and_draws_nothing() {
+    let content = base_game();
+    let catalog = record::catalog(&content.registry);
+    let entries = palette::entries(&catalog);
+    let mut part = (entries.iter().find(|e| e.id == "dish"))
+        .unwrap()
+        .part
+        .clone();
+    part.id = "x".to_owned();
+    let craft = CraftDef {
+        id: "x".into(),
+        name: String::new(),
+        parts: vec![part],
+        sequences: None,
+        triggers: Vec::new(),
+        rcs_shut: Vec::new(),
+        abort: Vec::new(),
+    };
+    let mut p = Propulsion::from_craft(&craft, &catalog).unwrap();
+    let (id, before) = p
+        .systems
+        .all::<Antenna>()
+        .next()
+        .map(|(id, a)| (id, a.on))
+        .unwrap();
+    assert!(before);
+    assert!(p.systems.act(id, ANTENNA_OFF).is_some());
+    let (_, antenna) = p.systems.all::<Antenna>().next().unwrap();
+    assert!(antenna.shut && !antenna.on);
+    assert!(p.systems.act(id, ANTENNA_OFF).is_none(), "already off");
+    assert!(p.systems.act(id, ANTENNA_ON).is_some());
 }
 
 #[test]

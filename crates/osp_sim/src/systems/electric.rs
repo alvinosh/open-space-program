@@ -12,6 +12,7 @@ use crate::{
     component::{AvionicsUnitDef, Component, ElectricLoadDef, FuelCellDef, RtgDef, SolarArrayDef},
     environment::Environment,
     parts::Part,
+    staging::Action,
 };
 
 /// Hydrogen burned per kJ, kg: 0.042 kg per kWh at the 0.9 V a cell gives, with the oxygen eight
@@ -350,12 +351,36 @@ impl System for Avionics {
     boxed!();
 }
 
-/// What talks to the ground. An antenna draws about four times what it sends.
+/// Turn an antenna off, so it draws nothing and gives no link, and back on.
+pub const ANTENNA_OFF: Action = Action::new("antenna_off", "Shut down");
+pub const ANTENNA_ON: Action = Action::new("antenna_on", "Turn on");
+
+/// What a dish draws to hold it on the ground, for each metre across, W.
+const DISH_DRAW_PER_M: f64 = 4.0;
+
+/// What talks to the ground. An antenna draws about four times what it sends, and a dish more the
+/// bigger it is.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Antenna {
     pub radio: Radio,
     /// It had power on the last step.
     pub on: bool,
+    /// It passes on other vessels' signals.
+    #[serde(default)]
+    pub relay: bool,
+    /// The player has shut it down.
+    #[serde(default)]
+    pub shut: bool,
+    /// What it draws besides sending, W.
+    #[serde(default)]
+    pub holding: f64,
+}
+
+impl Antenna {
+    /// What it draws while on, W.
+    pub fn watts(&self) -> f64 {
+        4.0 * self.radio.power + self.holding
+    }
 }
 
 impl System for Antenna {
@@ -366,6 +391,7 @@ impl System for Antenna {
     fn parameters(&self) -> Vec<Reading> {
         vec![
             reading("power", "Sends", self.radio.power, "W"),
+            reading("draws", "Draws", self.watts(), "W"),
             reading("rate", "Data rate", self.radio.data_rate, "bit/s"),
         ]
     }
@@ -380,18 +406,35 @@ impl System for Antenna {
     }
 
     fn power(&self, _environment: &Environment) -> Option<Power> {
-        Some(Power::Load {
-            watts: 4.0 * self.radio.power,
+        (!self.shut).then(|| Power::Load {
+            watts: self.watts(),
             priority: 6,
         })
     }
 
     fn powered(&mut self, on: bool) {
-        self.on = on;
+        self.on = on && !self.shut;
     }
 
     fn shed(&self) -> bool {
-        !self.on
+        !self.on && !self.shut
+    }
+
+    fn actions(&self) -> Vec<Action> {
+        vec![if self.shut { ANTENNA_ON } else { ANTENNA_OFF }]
+    }
+
+    fn act(&mut self, action: Action) -> Option<String> {
+        if action.kind == ANTENNA_OFF.kind && !self.shut {
+            self.shut = true;
+            self.on = false;
+            Some("Antenna shut down".to_owned())
+        } else if action.kind == ANTENNA_ON.kind && self.shut {
+            self.shut = false;
+            Some("Antenna on".to_owned())
+        } else {
+            None
+        }
     }
 
     boxed!();
@@ -413,6 +456,9 @@ pub(super) fn antenna(component: &Component, _part: &Part) -> Option<Box<dyn Sys
             data_rate: def.data_rate,
         },
         on: true,
+        relay: def.relay,
+        shut: false,
+        holding: def.diameter * DISH_DRAW_PER_M,
     }))
 }
 

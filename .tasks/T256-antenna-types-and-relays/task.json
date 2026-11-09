@@ -2,7 +2,7 @@
   "id": "T256",
   "title": "Antenna types and relays for unmanned probes",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "comms",
   "size": "L",
   "parent": "T253",
@@ -16,7 +16,7 @@
   ],
   "created": "2026-11-09",
   "updated": "2026-11-09",
-  "done": null,
+  "done": "2026-11-09",
   "milestone": "M3",
   "priority": 57.0103
 }

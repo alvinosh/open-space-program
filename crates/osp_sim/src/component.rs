@@ -477,6 +477,9 @@ pub struct AntennaDef {
     pub power: f64,
     /// bit/s.
     pub data_rate: f64,
+    /// It passes on other vessels' signals to the ground.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub relay: bool,
 }
 
 /// Guidance and control electronics: with power, it controls a vessel of up to its
