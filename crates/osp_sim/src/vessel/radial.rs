@@ -173,6 +173,156 @@ fn burn_core(p: &mut Propulsion, seconds: f64) {
     }
 }
 
+/// [`radial`] with a fuel line on each `(from, to)`: from the tank of booster `from` to the tank
+/// `to` (`core_tank` or a booster's).
+fn with_lines(sides: &[&str], lines: &[(&str, &str)]) -> CraftDef {
+    let mut craft = radial(sides);
+    for (from, to) in lines {
+        let line = format!(
+            r#"{{ id: "{from}_line", on: "{from}_tank.top", by: "bottom",
+              shape: {{ shell: {{ bottom_diameter: 0.2, sections: [{{ length: 0.2 }}],
+                cap_bottom: true, cap_top: true }} }},
+              structure: {{ mass: 5 }},
+              components: [{{ fuel_line: {{ to: "{to}" }} }}] }}"#
+        );
+        craft.parts.push(records(&line).remove(0));
+    }
+    craft
+}
+
+/// The shares of the tanks still full, by section name.
+fn tank_share(p: &Propulsion, part: &str) -> f64 {
+    let id = p
+        .parts()
+        .parts()
+        .iter()
+        .find(|q| q.name == part)
+        .unwrap()
+        .id;
+    let tank = p.tanks.iter().find(|t| t.part == id).unwrap();
+    let full: f64 = tank.contents.iter().map(|c| c.capacity).sum();
+    tank.amounts.iter().sum::<f64>() / full
+}
+
+#[test]
+fn a_fuel_line_empties_the_tank_it_is_on_before_the_one_it_feeds() {
+    let craft = with_lines(
+        &["east", "west"],
+        &[("east", "core_tank"), ("west", "core_tank")],
+    );
+    let plain = Propulsion::from_craft(&radial(&["east", "west"]), &catalog()).unwrap();
+    let mut fed = Propulsion::from_craft(&craft, &catalog()).unwrap();
+    assert_eq!(
+        plain.sections.len(),
+        fed.sections.len(),
+        "a line is not a stage of its own"
+    );
+    burn_core(&mut fed, 20.0);
+    assert_eq!(tank_share(&fed, "core_tank"), 1.0, "the boosters go first");
+    assert!(tank_share(&fed, "east_tank") < 1.0);
+    assert!((tank_share(&fed, "east_tank") - tank_share(&fed, "west_tank")).abs() < 1e-9);
+    // Burn them dry: then the core's own.
+    burn_core(&mut fed, 2000.0);
+    assert!(tank_share(&fed, "east_tank") < 1e-3);
+    assert!(tank_share(&fed, "core_tank") < 1.0);
+}
+
+#[test]
+fn a_chain_of_fuel_lines_drains_from_its_far_end() {
+    let craft = with_lines(
+        &["east", "west"],
+        &[("east", "west_tank"), ("west", "core_tank")],
+    );
+    let mut p = Propulsion::from_craft(&craft, &catalog()).unwrap();
+    burn_core(&mut p, 20.0);
+    assert!(tank_share(&p, "east_tank") < 1.0);
+    assert_eq!(tank_share(&p, "west_tank"), 1.0);
+    assert_eq!(tank_share(&p, "core_tank"), 1.0);
+}
+
+#[test]
+fn a_fuel_line_only_goes_one_way() {
+    let craft = with_lines(&["east"], &[("east", "core_tank")]);
+    let mut p = Propulsion::from_craft(&craft, &catalog()).unwrap();
+    // The booster's own engine, alone, has only the booster's tank: the core's stays full.
+    let booster = p.sections[0].id;
+    p.arm(booster);
+    p.set_throttle(1.0);
+    for _ in 0..1000 {
+        p.burn(0.0, 0.02, true, &mut Vec::new());
+    }
+    assert!(tank_share(&p, "east_tank") < 1.0);
+    assert_eq!(tank_share(&p, "core_tank"), 1.0);
+}
+
+#[test]
+fn when_the_tank_a_line_is_on_lets_go_the_core_burns_its_own() {
+    let craft = with_lines(
+        &["east", "west"],
+        &[("east", "core_tank"), ("west", "core_tank")],
+    );
+    let mut p = Propulsion::from_craft(&craft, &catalog()).unwrap();
+    burn_core(&mut p, 20.0);
+    let has = |p: &Propulsion| p.parts().parts().iter().any(|q| q.name == "east_tank");
+    while has(&p) && p.activate_next_sequence().is_some() {}
+    let before = tank_share(&p, "core_tank");
+    assert_eq!(before, 1.0);
+    assert!(
+        p.parts().parts().iter().all(|q| q.name != "east_tank"),
+        "gone"
+    );
+    burn_core(&mut p, 20.0);
+    assert!(tank_share(&p, "core_tank") < before);
+}
+
+#[test]
+fn a_line_that_feeds_nothing_or_a_loop_of_lines_does_no_harm() {
+    let none = with_lines(&["east"], &[("east", "gone")]);
+    let mut p = Propulsion::from_craft(&none, &catalog()).unwrap();
+    burn_core(&mut p, 20.0);
+    assert_eq!(tank_share(&p, "east_tank"), 1.0);
+    assert!(tank_share(&p, "core_tank") < 1.0);
+    let looped = with_lines(
+        &["east", "west"],
+        &[("east", "west_tank"), ("west", "east_tank")],
+    );
+    let mut p = Propulsion::from_craft(&looped, &catalog()).unwrap();
+    burn_core(&mut p, 20.0);
+    assert!(tank_share(&p, "core_tank") < 1.0);
+}
+
+#[test]
+fn a_saved_game_keeps_its_fuel_lines() {
+    let craft = with_lines(
+        &["east", "west"],
+        &[("east", "core_tank"), ("west", "core_tank")],
+    );
+    let p = Propulsion::from_craft(&craft, &catalog()).unwrap();
+    let bytes = rmp_serde::to_vec_named(&p).unwrap();
+    let mut loaded: Propulsion = rmp_serde::from_slice(&bytes).unwrap();
+    burn_core(&mut loaded, 20.0);
+    assert_eq!(
+        tank_share(&loaded, "core_tank"),
+        1.0,
+        "the boosters still go first"
+    );
+    assert!(tank_share(&loaded, "east_tank") < 1.0);
+}
+
+#[test]
+fn fuel_lines_give_more_delta_v_and_the_readout_counts_it() {
+    let total = |p: &Propulsion| p.stage_info().iter().map(|s| s.delta_v_vac).sum::<f64>();
+    let plain = Propulsion::from_craft(&radial(&["east", "west"]), &catalog()).unwrap();
+    let craft = with_lines(
+        &["east", "west"],
+        &[("east", "core_tank"), ("west", "core_tank")],
+    );
+    let fed = Propulsion::from_craft(&craft, &catalog()).unwrap();
+    let (without, with) = (total(&plain), total(&fed));
+    assert!(with > without + 50.0, "{with} over {without}");
+    assert!(with < 1.5 * without, "{with} over {without}");
+}
+
 #[test]
 fn propellant_crosses_a_decoupler_only_with_its_crossfeed_on() {
     let left = |p: &Propulsion, k: usize| p.propellant_mass(p.sections[k].id);

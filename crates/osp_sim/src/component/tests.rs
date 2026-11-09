@@ -648,3 +648,52 @@ fn a_layer_adds_nothing_to_the_shape() {
     assert_eq!(bare, coat);
     assert!(coat_mass > bare_mass);
 }
+
+#[test]
+fn a_parts_trim_follows_its_size() {
+    let tank = |length: f64, diameter: f64| {
+        built(&format!(
+            "{{ name: 'x', shape: {{ cylinder_tank: {{ diameter: {diameter}, length: {length} }} }},
+               paint: {{ trim: true }} }}"
+        ))
+    };
+    let bands = |part: &BuiltPart| -> Vec<[f64; 2]> {
+        (part.paint.layers.iter())
+            .filter_map(|l| match l {
+                LayerDef::Band { along, .. } => Some(*along),
+                _ => None,
+            })
+            .collect()
+    };
+    let (short, long) = (bands(&tank(4.0, 2.0)), bands(&tank(8.0, 2.0)));
+    assert_eq!(short.len(), 4);
+    // The first stays where the barrel starts, and the last goes up with the top of the barrel.
+    assert_eq!(short[0], long[0]);
+    assert!(
+        (long[3][1] - short[3][1] - 4.0).abs() < 1e-9,
+        "{short:?} {long:?}"
+    );
+    // A wider tank has wider bands and longer panels.
+    let wide = tank(8.0, 4.0);
+    assert!(bands(&wide)[0][1] - bands(&wide)[0][0] > long[0][1] - long[0][0]);
+    let rings = |part: &BuiltPart| match part.paint.layers[0] {
+        LayerDef::Panels { rings, .. } => rings,
+        _ => panic!("no panels"),
+    };
+    assert!(rings(&wide) > rings(&tank(8.0, 2.0)));
+    // Without it, none; and its own layers go over the trim.
+    let plain = built("{ name: 'x', shape: { cylinder_tank: { diameter: 2, length: 4 } } }");
+    assert!(plain.paint.layers.is_empty());
+    let own = built(
+        "{ name: 'x', shape: { cylinder_tank: { diameter: 2, length: 4 } },
+           paint: { trim: true, layers: [{ band: { along: [1, 2], color: [1, 0, 0] } }] } }",
+    );
+    assert_eq!(own.paint.layers.len(), 6);
+    assert!(matches!(
+        own.paint.layers[5],
+        LayerDef::Band {
+            along: [1.0, 2.0],
+            ..
+        }
+    ));
+}

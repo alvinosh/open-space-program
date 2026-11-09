@@ -14,6 +14,7 @@
 use serde_json::json;
 
 use crate::{
+    component::ComponentDef,
     craft::Craft,
     data::{CatalogInfo, CraftDef, CraftPartDef, PartCatalog},
     geometry::preset::{AirfoilDef, ShapeDef},
@@ -336,7 +337,7 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
                         "type": "Stiffened Al 2219",
                         "contents": new_tank.contents,
                     } }],
-                    "paint": { "color": WHITE },
+                    "paint": { "color": WHITE, "trim": true },
                 }),
                 None,
             ),
@@ -352,11 +353,49 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
                     "id": "", "name": "Structural",
                     "shape": { "shell": { "bottom_diameter": 2.0, "sections": [{ "length": 1.0 }] } },
                     "structure": { "material": "Al 2219-T87", "thickness": 0.004 },
-                    "paint": { "color": WHITE },
+                    "paint": { "color": WHITE, "trim": true },
                 }),
                 None,
             ),
             "2 m × 1 m",
+        ),
+        (
+            entry(
+                "fuel_line",
+                "Fuel line",
+                Group::Structure,
+                "Carries propellant one way, from the tank it is on to the part you click next",
+                json!({
+                    "id": "", "name": "Fuel line",
+                    "shape": { "compound": [
+                        {
+                            "name": "body",
+                            "shape": { "shell": {
+                                "bottom_diameter": 0.18,
+                                "sections": [{ "length": 0.17 }],
+                                "cap_bottom": true,
+                                "cap_top": true,
+                            } },
+                            "unseen": true,
+                        },
+                        {
+                            "name": "fitting",
+                            "shape": { "model": { "path": "models/control/fuel_line.glb" } },
+                        },
+                    ] },
+                    "nodes": [{
+                        "name": "bottom",
+                        "position": [0.0, 0.0, 0.0],
+                        "direction": [0.0, 0.0, -1.0],
+                        "size": 0.18,
+                    }],
+                    "structure": { "mass": 8.0 },
+                    "components": [{ "fuel_line": {} }],
+                    "paint": { "color": GREY, "finish": "metal" },
+                }),
+                Some(("bottom", 0.0)),
+            ),
+            "8 kg",
         ),
         (
             entry(
@@ -372,7 +411,7 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
                         "cap_bottom": true,
                     } },
                     "structure": { "material": "Al 2219-T87", "thickness": 0.003 },
-                    "paint": { "color": WHITE },
+                    "paint": { "color": WHITE, "trim": true },
                 }),
                 None,
             ),
@@ -387,6 +426,7 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
                 json!({
                     "id": "", "name": "Decoupler",
                     "procedural": { "decoupler": { "diameter": 2.0, "load": 1e6 } },
+                    "paint": { "color": [0.035, 0.04, 0.05], "trim": true },
                 }),
                 None,
             ),
@@ -406,7 +446,7 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
                     } },
                     "structure": { "material": "Al 2219-T87" },
                     "components": [{ "lifting_surface": {} }],
-                    "paint": { "color": GREY, "finish": "metal" },
+                    "paint": { "color": GREY, "finish": "metal", "trim": true },
                 }),
                 Some(("root", 0.0)),
             ),
@@ -425,7 +465,7 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
                     } },
                     "structure": { "material": "Al 2219-T87" },
                     "components": [{ "lifting_surface": {} }],
-                    "paint": { "color": WHITE },
+                    "paint": { "color": WHITE, "trim": true },
                 }),
                 Some(("root", 0.0)),
             ),
@@ -624,6 +664,10 @@ pub fn fit(part: &mut CraftPartDef, width: f64) {
     }
     if let Some(ProceduralDef::Decoupler(decoupler)) = &mut part.procedural {
         decoupler.diameter = width;
+        return;
+    }
+    // A fuel line is a small fitting, however big the tank it is on.
+    if (part.components.iter()).any(|c| matches!(c, ComponentDef::FuelLine(_))) {
         return;
     }
     let stand_alone = part.template.is_none() && part.procedural.is_none();
@@ -825,6 +869,7 @@ mod tests {
         let group = |id: &str| all.iter().find(|e| e.id == id).unwrap().group;
         assert_eq!(group("tank"), Group::Tanks);
         assert_eq!(group("decoupler"), Group::Structure);
+        assert_eq!(group("fuel_line"), Group::Structure);
         assert_eq!(group("fin"), Group::Aero);
         let tank = all.iter().find(|e| e.id == "tank").unwrap();
         assert!(tank.detail.starts_with("2 m × 4 m · ") && tank.detail.contains("m³"));

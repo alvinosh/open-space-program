@@ -93,6 +93,10 @@ pub struct PaintDef {
     /// The back of its walls; bare metal by default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inside: Option<Look>,
+    /// Panel seams, bands and the like to suit its shape and size, under its own layers
+    /// ([`PartDef::build`]): they follow the part when it is resized.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub trim: bool,
 }
 
 /// A layer of paint, laid out round the part's axis (its +Z): `around` in turns from its +X
@@ -149,6 +153,16 @@ pub enum LayerDef {
         #[serde(default, skip_serializing_if = "is_false")]
         vertical: bool,
     },
+    /// Seams between skin panels, `rings` m apart up the part and `around` to the turn, each row
+    /// offset from the last; `seam` m wide. With `around` 0 they lie along the surface's own
+    /// coordinates, `across` m apart that way (a wing's skin). Riveted, seen close to.
+    Panels {
+        rings: f64,
+        around: u32,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        across: f64,
+        seam: f64,
+    },
     /// Stiffening stringers standing `depth` m proud of the skin between two heights,
     /// `count` round it: relief only, in whatever colour is under them.
     Stringers {
@@ -180,6 +194,7 @@ impl LayerDef {
             LayerDef::Stripe { along, .. } => *along = along.map(down),
             LayerDef::Checker { along, .. } => along.iter_mut().for_each(|z| *z -= rise),
             LayerDef::Text { at, .. } | LayerDef::Image { at, .. } => at[1] -= rise,
+            LayerDef::Panels { .. } => {}
         }
         layer
     }
@@ -332,6 +347,17 @@ pub enum ComponentDef {
     Swing(SwingDef),
     HeatShield(HeatShieldDef),
     LifeSupport(LifeSupportDef),
+    FuelLine(FuelLineDef),
+}
+
+/// A line that carries propellant one way, from what the part is on to the part `to` (by its id),
+/// across decouplers and all. What it feeds drains what feeds it first.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FuelLineDef {
+    /// Empty until it is told what to feed.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub to: String,
 }
 
 /// A part that folds out once when told to: `unfold`. It turns `angle` degrees about `axis`, in
@@ -769,6 +795,7 @@ pub enum Component {
     Swing(SwingDef),
     HeatShield(HeatShieldDef),
     LifeSupport(LifeSupportDef),
+    FuelLine(FuelLineDef),
 }
 
 /// A coat on a part's walls, as built.
@@ -832,6 +859,75 @@ impl Planform {
     pub fn area(&self) -> f64 {
         let span = (self.tip - self.root).reject_from(self.chord).length();
         (self.root_chord + self.tip_chord) / 2.0 * span
+    }
+}
+
+/// The dark and the accent of a part's trim, linear RGB.
+const TRIM_DARK: [f32; 3] = [0.035, 0.04, 0.05];
+const TRIM_ACCENT: [f32; 3] = [0.87, 0.46, 0.012];
+
+/// How a shape is trimmed ([`PaintDef::trim`]), from its own sizes.
+fn trim_layers(shape: &ShapeDef) -> Vec<LayerDef> {
+    let band = |low: f64, high: f64, color| LayerDef::Band {
+        along: [low, high],
+        color,
+        finish: None,
+    };
+    let seam = |diameter: f64| (0.006 * diameter).clamp(0.008, 0.03);
+    let panels = |diameter: f64| LayerDef::Panels {
+        rings: (0.45 * diameter).clamp(0.4, 3.0),
+        around: ((std::f64::consts::PI * diameter / (0.5 * diameter.max(1.5))).round() as u32)
+            .clamp(6, 16),
+        across: 0.0,
+        seam: seam(diameter),
+    };
+    match shape {
+        ShapeDef::CylinderTank(d) => {
+            let dome = d.dome * d.diameter / 2.0;
+            let (low, high) = (dome + d.aft_skirt, d.length - dome - d.forward_skirt);
+            let width = (0.1 * d.diameter).clamp(0.06, 0.6).min(0.2 * (high - low).max(0.0));
+            vec![
+                panels(d.diameter),
+                band(low, low + width, TRIM_DARK),
+                band(low + width, low + 1.25 * width, TRIM_ACCENT),
+                band(high - 1.25 * width, high - width, TRIM_ACCENT),
+                band(high - width, high, TRIM_DARK),
+            ]
+        }
+        ShapeDef::Shell(d) => {
+            let length: f64 = d.sections.iter().map(|s| s.length).sum();
+            let closes = d.sections.last().and_then(|s| s.top_diameter) == Some(0.0);
+            let width = (0.1 * d.bottom_diameter).clamp(0.05, 0.5).min(0.2 * length);
+            let mut layers = vec![panels(d.bottom_diameter), band(0.0, width, TRIM_DARK)];
+            if closes {
+                layers.push(band(0.84 * length, length + 1.0, TRIM_DARK));
+                layers.push(band(0.84 * length - 0.25 * width, 0.84 * length, TRIM_ACCENT));
+            } else {
+                layers.push(band(length - width, length, TRIM_DARK));
+                layers.push(LayerDef::Stringers {
+                    along: [width, length - width],
+                    count: ((std::f64::consts::PI * d.bottom_diameter / 0.3).round() as u32)
+                        .clamp(12, 64),
+                    depth: 0.012,
+                });
+            }
+            layers
+        }
+        // A separation ring: marks that say so.
+        ShapeDef::Ring(d) => vec![LayerDef::Checker {
+            around: 2 * ((std::f64::consts::PI * d.diameter / 0.9).round() as u32).max(3),
+            along: vec![-1.0, d.height + 1.0],
+            first: false,
+            color: TRIM_ACCENT,
+            finish: None,
+        }],
+        ShapeDef::Wing(d) => vec![LayerDef::Panels {
+            rings: (0.4 * d.root_chord).clamp(0.3, 1.5),
+            around: 0,
+            across: (0.5 * d.span).clamp(0.3, 2.0),
+            seam: 0.012,
+        }],
+        _ => Vec::new(),
     }
 }
 
@@ -1077,6 +1173,7 @@ impl PartDef {
                     }
                     Component::Antenna(def.clone())
                 }
+                ComponentDef::FuelLine(def) => Component::FuelLine(def.clone()),
                 ComponentDef::Avionics(def) => {
                     if !(def.controlled_mass > 0.0 && def.power >= 0.0) {
                         return Err(bad(
@@ -1142,6 +1239,11 @@ impl PartDef {
             paint: {
                 let mut paint = self.paint.clone();
                 paint.pieces.extend(looks);
+                if paint.trim {
+                    let mut layers = trim_layers(&self.shape);
+                    layers.append(&mut paint.layers);
+                    paint.layers = layers;
+                }
                 paint
             },
             member: self

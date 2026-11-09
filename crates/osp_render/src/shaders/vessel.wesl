@@ -56,6 +56,7 @@ const CHECKER: u32 = 3u;
 const DECAL: u32 = 4u;
 const DECAL_VERTICAL: u32 = 5u;
 const STRINGERS: u32 = 6u;
+const PANELS: u32 = 7u;
 
 const PI: f32 = 3.141592653589793;
 
@@ -383,6 +384,36 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
                 let inside = all(st >= vec2<f32>(0.0)) && all(st <= vec2<f32>(1.0)) && radius > 1e-3;
                 let alpha = select(0.0, texel.a, inside);
                 color = color * (1.0 - alpha) + select(vec3<f32>(0.0), texel.rgb, inside);
+            }
+            case PANELS: {
+                // Round the part, or along the surface's own coordinates (c.y is 0).
+                let flat = c.y < 0.5;
+                let across = select(turn / max(c.y, 1.0), c.z, flat);
+                let round = select(around * c.y, s.uv.x / max(c.z, 1e-3), flat);
+                let rows = select(height, s.uv.y, flat) / c.x;
+                // Each row of panels is half a panel on from the last, as sheets are laid.
+                let offset = round + fract(floor(rows) * 0.5);
+                let inu = fract(offset);
+                let inv = fract(rows);
+                // Seams round a narrowing tip would crowd together: they stop first.
+                let du = select(1e6, min(inu, 1.0 - inu) * across, across > 0.12);
+                let dv = min(inv, 1.0 - inv) * c.x;
+                let groove = 1.0 - smoothstep(0.5 * c.w, c.w + footprint, min(du, dv));
+                // A thin line far away still shows, faintly.
+                let seen = clamp(3.0 * c.w / footprint, 0.3, 1.0);
+                color *= 1.0 - 0.55 * groove * seen;
+                let slope = 0.3 * groove * seen;
+                if dv < du {
+                    relief += s.along * select(-slope, slope, inv < 0.5);
+                } else {
+                    relief += s.around * select(-slope, slope, inu < 0.5);
+                }
+                // A row of rivets beside each ring seam, seen close to.
+                let spacing = 0.2;
+                let along_row = (fract(offset * across / spacing) - 0.5) * spacing;
+                let rivet = length(vec2<f32>(along_row, dv - 4.0 * c.w));
+                let dot = 1.0 - smoothstep(0.009, 0.014, rivet);
+                color *= 1.0 - 0.35 * dot * resolved(0.05, footprint);
             }
             case STRINGERS: {
                 let pitch = turn / max(c.z, 1.0);

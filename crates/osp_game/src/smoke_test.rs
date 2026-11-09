@@ -165,6 +165,10 @@ impl Plugin for SmokeTestPlugin {
                 EDITOR_BUILD_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_EDITOR_PARTS").is_some() {
                 EDITOR_PARTS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_EDITOR_DRAG").is_some() {
+                EDITOR_DRAG_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_FUEL_LINE").is_some() {
+                FUEL_LINE_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_EDITOR_MOVE").is_some() {
                 EDITOR_MOVE_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_EDITOR_CRAFT").is_some() {
@@ -1788,6 +1792,82 @@ const NO_POD_SCRIPT: &[(f64, Action)] = &[
     (16.55, Action::ExpectData("!vessel.thrust")),
     (16.6, Action::Capture("no_pod_ignores_orders.png")),
     (16.7, Action::Exit),
+];
+
+/// `OSP_CAPTURE_EDITOR_DRAG=1`: a tile dragged out of the parts list shows the part at the pointer: the
+/// first part of a craft, then a nose cone out in the hangar and on a node, where it is shown where it
+/// would go. Dragged off the craft, the cone is at the pointer again.
+const EDITOR_DRAG_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.new")),
+    (2.0, Action::Unlock),
+    (2.2, Action::Ui("editor.group:tanks")),
+    (3.2, Action::UiPointAt("editor.add:tank")),
+    (3.3, Action::UiPress(PointerButton::Primary)),
+    (3.31, Action::Press(MouseButton::Left)),
+    (3.5, Action::PointerAt(800.0, 450.0)),
+    (4.5, Action::ExpectData("editor.floating")),
+    (4.6, Action::Capture("drag_first_part.png")),
+    (4.7, Action::UiRelease(PointerButton::Primary)),
+    (4.71, Action::Release(MouseButton::Left)),
+    (6.0, Action::ExpectPartCount(1)),
+    (6.05, Action::ExpectData("!editor.floating")),
+    (6.1, Action::Ui("editor.group:structure")),
+    (8.0, Action::UiPointAt("editor.add:nose_cone")),
+    (8.1, Action::UiPress(PointerButton::Primary)),
+    (8.11, Action::Press(MouseButton::Left)),
+    (8.3, Action::PointerAt(1050.0, 300.0)),
+    (9.3, Action::ExpectData("editor.floating")),
+    (9.4, Action::Capture("drag_in_the_air.png")),
+    (9.5, Action::EditorPointAtNode("tank", "top")),
+    (11.5, Action::ExpectData("!editor.floating")),
+    (11.6, Action::Capture("drag_on_a_node.png")),
+    (11.7, Action::UiRelease(PointerButton::Primary)),
+    (11.71, Action::Release(MouseButton::Left)),
+    (13.0, Action::ExpectPartCount(2)),
+    (13.5, Action::Capture("drag_put_on.png")),
+    (13.6, Action::EditorPointAtPart("nose_cone")),
+    (14.2, Action::Press(MouseButton::Left)),
+    (14.3, Action::PointerBy(0.0, -40.0)),
+    (14.5, Action::PointerAt(1050.0, 300.0)),
+    (15.7, Action::ExpectData("editor.floating")),
+    (15.8, Action::Capture("drag_off_the_craft.png")),
+    (15.9, Action::Release(MouseButton::Left)),
+    (17.0, Action::ExpectPartCount(1)),
+    (17.1, Action::ExpectData("!editor.floating")),
+    (17.2, Action::Exit),
+];
+
+/// `OSP_CAPTURE_FUEL_LINE=1`: a fuel line put on a tank beside the first, and a click on the first tells
+/// it what to feed.
+const FUEL_LINE_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.new")),
+    (2.0, Action::Unlock),
+    (2.2, Action::Ui("editor.add:tank")),
+    (3.2, Action::ExpectPartCount(1)),
+    (3.3, Action::Ui("editor.add:tank")),
+    (3.6, Action::EditorPointAtPart("tank")),
+    (3.7, Action::PointerBy(55.0, 0.0)),
+    (4.6, Action::Press(MouseButton::Left)),
+    (4.7, Action::Release(MouseButton::Left)),
+    (5.8, Action::ExpectPartCount(2)),
+    (5.9, Action::Ui("editor.add:fuel_line")),
+    (6.2, Action::EditorPointAtPart("tank_2")),
+    (6.3, Action::PointerBy(-70.0, -60.0)),
+    (7.2, Action::Press(MouseButton::Left)),
+    (7.3, Action::Release(MouseButton::Left)),
+    (8.4, Action::ExpectPartCount(3)),
+    (8.5, Action::ExpectData("editor.linking")),
+    (8.6, Action::Capture("fuel_line_placed.png")),
+    (8.7, Action::EditorPointAtPart("tank")),
+    (9.5, Action::Press(MouseButton::Left)),
+    (9.6, Action::Release(MouseButton::Left)),
+    (10.6, Action::Capture("fuel_line_linked.png")),
+    (10.7, Action::ExpectData("!editor.linking")),
+    (10.9, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_MENU_TUTORIAL=1`: the title screen's Tutorials, and a tutorial started from them.

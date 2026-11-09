@@ -694,6 +694,10 @@ pub struct Propulsion {
     ignition_pending: bool,
     /// The tanks each engine and RCS block draws from, by its part: indices into `tanks`.
     feeds: BTreeMap<PartId, Vec<usize>>,
+    /// The same tanks in the order they drain, those furthest up the fuel lines first, each lot
+    /// draining together.
+    #[serde(default)]
+    tiers: BTreeMap<PartId, Vec<Vec<usize>>>,
     /// How the air sees the parts, once worked out.
     #[serde(skip)]
     shape: OnceLock<Arc<Shape>>,
@@ -1261,6 +1265,7 @@ impl Propulsion {
             throttle: 0.0,
             ignition_pending: false,
             feeds: BTreeMap::new(),
+            tiers: BTreeMap::new(),
             shape: OnceLock::new(),
             ports: OnceLock::new(),
             hollow: BTreeSet::new(),
@@ -1298,6 +1303,7 @@ impl Propulsion {
             throttle: 0.0,
             ignition_pending: lit_late,
             feeds: BTreeMap::new(),
+            tiers: BTreeMap::new(),
             shape: OnceLock::new(),
             ports: OnceLock::new(),
             hollow: BTreeSet::new(),
@@ -1485,9 +1491,50 @@ impl Propulsion {
     /// (`PartTree::fluid_groups`). A decoupler passes propellant only with its crossfeed on.
     fn plumb(&mut self) {
         self.feeds.clear();
-        for group in self.parts.fluid_groups() {
-            let tanks: Vec<usize> = (0..self.tanks.len())
-                .filter(|&k| group.contains(&self.tanks[k].part))
+        self.tiers.clear();
+        let groups = self.parts.fluid_groups();
+        let group_of = |part: PartId| groups.iter().position(|g| g.contains(&part));
+        // Which groups each is fed from by a fuel line.
+        let mut fed_from = vec![BTreeSet::new(); groups.len()];
+        for line in self.parts.parts() {
+            let Some((_, to)) = line.feeds.zip(line.feeds.and_then(|to| self.parts.get(to))) else {
+                continue;
+            };
+            let from = self.parts.parent(line.id).and_then(|on| group_of(on.id));
+            if let (Some(from), Some(to)) = (from, group_of(to.id))
+                && from != to
+            {
+                fed_from[to].insert(from);
+            }
+        }
+        for (index, group) in groups.iter().enumerate() {
+            // How many lines up each group is, by the longest way, so a chain drains from its far
+            // end. No further than there are groups, whatever a loop of lines says.
+            let mut depth: BTreeMap<usize, usize> = BTreeMap::from([(index, 0)]);
+            for _ in 0..groups.len() {
+                let reached: Vec<(usize, usize)> = depth.iter().map(|(&g, &d)| (g, d)).collect();
+                for (at, d) in reached {
+                    for &up in &fed_from[at] {
+                        let further = (d + 1).min(groups.len());
+                        if up != index && depth.get(&up).is_none_or(|&known| known < further) {
+                            depth.insert(up, further);
+                        }
+                    }
+                }
+            }
+            let tanks_of = |g: usize| -> Vec<usize> {
+                (0..self.tanks.len())
+                    .filter(|&k| groups[g].contains(&self.tanks[k].part))
+                    .collect()
+            };
+            let deepest = depth.values().copied().max().unwrap_or(0);
+            let tiers: Vec<Vec<usize>> = (0..=deepest)
+                .rev()
+                .map(|d| {
+                    let at = depth.iter().filter(|&(_, &known)| known == d);
+                    at.flat_map(|(&g, _)| tanks_of(g)).collect()
+                })
+                .filter(|tier: &Vec<usize>| !tier.is_empty())
                 .collect();
             let users = self
                 .engines
@@ -1496,7 +1543,8 @@ impl Propulsion {
                 .chain(self.rcs.iter().map(|b| b.part))
                 .chain(self.systems.consumers());
             for user in users.filter(|u| group.contains(u)) {
-                self.feeds.insert(user, tanks.clone());
+                self.feeds.insert(user, tiers.concat());
+                self.tiers.insert(user, tiers.clone());
             }
         }
         // A part's own tanks feed what is on it, with or without plumbing to the rest.
@@ -1509,9 +1557,90 @@ impl Propulsion {
                 let feeds = self.feeds.entry(user).or_default();
                 if !feeds.contains(&k) {
                     feeds.push(k);
+                    let tiers = self.tiers.entry(user).or_default();
+                    if tiers.is_empty() {
+                        tiers.push(Vec::new());
+                    }
+                    if let Some(own) = tiers.last_mut() {
+                        own.push(k);
+                    }
                 }
             }
         }
+    }
+
+    /// The delta-v and burn time of section `id` with those `beside` it, all lit, where fuel lines
+    /// carry propellant between them: each engine burns from the first section up its lines that
+    /// has any left, and a section beside it falls away once its engines have nothing to burn.
+    fn burn_through_lines(&self, id: usize, beside: &[usize], start_mass: f64) -> (f64, f64) {
+        let mix = |s: usize| self.main_engines_of(s).next().map(|e| &e.def.propellants);
+        let mixture = mix(id).or_else(|| beside.iter().find_map(|&s| mix(s)));
+        let Some(mixture) = mixture else {
+            return (0.0, 0.0);
+        };
+        let all: Vec<usize> = std::iter::once(id).chain(beside.iter().copied()).collect();
+        let mut left: BTreeMap<usize, f64> =
+            all.iter().map(|&s| (s, self.burnable(s, mixture))).collect();
+        let full = left.clone();
+        let order = |e: &Engine| -> Vec<usize> {
+            let mut sections: Vec<usize> = Vec::new();
+            for &k in self.tiers.get(&e.part).into_iter().flatten().flatten() {
+                let section = self.tanks[k].section;
+                if !sections.contains(&section) && all.contains(&section) {
+                    sections.push(section);
+                }
+            }
+            sections
+        };
+        let engines: Vec<(usize, &Engine, Vec<usize>)> = (all.iter())
+            .flat_map(|&s| self.main_engines_of(s).map(move |e| (s, e)))
+            .map(|(s, e)| (s, e, order(e)))
+            .collect();
+        let mut gone: BTreeSet<usize> = BTreeSet::new();
+        let (mut mass, mut delta_v, mut time) = (start_mass, 0.0, 0.0);
+        const EMPTY: f64 = 1e-6;
+        // Each pass runs at least one section dry, so this is enough.
+        for _ in 0..=2 * all.len() {
+            let mut rates: BTreeMap<usize, f64> = BTreeMap::new();
+            let (mut flow, mut thrust) = (0.0, 0.0);
+            for (section, engine, order) in &engines {
+                if gone.contains(section) {
+                    continue;
+                }
+                if let Some(&from) = order.iter().find(|s| left[*s] > EMPTY) {
+                    *rates.entry(from).or_default() += engine.mean_mass_flow();
+                    flow += engine.mean_mass_flow();
+                    thrust += engine.mean_mass_flow() * engine.def.isp_vac * G0;
+                }
+            }
+            if flow <= 0.0 {
+                break;
+            }
+            let dt = (rates.iter())
+                .map(|(s, rate)| left[s] / rate)
+                .fold(f64::INFINITY, f64::min);
+            let used = flow * dt;
+            delta_v += thrust / flow * (mass / (mass - used)).ln();
+            mass -= used;
+            time += dt;
+            for (s, rate) in &rates {
+                let amount = left.entry(*s).or_default();
+                *amount = (*amount - rate * dt).max(0.0);
+            }
+            for &s in beside {
+                if gone.contains(&s) {
+                    continue;
+                }
+                let burning = (engines.iter())
+                    .filter(|(section, ..)| *section == s)
+                    .any(|(_, _, order)| order.iter().any(|from| left[from] > EMPTY));
+                if !burning && left[&s] <= EMPTY {
+                    gone.insert(s);
+                    mass -= self.section_mass(s) - full[&s];
+                }
+            }
+        }
+        (delta_v, time)
     }
 
     /// How much of `resource` the tanks feeding `part` hold, kg.
@@ -1543,9 +1672,10 @@ impl Propulsion {
             .fold(1.0, f64::min)
     }
 
-    /// Take `need` (kg of each resource) from the tanks feeding `part`, each tank giving in
-    /// proportion to what it holds, so tanks that started alike drain alike. Takes nothing
-    /// and returns false if they hold too little of anything.
+    /// Take `need` (kg of each resource) from the tanks feeding `part`, those furthest up its fuel
+    /// lines first and each lot of tanks giving in proportion to what they hold, so tanks that
+    /// started alike drain alike. Takes nothing and returns false if they hold too little of
+    /// anything.
     pub fn draw(&mut self, part: PartId, need: &[(&str, f64)]) -> bool {
         if need
             .iter()
@@ -1553,18 +1683,28 @@ impl Propulsion {
         {
             return false;
         }
-        let feed = self.feeds.get(&part).cloned().unwrap_or_default();
+        // A save from before fuel lines has its feeds and no tiers.
+        let tiers = (self.tiers.get(&part).cloned())
+            .unwrap_or_else(|| vec![self.feeds.get(&part).cloned().unwrap_or_default()]);
         for &(resource, kg) in need {
-            let total = self.reachable(part, resource);
-            if total <= 0.0 {
-                continue;
-            }
-            for &k in &feed {
-                let tank = &mut self.tanks[k];
-                for (content, amount) in tank.contents.iter().zip(&mut tank.amounts) {
-                    if content.resource == resource {
-                        *amount = (*amount - kg * *amount / total).max(0.0);
+            let mut left = kg;
+            for tier in &tiers {
+                let total: f64 = tier.iter().map(|&k| self.tanks[k].held(resource)).sum();
+                if total <= 0.0 {
+                    continue;
+                }
+                let take = left.min(total);
+                for &k in tier {
+                    let tank = &mut self.tanks[k];
+                    for (content, amount) in tank.contents.iter().zip(&mut tank.amounts) {
+                        if content.resource == resource {
+                            *amount = (*amount - take * *amount / total).max(0.0);
+                        }
                     }
+                }
+                left -= take;
+                if left <= 0.0 {
+                    break;
                 }
             }
         }
@@ -2370,6 +2510,17 @@ impl Propulsion {
                     start_mass,
                 };
                 if section.beside {
+                    return row;
+                }
+                // Fuel lines between them: worked through as it would burn.
+                let side_ids: Vec<usize> = sides.iter().map(|s| s.id).collect();
+                let lined = std::iter::once(id).chain(side_ids.iter().copied()).any(|s| {
+                    (self.main_engines_of(s))
+                        .any(|e| self.tiers.get(&e.part).is_some_and(|tiers| tiers.len() > 1))
+                });
+                if lined {
+                    (row.delta_v_vac, row.burn_time) =
+                        self.burn_through_lines(id, &side_ids, start_mass);
                     return row;
                 }
                 // Together with the sections beside it, until the first of them runs out.

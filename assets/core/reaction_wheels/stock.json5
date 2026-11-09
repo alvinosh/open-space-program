@@ -7,11 +7,13 @@
     id: "Attitude Control Unit",
     mass: 150,
     torque: 30000,
+    model: "models/control/attitude_unit.glb",
   },
   {
     // Probe-sized.
     id: "RW-1",
     mass: 20,
     torque: 500,
+    model: "models/control/rw_1.glb",
   },
 ]

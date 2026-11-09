@@ -42,7 +42,7 @@ use osp_game::{
     camera::MainCamera,
     content::{GameContent, catalog},
     controls::InputLocked,
-    frame::{RenderFrame, to_render},
+    frame::{RenderFrame, rotation_to_render, to_render},
     orbit_lines::ViewPointer,
     part_highlight::PartMarks,
     part_info::ShowsPart,
@@ -345,6 +345,11 @@ impl VesselFrame {
     /// The turn from sim axes, the hangar's, to the vessel's frame.
     pub(crate) fn turn_from_sim(&self) -> DQuat {
         self.rotation.inverse()
+    }
+
+    /// How the vessel's frame is turned in the view.
+    pub(crate) fn view_rotation(&self) -> Quat {
+        rotation_to_render(self.rotation)
     }
 
     /// A point of the vessel's frame in the view.

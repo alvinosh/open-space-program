@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     aero::{outer_triangles, voxel::Body},
     assembly::{Mount, Pose, Side},
-    component::{BuiltPart, Component},
+    component::{BuiltPart, Component, ComponentDef},
     craft::Craft,
     data::{CraftDef, CraftPartDef, PartCatalog, SurfaceAtDef},
     geometry::{
@@ -608,6 +608,63 @@ impl Builder {
         Ok(change)
     }
 
+    /// Say what each of these fuel lines feeds, as one operation: `(line, part it feeds)`. A line
+    /// feeds a tank or an engine other than what it is on.
+    pub fn link_fuel_lines(
+        &mut self,
+        catalog: &PartCatalog,
+        links: &[(String, String)],
+    ) -> Result<Change, Refusal> {
+        let mut next = self.draft.clone();
+        for (line, to) in links {
+            let target = (next.parts.iter()).find(|p| &p.id == to);
+            let takes =
+                |c: &ComponentDef| matches!(c, ComponentDef::Storage(_) | ComponentDef::Engine(_));
+            let is_engine = |p: &CraftPartDef| {
+                (p.template.as_ref()).is_some_and(|t| catalog.engines.iter().any(|e| &e.id == t))
+            };
+            let takes_propellant =
+                target.is_some_and(|p| p.components.iter().any(takes) || is_engine(p));
+            if !takes_propellant {
+                return Err(Refusal::new(
+                    Rule::Part,
+                    "a fuel line feeds a tank or an engine",
+                ));
+            }
+            let part = part_mut(&mut next, line)?;
+            if part
+                .on
+                .as_deref()
+                .and_then(|on| on.split_once('.'))
+                .map(|(h, _)| h)
+                == Some(to.as_str())
+            {
+                return Err(Refusal::new(
+                    Rule::Part,
+                    "a fuel line feeds another part than the one it is on",
+                ));
+            }
+            let found = part.components.iter_mut().find_map(|c| match c {
+                ComponentDef::FuelLine(def) => Some(def),
+                _ => None,
+            });
+            let Some(def) = found else {
+                return Err(Refusal::new(
+                    Rule::Part,
+                    format!("`{line}` is not a fuel line"),
+                ));
+            };
+            def.to = to.clone();
+        }
+        Craft::build(&next, catalog).map_err(|e| Refusal::new(Rule::Join, e.to_string()))?;
+        let change = Change::between(&self.draft, &next);
+        if !change.changed.is_empty() {
+            self.undo.push(std::mem::replace(&mut self.draft, next));
+            self.redo.clear();
+        }
+        Ok(change)
+    }
+
     /// Go back one operation; `false` if there is none to go back over.
     pub fn undo(&mut self) -> bool {
         let Some(before) = self.undo.pop() else {
@@ -976,6 +1033,12 @@ fn counterparts(draft: &CraftDef, id: &str, depth: usize) -> Vec<(String, bool)>
         p.name = None;
         p.on =
             p.on.and_then(|on| on.split_once('.').map(|(_, c)| c.to_owned()));
+        // Copies of a fuel line feed copies of what it feeds.
+        for component in &mut p.components {
+            if let ComponentDef::FuelLine(line) = component {
+                line.to.clear();
+            }
+        }
         let tidy = |x: &mut f64, per: f64| *x = (*x * per).round() / per + 0.0;
         if let Some(at) = &mut p.at {
             at.u = 0.0;

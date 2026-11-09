@@ -12,6 +12,33 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use osp_sim::data::CraftPartDef;
 
+/// What is in hand in the editor, when it is not shown on the craft: drawn by the renderer as the
+/// hangar draws its parts, at the pointer.
+#[derive(Resource, Default)]
+pub struct PartInHand {
+    parts: Vec<CraftPartDef>,
+    place: Option<(Vec3, Quat)>,
+}
+
+impl PartInHand {
+    /// Draw `parts`, the first holding the rest, with their middle at the point and turned so; or
+    /// nothing, with none. Without a place they stay ready but are not drawn.
+    pub fn set(&mut self, parts: Vec<CraftPartDef>, place: Option<(Vec3, Quat)>) {
+        if parts != self.parts {
+            self.parts = parts;
+        }
+        self.place = place;
+    }
+
+    pub fn parts(&self) -> &[CraftPartDef] {
+        &self.parts
+    }
+
+    pub fn place(&self) -> Option<(Vec3, Quat)> {
+        self.place
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct PartPictures {
     /// The parts wanted now, by name, in the order asked: the first are drawn first.

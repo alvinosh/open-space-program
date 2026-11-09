@@ -76,6 +76,7 @@ impl Plugin for GamePlugin {
         // Content first: everything else is built from the loaded mods.
         .add_plugins(content::ContentPlugin)
         .init_resource::<part_pictures::PartPictures>()
+        .init_resource::<part_pictures::PartInHand>()
         .add_plugins((
             settings::SettingsPlugin,
             profiler::ProfilerPlugin,

@@ -265,6 +265,7 @@ impl PartTree {
                 built: Some(part.built.clone()),
                 frame: Pose::IDENTITY,
                 home: Pose::IDENTITY,
+                feeds: None,
             });
         }
         for (child, parent) in parents.iter().enumerate() {
@@ -301,6 +302,15 @@ impl PartTree {
                 way: JointWay::AsBuilt,
             });
         }
+        // What each fuel line feeds, by the craft's own order, which is the parts'.
+        for (index, part) in craft.parts.iter().enumerate() {
+            for component in &part.built.components {
+                if let Component::FuelLine(line) = component {
+                    let fed = craft.parts.iter().position(|p| p.id == line.to);
+                    parts[index].feeds = fed.map(|j| PartId(j as u32));
+                }
+            }
+        }
         Ok(PartTree {
             parts,
             turned: false,
@@ -336,7 +346,8 @@ fn components(
             | Component::Parachute(_)
             | Component::Swing(_)
             | Component::HeatShield(_)
-            | Component::LifeSupport(_) => {}
+            | Component::LifeSupport(_)
+            | Component::FuelLine(_) => {}
             Component::Engine(engine) => kinds.push(PartKind::Engine(engine.clone())),
             Component::Rcs(block) => kinds.push(PartKind::Rcs(block.clone())),
             Component::ReactionWheel(wheel) => kinds.push(PartKind::ReactionWheel(wheel.clone())),

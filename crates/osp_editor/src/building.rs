@@ -36,8 +36,13 @@
 //! in the hangar, or over the parts list) comes off, with its copies by symmetry and all they hold;
 //! while it is there the craft is shown without them. All of it can be undone.
 //!
-//! Publishes `editor.holding`, `editor.symmetry` (the radial count as it reads: `1`, `x4`),
-//! `editor.mirror`, and `editor.hint` while something is in hand.
+//! Until it has somewhere to go, what is in hand is drawn at the pointer, in the plane of the craft
+//! square to the view, whether it was taken from the list or dragged off the craft; over the hangar
+//! that takes the place of the list's tile.
+//!
+//! Publishes `editor.holding`, `editor.floating` (what is in hand is drawn at the pointer),
+//! `editor.symmetry` (the radial count as it reads: `1`, `x4`), `editor.mirror`, and `editor.hint`
+//! while something is in hand.
 
 use std::{collections::BTreeSet, sync::Arc, thread::JoinHandle};
 
@@ -49,6 +54,7 @@ use bevy::{
 use osp_sim::{
     assembly::{Mount, Side},
     builder::{self, Place},
+    component::ComponentDef,
     craft::Craft,
     data::{CraftDef, CraftPartDef, PartCatalog, SurfaceAtDef},
     geometry::preset::NodeDef,
@@ -69,6 +75,7 @@ use osp_game::{
     orbit_lines::ViewPointer,
     part_highlight::PartMarks,
     part_info::ShowsPart,
+    part_pictures::PartInHand,
     sim::Sim,
 };
 
@@ -78,6 +85,10 @@ use crate::{
     shaping::{Shaping, VesselFrame, shape_parts, tree_origin},
 };
 
+/// How far from the eye what is in hand is drawn while there is no craft yet, m.
+const NO_CRAFT_DEPTH: f32 = 18.0;
+/// Nearer the eye than this, m, what is in hand is not drawn at the pointer.
+const MIN_DEPTH: f32 = 0.5;
 /// How near a free node the pointer has to come for the part in hand to go there, px.
 const NODE_REACH_PX: f32 = 18.0;
 /// How a free node's ring is drawn, px across, and the most drawn.
@@ -109,6 +120,7 @@ impl Plugin for BuildingPlugin {
                         .in_set(FrameSet::Input)
                         .after(editor_actions)
                         .before(shape_parts),
+                    show_in_hand.after(place_parts).after(FrameSet::Input),
                     draw_rings.in_set(FrameSet::Render),
                     publish_placing,
                 ),
@@ -273,6 +285,10 @@ pub struct Placing {
     carry: Option<Carry>,
     /// Esc while carrying the craft: it goes back here.
     put_back: Option<DVec3>,
+    /// A fuel line is on the craft that has yet to be told what it feeds.
+    linking: bool,
+    /// Esc while it is: the line comes off.
+    cancel_link: bool,
 }
 
 impl Default for Placing {
@@ -302,6 +318,8 @@ impl Default for Placing {
             grabbed: None,
             carry: None,
             put_back: None,
+            linking: false,
+            cancel_link: false,
         }
     }
 }
@@ -314,7 +332,7 @@ impl Placing {
 
     /// Something is in hand, or the craft is being carried: the pointer is for that.
     pub fn is_holding(&self) -> bool {
-        self.held.is_some() || self.carry.is_some()
+        self.held.is_some() || self.carry.is_some() || self.linking
     }
 
     /// The palette entry a new part in hand is from, if one is.
@@ -808,6 +826,7 @@ pub(crate) fn place_parts(
             }
             "editor.drop" => {
                 placing.let_go();
+                placing.cancel_link = placing.linking;
             }
             "editor.symmetry" => {
                 if placing.mirror {
@@ -924,6 +943,60 @@ pub(crate) fn place_parts(
         marks.set_ghost(None);
         return;
     }
+
+    // A fuel line just put on is told what it feeds by a click on that part; a right click or Esc
+    // takes it off.
+    let unlinked = unlinked_fuel_lines(&draft);
+    placing.linking = placing.held.is_none() && !unlinked.is_empty();
+    if placing.linking {
+        if went_down[0] {
+            placing.press = cursor;
+        }
+        if went_down[1] {
+            placing.right_press = cursor;
+        }
+        let near = |from: Option<Vec2>| {
+            from.zip(cursor)
+                .is_some_and(|(from, at)| from.distance(at) < CLICK_SLOP)
+        };
+        let clicked = went_up[0] && near(placing.press.take());
+        let right_clicked = went_up[1] && near(placing.right_press.take());
+        if std::mem::take(&mut placing.cancel_link) || right_clicked {
+            let lines: BTreeSet<String> = unlinked.iter().cloned().collect();
+            if let Some(builder) = editor.builder_mut() {
+                let _ = builder.remove_all(catalog, &lines);
+            }
+            redraw_draft(&mut editor, catalog, &mut sim, &mut ui);
+            editor.settle(&mut sim);
+            placing.linking = false;
+        } else if clicked
+            && let Some((target, _)) = under(&|id| unlinked.iter().any(|line| line == id))
+        {
+            let tree = vessel
+                .and_then(|v| sim.universe.vessel(v))
+                .map(|v| v.propulsion.parts());
+            let position = |id: &str| Some(tree?.parts().get(draft_index(id)?)?.position);
+            let links = fuel_line_links(&draft, &unlinked, &target, position);
+            let linked = (editor.builder_mut())
+                .ok_or_else(|| "there is no craft to build".to_owned())
+                .and_then(|b| {
+                    b.link_fuel_lines(catalog, &links)
+                        .map_err(|r| r.to_string())
+                });
+            match linked {
+                Ok(_) => {
+                    redraw_draft(&mut editor, catalog, &mut sim, &mut ui);
+                    editor.settle(&mut sim);
+                    editor.set_notice("");
+                    placing.linking = false;
+                }
+                Err(e) => editor.set_notice(format!("Cannot feed that: {e}")),
+            }
+        }
+        marks.set_ghost(None);
+        return;
+    }
+    placing.cancel_link = false;
 
     // A drag that starts on a part of the craft picks it up with what it holds, or, on the root,
     // carries the whole craft; one that starts on nothing turns the view.
@@ -1285,6 +1358,138 @@ pub(crate) fn place_parts(
     marks.set_ghost(ghost);
 }
 
+/// The fuel lines on `draft` not yet told what they feed.
+fn unlinked_fuel_lines(draft: &CraftDef) -> Vec<String> {
+    (draft.parts.iter())
+        .filter(|p| {
+            (p.components.iter())
+                .any(|c| matches!(c, ComponentDef::FuelLine(line) if line.to.is_empty()))
+        })
+        .map(|p| p.id.clone())
+        .collect()
+}
+
+/// What each of `lines` feeds when the player clicked `clicked`: copies by symmetry each feed the
+/// copy of that part nearest them, so pairs of boosters can feed the next pair in.
+fn fuel_line_links(
+    draft: &CraftDef,
+    lines: &[String],
+    clicked: &str,
+    position: impl Fn(&str) -> Option<DVec3>,
+) -> Vec<(String, String)> {
+    let mut choices = vec![clicked.to_owned()];
+    choices.extend(builder::alike(draft, clicked).into_iter().map(|(id, _)| id));
+    (lines.iter())
+        .map(|line| {
+            let away = |choice: &String| {
+                let (a, b) = (position(line), position(choice));
+                a.zip(b).map_or(f64::INFINITY, |(a, b)| a.distance(b))
+            };
+            let nearest = if lines.len() == 1 {
+                None
+            } else {
+                choices.iter().min_by(|a, b| away(a).total_cmp(&away(b)))
+            };
+            (
+                line.clone(),
+                nearest.map_or(clicked, |c| c.as_str()).to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// Where what is in hand is drawn in the view while it has nowhere to go: under the pointer, as far
+/// from the eye as the craft, in the plane square to the view through its root; with no craft yet,
+/// near enough to see well.
+fn at_pointer(
+    pointer: Vec2,
+    camera: &Camera,
+    eye: &GlobalTransform,
+    frame: VesselFrame,
+    no_craft: bool,
+) -> Option<(Vec3, Quat)> {
+    let ray = camera.viewport_to_world(eye, pointer).ok()?;
+    let forward = *eye.forward();
+    let depth = if no_craft {
+        NO_CRAFT_DEPTH
+    } else {
+        (frame.view_point(DVec3::ZERO) - ray.origin).dot(forward)
+    };
+    let along = ray.direction.dot(forward);
+    (depth > MIN_DEPTH && along > 1e-3).then(|| {
+        (
+            ray.origin + *ray.direction * (depth / along),
+            frame.view_rotation(),
+        )
+    })
+}
+
+/// Draw what is in hand at the pointer while it is not shown on the craft, and put away the list's
+/// tile while the pointer is over the hangar, where the part takes its place.
+#[allow(clippy::too_many_arguments)]
+fn show_in_hand(
+    placing: Res<Placing>,
+    editor: Res<Editor>,
+    content: Res<GameContent>,
+    (sim, frame): (Res<Sim>, Res<RenderFrame>),
+    pointer: ViewPointer,
+    camera: Single<(&Camera, &GlobalTransform), With<MainCamera>>,
+    mut hand: ResMut<PartInHand>,
+    mut data: ResMut<UiData>,
+    mut tiles: Query<(Entity, &mut Visibility, Has<GlobalZIndex>), With<DragPayload>>,
+    mut hidden: Local<Option<Entity>>,
+    mut entries: Local<Option<Vec<Entry>>>,
+) {
+    if entries.is_none() || content.is_changed() {
+        let parts = catalog(&content.0.registry, &mut Vec::new());
+        *entries = Some(palette::entries(&parts));
+    }
+    let draft = editor.builder().map(|b| b.draft());
+    let parts = match (&placing.held, draft) {
+        (Some(Held::New(id)), Some(_)) => (entries.iter().flatten())
+            .find(|e| &e.id == id)
+            .map(|e| vec![e.part.clone()])
+            .unwrap_or_default(),
+        (Some(Held::Moved(id)), Some(draft)) => {
+            let held = held_through(draft, id);
+            // The part first: it holds the rest.
+            let mut parts: Vec<_> = (draft.parts.iter())
+                .filter(|p| held.contains(&p.id))
+                .cloned()
+                .collect();
+            parts.sort_by_key(|p| p.id != *id);
+            parts
+        }
+        _ => Vec::new(),
+    };
+    let on_craft = placing.spot.is_some() && placing.shown.is_some() && !placing.ghost.is_empty();
+    let over_hangar = pointer.position().filter(|_| !parts.is_empty());
+    let (camera, eye) = *camera;
+    let place = over_hangar.filter(|_| !on_craft).and_then(|at| {
+        let vessel = VesselFrame::of(&sim, &frame, editor.vessel()?)?;
+        at_pointer(
+            at,
+            camera,
+            eye,
+            vessel,
+            draft.is_none_or(|d| d.parts.is_empty()),
+        )
+    });
+    data.set("editor.floating", place.is_some());
+    hand.set(parts, place);
+
+    let from_list = placing.dropping && matches!(placing.held, Some(Held::New(_)));
+    for (tile, mut visibility, dragged) in &mut tiles {
+        if dragged && from_list && over_hangar.is_some() {
+            visibility.set_if_neq(Visibility::Hidden);
+            *hidden = Some(tile);
+        } else if *hidden == Some(tile) {
+            visibility.set_if_neq(Visibility::Inherited);
+            *hidden = None;
+        }
+    }
+}
+
 /// Degrees in (-180, 180].
 fn wrapped(degrees: f64) -> f64 {
     let turned = (degrees + 180.0).rem_euclid(360.0) - 180.0;
@@ -1565,7 +1770,7 @@ fn publish_placing(
     content: Res<GameContent>,
     mut data: ResMut<UiData>,
     mut entries: Local<Option<Vec<Entry>>>,
-    mut published: Local<Option<(Option<Held>, u32, bool, Option<String>, bool, i64)>>,
+    mut published: Local<Option<(Option<Held>, u32, bool, Option<String>, bool, i64, bool)>>,
 ) {
     if entries.is_none() || content.is_changed() {
         let parts = catalog(&content.0.registry, &mut Vec::new());
@@ -1581,11 +1786,19 @@ fn publish_placing(
         placing.refused.clone(),
         placing.spot.is_some(),
         placing.roll.round() as i64,
+        placing.linking,
     );
     if published.as_ref() == Some(&now) && !content.is_changed() {
         return;
     }
     *published = Some(now);
+    data.set("editor.linking", placing.linking);
+    if placing.linking {
+        data.set(
+            "editor.hint",
+            "Click the tank or engine this fuel line feeds. A right click or Esc takes it off.",
+        );
+    }
     data.set("editor.holding", placing.held.is_some());
     data.set("editor.symmetry", placing.symmetry_label());
     data.set("editor.mirror", placing.mirror);

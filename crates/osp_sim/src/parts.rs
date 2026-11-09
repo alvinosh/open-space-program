@@ -296,6 +296,9 @@ pub struct Part {
     pub frame: Pose,
     /// Where it stands in that frame, while it is anywhere else: it goes back there exactly.
     home: Pose,
+    /// It is a fuel line, and this is the part it feeds.
+    #[serde(default)]
+    pub feeds: Option<PartId>,
 }
 
 impl Part {
@@ -700,6 +703,7 @@ impl PartTree {
             open: false,
             frame: Pose::IDENTITY,
             home: Pose::IDENTITY,
+            feeds: None,
         });
         id
     }
@@ -853,6 +857,19 @@ impl PartTree {
             groups.entry(top.id).or_default().push(part.id);
         }
         groups.into_values().collect()
+    }
+
+    /// The two ends of the fuel line `part`, if it feeds something still here: where it is, and the
+    /// nearest point on the surface of what it feeds. In the assembly frame, m.
+    pub fn fuel_line_ends(&self, part: &Part) -> Option<(DVec3, DVec3)> {
+        let to = self.get(part.feeds?)?;
+        let end = to.built.as_ref().and_then(|built| {
+            let local = to.rotation.inverse() * (part.position - to.position);
+            let (surface, u, v, _) = built.geometry.surface_near(local)?;
+            let point = built.geometry.surface_point(&surface, u, v)?;
+            Some(to.position + to.rotation * point.position)
+        });
+        Some((part.position, end.unwrap_or(to.position)))
     }
 
     /// Parts that electricity and data can pass between, through joints that carry them, each

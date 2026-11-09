@@ -251,6 +251,12 @@ fn spawn_vessel_visuals(
     });
 }
 
+/// What a rolling landing wheel is drawn as.
+const WHEEL_MODEL: &str = "models/gear/wheel.glb";
+
+/// How thick a fuel line's pipe is drawn, m.
+const FUEL_LINE_RADIUS: f32 = 0.05;
+
 /// Exit radius and length of an engine's bell. Engines without real dimensions get a bell
 /// that keeps a stage's engines from overlapping each other or the hull.
 fn bell_size(propulsion: &Propulsion, stage: &Section, engine: &Engine) -> (f32, f32) {
@@ -335,7 +341,10 @@ fn rebuild_on_change(
         };
         let (stages, tree) = (&propulsion.sections, propulsion.parts());
         // Parts fall away, fins tear off, fairings are jettisoned: then it is built again.
-        let shape: Vec<u32> = tree.parts().iter().map(|p| p.id.0).collect();
+        // A fuel line told what to feed has changed too, with no part coming or going.
+        let shape: Vec<u32> = (tree.parts().iter())
+            .flat_map(|p| [p.id.0, p.feeds.map_or(u32::MAX, |to| to.0)])
+            .collect();
         if visual.built.as_ref() == Some(&shape) {
             continue;
         }
@@ -356,6 +365,33 @@ fn rebuild_on_change(
             // The origin is the base of the stack, +Y up it (sim +Z, the nose); vessel axes
             // map to these local axes like sim to render: X → X, Y → −Z.
             let base = DVec3::Z * tree.base();
+            // A pipe from each fuel line to what it feeds.
+            for part in tree.parts() {
+                let Some((from, to)) = tree.fuel_line_ends(part) else {
+                    continue;
+                };
+                let (from, to) = (to_render(from - base), to_render(to - base));
+                let length = from.distance(to);
+                if length < 0.01 {
+                    continue;
+                }
+                parent.spawn((
+                    Mesh3d(
+                        meshes.add(
+                            Cylinder::new(FUEL_LINE_RADIUS, length)
+                                .mesh()
+                                .resolution(10),
+                        ),
+                    ),
+                    MeshMaterial3d(materials.strut.clone()),
+                    Transform::from_translation((from + to) / 2.0)
+                        .with_rotation(Quat::from_rotation_arc(Vec3::Y, (to - from) / length)),
+                    ShowsPart {
+                        vessel,
+                        part: part.id,
+                    },
+                ));
+            }
             // Each stage's engines by look, for one plume each.
             let mut clusters: Vec<(usize, PlumeDef, Vec<PlumeEngine>)> = Vec::new();
             for part in tree.parts() {
@@ -443,6 +479,17 @@ fn rebuild_on_change(
                                     None => clusters.push((part.stage, look, vec![jet])),
                                 }
                             }
+                        }
+                        PartKind::ReactionWheel(def) if def.model.is_some() && alone => {
+                            drawn = true;
+                            let scene = model(&def.model);
+                            let mut visual = parent.spawn((pose, Visibility::default(), shows));
+                            visual.with_children(|visual| match scene {
+                                Some(scene) => {
+                                    visual.spawn((scene, PartModel));
+                                }
+                                None => pen.draw(visual, built, None),
+                            });
                         }
                         PartKind::Pod(def) if def.model.is_some() && alone => {
                             drawn = true;
@@ -623,9 +670,23 @@ fn rebuild_on_change(
                     .and_then(|part| part.built.as_ref())
                     .and_then(|built| built.geometry.models().next())
                     .and_then(|(shape, _, _)| model(&Some(shape.path.clone())));
-                let mut visual = match foot {
-                    Some(scene) => parent.spawn((gear, scene, PartModel, Transform::default())),
-                    None => parent.spawn((
+                // A rolling wheel's model is one of radius 1, scaled to the leg.
+                let tyre = (!leg.foot)
+                    .then(|| model(&Some(WHEEL_MODEL.to_owned())))
+                    .flatten();
+                let mut visual = match (foot, tyre) {
+                    (Some(scene), _) => {
+                        parent.spawn((gear, scene, PartModel, Transform::default()))
+                    }
+                    (None, Some(scene)) => {
+                        let mut wheel =
+                            parent.spawn((gear, Transform::default(), Visibility::default()));
+                        wheel.with_children(|wheel| {
+                            wheel.spawn((scene, PartModel, Transform::from_scale(Vec3::splat(r))));
+                        });
+                        wheel
+                    }
+                    (None, None) => parent.spawn((
                         gear,
                         // A foot is a shallow pad, a wheel a tyre.
                         Mesh3d(

@@ -683,6 +683,10 @@ pub struct ReactionWheelDef {
     pub mass: f64,
     /// Torque about each axis (pitch, yaw and roll) at full command, N·m.
     pub torque: f64,
+    /// glTF model drawn for it, relative to the mod root: origin at the centre of its base, +Z up,
+    /// 0.5 m across and 0.2 m tall. A plain drum without one.
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 /// A block of reaction control thrusters: four small fixed nozzles pushing forward, back and

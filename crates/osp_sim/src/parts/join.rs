@@ -173,6 +173,7 @@ impl PartTree {
             if let Some(joint) = &mut p.joint {
                 joint.parent = part(joint.parent);
             }
+            p.feeds = p.feeds.map(&part);
         }
         self.parts.sort_by_key(|p| p.id);
     }

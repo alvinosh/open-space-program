@@ -29,7 +29,7 @@ use bevy::{
     },
     world_serialization::WorldInstance,
 };
-use osp_game::part_pictures::PartPictures;
+use osp_game::part_pictures::{PartInHand, PartPictures};
 use osp_sim::{
     craft::Craft,
     data::{CraftDef, CraftPartDef, PartCatalog},
@@ -74,7 +74,7 @@ impl Plugin for PartPicturesPlugin {
             .add_systems(Startup, spawn_grid)
             .add_systems(
                 Update,
-                (take_wanted, frame_cells, run_camera)
+                (take_wanted, frame_cells, run_camera, draw_part_in_hand)
                     .chain()
                     .in_set(FrameSet::Render),
             );
@@ -311,7 +311,7 @@ fn take_wanted(
                 Propagate(RenderLayers::layer(LAYER)),
             ))
             .id();
-        match built(&part, catalog) {
+        match built(std::slice::from_ref(&part), catalog) {
             Ok(tree) => {
                 let mut pen = Pen {
                     looks: &mut looks,
@@ -340,15 +340,19 @@ fn take_wanted(
     }
 }
 
-/// `part` built by itself.
-fn built(part: &CraftPartDef, catalog: &PartCatalog) -> Result<PartTree, String> {
-    let mut part = part.clone();
-    part.id = "picture".into();
-    (part.on, part.at) = (None, None);
+/// `parts` built by themselves, the first holding the rest.
+fn built(parts: &[CraftPartDef], catalog: &PartCatalog) -> Result<PartTree, String> {
+    let mut parts = parts.to_vec();
+    if let Some(first) = parts.first_mut() {
+        if first.id.is_empty() {
+            first.id = "picture".into();
+        }
+        (first.on, first.at) = (None, None);
+    }
     let alone = CraftDef {
         id: "picture".into(),
         name: String::new(),
-        parts: vec![part],
+        parts,
         sequences: None,
         triggers: Vec::new(),
         rcs_shut: Vec::new(),
@@ -386,6 +390,7 @@ fn draw(commands: &mut Commands, root: Entity, tree: &PartTree, pen: &mut Pen) {
             ),
             [PartKind::Pod(def)] => (def.model.as_ref().map(|m| (m, 1.0)), None),
             [PartKind::Rcs(def)] => (def.model.as_ref().map(|m| (m, 1.0)), None),
+            [PartKind::ReactionWheel(def)] => (def.model.as_ref().map(|m| (m, 1.0)), None),
             _ => (None, None),
         };
         let visual = commands
@@ -503,6 +508,107 @@ fn frame_cells(
         *visibility = Visibility::Inherited;
         grid.changed = true;
     }
+}
+
+/// What is drawn of the part in hand.
+#[derive(Default)]
+struct InHand {
+    parts: Vec<CraftPartDef>,
+    root: Option<Entity>,
+}
+
+/// Draw what is in hand at the pointer, as the hangar draws its parts, with its middle where it was
+/// asked to be: its drawn bounds are worked out afresh, as a model comes in after the meshes.
+#[allow(clippy::too_many_arguments)]
+fn draw_part_in_hand(
+    mut commands: Commands,
+    hand: Res<PartInHand>,
+    grid: Res<Grid>,
+    content: Res<GameContent>,
+    assets: Res<AssetServer>,
+    mut looks: ResMut<Looks>,
+    (mut meshes, mut materials, mut images): (
+        ResMut<Assets<Mesh>>,
+        ResMut<Assets<VesselMaterial>>,
+        ResMut<Assets<Image>>,
+    ),
+    children: Query<&Children>,
+    mut roots: Query<(&mut Transform, &mut Visibility, &GlobalTransform)>,
+    drawn: Query<(&Aabb, &GlobalTransform)>,
+    mut in_hand: Local<InHand>,
+) {
+    if in_hand.parts != hand.parts() || content.is_changed() {
+        if let Some(old) = in_hand.root.take() {
+            commands.entity(old).despawn();
+        }
+        in_hand.parts = hand.parts().to_vec();
+        if in_hand.parts.is_empty() {
+            return;
+        }
+        let parts = catalog(&content.0.registry, &mut Vec::new());
+        match built(&in_hand.parts, &parts) {
+            Ok(tree) => {
+                let root = commands
+                    .spawn((Transform::default(), Visibility::Hidden))
+                    .id();
+                let file =
+                    |path: &str| (content.0.resolve_file(path)).and_then(|f| std::fs::read(f).ok());
+                let model = |relative: &str| {
+                    let path = mod_asset_path(&content.0, relative)?;
+                    Some(WorldAssetRoot(
+                        assets.load(GltfAssetLabel::Scene(0).from_asset(path)),
+                    ))
+                };
+                let mut pen = Pen {
+                    looks: &mut looks,
+                    meshes: &mut meshes,
+                    canvas: Canvas {
+                        materials: &mut materials,
+                        images: &mut images,
+                        file: &file,
+                    },
+                    engine: &grid.engine,
+                    model: &model,
+                };
+                draw(&mut commands, root, &tree, &mut pen);
+                in_hand.root = Some(root);
+            }
+            Err(e) => warn!("cannot draw what is in hand: {e}"),
+        }
+        return;
+    }
+    let Some(root) = in_hand.root else {
+        return;
+    };
+    let Ok((mut transform, mut visibility, at)) = roots.get_mut(root) else {
+        return;
+    };
+    let Some((point, rotation)) = hand.place() else {
+        visibility.set_if_neq(Visibility::Hidden);
+        return;
+    };
+    let into_root = at.affine().inverse();
+    let (mut low, mut high) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+    for (aabb, place) in (children.iter_descendants(root)).filter_map(|e| drawn.get(e).ok()) {
+        let local = into_root * place.affine();
+        let (centre, half) = (Vec3::from(aabb.center), Vec3::from(aabb.half_extents));
+        for corner in 0..8 {
+            let sign = Vec3::new(
+                if corner & 1 == 0 { -1.0 } else { 1.0 },
+                if corner & 2 == 0 { -1.0 } else { 1.0 },
+                if corner & 4 == 0 { -1.0 } else { 1.0 },
+            );
+            let seen = local.transform_point3(centre + sign * half);
+            low = low.min(seen);
+            high = high.max(seen);
+        }
+    }
+    if !low.is_finite() {
+        return;
+    }
+    transform.translation = point - rotation * ((low + high) / 2.0);
+    transform.rotation = rotation;
+    visibility.set_if_neq(Visibility::Inherited);
 }
 
 /// Draw while a picture is on screen and one is unfinished; finish what has been drawn, settled,

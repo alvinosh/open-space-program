@@ -22,6 +22,7 @@ const CHECKER: f32 = 3.0;
 const DECAL: f32 = 4.0;
 const DECAL_VERTICAL: f32 = 5.0;
 const STRINGERS: f32 = 6.0;
+const PANELS: f32 = 7.0;
 
 /// Texels to the height of a capital letter.
 const CAP_TEXELS: f32 = 160.0;
@@ -188,6 +189,15 @@ pub fn pack(
                 v[0] = Vec4::new(decal_kind(*vertical), -1.0, 0.0, 0.0);
                 v[2] = Vec4::new(at[0] as f32, at[1] as f32, size[0] as f32, size[1] as f32);
                 pictures.push((count, picture));
+            }
+            LayerDef::Panels {
+                rings,
+                around,
+                across,
+                seam,
+            } => {
+                v[0] = Vec4::new(PANELS, -1.0, 0.0, 0.0);
+                v[2] = Vec4::new(*rings as f32, *around as f32, *across as f32, *seam as f32);
             }
             LayerDef::Stringers {
                 along,
