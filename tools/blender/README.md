@@ -21,7 +21,7 @@ check of the result. Other scenes are left alone.
 | `c1.py` | `models/pods/c1.glb` |
 | `c4.py` | `models/pods/c4.glb` |
 | `cold_gas_quad.py` | `models/rcs/cold_gas_quad.glb` |
-| `hardware.py` | `models/control/`: `attitude_unit.glb`, `rw_1.glb`, `fuel_line.glb`; `models/gear/wheel.glb` |
+| `hardware.py` | `models/control/`: `attitude_unit.glb`, `rw_1.glb`, `fuel_line.glb`; `models/gear/wheel.glb`; `models/systems/`: battery, solar panel, omni antenna, dish, RTG, fuel cell, probe core |
 | `saturn_v_parts.py` | `mods/realism/models/parts/`: service module, high gain antenna, escape tower, LM descent stage and foot pad, separation motor, instrument unit, S-IVB APS |
 
 `osp_common.py` has the shared helpers (lathe/sweep primitives, nozzle contours, materials, export,

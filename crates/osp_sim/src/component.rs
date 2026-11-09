@@ -1310,6 +1310,7 @@ impl PartDef {
         }
         let shape = match (&def.model, bell) {
             (Some(path), bell) => ShapeDef::Model(ModelDef {
+                fit: 0.0,
                 path: path.clone(),
                 scale,
                 proxy: bell.map(Box::new),
@@ -1365,6 +1366,7 @@ impl PartDef {
                     nodes.push(node("top", up, [0.0, 0.0, 1.0], def.top_diameter()));
                 }
                 ShapeDef::Model(ModelDef {
+                    fit: 0.0,
                     path: path.clone(),
                     scale: 1.0,
                     proxy: Some(Box::new(frustum)),
@@ -1417,6 +1419,7 @@ impl PartDef {
         }]);
         let shape = match &def.model {
             Some(path) => ShapeDef::Model(ModelDef {
+                fit: 0.0,
                 path: path.clone(),
                 scale: 1.0,
                 proxy: Some(Box::new(block)),

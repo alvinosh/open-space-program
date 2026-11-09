@@ -235,9 +235,15 @@ impl AssemblyPart {
         }
     }
 
-    /// Its geometry's nodes and its extra ones.
+    /// Its geometry's nodes and its extra ones, which stand in for a geometry's of the same name:
+    /// a dish wider than the mast it stands on, say.
     pub fn nodes(&self) -> impl Iterator<Item = &Node> {
-        self.geometry.nodes.iter().chain(&self.extra_nodes)
+        let kept = |n: &&Node| !self.extra_nodes.iter().any(|extra| extra.name == n.name);
+        self.geometry
+            .nodes
+            .iter()
+            .filter(kept)
+            .chain(&self.extra_nodes)
     }
 
     pub fn node(&self, name: &str) -> Option<&Node> {

@@ -26,7 +26,7 @@
 // (`osp_editor::parts_list`), or brings them back in place of a part's settings
 // (`editor.palette_open`). They are a grid of pictures (`editor.palette`, each `id`, `name` and
 // `held`; a `part_picture` shows the picture of the `part` it names), a tab at a time by what they
-// do (`editor.group:<pods|tanks|engines|structure|aero|control>`, `editor.group` the one shown, or
+// do (`editor.group:<pods|tanks|engines|structure|aero|control|systems>`, `editor.group` the one shown, or
 // `search` while searching), or what `editor.search:<text>` finds in all of them
 // (`editor.search_shown`); `editor.palette_more` says how many more there are, or that nothing is
 // found. Two filters narrow them, while the tab has anything they could narrow: by width,
@@ -129,6 +129,10 @@
               {
                 widget: "button", class: "tab editor_tab", action: "editor.group:control", active: "editor.group == control", tooltip: "Control: RCS and reaction wheels",
                 children: [{ widget: "image", class: "editor_tab_icon", image: "icons/rcs.svg", active: "editor.group == control" }],
+              },
+              {
+                widget: "button", class: "tab editor_tab", action: "editor.group:systems", active: "editor.group == systems", tooltip: "Power and comms: batteries, solar panels, antennas",
+                children: [{ widget: "image", class: "editor_tab_icon", image: "icons/editor/systems.svg", active: "editor.group == systems" }],
               },
             ],
           },

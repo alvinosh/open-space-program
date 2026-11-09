@@ -419,6 +419,10 @@ pub struct ModelDef {
     /// Where other parts join it: a model has no natural nodes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub nodes: Vec<NodeDef>,
+    /// How wide it was made, m: drawn for a sized part, it is scaled to the part's width. 0 to
+    /// keep `scale` as it is.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fit: f64,
 }
 
 /// A node written out, in the part's frame.

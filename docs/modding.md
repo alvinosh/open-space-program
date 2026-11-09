@@ -469,6 +469,10 @@ the RCS forward translation (H) is what does that.
 
 A part with `fuel_line: { to: "<part id>" }` carries propellant one way, from what it is on to that part, across decouplers. What it feeds drains what feeds it first, the furthest up a chain of lines first, which is how pairs of boosters feeding inward (asparagus staging) work. If either end goes, the line does nothing.
 
+### A model on a sized part
+
+A part with `procedural` can be drawn by a `model`, and `fit` (m) says how wide the model was made: it is scaled to the part's sized width, so it follows the size the player sets. A part's own `nodes` replace any of its shape's with the same name, for a dish whose mount is narrower than its bowl.
+
 ### Trim
 
 `paint: { trim: true }` gives a part panel seams, rivets, end bands and the like to suit its shape (a tank, shell, ring or wing), worked out from its size each time it is built, so it stays in proportion when the part is resized. The part's own `layers` go over it. The layer it uses is `panels: { rings, around, across, seam }`: seams `rings` m apart up the part and `around` to the turn, each row offset from the last, `seam` m wide; with `around: 0` they follow the surface's own coordinates, `across` m apart that way.

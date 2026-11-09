@@ -34,16 +34,19 @@ pub enum Group {
     Aero,
     /// RCS blocks and reaction wheels.
     Control,
+    /// Power, radios and what commands a vessel with no crew.
+    Systems,
 }
 
 impl Group {
-    pub const ALL: [Group; 6] = [
+    pub const ALL: [Group; 7] = [
         Group::Pods,
         Group::Tanks,
         Group::Engines,
         Group::Structure,
         Group::Aero,
         Group::Control,
+        Group::Systems,
     ];
 
     /// As actions write it.
@@ -55,6 +58,7 @@ impl Group {
             Group::Structure => "structure",
             Group::Aero => "aero",
             Group::Control => "control",
+            Group::Systems => "systems",
         }
     }
 
@@ -71,6 +75,7 @@ impl Group {
             Group::Structure => "Structure",
             Group::Aero => "Aero",
             Group::Control => "Control",
+            Group::Systems => "Power and comms",
         }
     }
 }
@@ -516,7 +521,174 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
             ),
             "1.2 m strut",
         ),
+        (
+            entry(
+                "probe_core",
+                "Probe core",
+                Group::Pods,
+                "Commands a vessel with no crew. It needs power and a link to the ground to answer",
+                json!({
+                    "id": "", "name": "Probe core",
+                    "shape": { "ring": { "diameter": 0.6, "height": 0.2, "thickness": 0.3 } },
+                    "model": { "path": "models/systems/probe_core.glb" },
+                    "structure": { "mass": 30.0 },
+                    "components": [{ "avionics": { "controlled_mass": 20000.0, "interplanetary": true } }],
+                }),
+                None,
+            ),
+            "0.6 m",
+        ),
+        (
+            entry(
+                "solar_panel",
+                "Solar panel",
+                Group::Systems,
+                "Fixed to the hull, making power in sunlight when it faces the Sun",
+                json!({
+                    "id": "", "name": "Solar panel",
+                    "procedural": { "solar_array": { "power": 200.0 } },
+                    "model": { "path": "models/systems/solar_panel.glb", "fit": 1.0 },
+                    "nodes": [{
+                        "name": "mount",
+                        "position": [-0.01, 0.0, 0.0],
+                        "direction": [-1.0, 0.0, 0.0],
+                        "size": 0.2,
+                    }],
+                }),
+                Some(("mount", 0.0)),
+            ),
+            "200 W",
+        ),
+        (
+            entry(
+                "rtg",
+                "RTG",
+                Group::Systems,
+                "Steady power anywhere, day or night, for decades",
+                json!({
+                    "id": "", "name": "RTG",
+                    "procedural": { "rtg": { "power": 100.0 } },
+                    "model": { "path": "models/systems/rtg.glb", "fit": 1.0 },
+                }),
+                None,
+            ),
+            "100 W",
+        ),
+        (
+            entry(
+                "antenna",
+                "Antenna",
+                Group::Systems,
+                "A whip that sends all ways: no need to point it, for short range",
+                json!({
+                    "id": "", "name": "Antenna",
+                    "procedural": { "antenna": { "power": 2.0, "data_rate": 1000.0 } },
+                    "model": { "path": "models/systems/antenna_omni.glb", "fit": 0.1 },
+                    "nodes": [{
+                        "name": "bottom",
+                        "position": [0.0, 0.0, 0.0],
+                        "direction": [0.0, 0.0, -1.0],
+                        "size": 0.1,
+                    }],
+                }),
+                Some(("bottom", 0.0)),
+            ),
+            "2 W",
+        ),
+        (
+            entry(
+                "dish",
+                "Dish",
+                Group::Systems,
+                "Reaches much further the bigger it is, and draws more power the more it sends",
+                json!({
+                    "id": "", "name": "Dish",
+                    "procedural": { "antenna": { "diameter": 1.0, "power": 20.0, "data_rate": 10000.0 } },
+                    "model": { "path": "models/systems/dish.glb", "fit": 1.0 },
+                    "nodes": [{
+                        "name": "bottom",
+                        "position": [0.0, 0.0, 0.0],
+                        "direction": [0.0, 0.0, -1.0],
+                        "size": 0.16,
+                    }],
+                }),
+                Some(("bottom", 0.0)),
+            ),
+            "1 m",
+        ),
     ]
+    .into_iter()
+    .chain(systems(catalog))
+    .collect()
+}
+
+/// The parts of the list that need records or resources not every game has.
+fn systems(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
+    let entry = |id: &str, name: &str, about: &str, value| Entry {
+        id: id.into(),
+        name: name.into(),
+        group: Group::Systems,
+        detail: String::new(),
+        about: about.into(),
+        width: None,
+        propellant: None,
+        part: part(value),
+        surface: None,
+        stem: id.into(),
+    };
+    let mut out = Vec::new();
+    if let Some(battery) = catalog.batteries.iter().find(|b| b.rechargeable) {
+        out.push((
+            entry(
+                "battery",
+                "Battery",
+                "Stores power for the dark, and for when more is drawn than is made",
+                json!({
+                    "id": "", "name": "Battery",
+                    "procedural": { "battery": {
+                        "energy": 3600.0, "technology": battery.id, "rechargeable": true,
+                    } },
+                    "model": { "path": "models/systems/battery.glb", "fit": 1.0 },
+                }),
+            ),
+            "1 kWh",
+        ));
+    }
+    let has = |name: &str| catalog.resources.iter().any(|r| r.id == name);
+    if has("LqdHydrogen") && has("LqdOxygen") {
+        out.push((
+            entry(
+                "fuel_cell",
+                "Fuel cell",
+                "Makes power from the hydrogen and oxygen it can reach",
+                json!({
+                    "id": "", "name": "Fuel cell",
+                    "procedural": { "fuel_cell": { "power": 1000.0 } },
+                    "model": { "path": "models/systems/fuel_cell.glb", "fit": 1.0 },
+                }),
+            ),
+            "1 kW",
+        ));
+    }
+    if let Some(unit) = catalog.avionics.first() {
+        out.push((
+            entry(
+                "avionics",
+                "Avionics ring",
+                "Guidance rated for so much mass, in place of a probe core",
+                json!({
+                    "id": "", "name": "Avionics ring",
+                    "procedural": { "avionics": {
+                        "controlled_mass": 10000.0, "technology": unit.id,
+                        "diameter": 1.0, "height": 0.3,
+                    } },
+                    "paint": { "color": GREY, "finish": "metal", "trim": true },
+                }),
+            ),
+            "1 m",
+        ));
+    }
+    out
 }
 
 /// A procedural part's figures as it starts, `size` first: what it weighs, and what a tank holds.
@@ -876,7 +1048,7 @@ mod tests {
         assert_eq!((tank.width, tank.propellant), (None, None));
         let engine = all.iter().find(|e| e.group == Group::Engines).unwrap();
         assert!(engine.detail.contains("Isp") && engine.width.is_some());
-        let pod = all.iter().find(|e| e.group == Group::Pods).unwrap();
+        let pod = all.iter().find(|e| e.id.starts_with("pod:")).unwrap();
         assert!(pod.detail.contains("crew") && pod.width.is_some());
     }
 

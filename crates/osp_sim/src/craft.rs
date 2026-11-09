@@ -338,8 +338,19 @@ fn drawn(shape: ShapeDef, part: &CraftPartDef) -> ShapeDef {
     };
     let mut shapes = vec![placed(shape.clone(), true)];
     if let Some(model) = &part.model {
+        // A sized part's width, for a model made to be scaled to it.
+        let width = match &shape {
+            ShapeDef::Ring(ring) => Some(ring.diameter),
+            ShapeDef::Cuboid(cuboid) => Some(cuboid.size[1]),
+            _ => None,
+        };
+        let scale = match width {
+            Some(width) if model.fit > 0.0 => model.scale * width / model.fit,
+            _ => model.scale,
+        };
         let model = ModelDef {
             proxy: Some(Box::new(shape)),
+            scale,
             ..model.clone()
         };
         shapes.push(placed(ShapeDef::Model(model), part.unseen));
@@ -608,8 +619,11 @@ mod tests {
 
     #[test]
     fn fitting_a_craft_s_fairings_keeps_it_flying() {
-        let mut craft: CraftDef =
-            crate::test_data::realistic(include_str!("../../../assets/core/craft/pathfinder.json5"), "craft").remove(0);
+        let mut craft: CraftDef = crate::test_data::realistic(
+            include_str!("../../../assets/core/craft/pathfinder.json5"),
+            "craft",
+        )
+        .remove(0);
         let fitted = craft.fit_fairings(&catalog()).unwrap();
         assert_eq!(fitted.len(), 2, "{fitted:?}");
         let p = Propulsion::from_craft(&craft, &catalog()).unwrap();

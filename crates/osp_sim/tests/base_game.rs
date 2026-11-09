@@ -3,9 +3,21 @@
 
 use std::{collections::BTreeSet, path::Path};
 
+use glam::DVec3;
+
 use osp_sim::{
-    data::{CraftDef, EngineDef, RcsDef, ResourceDef, TankTypeDef},
+    builder, comms,
+    data::{
+        CraftDef, CraftPartDef, EngineDef, GroundStationDef, RcsDef, ResourceDef, SystemDef,
+        TankTypeDef,
+    },
+    orbit::{Orbit, StateVector},
+    palette,
     propulsion::Propulsion,
+    sizing::ProceduralDef,
+    system::SolarSystem,
+    systems::{Antenna, Avionics, Battery},
+    time::SimTime,
 };
 
 #[path = "golden/record.rs"]
@@ -80,6 +92,133 @@ fn any_pod_flies_a_craft_in_the_base_game() {
         record::catalog(&all.registry).rules.avionics,
         "Realistic Avionics turns it on"
     );
+}
+
+#[test]
+fn a_probe_built_from_the_parts_list_has_power_and_a_radio() {
+    let content = base_game();
+    let catalog = record::catalog(&content.registry);
+    let entries = palette::entries(&catalog);
+    let part = |entry: &str, id: &str, on: Option<&str>| -> CraftPartDef {
+        let mut part = (entries.iter().find(|e| e.id == entry))
+            .unwrap_or_else(|| panic!("no `{entry}` in the list"))
+            .part
+            .clone();
+        part.id = id.to_owned();
+        part.on = on.map(str::to_owned);
+        part.by = "bottom".to_owned();
+        part
+    };
+    let craft = CraftDef {
+        id: "probe".into(),
+        name: String::new(),
+        parts: vec![
+            part("probe_core", "core", None),
+            part("battery", "battery", Some("core.top")),
+            part("dish", "dish", Some("battery.top")),
+        ],
+        sequences: None,
+        triggers: Vec::new(),
+        rcs_shut: Vec::new(),
+        abort: Vec::new(),
+    };
+    let probe = Propulsion::from_craft(&craft, &catalog).unwrap();
+    let (_, battery) = probe.systems.all::<Battery>().next().expect("a battery");
+    assert!(battery.charge > 0.0);
+    let (_, dish) = probe.systems.all::<Antenna>().next().expect("a radio");
+    assert!(dish.radio.gain > 1.0, "a dish, not a whip");
+    // Good for low orbit to a 26 m station with room to spare, and for the Moon too.
+    let station = comms::dish_gain(26.0, comms::S_BAND);
+    assert!(comms::margin(&dish.radio, station, 50.0, 2e6) > 20.0);
+    assert!(comms::margin(&dish.radio, station, 50.0, 3.84e8) > 0.0);
+    // In a real orbit, against the real ground stations, a station comes into sight within the
+    // day, and the link is there when it does.
+    let mut problems = Vec::new();
+    let system = SolarSystem::from_def(&SystemDef {
+        bodies: content.registry.all("bodies", &mut problems),
+    })
+    .unwrap();
+    let defs = content
+        .registry
+        .all::<GroundStationDef>("ground_stations", &mut problems);
+    let stations: Vec<_> = (defs.iter())
+        .filter_map(|def| comms::Station::new(def, &system))
+        .collect();
+    assert!(stations.len() >= 4 && problems.is_empty(), "{problems:?}");
+    let earth = system.find("Earth").unwrap();
+    let body = system.body(earth);
+    let radius = body.radius + 200_000.0;
+    let (lat, speed) = (28.6_f64.to_radians(), (body.gm / radius).sqrt());
+    let orbit = Orbit::new(
+        body.gm,
+        SimTime::J2000,
+        StateVector {
+            position: DVec3::X * radius,
+            velocity: DVec3::new(0.0, lat.cos(), lat.sin()) * speed,
+        },
+    );
+    let after = SimTime::J2000;
+    let change = comms::next_link_change(
+        &system,
+        &stations,
+        earth,
+        &orbit,
+        &dish.radio,
+        after,
+        after.add_seconds(86_400.0),
+    )
+    .expect("a station comes round within the day");
+    let linked_now = comms::best_link(
+        &system,
+        &stations,
+        earth,
+        orbit.state_at(after).position,
+        &dish.radio,
+        after,
+    )
+    .is_some();
+    let soon = change.add_seconds(5.0);
+    let linked_then = comms::best_link(
+        &system,
+        &stations,
+        earth,
+        orbit.state_at(soon).position,
+        &dish.radio,
+        soon,
+    )
+    .is_some();
+    assert_ne!(linked_now, linked_then, "the link changes when it says");
+    // Something to command it, and the rule that a pod will do.
+    assert!(probe.systems.all::<Avionics>().next().is_some());
+    // Every one of them can stand on its own, and what needs a mod is not offered without it.
+    for entry in entries
+        .iter()
+        .filter(|e| e.group == palette::Group::Systems)
+    {
+        builder::alone(&entry.part, &catalog).unwrap_or_else(|e| panic!("{}: {e}", entry.id));
+    }
+    assert!(
+        entries
+            .iter()
+            .all(|e| e.id != "fuel_cell" && e.id != "avionics")
+    );
+    // A bigger dish is drawn bigger.
+    let mut big = part("dish", "dish", None);
+    if let Some(ProceduralDef::Antenna(antenna)) = &mut big.procedural {
+        antenna.diameter = 2.0;
+    }
+    let scale = |part: &CraftPartDef| {
+        let craft = builder::alone(part, &catalog).unwrap();
+        let drawn = craft.parts[0]
+            .built
+            .geometry
+            .models()
+            .next()
+            .map(|(m, ..)| m.scale);
+        drawn.expect("a model")
+    };
+    assert_eq!(scale(&part("dish", "dish", None)), 1.0);
+    assert_eq!(scale(&big), 2.0);
 }
 
 #[test]

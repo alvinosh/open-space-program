@@ -169,6 +169,8 @@ impl Plugin for SmokeTestPlugin {
                 EDITOR_DRAG_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_FUEL_LINE").is_some() {
                 FUEL_LINE_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_PROBE").is_some() {
+                PROBE_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_EDITOR_MOVE").is_some() {
                 EDITOR_MOVE_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_EDITOR_CRAFT").is_some() {
@@ -1868,6 +1870,40 @@ const FUEL_LINE_SCRIPT: &[(f64, Action)] = &[
     (10.6, Action::Capture("fuel_line_linked.png")),
     (10.7, Action::ExpectData("!editor.linking")),
     (10.9, Action::Exit),
+];
+
+/// `OSP_CAPTURE_PROBE=1`: a probe built only from the parts list, a core with a battery on top, a dish
+/// on that and a solar panel on its side, put in orbit with a radio.
+const PROBE_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.new")),
+    (2.0, Action::Unlock),
+    (2.2, Action::Ui("editor.group:systems")),
+    (4.0, Action::Capture("probe_parts.png")),
+    (4.1, Action::Ui("editor.add:probe_core")),
+    (5.1, Action::ExpectPartCount(1)),
+    (5.2, Action::Ui("editor.add:battery")),
+    (5.5, Action::EditorPointAtNode("probe_core", "top")),
+    (6.3, Action::Press(MouseButton::Left)),
+    (6.4, Action::Release(MouseButton::Left)),
+    (7.5, Action::ExpectPartCount(2)),
+    (7.6, Action::Ui("editor.add:dish")),
+    (7.9, Action::EditorPointAtNode("battery", "top")),
+    (8.7, Action::Press(MouseButton::Left)),
+    (8.8, Action::Release(MouseButton::Left)),
+    (9.9, Action::ExpectPartCount(3)),
+    (10.0, Action::Ui("editor.add:solar_panel")),
+    (10.3, Action::EditorPointAtPart("probe_core")),
+    (11.1, Action::Press(MouseButton::Left)),
+    (11.2, Action::Release(MouseButton::Left)),
+    (12.3, Action::ExpectPartCount(4)),
+    (12.8, Action::Capture("probe_built.png")),
+    (12.9, Action::Ui("editor.place:orbit")),
+    (13.2, Action::Ui("editor.launch")),
+    (17.0, Action::ExpectData("vessel.has_radio")),
+    (17.1, Action::Capture("probe_in_orbit.png")),
+    (17.2, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_MENU_TUTORIAL=1`: the title screen's Tutorials, and a tutorial started from them.

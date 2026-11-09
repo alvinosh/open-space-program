@@ -1,0 +1,10 @@
+// What a battery part is made of. `specific_energy` Wh/kg and `energy_density` Wh/L.
+[
+  {
+    id: "Rechargeable battery",
+    rechargeable: true,
+    specific_energy: 150,
+    energy_density: 300,
+    description: "A modern rechargeable cell.",
+  },
+]

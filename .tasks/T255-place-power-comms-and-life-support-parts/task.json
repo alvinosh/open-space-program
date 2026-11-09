@@ -2,7 +2,7 @@
   "id": "T255",
   "title": "Batteries, solar panels, antennas, fuel cells and life support in the parts list",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "editor",
   "size": "M",
   "parent": "T253",
@@ -13,7 +13,7 @@
   ],
   "created": "2026-11-09",
   "updated": "2026-11-09",
-  "done": null,
+  "done": "2026-11-09",
   "milestone": "M3",
   "priority": 57.0102
 }
