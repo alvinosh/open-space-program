@@ -1,0 +1,24 @@
+{
+  "id": "T249",
+  "title": "A small stock parts list and casual stock rockets",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "L",
+  "parent": "T243",
+  "depends_on": [
+    "T247",
+    "T248",
+    "T251"
+  ],
+  "refs": [
+    "assets/core/craft",
+    "assets/core/scenarios/stock.json5",
+    "assets/core/tutorials"
+  ],
+  "created": "2026-11-09",
+  "updated": "2026-11-09",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.04
+}

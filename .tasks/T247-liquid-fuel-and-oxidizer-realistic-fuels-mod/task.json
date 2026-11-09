@@ -1,0 +1,24 @@
+{
+  "id": "T247",
+  "title": "Liquid fuel and oxidiser in the base game, a Realistic Fuels mod",
+  "kind": "feature",
+  "status": "done",
+  "area": "propulsion",
+  "size": "L",
+  "parent": "T243",
+  "depends_on": [
+    "T244"
+  ],
+  "refs": [
+    "assets/core/resources/stock.json5",
+    "assets/core/engines/stock.json5",
+    "crates/osp_sim/src/properties.rs",
+    "crates/osp_sim/src/palette.rs",
+    "crates/osp_render/src/plume.rs"
+  ],
+  "created": "2026-11-09",
+  "updated": "2026-11-09",
+  "done": "2026-11-09",
+  "milestone": "M3",
+  "priority": 57.02
+}

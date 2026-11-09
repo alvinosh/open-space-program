@@ -1,0 +1,21 @@
+{
+  "id": "T251",
+  "title": "A smaller Solar System for casual games",
+  "kind": "feature",
+  "status": "todo",
+  "area": "environment",
+  "size": "L",
+  "parent": "T243",
+  "depends_on": [],
+  "refs": [
+    "assets/core/bodies/solar_system.json5",
+    "crates/osp_game/src/sim.rs (WorldData)",
+    "crates/osp_sim/src/save.rs",
+    "crates/osp_game/src/content.rs (ModSwitch)"
+  ],
+  "created": "2026-11-09",
+  "updated": "2026-11-09",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.03
+}

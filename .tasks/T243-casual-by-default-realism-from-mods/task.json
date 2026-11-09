@@ -1,0 +1,15 @@
+{
+  "id": "T243",
+  "title": "Casual by default, realism from mods",
+  "kind": "epic",
+  "status": "todo",
+  "area": "modding",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [],
+  "created": "2026-11-09",
+  "updated": "2026-11-09",
+  "done": null,
+  "milestone": "M3"
+}

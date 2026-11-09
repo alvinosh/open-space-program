@@ -51,7 +51,7 @@ mods/my_mod/
 | `name`, `version`, `authors`, `description` | Shown in the Mods window. |
 | `dependencies` | Mods that must be installed; they load first. Missing → this mod is skipped. |
 | `load_after` / `load_before` | Soft ordering against mods that may or may not be installed. |
-| `enabled` | `false` to keep the mod installed but inactive. |
+| `enabled` | `false` keeps the mod installed but off for scripted runs and tests. Players choose a game's mods on the New game screen; a saved game keeps the mods it was saved with. |
 
 **Load order:** `core` first, then the other mods with dependency and ordering constraints
 respected, ties broken alphabetically by id. Cycles and missing dependencies are
@@ -68,6 +68,8 @@ parts of it instead.
 | --- | --- | --- |
 | `bodies` | Planets, moons, stars | Keplerian `orbit` (J2000 ecliptic, degrees), IAU `rotation`, optional `atmosphere`, `scattering` (the sky, see [Skies](#skies)), `terrain` dataset and `max_terrain_height` (m) |
 | `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `response`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }`, `length` and `exit_diameter` (m), `exit_pressure` (Pa), `plume`, `turbine_exhaust`, `model`, `model_scale` (draw the model this many times its size), `nodes` (see below); see [Engine response and plumes](#engine-response-and-plumes), optional `thrust_curve` ([share of propellant left, share of full thrust] points, as a solid's) |
+| `rules` | How much of the real thing a game asks for, where that is not a matter of its parts' data | One record, `game`: `avionics` (control takes avionics rated for the vessel's mass and where it is, or a crew for a small one; off, any pod flies whatever it is on, and a vessel with no pod takes no commands). The Realistic Avionics mod turns it on |
+| `game_modes` | What a new game can be | `name`, `description`, `mods` (what it turns on, everything else is off), `default` (what a player who has not chosen yet gets) |
 | `plumes` | Exhaust looks | `propellants` it is the exhaust of (alternatives with `\|`), `kinds`, `fallback`, `core`, `flame` and `shock` colours (linear RGB), `luminance` (cd/m² per m at full thrust), `soot` (0..1), `temperature` (K), `smoke` (colour), `haze` (0..1); see [Engine response and plumes](#engine-response-and-plumes) |
 | `resources` | Propellants and gases | `density` (kg/m³ as stored), storage `temperature` (K) and `pressure` (Pa) |
 | `materials` | Structural materials | `density` (kg/m³), `yield_strength` and `elastic_modulus` (Pa) |
@@ -677,6 +679,10 @@ enough for the springs to hold it upright (roughly `k · track² / 2` above
 `mass · g · height`, k the strut stiffness), or it rolls onto a wing.
 
 ### Engine response and plumes
+
+The base game's engines leave out `response`, `ignitions` and `requires_ullage` and have `min_throttle: 0`, so they start and stop at once and light whenever asked. The Realistic Engines mod (`mods/realistic_engines`) patches all of that in, in the first pass, so a mod that copies a stock engine copies it with those values.
+
+The base game has three resources: `Liquid Fuel`, `Oxidiser` (every liquid engine burns them at 1 : 2.36 by mass) and `Solid Fuel`. Stock engines name the `plume` they look like. The Realistic Fuels mod (`mods/realistic_fuels`) adds the real propellants and patches the stock engines, thrusters, tank types and craft to use them. A mod whose parts burn real propellants should depend on it.
 
 Engines do not jump to whatever the throttle says. Each has a thrust level (a share of
 full thrust) that follows the throttle through its `response`:
@@ -1434,7 +1440,9 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `tutorial.step`, `tutorial.count`, `tutorial.text`, `tutorial.hint` | The step the player is on (1 to `count`) and its words with the player's keys in; the hint, empty until the player has been on the step long enough |
 | `tutorial.manual`, `tutorial.skippable` | The step is moved past with Continue (it waits for nothing); it waits for something and can be skipped |
 | `mods.count`, `mods.errors`, `mods.warnings` | |
-| `mods.list[]` | `id`, `name`, `version`, `authors`, `description` |
+| `mods.list[]` | The mods loaded: `id`, `name`, `version`, `authors`, `description` |
+| `mods.available[]` | Every mod installed, for the New game screen: `id`, `name`, `description`, `on` (bool), `state` (`On`, `Off` or `Needs <mod>`) |
+| `mods.modes[]`, `mods.custom` | The modes a new game can be: `id`, `name`, `description`, `on`. `mods.custom` while the choice is none of them |
 | `mods.problems[]` | `error` (bool), `text` |
 | `menu.screen`, `menu.playing`, `menu.tutorials[]` | The screen showing; a game is in progress; the tutorials: `id`, `name`, `description`, `steps` |
 | `menu.new_game`, `menu.vessels[]`, `menu.vessel_line`, `menu.game_line` | New game was picked and has not started; the vessels in the game to fly (`id`, `name`, `where`, `flying`, `state`, `destroying`: asked once), debris left out; how many, in words; the line under Paused |
@@ -1506,6 +1514,8 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `ui.pin:<layout>` | Pin or unpin a popup, so a click outside does not close it |
 | `ui.toggle_group:<group>`, `ui.show_group:<group>`, `ui.hide_group:<group>` | Every layout in a group |
 | `game.reload` | Reload all mods and rebuild the UI |
+| `mods.toggle:<id>` | On the New game screen: turn a mod on or off for the new game, with what has to go with it, and remember it |
+| `mods.mode:<id>` | On the New game screen: take the mods of a mode (`game_modes`) |
 | `game.menu` | Esc: closes an open popup, or opens the menu, or goes back as `menu.back` does. In the editor it goes back to the menu it came from |
 | `menu.open:<screen>`, `menu.back` | Go to the screen, the layout `menu_<screen>`; go back one. From the pause menu that resumes; from the title screen it does nothing |
 | `game.resume`, `game.exit`, `game.quit`, `game.start_tutorial:<tutorial>` | Back to the flight; leave the game for the title screen; close the game; start a tutorial's scenario with its steps. None of them asks: a button that leaves a game uses `ask.leave` |

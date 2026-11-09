@@ -1,0 +1,23 @@
+{
+  "id": "T250",
+  "title": "Decide which ship systems are optional, and how a mod switches one",
+  "kind": "decision",
+  "status": "todo",
+  "area": "modding",
+  "size": "S",
+  "parent": "T243",
+  "depends_on": [
+    "T244"
+  ],
+  "refs": [
+    "crates/osp_sim/src/systems.rs",
+    "crates/osp_sim/src/comms.rs",
+    "crates/osp_sim/src/heating.rs",
+    "crates/osp_sim/src/aero.rs"
+  ],
+  "created": "2026-11-09",
+  "updated": "2026-11-09",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.06
+}
