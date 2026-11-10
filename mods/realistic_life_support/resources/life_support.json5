@@ -1,0 +1,11 @@
+// Water, and packed food at the Realism mod's density, so either mod can load without the other.
+// The rest: what people breathe out and pass, and the lithium hydroxide that takes CO2 out of a
+// cabin's air.
+[
+  { id: "Water", density: 1000.0 },
+  { id: "Food", density: 281.0291 },
+  { id: "CO2", density: 770.0, pressure: 6.0e6 }, // liquid, should it ever be kept in a tank
+  { id: "WasteWater", density: 1000.0 },
+  { id: "Waste", density: 1000.0 },
+  { id: "LiOH", density: 1000.0 }, // granules in canisters
+]

@@ -1,0 +1,25 @@
+// What a person uses a day (kg), and how long they last with none of it (s), before their own
+// resilience, which gives each 1 to 1.2 times as long. They are weak a third of the way there and
+// critical two thirds of the way (`weak`, `critical`, shares of `lasts`), and recover as fast as they
+// declined once they have it again. `name` is what people call it; `makes`, what each person makes of
+// it a day.
+//
+// A cabin's air takes what is breathed out until it is too foul to breathe: 0.15 kg of CO2 a cubic
+// metre is about 8 % at sea-level pressure. `room_per_seat` is the cabin where a part does not say.
+// Every cabin is fitted with a LiOH scrubber a seat, and carries the LiOH for the days it carries
+// supplies for. Waste water and waste go overboard when there is nowhere to keep them.
+[
+  {
+    id: "realistic",
+    name: "Realistic",
+    needs: [
+      { resource: "LqdOxygen", name: "air", daily: 0.84, lasts: 300, makes: { CO2: 1.0 } },
+      { resource: "Water", name: "water", daily: 3.0, lasts: 259200, makes: { WasteWater: 2.5 } }, // 3 days
+      { resource: "Food", name: "food", daily: 0.6, lasts: 2592000, makes: { Waste: 0.1 } }, // 30 days
+    ],
+    cabin: { CO2: 0.15 },
+    room_per_seat: 2.0,
+    fitted: [{ process: "lioh_scrubber", per_seat: 1 }],
+    dump: ["WasteWater", "Waste"],
+  },
+]

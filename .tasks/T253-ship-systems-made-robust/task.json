@@ -2,14 +2,14 @@
   "id": "T253",
   "title": "Ship systems made robust: fuel, power, comms, heat, life support",
   "kind": "epic",
-  "status": "todo",
+  "status": "done",
   "area": "propulsion",
   "size": null,
   "parent": null,
   "depends_on": [],
   "refs": [],
   "created": "2026-11-09",
-  "updated": "2026-11-09",
-  "done": null,
+  "updated": "2026-11-10",
+  "done": "2026-11-10",
   "milestone": "M3"
 }

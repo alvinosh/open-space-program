@@ -1,0 +1,10 @@
+// People who breathe, drink and eat: each person in a part with life support uses oxygen, water and
+// food from the tanks it can reach, and is lost without oxygen.
+{
+  id: "realistic_life_support",
+  name: "Realistic Life Support",
+  version: "0.1.0",
+  authors: ["Open Space Program"],
+  description: "People aboard use oxygen, water and food every day, from the tanks their part can reach. Without oxygen they last minutes.",
+  dependencies: ["core", "realistic_fuels"],
+}

@@ -1,0 +1,29 @@
+{
+  "id": "T281",
+  "title": "A long stay at every warp, saved halfway",
+  "kind": "test",
+  "status": "todo",
+  "area": "test",
+  "size": "M",
+  "parent": "T260",
+  "depends_on": [
+    "T258",
+    "T264",
+    "T265",
+    "T266",
+    "T267",
+    "T269",
+    "T050",
+    "T270",
+    "T274",
+    "T278"
+  ],
+  "refs": [
+    ".tasks/T260-ships-that-live/spec.md §14.3, §14.4, §16"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.083
+}

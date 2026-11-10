@@ -10,10 +10,12 @@
     "T033"
   ],
   "refs": [
-    "Early feature checklist (since removed), Phase 7"
+    "Early feature checklist (since removed), Phase 7",
+    "T267",
+    "T269"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
+  "updated": "2026-11-10",
   "done": null,
   "milestone": "shelved",
   "priority": 154

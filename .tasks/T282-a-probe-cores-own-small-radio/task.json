@@ -1,0 +1,23 @@
+{
+  "id": "T282",
+  "title": "A probe core's own small radio in Casual",
+  "kind": "feature",
+  "status": "todo",
+  "area": "comms",
+  "size": "S",
+  "parent": "T260",
+  "depends_on": [
+    "T261"
+  ],
+  "refs": [
+    "crates/osp_sim/src/comms.rs",
+    "crates/osp_sim/src/vessel.rs (commandable)",
+    "T087",
+    "T256"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.0645
+}

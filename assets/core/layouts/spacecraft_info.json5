@@ -16,10 +16,10 @@
         children: [
           { widget: "label", class: "section", text: "Crew" },
           { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Aboard" }, { widget: "label", text: "{vessel.crew_aboard}" }] },
+          { widget: "row", class: "kv", visible: "vessel.crew_aboard", children: [{ widget: "label", class: "key", text: "People" }, { widget: "label", text: "{vessel.crew_people}" }] },
           { widget: "row", class: "kv", visible: "vessel.crew_lost", children: [{ widget: "label", class: "key", text: "Lost" }, { widget: "label", class: "warning", text: "{vessel.crew_lost}" }] },
-          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Oxygen" }, { widget: "label", text: "{vessel.oxygen|fixed:1} kg" }] },
-          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Water" }, { widget: "label", text: "{vessel.water|fixed:1} kg" }] },
-          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Food" }, { widget: "label", text: "{vessel.food|fixed:1} kg" }] },
+          { widget: "row", class: "kv", visible: "vessel.has_supplies", children: [{ widget: "label", class: "key", text: "Supplies" }, { widget: "label", text: "{vessel.supplies}" }] },
+          { widget: "row", class: "kv", visible: "vessel.has_air", children: [{ widget: "label", class: "key", text: "Air" }, { widget: "label", text: "{vessel.air_fouled|fixed:0} % fouled" }] },
         ],
       },
       { widget: "label", class: "section", text: "Heat" },

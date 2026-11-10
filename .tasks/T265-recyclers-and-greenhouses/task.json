@@ -1,0 +1,21 @@
+{
+  "id": "T265",
+  "title": "Recyclers and greenhouses",
+  "kind": "feature",
+  "status": "todo",
+  "area": "crew",
+  "size": "L",
+  "parent": "T260",
+  "depends_on": [
+    "T258",
+    "T262"
+  ],
+  "refs": [
+    ".tasks/T260-ships-that-live/spec.md §3.4, §3.5"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.066
+}

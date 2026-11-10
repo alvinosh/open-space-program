@@ -1,0 +1,10 @@
+// The casual game's life support: one supply, so much a person a day. Out of it, people are short,
+// weak after 5 days and critical after 10, and die after 15, each a little later by their own
+// resilience; given supplies again, they recover as fast as they declined.
+[
+  {
+    id: "casual",
+    name: "Casual",
+    needs: [{ resource: "Supplies", name: "supplies", daily: 1.0, lasts: 1296000 }],
+  },
+]

@@ -2697,7 +2697,11 @@ pub(crate) mod tests {
         PartCatalog {
             rules: Default::default(),
             engines: crate::test_data::realistic_engines(),
-            resources: crate::test_data::realistic_resources(),
+            resources: (crate::test_data::realistic_resources().into_iter())
+                .chain(records(include_str!(
+                    "../../../mods/realistic_life_support/resources/life_support.json5"
+                )))
+                .collect(),
             materials: records(include_str!("../../../assets/core/materials/stock.json5")),
             tank_types: crate::test_data::realistic_tank_types(),
             reaction_wheels: records(include_str!(
@@ -2715,6 +2719,19 @@ pub(crate) mod tests {
                 "../../../mods/realism/avionics/procedural_avionics.json5"
             )),
             liveries: Vec::new(),
+            life_support: records(include_str!(
+                "../../../mods/realistic_life_support/life_support/profiles.json5"
+            )),
+            processes: (records(include_str!(
+                "../../../mods/example_mod/processes/electrolysis.json5"
+            ))
+            .into_iter())
+            .chain(records(include_str!(
+                "../../../mods/realistic_life_support/processes/life_support.json5"
+            )))
+            .collect(),
+            crew_names: records(include_str!("../../../assets/core/crew_names/stock.json5")),
+            engine_families: Vec::new(),
         }
     }
 

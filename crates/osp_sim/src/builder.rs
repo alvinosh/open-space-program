@@ -595,6 +595,11 @@ impl Builder {
         let part = part_mut(&mut next, id)?;
         properties::set(part, field, text, &mixes, catalog)
             .map_err(|e| Refusal::new(Rule::Part, e))?;
+        // Another configuration of an engine may burn something else: tanks as the parts list gave
+        // them follow it, as they follow an engine put on.
+        if field == "configuration" {
+            properties::fill_from_engines(&mut next, catalog, &[id.to_owned()]);
+        }
         if kept {
             check(&next, catalog, &[id])?;
         } else {

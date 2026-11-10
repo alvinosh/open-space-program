@@ -1,0 +1,21 @@
+// Names for the crew: each person is given a first and a last name from all the records of
+// `crew_names` together, the same ones for the same seat of the same part every time. A craft can
+// name its crew instead (`crew: { names: [...] }`). A mod adds a record of its own, or replaces this
+// one to use only its names.
+[
+  {
+    id: "stock",
+    first: [
+      "Ada", "Amara", "Anika", "Aziz", "Bea", "Bruno", "Camila", "Chidi", "Dara", "Elena",
+      "Emil", "Farah", "Felix", "Grace", "Hana", "Ines", "Ivo", "Jonas", "Kai", "Lena",
+      "Leo", "Maya", "Mateo", "Nadia", "Niko", "Noor", "Omar", "Priya", "Rafael", "Ren",
+      "Sara", "Soren", "Tomas", "Uma", "Vera", "Yusuf", "Zara", "Zoe",
+    ],
+    last: [
+      "Abara", "Berg", "Castell", "Dahl", "Eze", "Falk", "Gallo", "Haas", "Ito", "Jaramillo",
+      "Kader", "Lind", "Moreau", "Nakamura", "Okafor", "Petrov", "Quinn", "Rahman", "Sato",
+      "Torres", "Ueda", "Varga", "Weber", "Xu", "Yilmaz", "Zielinski", "Novak", "Mensah",
+      "Halvorsen", "Ortega", "Kowalski", "Brandt",
+    ],
+  },
+]

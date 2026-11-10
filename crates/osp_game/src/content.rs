@@ -11,9 +11,9 @@ use osp_mods::{Content, Diagnostic, ModChoices, ModManifest, Registry, Severity}
 use osp_sim::{
     data::{
         AirBreathingEngineDef, AvionicsDef, BatteryDef, BodyDef, CraftDef, EngineDef,
-        EngineFamilyDef, GroundStationDef, LaunchSiteDef, LiveryDef, MaterialDef, PartCatalog,
-        PodDef, RcsDef, ReactionWheelDef, ResourceDef, ScenarioDef, SolarPanelDef, SystemDef,
-        TankTypeDef, TechNodeDef,
+        EngineFamilyDef, GroundStationDef, LaunchSiteDef, LifeSupportProfileDef, LiveryDef,
+        MaterialDef, PartCatalog, PodDef, ProcessDef, RcsDef, ReactionWheelDef, ResourceDef,
+        ScenarioDef, SolarPanelDef, SystemDef, TankTypeDef, TechNodeDef,
     },
     tech::{TechTree, calendar_year},
     terrain::HeightSource,
@@ -440,6 +440,10 @@ pub fn catalog(registry: &Registry, diagnostics: &mut Vec<Diagnostic>) -> PartCa
         batteries: registry.all::<BatteryDef>("batteries", diagnostics),
         avionics: registry.all::<AvionicsDef>("avionics", diagnostics),
         liveries: registry.all::<LiveryDef>("liveries", diagnostics),
+        life_support: registry.all::<LifeSupportProfileDef>("life_support", diagnostics),
+        processes: registry.all::<ProcessDef>("processes", diagnostics),
+        crew_names: registry.all("crew_names", diagnostics),
+        engine_families: registry.all("engine_families", diagnostics),
     }
 }
 
@@ -623,6 +627,7 @@ mod tests {
             "realistic_engines",
             "realistic_fuels",
             "realistic_avionics",
+            "realistic_life_support",
             "realism",
         ] {
             assert!(mode("realistic").mods.iter().any(|m| m == id), "{id}");
@@ -636,12 +641,14 @@ mod tests {
             |choices: &ModChoices| mode_of(&modes, &available, choices).map(|m| m.id.as_str());
         let casual = osp_mods::exactly(&available, &[]);
         assert_eq!(name(&casual), Some("casual"));
-        let realism = ["realism".to_owned()];
+        let realistic = (modes.iter().find(|m| m.id == "realistic").unwrap().mods).clone();
         assert_eq!(
-            name(&osp_mods::exactly(&available, &realism)),
-            Some("realistic"),
-            "Realism brings the mods it depends on"
+            name(&osp_mods::exactly(&available, &realistic)),
+            Some("realistic")
         );
+        // The real parts bring what they depend on, but not the ship systems' mods (T250).
+        let realism = ["realism".to_owned()];
+        assert_eq!(name(&osp_mods::exactly(&available, &realism)), None);
         let engines = ["realistic_engines".to_owned()];
         assert_eq!(name(&osp_mods::exactly(&available, &engines)), None);
     }

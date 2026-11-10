@@ -75,7 +75,8 @@
       id: "command_module_pod",
       on: "command_module.pod",
       template: "Apollo Command Module (CM)",
-      components: [{ life_support: {} }],
+      // LiOH for the scrubbers the life support fits a cabin with: three people's CO2 for ten days.
+      components: [{ life_support: { carries: { LiOH: 35 } } }],
       // Low and to one side of the pod's own frame, which starts 1.085 m up the capsule: its
       // centre of mass off the axis trims it at an angle, and that is its lift.
       mass_center: [0.2, 0, -0.1],
@@ -1191,7 +1192,7 @@
       components: [
         { container: {} },
         { crew: { seats: 2, aboard: 0 } },
-        { life_support: {} },
+        { life_support: { carries: { LiOH: 8 } } }, // two people's CO2 for three days
         { electric_load: { watts: 800, priority: 3 } },
         { avionics: { controlled_mass: 20000, interplanetary: true } },
         { antenna: { power: 20, data_rate: 51.2 } },

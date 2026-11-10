@@ -5,17 +5,20 @@
   "status": "todo",
   "area": "propulsion",
   "size": "M",
-  "parent": "T011",
+  "parent": "T260",
   "depends_on": [
     "T028",
-    "T045"
+    "T045",
+    "T261",
+    "T268"
   ],
   "refs": [
-    "docs/systems-plan.md (step 25)"
+    "docs/systems-plan.md (step 25)",
+    ".tasks/T260-ships-that-live/spec.md §8"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-01",
+  "updated": "2026-11-10",
   "done": null,
-  "milestone": "M7",
-  "priority": 117
+  "milestone": "M3",
+  "priority": 57.071
 }

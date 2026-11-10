@@ -2,18 +2,23 @@
   "id": "T258",
   "title": "Life support: realistic and casual",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "crew",
   "size": "L",
   "parent": "T253",
-  "depends_on": [],
+  "depends_on": [
+    "T250",
+    "T261",
+    "T262",
+    "T263"
+  ],
   "refs": [
     "crates/osp_sim/src/systems/crew.rs",
     "T010"
   ],
   "created": "2026-11-09",
-  "updated": "2026-11-09",
-  "done": null,
+  "updated": "2026-11-10",
+  "done": "2026-11-10",
   "milestone": "M3",
-  "priority": 57.0105
+  "priority": 57.064
 }

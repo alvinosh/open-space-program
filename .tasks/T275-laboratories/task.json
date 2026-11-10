@@ -1,0 +1,21 @@
+{
+  "id": "T275",
+  "title": "Laboratories",
+  "kind": "feature",
+  "status": "todo",
+  "area": "science",
+  "size": "M",
+  "parent": "T260",
+  "depends_on": [
+    "T273",
+    "T262"
+  ],
+  "refs": [
+    ".tasks/T260-ships-that-live/spec.md §6.5"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.077
+}

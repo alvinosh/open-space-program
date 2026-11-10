@@ -1,6 +1,7 @@
 // Crew pods. A pod sits at the top of its stage (`pod: "<id>"`); its mass (with crew and
 // consumables, kg) counts as structure. `diameter` is the base, `height` the whole pod (m),
-// `top_diameter` the top (the air sees the pod as a frustum).
+// `top_diameter` the top (the air sees the pod as a frustum). `supplies`: days of what its crew
+// need, in its lockers, under whatever life support the game has.
 // Models are glTF, origin at the centre of the base, nose up.
 [
   {
@@ -11,6 +12,7 @@
     height: 2.9,
     top_diameter: 0.73,
     model: "models/pods/c1.glb",
+    supplies: 14, // days
   },
   {
     id: "C-4 Capsule", // four people, Dragon/Orion class
@@ -20,5 +22,6 @@
     height: 3.9,
     top_diameter: 1.1,
     model: "models/pods/c4.glb",
+    supplies: 30, // days
   },
 ]

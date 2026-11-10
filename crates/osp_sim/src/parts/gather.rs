@@ -347,6 +347,7 @@ fn components(
             | Component::Swing(_)
             | Component::HeatShield(_)
             | Component::LifeSupport(_)
+            | Component::Process(_)
             | Component::FuelLine(_) => {}
             Component::Engine(engine) => kinds.push(PartKind::Engine(engine.clone())),
             Component::Rcs(block) => kinds.push(PartKind::Rcs(block.clone())),

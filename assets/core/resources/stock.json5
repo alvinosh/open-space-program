@@ -6,4 +6,5 @@
   { id: "Liquid Fuel", density: 820 },
   { id: "Oxidiser", density: 1141 },
   { id: "Solid Fuel", density: 1770 },
+  { id: "Supplies", density: 600 }, // what people live on in the casual game: food, water and air in one
 ]

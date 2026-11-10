@@ -12,7 +12,7 @@
   {
     id: "realistic",
     name: "Realistic",
-    description: "Real propellants, real engines and avionics and their limits, the real parts and historical rockets.",
-    mods: ["realistic_engines", "realistic_fuels", "realistic_avionics", "realism"],
+    description: "Real propellants, real engines and avionics and their limits, crews who need air, water and food, the real parts and historical rockets.",
+    mods: ["realistic_engines", "realistic_fuels", "realistic_avionics", "realistic_life_support", "realism"],
   },
 ]

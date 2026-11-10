@@ -25,7 +25,7 @@ The plan documents say why and how; the tasks say what is left.
 | `title` | One line. |
 | `kind` | `epic` (groups tasks, has no work of its own), `feature`, `bug`, `chore`, `test` (a smoke or build test to write), `milestone` (a gate that passes when other tasks are done), `decision` (a choice that blocks others; done when it is written down). |
 | `status` | `todo`, `in_progress`, `blocked`, `done`, `dropped`, `backlog` (an idea nobody has planned; `ready` leaves it out). |
-| `area` | The part of the game: `editor`, `builder`, `physics`, `propulsion`, `power`, `avionics`, `comms`, `docking`, `landing`, `thermal`, `recovery`, `crew`, `structure`, `environment`, `content`, `aero`, `geometry`, `sequences`, `orbit`, `rendering`, `audio`, `ui`, `modding`, `process`, `test`. |
+| `area` | The part of the game: `editor`, `builder`, `physics`, `propulsion`, `power`, `avionics`, `comms`, `docking`, `landing`, `thermal`, `recovery`, `crew`, `structure`, `environment`, `content`, `aero`, `geometry`, `sequences`, `orbit`, `rendering`, `audio`, `ui`, `modding`, `process`, `science`, `resources`, `test`. |
 | `size` | Relative effort: `S` (days), `M` (a week or two), `L` (several weeks), `XL` (months); `null` for an epic. |
 | `parent` | The epic it belongs to, or `null`. Grouping only. |
 | `depends_on` | Ids of tasks that must be done before this one can start. This is the graph. |
@@ -82,11 +82,11 @@ dependency graph decides where a milestone cannot start earlier.
 | `M0` | Decisions and licences, in days: contact solver, scripting, real Solar System only, how the project earns, licence files. |
 | `M1` | Flying feels good: the in-progress work, the visible bugs, sound, and menus that make sense (T185). T189 moved to M3 on 2026-11-04, when the Apollo work went first. |
 | `M2` | Ship parts and systems, before the editor: the build core (physics on any part, open components, sizers, surface layers, environment), decouplers and separation motors, batteries, solar arrays, fuel cells, avionics, antennas, ground stations, link policy. Craft files can hold the new parts before a player can place them. |
-| `M3` | Build and save: the editor chain to its gate (T025), save and load, the start menu. |
+| `M3` | Build and save: the editor chain to its gate (T025), save and load, the start menu. Since 2026-11-10 also ships that live (T260): life support, cabins, radiation, failures, science, resources and automation, each with a Casual and a Realistic setting. |
 | `M4` | Flight planning, then the first scenarios and their tutorials: first launch, rendezvous, the Mars orbiter probe, the build tutorial. Missions and the tutorial layer (T165, T166) are done. |
-| `M5` | The Moon flyby: life support, the systems tutorial, the crewed flyby. Heat, entry and parachutes went to M2 for the Apollo gate (T180) on 2026-11-04. |
+| `M5` | The Moon flyby: the systems tutorial, the crewed flyby (life support went to T260 in M3 on 2026-11-10). Heat, entry and parachutes went to M2 for the Apollo gate (T180) on 2026-11-04. |
 | `M6` | Landings: contact physics, docking, the Moon's terrain, the lander, Mars relief, the Moon landing and the Mars lander. |
-| `M7` | Polish and depth: trailer-grade visuals, reliability, the Saturn V from procedural parts only. Pull a task forward if a scenario needs it. |
+| `M7` | Polish and depth: trailer-grade visuals, the Saturn V from procedural parts only. Pull a task forward if a scenario needs it. |
 | `M8` | Together: multiplayer, and the paid servers that depend on it. |
 | `later` | Content drops and breadth, in the order they unblock each other. |
 | `shelved` | Not dropped, not for 1.0: the XL realism-depth tasks (thermodynamic engine model, interstellar, ray-traced IVA, EVA, scripting). Revisit when players ask. |

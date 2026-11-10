@@ -1,0 +1,21 @@
+{
+  "id": "T270",
+  "title": "Repairs and spare parts",
+  "kind": "feature",
+  "status": "todo",
+  "area": "crew",
+  "size": "M",
+  "parent": "T260",
+  "depends_on": [
+    "T050",
+    "T263"
+  ],
+  "refs": [
+    ".tasks/T260-ships-that-live/spec.md §8.3, §8.7"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.072
+}

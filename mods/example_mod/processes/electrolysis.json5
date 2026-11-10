@@ -1,0 +1,14 @@
+// A process is a record: what it takes and makes at full speed (kg/s) and the power it draws (W).
+// A part runs it with a `process` component, as many times over as its `scale`. This one splits
+// water into hydrogen and oxygen at about 20 MJ a kilogram of water, so it needs the Realistic Fuels
+// and Realistic Life Support mods for its resources. What it makes cannot weigh more than what it
+// takes.
+[
+  {
+    id: "electrolysis",
+    name: "Electrolysis",
+    inputs: { Water: 5.0e-5 },
+    outputs: { LqdHydrogen: 5.595e-6, LqdOxygen: 4.4405e-5 },
+    power: 1000,
+  },
+]

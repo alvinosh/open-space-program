@@ -1,0 +1,23 @@
+{
+  "id": "T285",
+  "title": "Engine families: one part each, with its configuration picked in the part settings",
+  "kind": "feature",
+  "status": "done",
+  "area": "editor",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/palette.rs (engines)",
+    "crates/osp_sim/src/data.rs (EngineFamilyDef, EngineDef::family)",
+    "mods/realism/engine_families/families.json5",
+    "crates/osp_game/src/content.rs (Library::engine_families)",
+    "T203",
+    "T207"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": "2026-11-10",
+  "milestone": "M3",
+  "priority": 57.0646
+}

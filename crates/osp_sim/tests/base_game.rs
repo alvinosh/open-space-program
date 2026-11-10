@@ -49,7 +49,7 @@ fn the_mix(propellants: &std::collections::BTreeMap<String, f64>, what: &str) {
 }
 
 #[test]
-fn there_is_only_liquid_fuel_oxidiser_and_solid_fuel() {
+fn there_is_only_liquid_fuel_oxidiser_and_solid_fuel_and_supplies() {
     let content = base_game();
     let mut problems = Vec::new();
     let resources: BTreeSet<String> = (content.registry)
@@ -57,7 +57,13 @@ fn there_is_only_liquid_fuel_oxidiser_and_solid_fuel() {
         .into_iter()
         .map(|r| r.id)
         .collect();
-    assert_eq!(resources, [FUEL, OXIDISER, SOLID].map(str::to_owned).into(),);
+    // The three propellants, and what people live on.
+    assert_eq!(
+        resources,
+        [FUEL, OXIDISER, SOLID, "Supplies"]
+            .map(str::to_owned)
+            .into(),
+    );
 
     let engines = content.registry.all::<EngineDef>("engines", &mut problems);
     assert!(engines.len() > 10);
@@ -309,4 +315,61 @@ fn every_stock_craft_is_built_from_them() {
             );
         }
     }
+}
+
+/// The base game's life support is the casual one, and the Realistic game mode turns on the real
+/// one. The setting comes from the mods that are on, so a save keeps it with its mods.
+#[test]
+fn life_support_comes_from_the_rules_of_the_mods_on() {
+    let casual = record::catalog(&base_game().registry);
+    assert_eq!(casual.rules.life_support.as_deref(), Some("casual"));
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mods = root.join("mods");
+    let mode: serde_json::Value = (base_game().registry)
+        .get("game_modes", "realistic")
+        .unwrap();
+    let ids: Vec<String> = serde_json::from_value(mode["mods"].clone()).unwrap();
+    let choices = osp_mods::exactly(&osp_mods::installed(&mods), &ids);
+    let content = osp_mods::load_chosen(&root.join("assets/core"), Some(&mods), &choices);
+    let realistic = record::catalog(&content.registry);
+    let needs = (realistic.life_support_needs().unwrap()).expect("Realistic has life support");
+    let what: Vec<(&str, f64, Option<f64>)> = (needs.iter())
+        .map(|need| (need.resource.as_str(), need.daily, need.lasts))
+        .collect();
+    assert_eq!(
+        what,
+        [
+            ("LqdOxygen", 0.84, Some(300.0)),
+            ("Water", 3.0, Some(3.0 * 86_400.0)),
+            ("Food", 0.6, Some(30.0 * 86_400.0))
+        ]
+    );
+    for need in needs {
+        let known = realistic.resources.iter().any(|r| r.id == need.resource);
+        assert!(known, "{} is not a resource", need.resource);
+    }
+}
+
+/// In the casual game a crew needs only the one supply, which a capsule carries in its lockers:
+/// 14 days of it for its one person.
+#[test]
+fn in_casual_a_crew_needs_only_supplies() {
+    let catalog = record::catalog(&base_game().registry);
+    let needs = (catalog.life_support_needs().unwrap()).expect("Casual has life support");
+    let what: Vec<&str> = needs.iter().map(|n| n.resource.as_str()).collect();
+    assert_eq!(what, ["Supplies"]);
+    let craft: CraftDef = json5::from_str(
+        r#"{ id: "x", name: "", parts: [{ id: "pod", template: "C-1 Capsule" }] }"#,
+    )
+    .unwrap();
+    let mut p = Propulsion::from_craft(&craft, &catalog).unwrap();
+    let pod = p.parts().parts()[0].id;
+    assert!((p.held_for(pod, "Supplies") - 14.0).abs() < 1e-9);
+    let environment = osp_sim::environment::Environment::DARK;
+    p.step_systems(&environment, 10.0 * 86_400.0, false);
+    assert!((p.held_for(pod, "Supplies") - 4.0).abs() < 1e-6);
+    assert_eq!(p.systems.crew_aboard(), 1);
+    // Nothing else is used: no air, no water, no scrubber.
+    assert_eq!(p.systems.all::<osp_sim::systems::Process>().count(), 0);
 }

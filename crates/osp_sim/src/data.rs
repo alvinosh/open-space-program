@@ -110,6 +110,9 @@ pub struct RulesDef {
     /// one by hand. Without this, any pod or avionics unit flies whatever it is on, and a vessel
     /// with neither does nothing it is told.
     pub avionics: bool,
+    /// The record of `life_support` that people aboard parts with life support live by: what each
+    /// needs and how long they last without it. None: nobody needs anything.
+    pub life_support: Option<String>,
 }
 
 impl Default for RulesDef {
@@ -117,8 +120,140 @@ impl Default for RulesDef {
         Self {
             id: "game".to_owned(),
             avionics: true,
+            life_support: Some("realistic".to_owned()),
         }
     }
+}
+
+/// What people need to live (collection `life_support`), for a part with life support. The rules
+/// name the one a game uses ([`RulesDef::life_support`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LifeSupportProfileDef {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    pub needs: Vec<NeedDef>,
+    /// What a cabin's air can take of each thing breathed out before it kills, kg per m³ of cabin:
+    /// with it full, people cannot breathe out, and go short of air.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub cabin: BTreeMap<String, f64>,
+    /// Cabin per seat, m³, where a part does not say.
+    #[serde(default = "default_room_per_seat")]
+    pub room_per_seat: f64,
+    /// Processes every cabin with life support is fitted with, so many per seat.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fitted: Vec<FittedDef>,
+    /// What people make that is let go of when there is nowhere to keep it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dump: Vec<String>,
+}
+
+fn default_room_per_seat() -> f64 {
+    2.0
+}
+
+/// A process every cabin has: `process`, at a scale of `per_seat` for each of its seats.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FittedDef {
+    pub process: String,
+    #[serde(default = "one")]
+    pub per_seat: f64,
+}
+
+/// A way of turning some resources into others (collection `processes`), which a part with a
+/// `process` component runs: electrolysis, a water recycler, a converter. What it makes cannot
+/// weigh more than what it takes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProcessDef {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    /// What it takes at full speed, kg/s.
+    #[serde(default)]
+    pub inputs: BTreeMap<String, f64>,
+    /// What it makes at full speed, kg/s.
+    #[serde(default)]
+    pub outputs: BTreeMap<String, f64>,
+    /// Outputs it lets go of when there is no room for them, instead of slowing down.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dump: Vec<String>,
+    /// Electric power it draws at full speed, W.
+    #[serde(default)]
+    pub power: f64,
+}
+
+impl ProcessDef {
+    /// Why it cannot be run, if it cannot.
+    pub fn problem(&self) -> Option<String> {
+        let rates = self.inputs.values().chain(self.outputs.values());
+        if !(self.power >= 0.0 && rates.clone().all(|r| *r >= 0.0 && r.is_finite())) {
+            return Some(format!(
+                "process `{}` has a negative or endless rate",
+                self.id
+            ));
+        }
+        let (taken, made): (f64, f64) = (self.inputs.values().sum(), self.outputs.values().sum());
+        (made > taken * (1.0 + 1e-6)).then(|| {
+            format!(
+                "process `{}` makes {made} kg/s from {taken} kg/s: more than it takes",
+                self.id
+            )
+        })
+    }
+}
+
+/// One thing a person uses, from the tanks their part can reach.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NeedDef {
+    pub resource: String,
+    /// What people call it when they go short of it ("air"); the resource's id if left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// What each person uses a day, kg.
+    pub daily: f64,
+    /// How long people last with none of it, s, before their own resilience (1 to 1.2 times as
+    /// long). Without it, going short does not matter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lasts: Option<f64>,
+    /// What each person makes of it a day, kg: breathing oxygen makes CO2.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub makes: BTreeMap<String, f64>,
+    /// The share of `lasts` without it after which a person is weak, and then critical.
+    #[serde(default = "default_weak")]
+    pub weak: f64,
+    #[serde(default = "default_critical")]
+    pub critical: f64,
+}
+
+impl NeedDef {
+    /// What people call it.
+    pub fn called(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.resource)
+    }
+}
+
+fn default_weak() -> f64 {
+    1.0 / 3.0
+}
+
+fn default_critical() -> f64 {
+    2.0 / 3.0
+}
+
+/// Names for the crew (collection `crew_names`): every record's first and last names go into one
+/// pool, and each person is given one of each. A mod adds a record, or replaces `stock`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CrewNamesDef {
+    pub id: String,
+    #[serde(default)]
+    pub first: Vec<String>,
+    #[serde(default)]
+    pub last: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,6 +280,85 @@ pub struct PartCatalog {
     /// Paint schemes the stage converter can give a stage.
     #[serde(default)]
     pub liveries: Vec<LiveryDef>,
+    /// What people can be given to live on; the rules pick one.
+    #[serde(default)]
+    pub life_support: Vec<LifeSupportProfileDef>,
+    /// What `process` components can run.
+    #[serde(default)]
+    pub processes: Vec<ProcessDef>,
+    /// What the crew can be called.
+    #[serde(default)]
+    pub crew_names: Vec<CrewNamesDef>,
+    /// Engines that are configurations of one engine, which the parts list shows as one part.
+    #[serde(default)]
+    pub engine_families: Vec<EngineFamilyDef>,
+}
+
+impl PartCatalog {
+    /// The configurations of the engine `engine` is one of, in its family's order, those this
+    /// catalogue has: `engine` alone if it has no family.
+    pub fn configurations(&self, engine: &str) -> Vec<&EngineDef> {
+        let find = |id: &str| self.engines.iter().find(|e| e.id == id);
+        match self.family_of(engine) {
+            Some(family) => family.configs.iter().filter_map(|id| find(id)).collect(),
+            None => find(engine).into_iter().collect(),
+        }
+    }
+
+    /// The family `engine` is a configuration of, if it names one that lists it.
+    pub fn family_of(&self, engine: &str) -> Option<&EngineFamilyDef> {
+        let named = (self.engines.iter().find(|e| e.id == engine))?
+            .family
+            .as_deref()?;
+        (self.engine_families.iter())
+            .find(|f| f.id == named && f.configs.iter().any(|c| c == engine))
+    }
+
+    /// The configuration of `engine`'s family a new one is: the family's default, or its first.
+    pub fn first_configuration(&self, engine: &str) -> Option<&EngineDef> {
+        let configs = self.configurations(engine);
+        let default = (self
+            .family_of(engine)
+            .and_then(|f| f.default_config.as_deref()))
+        .and_then(|d| configs.iter().find(|c| c.id == d).copied());
+        default.or(configs.first().copied())
+    }
+
+    /// A name for whoever sits in seat `seat` of the part called `part`: always the same one for
+    /// the same seat of the same part, from the `crew_names` records.
+    pub fn crew_name(&self, part: &str, seat: u32) -> String {
+        let first: Vec<&String> = self.crew_names.iter().flat_map(|n| &n.first).collect();
+        let last: Vec<&String> = self.crew_names.iter().flat_map(|n| &n.last).collect();
+        if first.is_empty() || last.is_empty() {
+            return format!("Crew member {}", seat + 1);
+        }
+        let pick =
+            |salt: &str, of: usize| (fnv(&format!("{part}/{seat}/{salt}")) % of as u64) as usize;
+        format!(
+            "{} {}",
+            first[pick("first", first.len())],
+            last[pick("last", last.len())]
+        )
+    }
+
+    /// The life support the rules ask for: none if they name no profile, an error if they name one
+    /// nobody wrote.
+    pub fn life_support_profile(&self) -> Result<Option<&LifeSupportProfileDef>, String> {
+        let Some(id) = &self.rules.life_support else {
+            return Ok(None);
+        };
+        (self.life_support.iter())
+            .find(|profile| profile.id == *id)
+            .map(Some)
+            .ok_or_else(|| {
+                format!("the rules' life support `{id}` has no record in `life_support`")
+            })
+    }
+
+    /// What people aboard a part with life support need, under the rules.
+    pub fn life_support_needs(&self) -> Result<Option<&[NeedDef]>, String> {
+        Ok(self.life_support_profile()?.map(|p| p.needs.as_slice()))
+    }
 }
 
 /// A paint scheme for a stage (collection `liveries`), such as a rocket's historical one.
@@ -476,6 +690,10 @@ pub struct PodDef {
     /// Stored electricity, kJ (counted in `mass` with its batteries).
     #[serde(default)]
     pub electric_charge: f64,
+    /// Days of what its crew need that it carries in its lockers (counted in `mass`), under the
+    /// rules' life support. None: it has no life support.
+    #[serde(default)]
+    pub supplies: f64,
     #[serde(flatten)]
     pub catalog: CatalogInfo,
 }
@@ -1415,4 +1633,11 @@ pub struct EngineFamilyDef {
     pub model: Option<String>,
     #[serde(flatten)]
     pub catalog: CatalogInfo,
+}
+
+/// A 64-bit FNV-1a hash: the same on every machine and every run.
+pub fn fnv(text: &str) -> u64 {
+    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
 }

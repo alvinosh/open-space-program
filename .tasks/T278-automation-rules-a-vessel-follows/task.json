@@ -1,0 +1,23 @@
+{
+  "id": "T278",
+  "title": "Automation: rules a vessel follows by itself",
+  "kind": "feature",
+  "status": "todo",
+  "area": "sequences",
+  "size": "M",
+  "parent": "T260",
+  "depends_on": [
+    "T261"
+  ],
+  "refs": [
+    "crates/osp_sim/src/data.rs (TriggerDef)",
+    "crates/osp_sim/src/systems.rs (System::actions)",
+    "T075",
+    ".tasks/T260-ships-that-live/spec.md §10"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.08
+}

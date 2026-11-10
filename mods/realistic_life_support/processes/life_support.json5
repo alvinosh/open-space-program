@@ -1,0 +1,23 @@
+// What keeps a cabin livable. Rates are kg/s at full speed, power W.
+[
+  {
+    // 2 LiOH + CO2 -> Li2CO3 + H2O: up to 1.2 kg of CO2 a day, a person's and a fifth, through a
+    // fan. The spent canisters and the water it makes go overboard when there is nowhere to keep
+    // them.
+    id: "lioh_scrubber",
+    name: "LiOH scrubber",
+    inputs: { CO2: 1.3889e-5, LiOH: 1.5114e-5 },
+    outputs: { Water: 5.68e-6, Li2CO3: 2.331e-5 },
+    dump: ["Water", "Li2CO3"],
+    power: 20,
+  },
+  {
+    // Distils a person's waste water back into water: 85 % of it, the rest brine.
+    id: "water_recovery",
+    name: "Water recovery",
+    inputs: { WasteWater: 3.47e-5 },
+    outputs: { Water: 2.95e-5, Brine: 0.519e-5 },
+    dump: ["Brine"],
+    power: 150,
+  },
+]

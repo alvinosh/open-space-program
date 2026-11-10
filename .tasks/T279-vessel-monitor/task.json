@@ -1,0 +1,23 @@
+{
+  "id": "T279",
+  "title": "Vessel monitor: every vessel, what runs out when, alerts",
+  "kind": "feature",
+  "status": "todo",
+  "area": "ui",
+  "size": "L",
+  "parent": "T260",
+  "depends_on": [
+    "T258"
+  ],
+  "refs": [
+    "crates/osp_sim/src/alarm.rs",
+    "T199",
+    "T200",
+    ".tasks/T260-ships-that-live/spec.md §11"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.081
+}

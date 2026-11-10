@@ -68,7 +68,11 @@ parts of it instead.
 | --- | --- | --- |
 | `bodies` | Planets, moons, stars | Keplerian `orbit` (J2000 ecliptic, degrees), IAU `rotation`, optional `atmosphere`, `scattering` (the sky, see [Skies](#skies)), `terrain` dataset and `max_terrain_height` (m) |
 | `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `response`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }`, `length` and `exit_diameter` (m), `exit_pressure` (Pa), `plume`, `turbine_exhaust`, `model`, `model_scale` (draw the model this many times its size), `nodes` (see below); see [Engine response and plumes](#engine-response-and-plumes), optional `thrust_curve` ([share of propellant left, share of full thrust] points, as a solid's) |
-| `rules` | How much of the real thing a game asks for, where that is not a matter of its parts' data | One record, `game`: `avionics` (control takes avionics rated for the vessel's mass and where it is, or a crew for a small one; off, any pod flies whatever it is on, and a vessel with no pod takes no commands). The Realistic Avionics mod turns it on |
+| `engine_families` | Engines that are configurations of one engine | `configs` (ids of `engines` records, oldest first), `default_config`, `model`, and `title`, `manufacturer`, `description`. Each engine names its `family`. The parts list shows a family as one part, its default configuration (or its first), and the part settings pick another, which swaps the part's engine in place; a craft names the configuration it uses. The Realism mod has 348 |
+| `rules` | How much of the real thing a game asks for, where that is not a matter of its parts' data | One record, `game`: `avionics` (control takes avionics rated for the vessel's mass and where it is, or a crew for a small one; off, any pod flies whatever it is on, and a vessel with no pod takes no commands). The Realistic Avionics mod turns it on. `life_support`: the `life_support` record people live by, or `null` (the base game) for none; the Realistic Life Support mod sets `"realistic"` |
+| `life_support` | What people need to live, for parts with life support; the rules pick one | `name`, `needs`: each a `resource`, what people call it (`name`, "air"), what a person uses of it a `daily` (kg), what they make of it a day (`makes`, resource: kg), how long they last with none of it, `lasts` (s, before each person's resilience of 1 to 1.2; without it, going short does not matter), and the shares of that after which they are `weak` (1/3) and `critical` (2/3). `cabin`: what a cabin's air takes of what is breathed out before it kills (resource: kg per m³). `room_per_seat` (m³, 2), `fitted` (processes every cabin has, `process` and `per_seat`), `dump` (what people make that goes overboard when there is nowhere to keep it). The base game's is `casual` (one `Supplies`), the Realistic Life Support mod's `realistic` |
+| `crew_names` | Names for the crew | `first` and `last`: every record's go into one pool, and each person gets one of each, the same for the same seat of the same part |
+| `processes` | Ways of turning resources into others, run by a part's `process` component | `name`, `inputs` and `outputs` (resource: kg/s at full speed; the outputs may not weigh more than the inputs), `dump` (outputs let go of when there is no room, instead of slowing down), `power` (W at full speed). The example mod has electrolysis |
 | `game_modes` | What a new game can be | `name`, `description`, `mods` (what it turns on, everything else is off), `default` (what a player who has not chosen yet gets) |
 | `plumes` | Exhaust looks | `propellants` it is the exhaust of (alternatives with `\|`), `kinds`, `fallback`, `core`, `flame` and `shock` colours (linear RGB), `luminance` (cd/m² per m at full thrust), `soot` (0..1), `temperature` (K), `smoke` (colour), `haze` (0..1); see [Engine response and plumes](#engine-response-and-plumes) |
 | `resources` | Propellants and gases | `density` (kg/m³ as stored), storage `temperature` (K) and `pressure` (Pa) |
@@ -77,7 +81,7 @@ parts of it instead.
 | `tank_types` | How procedural tanks are built | `material`, operating `pressure` (Pa), `min_gauge` (m), `stiffening`, `buckling_factor`, `insulation` (kg/m²), `min_temperature` (K), `utilization`, `safety_factor`, `design_load` (g), optional `propellants` allowlist, `cast` for a solid motor's grain; see [Procedural tanks and fins](#procedural-tanks-and-fins) |
 | `reaction_wheels` | Reaction wheels | `mass` (kg), `torque` (N·m about each axis) |
 | `rcs` | RCS blocks (four nozzles each) | `mass` (kg), `thrust` (N per nozzle, vacuum), `isp_vac`/`isp_sl` (s), `propellants: { Name: mass ratio }`, `model` |
-| `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), optional `top_diameter` (m, a third of `diameter` by default), `model`, `nodes` (see below) |
+| `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), optional `top_diameter` (m, a third of `diameter` by default), `model`, `nodes` (see below), `supplies` (days of what its crew need, in its lockers, under the rules' life support) |
 | `craft` | Vessels | `parts`, each a `template` or a `shape` with `components`, held `on` another; optional `sequences`; see [Craft](#craft) and [Staging](#staging) |
 | `ground_stations` | Dishes that talk to vessels | `body`, `latitude`, `longitude`, `dish` (m), `noise` (K) |
 | `launch_sites` | Launch sites | Position, `heading`, optional `pad`, `roads` and `runway`; see [Launch sites](#launch-sites) |
@@ -277,10 +281,29 @@ component works with any shape that has what it needs:
   the side the air comes from). What falls on those surfaces burns ablator; once it is gone, or on any
   surface it does not cover, the part takes the heat. A capsule trims shield first, and with its centre
   of mass off the axis it trims at an angle and has lift.
-- `life_support`: on a part with seats, what each person uses a day from the tanks it can reach, kg
-  (`oxygen` 0.84 of `LqdOxygen`, `water` 3, `food` 0.6). Without oxygen for 5 minutes they are lost;
-  short of the others they carry on for now.
-- `crew`: `seats`, and `aboard` if not all start in them. The action `board` moves one person to the
+- `process`: runs the `processes` record `process` on the tanks the part can reach, `scale` times
+  over (1), from the start if `on` (true); the part window starts and stops it. It runs as fast as
+  its inputs, the room for its outputs and its power allow. When the tanks or the power cannot give
+  everyone all they want, the highest `priority` (0 to 255, 100) goes first and the rest of that
+  priority share in proportion to what they want; people come first (255), then fuel cells (250).
+  Time warp stops where a tank it draws on runs dry or one it fills is full.
+- `life_support`: makes a part with seats a cabin. The people in it use what the rules' `life_support`
+  record says from its own lockers and the tanks the part can reach, and breathe out into its air,
+  which takes so much (`cabin`) and no more: with it full they cannot breathe. It is fitted with the
+  record's processes (Realistic: a LiOH scrubber a seat). Its lockers carry `days` of what its seats
+  need and its processes burn, and whatever else `carries` says (kg); `volume` is its cabin (m³, the
+  record's room per seat if left out). What the lockers carry is in the part's mass as built.
+  Short of something with a `lasts`, each person goes
+  from short to weak to critical and dies at `lasts` times their own resilience; with part of what
+  they need they decline in proportion, and once they have it all again they recover as fast as they
+  declined. Time warp stops at each stage. Under rules with no `life_support` (the base game) it is
+  left off the part and they need nothing. The casual game's people use 1 kg of `Supplies` a day and
+  last 15 days without. The Realistic Life Support mod's use 0.84 kg of `LqdOxygen`, 3 kg of `Water`
+  and 0.6 kg of `Food` a day, and last 5 minutes without air, 3 days without water and 30 without
+  food; they make 1 kg of `CO2`, 2.5 of `WasteWater` and 0.1 of `Waste`. Its `water_recovery` process
+  turns waste water back into water.
+- `crew`: `seats`, `aboard` if not all start in them, and `names` for who sits in them (the rest are
+  named from `crew_names`). The action `board` moves one person, and how they are, to the
   part's seats from others on the vessel, through a docked tunnel too. Too much acceleration for too
   long loses them: nothing under 5 g does, and 15 g takes 30 s, as the inverse fourth power of g.
 - `storage`: `type` (a tank type), `contents` (mass ratios), and the `cell` it fills when

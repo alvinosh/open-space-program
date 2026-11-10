@@ -347,6 +347,7 @@ pub enum ComponentDef {
     Swing(SwingDef),
     HeatShield(HeatShieldDef),
     LifeSupport(LifeSupportDef),
+    Process(ProcessComponentDef),
     FuelLine(FuelLineDef),
 }
 
@@ -442,28 +443,137 @@ fn default_ablation() -> f64 {
     3e7
 }
 
-/// What each person aboard the part uses a day, from the tanks it can reach, kg.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Life support for the people in the part's seats: a cabin. What they need, what its air can take
+/// and what it is fitted with come from the rules ([`crate::data::RulesDef::life_support`]); under
+/// rules with none, the part is built without it.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LifeSupportDef {
-    #[serde(default = "default_oxygen")]
-    pub oxygen: f64,
-    #[serde(default = "default_water")]
-    pub water: f64,
-    #[serde(default = "default_food")]
-    pub food: f64,
+    /// Days of everything its seats need, and its fitted processes burn, carried in its lockers.
+    #[serde(default, skip_serializing_if = "is_zero_days")]
+    pub days: f64,
+    /// Its cabin, m³; the rules' room per seat if left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<f64>,
+    /// What else its lockers carry, kg.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub carries: BTreeMap<String, f64>,
 }
 
-fn default_oxygen() -> f64 {
-    0.84
+fn is_zero_days(days: &f64) -> bool {
+    *days == 0.0
 }
 
-fn default_water() -> f64 {
-    3.0
+/// Runs a record of `processes` on the tanks the part can reach.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProcessComponentDef {
+    /// The record it runs.
+    pub process: String,
+    /// How many of it: its rates and power times this.
+    #[serde(default = "one")]
+    pub scale: f64,
+    /// When the tanks or the power cannot give everything all it wants, a higher one goes first
+    /// and a lower one is shed first.
+    #[serde(default = "default_process_priority")]
+    pub priority: u8,
+    /// Running from the start.
+    #[serde(default = "yes")]
+    pub on: bool,
 }
 
-fn default_food() -> f64 {
-    0.6
+/// The cabin a `life_support` makes for `seats` people under `profile`, and the processes it is
+/// fitted with. Its lockers carry `days` of what they need and what the processes burn, besides
+/// what it says it carries.
+fn cabin(
+    def: &LifeSupportDef,
+    profile: &crate::data::LifeSupportProfileDef,
+    seats: u32,
+    catalog: &PartCatalog,
+) -> Result<(LifeSupport, Vec<ProcessUnit>), String> {
+    if !(def.days >= 0.0 && def.days.is_finite()) || def.volume.is_some_and(|v| v <= 0.0) {
+        return Err("life support carries days of nothing less than nothing, in a cabin".into());
+    }
+    let people = f64::from(seats);
+    let volume = def.volume.unwrap_or(profile.room_per_seat * people);
+    let mut fitted = Vec::new();
+    let mut lockers: BTreeMap<String, f64> = BTreeMap::new();
+    for need in &profile.needs {
+        *lockers.entry(need.resource.clone()).or_default() += need.daily * people * def.days;
+    }
+    for kit in &profile.fitted {
+        let record = (catalog.processes.iter())
+            .find(|p| p.id == kit.process)
+            .ok_or_else(|| {
+                format!(
+                    "life support is fitted with `{}`, which is no process",
+                    kit.process
+                )
+            })?;
+        let scale = kit.per_seat * people;
+        if scale <= 0.0 {
+            continue;
+        }
+        // What it burns that the cabin's air does not give it is carried.
+        for (resource, rate) in &record.inputs {
+            if !profile.cabin.contains_key(resource) {
+                *lockers.entry(resource.clone()).or_default() += rate * scale * 86_400.0 * def.days;
+            }
+        }
+        fitted.push(ProcessUnit {
+            def: record.clone(),
+            scale,
+            priority: default_process_priority(),
+            on: true,
+        });
+    }
+    for (resource, kg) in &def.carries {
+        *lockers.entry(resource.clone()).or_default() += kg;
+    }
+    lockers.retain(|_, kg| *kg > 0.0);
+    let life_support = LifeSupport {
+        needs: profile.needs.clone(),
+        dump: profile.dump.clone(),
+        air: (profile.cabin.iter())
+            .map(|(resource, per_m3)| (resource.clone(), per_m3 * volume))
+            .collect(),
+        lockers: lockers.into_iter().collect(),
+    };
+    Ok((life_support, fitted))
+}
+
+fn default_process_priority() -> u8 {
+    100
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// A process as built: its record, as many times over as `scale` says.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProcessUnit {
+    pub def: crate::data::ProcessDef,
+    pub scale: f64,
+    pub priority: u8,
+    pub on: bool,
+}
+
+/// Life support as built: what each person aboard needs, and the cabin's stores.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct LifeSupport {
+    /// A save from before the rules said what people need has none.
+    #[serde(default)]
+    pub needs: Vec<crate::data::NeedDef>,
+    /// What people make that is let go of when there is nowhere to keep it.
+    #[serde(default)]
+    pub dump: Vec<String>,
+    /// What the cabin's air can take of each thing breathed out, kg.
+    #[serde(default)]
+    pub air: Vec<(String, f64)>,
+    /// What its lockers carry, full, kg.
+    #[serde(default)]
+    pub lockers: Vec<(String, f64)>,
 }
 
 /// What talks to the ground and to other vessels, in S-band.
@@ -613,6 +723,9 @@ pub struct CrewDef {
     /// How many start aboard; all of them if left out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aboard: Option<u32>,
+    /// Who sits in the seats, in order; those not named are given names from `crew_names`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<String>,
 }
 
 /// Lets go of one of the part's nodes in flight: whatever is joined there leaves, and which
@@ -789,6 +902,9 @@ pub enum Component {
         seats: u32,
         #[serde(default)]
         aboard: Option<u32>,
+        /// Who sits in each seat.
+        #[serde(default)]
+        names: Vec<String>,
     },
     Decoupler(DecouplerDef),
     DockingPort(DockingPortDef),
@@ -805,7 +921,8 @@ pub enum Component {
     Parachute(ParachuteDef),
     Swing(SwingDef),
     HeatShield(HeatShieldDef),
-    LifeSupport(LifeSupportDef),
+    LifeSupport(LifeSupport),
+    Process(ProcessUnit),
     FuelLine(FuelLineDef),
 }
 
@@ -1051,9 +1168,16 @@ impl PartDef {
                     if def.seats == 0 {
                         return Err(bad("crew needs a seat".into()));
                     }
+                    let names = (0..def.seats)
+                        .map(|seat| match def.names.get(seat as usize) {
+                            Some(name) => name.clone(),
+                            None => catalog.crew_name(&self.name, seat),
+                        })
+                        .collect();
                     Component::Crew {
                         seats: def.seats,
                         aboard: def.aboard,
+                        names,
                     }
                 }
                 ComponentDef::Decoupler(def) => {
@@ -1179,7 +1303,38 @@ impl PartDef {
                     }
                     Component::HeatShield(def.clone())
                 }
-                ComponentDef::LifeSupport(def) => Component::LifeSupport(def.clone()),
+                ComponentDef::Process(def) => {
+                    let record = (catalog.processes.iter())
+                        .find(|p| p.id == def.process)
+                        .ok_or_else(|| bad(format!("no process is called `{}`", def.process)))?;
+                    if let Some(problem) = record.problem() {
+                        return Err(bad(problem));
+                    }
+                    if !(def.scale > 0.0 && def.scale.is_finite()) {
+                        return Err(bad("a process runs at a scale above nothing".into()));
+                    }
+                    Component::Process(ProcessUnit {
+                        def: record.clone(),
+                        scale: def.scale,
+                        priority: def.priority,
+                        on: def.on,
+                    })
+                }
+                ComponentDef::LifeSupport(def) => {
+                    let Some(profile) = catalog.life_support_profile().map_err(&bad)? else {
+                        continue;
+                    };
+                    let seats: u32 = (self.components.iter())
+                        .map(|c| match c {
+                            ComponentDef::Crew(crew) => crew.seats,
+                            _ => 0,
+                        })
+                        .sum();
+                    let (life_support, fitted) =
+                        cabin(def, profile, seats, catalog).map_err(&bad)?;
+                    components.extend(fitted.into_iter().map(Component::Process));
+                    Component::LifeSupport(life_support)
+                }
                 ComponentDef::Antenna(def) => {
                     if !(def.power > 0.0 && def.data_rate > 0.0 && def.diameter >= 0.0) {
                         return Err(bad(
@@ -1400,7 +1555,14 @@ impl PartDef {
             components.push(ComponentDef::Crew(CrewDef {
                 seats: def.crew,
                 aboard: None,
+                names: Vec::new(),
             }));
+            if def.supplies > 0.0 {
+                components.push(ComponentDef::LifeSupport(LifeSupportDef {
+                    days: def.supplies,
+                    ..LifeSupportDef::default()
+                }));
+            }
         }
         if def.electric_charge > 0.0 {
             components.push(ComponentDef::Battery(BatteryPackDef {

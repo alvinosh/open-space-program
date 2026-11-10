@@ -1,0 +1,21 @@
+{
+  "id": "T277",
+  "title": "Drills, intakes and making propellant where you land",
+  "kind": "feature",
+  "status": "todo",
+  "area": "resources",
+  "size": "L",
+  "parent": "T260",
+  "depends_on": [
+    "T262",
+    "T276"
+  ],
+  "refs": [
+    ".tasks/T260-ships-that-live/spec.md §9.2, §9.3, §9.5"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.079
+}

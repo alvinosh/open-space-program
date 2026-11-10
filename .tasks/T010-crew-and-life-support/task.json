@@ -2,7 +2,7 @@
   "id": "T010",
   "title": "Crew and life support",
   "kind": "epic",
-  "status": "todo",
+  "status": "done",
   "area": "crew",
   "size": null,
   "parent": null,
@@ -11,7 +11,7 @@
     "docs/systems-plan.md (Milestone 9)"
   ],
   "created": "2026-10-30",
-  "updated": "2026-10-30",
-  "done": null,
+  "updated": "2026-11-10",
+  "done": "2026-11-10",
   "milestone": "M5"
 }

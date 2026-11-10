@@ -7,8 +7,8 @@ use osp_sim::{
     atmosphere::{Atmosphere, AtmosphereModel},
     attitude::mass_properties,
     data::{
-        AvionicsDef, BatteryDef, EngineDef, LiveryDef, MaterialDef, PartCatalog, PodDef, RcsDef,
-        ReactionWheelDef, ResourceDef, TankTypeDef,
+        AvionicsDef, BatteryDef, EngineDef, LifeSupportProfileDef, LiveryDef, MaterialDef,
+        PartCatalog, PodDef, RcsDef, ReactionWheelDef, ResourceDef, TankTypeDef,
     },
     propulsion::Propulsion,
 };
@@ -36,6 +36,10 @@ pub fn catalog(registry: &Registry) -> PartCatalog {
         batteries: registry.all::<BatteryDef>("batteries", &mut diagnostics),
         avionics: registry.all::<AvionicsDef>("avionics", &mut diagnostics),
         liveries: registry.all::<LiveryDef>("liveries", &mut diagnostics),
+        life_support: registry.all::<LifeSupportProfileDef>("life_support", &mut diagnostics),
+        processes: registry.all("processes", &mut diagnostics),
+        crew_names: registry.all("crew_names", &mut diagnostics),
+        engine_families: registry.all("engine_families", &mut diagnostics),
     };
     for d in &diagnostics {
         eprintln!("{d}");

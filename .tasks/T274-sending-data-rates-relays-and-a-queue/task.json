@@ -1,0 +1,22 @@
+{
+  "id": "T274",
+  "title": "Sending data: rates, relays and a queue",
+  "kind": "feature",
+  "status": "todo",
+  "area": "comms",
+  "size": "L",
+  "parent": "T260",
+  "depends_on": [
+    "T273",
+    "T261"
+  ],
+  "refs": [
+    "crates/osp_sim/src/comms.rs (spread_links)",
+    ".tasks/T260-ships-that-live/spec.md §7.5, §7.6, §7.7, §7.9"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.076
+}

@@ -499,12 +499,52 @@ fn profile_id(profile: ShellProfile) -> &'static str {
     }
 }
 
+/// Which of its family's configurations an engine is, if it is one of several: each with what sets
+/// it apart, its thrust, Isp, propellants, mass and year.
+fn configuration(part: &CraftPartDef, catalog: &PartCatalog) -> Option<Field> {
+    let engine = part.template.as_deref()?;
+    let configs = catalog.configurations(engine);
+    if configs.len() < 2 {
+        return None;
+    }
+    let options = (configs.iter())
+        .map(|c| {
+            let title = (c.catalog.title.clone()).filter(|t| !t.starts_with('#'));
+            let burns: Vec<&str> = c.propellants.keys().map(String::as_str).collect();
+            let mut label = format!(
+                "{} · {:.0} kN · Isp {:.0} s · {} · {:.0} kg",
+                title.unwrap_or_else(|| c.id.clone()),
+                c.thrust_vac / 1e3,
+                c.isp_vac,
+                burns.join("/"),
+                c.mass
+            );
+            if let Some(year) = c.catalog.year {
+                label.push_str(&format!(" · {year}"));
+            }
+            (c.id.clone(), label)
+        })
+        .collect();
+    Some(field(
+        "configuration",
+        "Configuration",
+        "Engine",
+        Value::Choice {
+            value: engine.to_owned(),
+            options,
+        },
+    ))
+}
+
 /// Everything that can be set on `part`, in the order the window shows it. Its tank can hold one of
 /// `mixes` (those of its craft, see [`mixes`]) or nothing; what it holds now stays offered, as
 /// `custom`, if it is none of them.
 pub fn fields(part: &CraftPartDef, mixes: &[Mix], catalog: &PartCatalog) -> Vec<Field> {
     let name = part.name.clone().unwrap_or_else(|| part.id.clone());
     let mut out = vec![field("name", "Name", "Part", Value::Text(name))];
+    if let Some(field) = configuration(part, catalog) {
+        out.push(field);
+    }
     let shape = own_shape(part);
     if let Some(shape) = shape {
         shape_fields(shape, &mut out);
@@ -888,6 +928,10 @@ fn set_on(
     }
     if id == "roll" {
         part.roll = number();
+        return Ok(());
+    }
+    if id == "configuration" {
+        part.template = Some(text.to_owned());
         return Ok(());
     }
     // The shape's own sizes, dragged or typed alike.
@@ -1546,5 +1590,74 @@ mod tests {
         };
         assert_eq!(value, most);
         assert!(set_alone(&mut decoupler, "colour", "red", &catalog).is_err());
+    }
+
+    /// Two engines made configurations of one: the parts list shows one part, its settings pick
+    /// the other, and the part is then the other engine.
+    #[test]
+    fn an_engine_family_is_one_part_with_its_configuration_picked() {
+        let mut catalog = catalog();
+        for engine in &mut catalog.engines {
+            if engine.id.starts_with("K-1 ") {
+                engine.family = Some("K-1".into());
+            }
+        }
+        catalog.engine_families = crate::test_data::records(
+            r#"[{ id: "K-1", title: "K-1", default_config: "K-1 Booster",
+                  configs: ["K-1 Booster", "K-1 Vacuum"] }]"#,
+        );
+        let all = palette::entries(&catalog);
+        let k1 = |e: &&palette::Entry| e.id == "engine:K-1 Booster" || e.id == "engine:K-1 Vacuum";
+        let listed: Vec<_> = all.iter().filter(k1).collect();
+        let ids: Vec<&str> = listed.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["engine:K-1 Booster"]);
+        assert_eq!(listed[0].name, "K-1");
+        assert!(
+            listed[0].detail.contains("2 configurations"),
+            "{}",
+            listed[0].detail
+        );
+        assert!(
+            listed[0].matches("vacuum"),
+            "found by another configuration's name"
+        );
+
+        let mut part = listed[0].part.clone();
+        part.id = "p".into();
+        let field = (fields(&part, &[], &catalog).into_iter())
+            .find(|f| f.id == "configuration")
+            .unwrap();
+        let Value::Choice { value, options } = field.value else {
+            panic!("a choice");
+        };
+        assert_eq!(value, "K-1 Booster");
+        let ids: Vec<&str> = options.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids, ["K-1 Booster", "K-1 Vacuum"]);
+
+        set(&mut part, "configuration", "K-1 Vacuum", &[], &catalog).unwrap();
+        assert_eq!(part.template.as_deref(), Some("K-1 Vacuum"));
+        assert!(set(&mut part, "configuration", "H-10", &[], &catalog).is_err());
+        let vacuum = catalog
+            .engines
+            .iter()
+            .find(|e| e.id == "K-1 Vacuum")
+            .unwrap();
+        let built = alone(&part, &catalog).unwrap();
+        let thrust = (built.parts[0].built.components.iter())
+            .find_map(|c| match c {
+                crate::component::Component::Engine(engine) => Some(engine.thrust_vac),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(thrust, vacuum.thrust_vac);
+
+        // An engine of no family has nothing to pick.
+        let mut lone = part.clone();
+        lone.template = Some("H-10".into());
+        assert!(
+            fields(&lone, &[], &catalog)
+                .iter()
+                .all(|f| f.id != "configuration")
+        );
     }
 }

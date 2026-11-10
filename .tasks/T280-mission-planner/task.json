@@ -1,0 +1,23 @@
+{
+  "id": "T280",
+  "title": "Mission planner in the editor",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "L",
+  "parent": "T260",
+  "depends_on": [
+    "T258",
+    "T267",
+    "T050",
+    "T274"
+  ],
+  "refs": [
+    ".tasks/T260-ships-that-live/spec.md §12"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.082
+}

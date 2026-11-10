@@ -1,0 +1,17 @@
+{
+  "id": "T260",
+  "title": "Ships that live: life support, cabins, radiation, science, failures, resources, automation",
+  "kind": "epic",
+  "status": "todo",
+  "area": "crew",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    ".tasks/T260-ships-that-live/spec.md"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3"
+}

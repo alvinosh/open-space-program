@@ -11,10 +11,12 @@
 //! [`crate::propulsion::Propulsion`], and goes with a part when it is let go.
 
 mod battery;
+mod cabin;
 mod crew;
 mod electric;
 mod leg;
 mod parachute;
+mod process;
 mod swing;
 mod thermal;
 
@@ -24,10 +26,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Deserializ
 
 pub use self::{
     battery::Battery,
-    crew::{BOARD, Crew},
+    cabin::{Cabin, Stowed},
+    crew::{BOARD, Crew, Person, Stage},
     electric::{ANTENNA_OFF, ANTENNA_ON, Antenna, Avionics, FuelCell, Load, Rtg, SolarArray},
     leg::{DEPLOY_LEG, Leg},
     parachute::{ARM, CUT, ChuteState, DEPLOY, Parachute},
+    process::{Process, START, STOP},
     swing::{Swing, UNFOLD},
     thermal::{HeatShield, Thermal},
 };
@@ -145,33 +149,51 @@ pub trait System: SavedState + Debug + Send + Sync {
     /// Tell a source or a [`Power::Dispatchable`] what it gave over the last `dt` seconds, kJ.
     fn deliver(&mut self, _kj: f64, _dt: f64) {}
 
-    /// Whether it burns what is in the tanks its part can reach.
+    /// Whether it takes from or gives to the tanks its part can reach. The vessel's one account of
+    /// its tanks ([`crate::propulsion::Propulsion::step_systems`]) asks those that do, every step:
+    /// first [`Self::wants`] and [`Self::plan`] before the power networks run, then [`Self::uses`]
+    /// and [`Self::exchanged`] after.
     fn consumes(&self) -> bool {
         false
     }
 
-    /// What it has burned since this was last asked: resources and kg, to come out of the tanks.
-    fn take_consumption(&mut self) -> Vec<(&'static str, f64)> {
+    /// The most it would take and give over the next `dt` seconds, in lots that each run at a share
+    /// of their own.
+    fn wants(&self, _dt: f64) -> Vec<Exchange> {
         Vec::new()
     }
 
-    /// What it is burning now: resources and kg/s, so time warp stops where the tanks run dry.
-    fn consuming(&self) -> Vec<(&'static str, f64)> {
+    /// The share of each of [`Self::wants`]' lots the tanks allow, worked out before the power
+    /// networks run, so it can ask them for only what it can use.
+    fn plan(&mut self, _shares: &[f64]) {}
+
+    /// What it takes and gives over the `dt` seconds just run, after the power networks.
+    fn uses(&self, dt: f64) -> Vec<Exchange> {
+        self.wants(dt)
+    }
+
+    /// The share of each of [`Self::uses`]' lots the tanks gave over those `dt` seconds.
+    fn exchanged(&mut self, _shares: &[f64], _dt: f64) {}
+
+    /// What it is taking and giving now, kg/s, so time warp stops where a tank it draws on runs dry
+    /// or one it fills is full.
+    fn exchanging(&self) -> Vec<Exchange> {
         Vec::new()
     }
 
-    /// Tell it whether the tanks gave what it burned.
-    fn fed(&mut self, _fed: bool) {}
-
-    /// Whether going short of this resource is not its concern for now: it does not count against
-    /// [`Self::fed`], and time warp need not stop for it.
-    fn can_go_without(&self, _resource: &str) -> bool {
-        false
+    /// What it keeps that the account of the tanks can draw on and fill, for anything on its part:
+    /// each resource, kg held and kg it can hold.
+    fn stored(&self) -> Vec<(String, f64, f64)> {
+        Vec::new()
     }
 
-    /// The same, with how long that was for, s.
-    fn fed_for(&mut self, fed: bool, _dt: f64) {
-        self.fed(fed);
+    /// What it now holds of each of [`Self::stored`], kg.
+    fn set_stored(&mut self, _amounts: &[f64]) {}
+
+    /// Seconds until it needs attention if the tanks go on giving it these shares of what it
+    /// [`Self::wants`], as they would now: people going short reach their next stage.
+    fn next_event_given(&self, _shares: &[f64]) -> Option<f64> {
+        None
     }
 
     /// One tick of flight, with the heat falling on its part. A system takes the heat it deals with
@@ -183,14 +205,14 @@ pub trait System: SavedState + Debug + Send + Sync {
         None
     }
 
-    /// Have someone leave its seat. False if there was nobody.
-    fn take_person(&mut self) -> bool {
-        false
+    /// Have someone leave their seat: who, if anyone was there.
+    fn take_person(&mut self) -> Option<Person> {
+        None
     }
 
-    /// Seat someone. False if there is no room.
-    fn seat_person(&mut self) -> bool {
-        false
+    /// Seat `person`; them back if there is no room.
+    fn seat_person(&mut self, person: Person) -> Option<Person> {
+        Some(person)
     }
 
     /// Whether a load the vessel cannot do without has no power.
@@ -237,6 +259,36 @@ impl Clone for Box<dyn System> {
         self.boxed()
     }
 }
+
+/// What a system takes from and gives to the tanks its part can reach, kg (over a step, or each
+/// second), as one lot: it runs at one share, which the scarcest of its inputs, or the least room
+/// for its outputs, sets.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Exchange {
+    pub inputs: Vec<(String, f64)>,
+    pub outputs: Vec<(String, f64)>,
+    /// Outputs let go of when there is no room for them, instead of holding the lot back.
+    pub dump: Vec<String>,
+    /// Who goes first when the tanks cannot give everyone all they want: the highest, then the
+    /// rest in proportion to what they want.
+    pub priority: u8,
+}
+
+impl Exchange {
+    /// `inputs` taken at `priority`, making nothing.
+    pub fn taking(inputs: Vec<(String, f64)>, priority: u8) -> Self {
+        Self {
+            inputs,
+            priority,
+            ..Self::default()
+        }
+    }
+}
+
+/// People come first for what they breathe, drink and eat.
+pub const CREW_PRIORITY: u8 = 255;
+/// Then what keeps the power on.
+pub const FUEL_CELL_PRIORITY: u8 = 250;
 
 /// How a system takes part in a power network.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -309,6 +361,12 @@ pub const KINDS: &[Kind] = &[
         load: load::<Crew>,
     },
     Kind {
+        of: cabin::of,
+        actions: &[],
+        name: "cabin",
+        load: load::<Cabin>,
+    },
+    Kind {
         of: electric::fuel_cell,
         actions: &[],
         name: "fuel_cell",
@@ -349,6 +407,12 @@ pub const KINDS: &[Kind] = &[
         actions: &[parachute::ARM, parachute::DEPLOY, parachute::CUT],
         name: "parachute",
         load: load::<Parachute>,
+    },
+    Kind {
+        of: process::of,
+        actions: &[process::START, process::STOP],
+        name: "process",
+        load: load::<Process>,
     },
     Kind {
         of: leg::of,
@@ -605,30 +669,40 @@ impl Systems {
         self.all::<Crew>().map(|(_, crew)| crew.lost).sum()
     }
 
-    /// Move one person to the seats on `to` from the others on this vessel. Whether it could.
-    pub fn board(&mut self, to: PartId) -> bool {
+    /// Move one person to the seats on `to` from the others on this vessel: who, if it could.
+    pub fn board(&mut self, to: PartId) -> Option<String> {
         let room = (self.parts.get(&to).into_iter().flatten())
             .filter_map(|s| s.any().downcast_ref::<Crew>())
             .any(|crew| crew.aboard < crew.seats);
         if !room {
-            return false;
+            return None;
         }
         let from = self.parts.iter_mut().filter(|(part, _)| **part != to);
-        let mut moved = false;
-        for (_, systems) in from {
-            if systems.iter_mut().any(|s| s.take_person()) {
-                moved = true;
-                break;
-            }
-        }
-        if moved && let Some(systems) = self.parts.get_mut(&to) {
-            for system in systems {
-                if system.seat_person() {
-                    break;
+        let taken = from
+            .flat_map(|(_, systems)| systems.iter_mut())
+            .find_map(|s| s.take_person());
+        let mut person = taken?;
+        let name = person.name.clone();
+        // There is room, so they are seated; if not, they go back where they can.
+        for part in std::iter::once(to).chain(self.parts.keys().copied().collect::<Vec<_>>()) {
+            for system in self.parts.get_mut(&part).into_iter().flatten() {
+                match system.seat_person(person) {
+                    None => return (part == to).then_some(name),
+                    Some(back) => person = back,
                 }
             }
         }
-        moved
+        None
+    }
+
+    /// Every part with systems, and its systems.
+    pub(crate) fn by_part(&self) -> impl Iterator<Item = (PartId, &[Box<dyn System>])> + '_ {
+        self.parts.iter().map(|(part, on)| (*part, on.as_slice()))
+    }
+
+    /// Everyone aboard, by the part they sit in.
+    pub fn people(&self) -> impl Iterator<Item = (PartId, &Person)> + '_ {
+        (self.all::<Crew>()).flat_map(|(part, crew)| crew.people.iter().map(move |p| (part, p)))
     }
 
     /// Move every system on `dt` seconds: first the power networks, under `environment`.

@@ -1,0 +1,24 @@
+{
+  "id": "T267",
+  "title": "Radiation: belts, cosmic rays, shielding and dose",
+  "kind": "feature",
+  "status": "todo",
+  "area": "environment",
+  "size": "L",
+  "parent": "T260",
+  "depends_on": [
+    "T263",
+    "T264"
+  ],
+  "refs": [
+    "crates/osp_sim/src/environment.rs",
+    "assets/core/bodies/solar_system.json5",
+    "T116",
+    ".tasks/T260-ships-that-live/spec.md §5.1 to §5.4"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.068
+}

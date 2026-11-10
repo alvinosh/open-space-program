@@ -740,6 +740,37 @@ fn systems(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
             "1 kWh",
         ));
     }
+    // What the crew live on, as the rules have it: a day's worth of each in proportion, in a tank
+    // that keeps the coldest of them.
+    if let Ok(Some(needs)) = catalog.life_support_needs() {
+        let contents: serde_json::Map<String, serde_json::Value> = (needs.iter())
+            .map(|need| (need.resource.clone(), json!(need.daily)))
+            .collect();
+        let cold = needs.iter().any(|need| {
+            (catalog.resources.iter()).any(|r| r.id == need.resource && r.temperature < 250.0)
+        });
+        let tank_type = if cold {
+            "Insulated Al-Li"
+        } else {
+            "Stiffened Al 2219"
+        };
+        if catalog.tank_types.iter().any(|t| t.id == tank_type) {
+            out.push((
+                entry(
+                    "supplies",
+                    "Supplies",
+                    "What the crew live on, for the cabins it is joined to",
+                    json!({
+                        "id": "", "name": "Supplies",
+                        "shape": { "cylinder_tank": { "diameter": 1.0, "length": 1.0 } },
+                        "components": [{ "storage": { "type": tank_type, "contents": contents } }],
+                        "paint": { "color": WHITE, "trim": false },
+                    }),
+                ),
+                "1 m × 1 m",
+            ));
+        }
+    }
     let has = |name: &str| catalog.resources.iter().any(|r| r.id == name);
     if has("LqdHydrogen") && has("LqdOxygen") {
         out.push((
@@ -832,11 +863,21 @@ pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
             stem: "pod".into(),
         })
         .collect();
+    // One entry an engine, and one a family of configurations of one engine, as its first: the
+    // part settings pick the others (`properties`).
     let mut engines: Vec<Entry> = (catalog.engines.iter())
+        .filter(|engine| {
+            (catalog.first_configuration(&engine.id)).is_none_or(|first| first.id == engine.id)
+        })
         .map(|engine| {
             // Not a title still waiting to be translated (`#roBE3UTitle`).
-            let title = (engine.catalog.title.clone()).filter(|t| !t.starts_with('#'));
+            let untranslated = |t: &String| !t.starts_with('#');
+            let family = catalog.family_of(&engine.id);
+            let title = (family.and_then(|f| f.catalog.title.clone()))
+                .filter(untranslated)
+                .or_else(|| engine.catalog.title.clone().filter(untranslated));
             let name = title.unwrap_or_else(|| engine.id.clone());
+            let configs = catalog.configurations(&engine.id);
             let burns = engine.propellants.keys().map(String::as_str);
             let propellant = Propellant::of(engine.kind.as_deref(), burns);
             let mut detail = vec![
@@ -851,10 +892,28 @@ pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
                 detail.push(metres(engine.exit_diameter));
             }
             detail.push(mass(engine.mass));
+            let mut about = about(family.map_or(&engine.catalog, |f| &f.catalog));
+            if configs.len() > 1 {
+                detail.push(format!("{} configurations", configs.len()));
+                let names: Vec<String> = (configs.iter())
+                    .map(|c| {
+                        c.catalog
+                            .title
+                            .clone()
+                            .filter(untranslated)
+                            .unwrap_or(c.id.clone())
+                    })
+                    .collect();
+                about = [about, format!("Configurations: {}", names.join(", "))]
+                    .into_iter()
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(". ");
+            }
             Entry {
                 id: format!("engine:{}", engine.id),
                 detail: detail.join(" · "),
-                about: about(&engine.catalog),
+                about,
                 width: (engine.exit_diameter > 0.0).then_some(engine.exit_diameter),
                 propellant: Some(propellant),
                 part: template(&engine.id, &name),

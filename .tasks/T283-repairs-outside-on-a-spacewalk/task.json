@@ -1,0 +1,21 @@
+{
+  "id": "T283",
+  "title": "Repairs outside, on a spacewalk",
+  "kind": "feature",
+  "status": "todo",
+  "area": "crew",
+  "size": "M",
+  "parent": "T260",
+  "depends_on": [
+    "T270",
+    "T104"
+  ],
+  "refs": [
+    ".tasks/T260-ships-that-live/spec.md §8.7"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "later",
+  "priority": 157.5
+}

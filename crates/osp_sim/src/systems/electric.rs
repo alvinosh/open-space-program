@@ -6,7 +6,7 @@ use std::any::Any;
 use glam::DVec3;
 use serde::{Deserialize, Serialize};
 
-use super::{Power, Reading, System};
+use super::{Exchange, FUEL_CELL_PRIORITY, Power, Reading, System};
 use crate::{
     comms::{Radio, S_BAND, dish_gain},
     component::{AvionicsUnitDef, Component, ElectricLoadDef, FuelCellDef, RtgDef, SolarArrayDef},
@@ -56,8 +56,23 @@ pub struct FuelCell {
     pub oxygen: f64,
     /// Its tanks ran out.
     pub starved: bool,
-    /// What it burned since [`System::take_consumption`] last asked, kg.
+    /// What it burned this step, to come out of the tanks, kg.
     owed: (f64, f64),
+    /// The share of what it is rated for its tanks can feed this step.
+    #[serde(default = "whole")]
+    share: f64,
+}
+
+fn whole() -> f64 {
+    1.0
+}
+
+/// Hydrogen and oxygen for `kj`.
+fn reactants(kj: f64) -> Vec<(String, f64)> {
+    vec![
+        ("LqdHydrogen".into(), kj * HYDROGEN_PER_KJ),
+        ("LqdOxygen".into(), kj * OXYGEN_PER_KJ),
+    ]
 }
 
 impl FuelCell {
@@ -69,6 +84,7 @@ impl FuelCell {
             oxygen: 0.0,
             starved: false,
             owed: (0.0, 0.0),
+            share: 1.0,
         }
     }
 }
@@ -91,11 +107,7 @@ impl System for FuelCell {
     }
 
     fn power(&self, _environment: &Environment) -> Option<Power> {
-        Some(Power::Dispatchable(if self.starved {
-            0.0
-        } else {
-            self.rated
-        }))
+        Some(Power::Dispatchable(self.rated * self.share))
     }
 
     fn deliver(&mut self, kj: f64, dt: f64) {
@@ -111,23 +123,44 @@ impl System for FuelCell {
         true
     }
 
-    fn take_consumption(&mut self) -> Vec<(&'static str, f64)> {
-        let (hydrogen, oxygen) = std::mem::take(&mut self.owed);
-        vec![("LqdHydrogen", hydrogen), ("LqdOxygen", oxygen)]
+    /// At full power, so the network asks no more of it than its tanks can feed.
+    fn wants(&self, dt: f64) -> Vec<Exchange> {
+        vec![Exchange::taking(
+            reactants(self.rated * dt / 1e3),
+            FUEL_CELL_PRIORITY,
+        )]
     }
 
-    fn consuming(&self) -> Vec<(&'static str, f64)> {
-        vec![
-            ("LqdHydrogen", self.output / 1e3 * HYDROGEN_PER_KJ),
-            ("LqdOxygen", self.output / 1e3 * OXYGEN_PER_KJ),
-        ]
+    fn plan(&mut self, shares: &[f64]) {
+        self.share = shares.first().copied().unwrap_or(0.0);
+        self.starved = self.share <= 0.0;
     }
 
-    fn fed(&mut self, fed: bool) {
-        self.starved = !fed;
-        if !fed {
+    /// What it burned for what the network took of it.
+    fn uses(&self, _dt: f64) -> Vec<Exchange> {
+        let (hydrogen, oxygen) = self.owed;
+        vec![Exchange::taking(
+            vec![
+                ("LqdHydrogen".into(), hydrogen),
+                ("LqdOxygen".into(), oxygen),
+            ],
+            FUEL_CELL_PRIORITY,
+        )]
+    }
+
+    fn exchanged(&mut self, shares: &[f64], _dt: f64) {
+        self.owed = (0.0, 0.0);
+        self.starved |= shares.first().is_some_and(|share| *share < 1.0 - 1e-9);
+        if self.starved {
             self.output = 0.0;
         }
+    }
+
+    fn exchanging(&self) -> Vec<Exchange> {
+        vec![Exchange::taking(
+            reactants(self.output / 1e3),
+            FUEL_CELL_PRIORITY,
+        )]
     }
 
     boxed!();

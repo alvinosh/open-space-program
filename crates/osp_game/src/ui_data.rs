@@ -401,7 +401,7 @@ fn publish_flight(
     {
         use osp_sim::{
             guidance::Guidance,
-            systems::{Crew, HeatShield, Parachute, Thermal},
+            systems::{Cabin, Crew, HeatShield, Parachute, Stage, Thermal},
         };
         let systems = &vessel.propulsion.systems;
         data.set("vessel.can_abort", vessel.propulsion.can_abort());
@@ -420,19 +420,59 @@ fn publish_flight(
         data.set("vessel.has_seats", systems.all::<Crew>().next().is_some());
         data.set("vessel.crew_aboard", f64::from(systems.crew_aboard()));
         data.set("vessel.crew_lost", f64::from(systems.crew_lost()));
+        // Who is aboard, and how anyone not well is doing.
+        let people: Vec<String> = (systems.all::<Crew>())
+            .flat_map(|(_, crew)| {
+                crew.people
+                    .iter()
+                    .map(|person| match person.stage(&crew.needs) {
+                        (Stage::Fine, _) => person.name.clone(),
+                        (stage, of) => format!(
+                            "{} ({}{})",
+                            person.name,
+                            stage.word(),
+                            of.map(|of| format!(": {of}")).unwrap_or_default()
+                        ),
+                    })
+            })
+            .collect();
+        data.set("vessel.crew_people", people.join(", "));
         // What the crew can reach, not what the rocket under them burns.
         let cabin = systems
             .all::<Crew>()
             .map(|(part, _)| part)
             .collect::<Vec<_>>();
-        let held = |name: &str| -> f64 {
-            (cabin.iter())
-                .map(|&part| vessel.propulsion.reachable(part, name))
-                .sum()
-        };
-        data.set("vessel.oxygen", held("LqdOxygen"));
-        data.set("vessel.water", held("Water"));
-        data.set("vessel.food", held("Food"));
+        // Each thing they need: what there is for them, lockers and all, and how long it lasts.
+        let aboard = f64::from(systems.crew_aboard());
+        let needs = (systems.all::<Crew>())
+            .find(|(_, crew)| !crew.needs.is_empty())
+            .map(|(_, crew)| crew.needs.clone())
+            .unwrap_or_default();
+        let supplies: Vec<String> = (needs.iter())
+            .map(|need| {
+                let kg: f64 = (cabin.iter())
+                    .map(|&part| vessel.propulsion.held_for(part, &need.resource))
+                    .sum();
+                let days = kg / (need.daily * aboard).max(1e-9);
+                if aboard > 0.0 {
+                    format!("{} {kg:.1} kg ({days:.1} d)", need.called())
+                } else {
+                    format!("{} {kg:.1} kg", need.called())
+                }
+            })
+            .collect();
+        data.set("vessel.supplies", supplies.join(", "));
+        data.set("vessel.has_supplies", !needs.is_empty());
+        let (foul, most) = (systems.all::<Cabin>())
+            .flat_map(|(_, cabin)| cabin.kept[..cabin.air].iter())
+            .fold((0.0, 0.0), |(held, most), kept| {
+                (held + kept.held, most + kept.capacity)
+            });
+        data.set(
+            "vessel.air_fouled",
+            if most > 0.0 { 100.0 * foul / most } else { 0.0 },
+        );
+        data.set("vessel.has_air", most > 0.0);
         let hottest = (systems.all::<Thermal>())
             .map(|(_, thermal)| thermal.temperature)
             .fold(0.0, f64::max);

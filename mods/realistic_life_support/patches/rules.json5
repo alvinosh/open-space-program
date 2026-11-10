@@ -1,0 +1,3 @@
+[
+  { op: "set", collection: "rules", target: "game", path: "life_support", value: "realistic", pass: "first" },
+]

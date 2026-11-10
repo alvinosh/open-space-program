@@ -1,0 +1,20 @@
+{
+  "id": "T266",
+  "title": "Living space, comfort and stress",
+  "kind": "feature",
+  "status": "todo",
+  "area": "crew",
+  "size": "M",
+  "parent": "T260",
+  "depends_on": [
+    "T264"
+  ],
+  "refs": [
+    ".tasks/T260-ships-that-live/spec.md §4.3, §4.4, §4.5"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.067
+}

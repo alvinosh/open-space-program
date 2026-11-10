@@ -1,0 +1,19 @@
+{
+  "id": "T268",
+  "title": "Seeded chance: one generator per save and per vessel",
+  "kind": "chore",
+  "status": "todo",
+  "area": "process",
+  "size": "S",
+  "parent": "T260",
+  "depends_on": [],
+  "refs": [
+    "T050",
+    ".tasks/T260-ships-that-live/spec.md §14.5"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.069
+}

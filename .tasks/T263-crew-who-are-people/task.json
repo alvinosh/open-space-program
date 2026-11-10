@@ -1,0 +1,22 @@
+{
+  "id": "T263",
+  "title": "Crew who are people: a name each, and health that goes by stages",
+  "kind": "feature",
+  "status": "done",
+  "area": "crew",
+  "size": "M",
+  "parent": "T260",
+  "depends_on": [
+    "T261"
+  ],
+  "refs": [
+    "crates/osp_sim/src/systems/crew.rs",
+    "T103",
+    ".tasks/T260-ships-that-live/spec.md §3.2"
+  ],
+  "created": "2026-11-10",
+  "updated": "2026-11-10",
+  "done": "2026-11-10",
+  "milestone": "M3",
+  "priority": 57.063
+}
