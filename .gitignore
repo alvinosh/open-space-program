@@ -1,4 +1,4 @@
-/target
+target/
 # Other projects' source, read for technique only: some of it is GPL or NC (T067).
 /references/
 .DS_Store
