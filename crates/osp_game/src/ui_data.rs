@@ -652,10 +652,11 @@ fn publish_mods(
         return;
     }
     let content = &content.0;
+    let resolved = osp_mods::resolved(&content.available, &player.choices);
     let available: Vec<_> = (content.available.iter())
         .map(|m| {
             let missing = osp_mods::missing_dependency(&content.available, &m.id);
-            let on = m.is_on(&player.choices) && missing.is_none();
+            let on = resolved.get(&m.id).copied().unwrap_or(false) && missing.is_none();
             let state = match missing {
                 Some(mod_id) => format!("Needs {mod_id}"),
                 None if on => "On".to_owned(),

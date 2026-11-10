@@ -56,10 +56,29 @@ const CORE_ID: &str = "core";
 pub type ModChoices = BTreeMap<String, bool>;
 
 /// Whether each mod in `available` is on, given `choices`: two sets of choices that give the same
-/// answer load the same mods.
+/// answer load the same mods. A mod the choices do not name is on by its manifest only while what it
+/// depends on is not turned off: one installed after the choices were made, which needs a mod they
+/// turned off, stays off rather than fail to load. A mod chosen on is on, and says what it lacks.
 pub fn resolved(available: &[ModManifest], choices: &ModChoices) -> ModChoices {
-    let is_on = |m: &ModManifest| (m.id.clone(), m.is_on(choices));
-    available.iter().map(is_on).collect()
+    let mut on: ModChoices = (available.iter())
+        .map(|m| (m.id.clone(), m.is_on(choices)))
+        .collect();
+    loop {
+        let stranded: Vec<String> = (available.iter())
+            .filter(|m| on[&m.id] && !choices.contains_key(&m.id))
+            .filter(|m| {
+                // Installed and off: one not installed at all is the loader's to report.
+                (m.dependencies.iter()).any(|d| on.get(d) == Some(&false))
+            })
+            .map(|m| m.id.clone())
+            .collect();
+        if stranded.is_empty() {
+            return on;
+        }
+        for id in stranded {
+            on.insert(id, false);
+        }
+    }
 }
 
 /// The choices that turn on the mods `ids` and what they depend on, which may be more than when

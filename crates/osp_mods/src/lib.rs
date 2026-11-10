@@ -290,7 +290,9 @@ pub fn load_chosen(core_root: &Path, mods_dir: Option<&Path>, choices: &ModChoic
             available.push(source.manifest.clone());
         }
     }
-    let (on, off): (Vec<_>, Vec<_>) = found.into_iter().partition(|m| m.manifest.is_on(choices));
+    let wanted = resolved(&available, choices);
+    let is_on = |m: &ModSource| wanted.get(m.id()).copied().unwrap_or(m.manifest.is_on(choices));
+    let (on, off): (Vec<_>, Vec<_>) = found.into_iter().partition(is_on);
     for source in &off {
         diagnostics.push(Diagnostic::info(
             Some(source.id()),
@@ -668,6 +670,23 @@ mod tests {
         assert!(content.registry.record("engines", "P").is_none());
         assert!(content.registry.record("engines", "S").is_some());
         assert_eq!(content.available.len(), 4, "the list keeps what is off");
+    }
+
+    /// Choices made before a mod was installed do not name it: on by its manifest, it stays off if
+    /// they turned off what it needs, rather than fail to load. Chosen on, it says what it lacks.
+    #[test]
+    fn a_new_mod_needing_one_turned_off_stays_off() {
+        let tree = choosing_tree("stranded");
+        let (core, mods) = (tree.0.join("core"), tree.0.join("mods"));
+        let choices = ModChoices::from([("fuels".into(), false)]);
+        let content = load_chosen(&core, Some(&mods), &choices);
+        assert_eq!(loaded(&content), ["core"]);
+        assert_eq!(content.error_count(), 0, "{:#?}", content.diagnostics);
+        assert_eq!(resolved(&content.available, &choices)["parts"], false);
+
+        let choices = ModChoices::from([("fuels".into(), false), ("parts".into(), true)]);
+        let content = load_chosen(&core, Some(&mods), &choices);
+        assert_eq!(content.error_count(), 1);
     }
 
     #[test]

@@ -559,8 +559,8 @@ fn choose_mods(
         let available = &content.0.available;
         let next = match action.name() {
             "mods.toggle" => {
-                let on = available.iter().find(|m| m.id == id);
-                let on = !on.is_some_and(|m| m.is_on(&mods.choices));
+                let now = osp_mods::resolved(available, &mods.choices);
+                let on = !now.get(id).copied().unwrap_or(false);
                 osp_mods::choose(available, &mods.choices, id, on)
             }
             "mods.mode" => match library.modes.iter().find(|mode| mode.id == id) {
