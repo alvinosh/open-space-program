@@ -9,8 +9,10 @@
 // within its bend length and spreads until it merges with its neighbours.
 //
 // The exhaust is a medium that glows, absorbs and scatters:
-// - The gas glows in its own colours: a soft column brightest in the potential core and
-//   the shock diamonds (the band emission of a clean flame). A jet well off the ambient
+// - Each jet leaves its nozzle as an exhaust cone, sharp-edged, bright and hot, inside a
+//   cooler plume that takes over past it and fades over the look's flame length.
+// - The gas glows in its own colours: brightest in the exhaust cone and the shock diamonds
+//   (the band emission of a clean flame), a soft column after. A jet well off the ambient
 //   pressure ends each shock cell in a Mach disk, a flat white-hot disc of exhaust the
 //   shock has heated again.
 // - Particles (soot) hide what is behind them and glow like a black body at their
@@ -61,7 +63,8 @@ struct PlumeParams {
     shock: vec4<f32>,
     /// rgb: the particles' albedo, w: their load.
     smoke: vec4<f32>,
-    /// x: the particles' hottest temperature (K), y: haze, z: eddy size at the exit, m.
+    /// x: the particles' hottest temperature (K), y: haze, z: eddy size at the exit, m,
+    /// w: share of the particles left once the flame has burnt out in air.
     medium: vec4<f32>,
     /// rgb: luminance of the hot flame (cd/m²), w: its radius.
     glow: vec4<f32>,
@@ -87,6 +90,14 @@ const HAZE_EXTINCTION: f32 = 3.0;
 const HAZE_ALBEDO: f32 = 0.97;
 /// Air temperature, K.
 const AIR: f32 = 290.0;
+/// The exhaust cone glows this many times the plume per metre of gas, at the exit share of
+/// the hottest temperature a sea-level engine leaves its nozzle at (`SEA_LEVEL_HEAT` in
+/// `plume.rs`); the plume is this much cooler than the exhaust that afterburns in it would
+/// be on its own, and its glow and particles start at this share beside the cone.
+const CONE_GLOW: f32 = 5.0;
+const EXIT_HEAT: f32 = 0.9;
+const PLUME_HEAT: f32 = 0.85;
+const PLUME_AT_EXIT: f32 = 0.3;
 /// Eddies grow by this much per metre along the plume, and so many pass a point a second.
 /// The pattern advects in units of eddies, so it moves faster where they are bigger and
 /// never stretches however long the engine burns; it repeats every `EDDY_PERIOD` eddies.
@@ -290,7 +301,7 @@ fn medium(p: vec3<f32>, e: f32, glow: bool) -> Medium {
         // a Mach disk with a glowing cone of reheated exhaust behind. Both fade downstream.
         let k = a / cell - 0.6;
         let phase = k - round(k);
-        let cells = shock * exp(-a / (4.0 * cell)) * smoothstep(0.2 * cell, 0.5 * cell, a);
+        let cells = shock * exp(-a / (2.5 * cell)) * smoothstep(0.2 * cell, 0.5 * cell, a);
         let half_width = 0.8 * re * max(1.0 - 2.2 * abs(phase), 0.0) + 1e-4;
         let knot = exp(-3.0 * pow(r / half_width, 2.0)) * exp(-phase * phase / 0.05) * cells;
         let disk_radius = jet.disk.y * re * max(1.0 - 0.15 * round(k), 0.3);
@@ -300,10 +311,16 @@ fn medium(p: vec3<f32>, e: f32, glow: bool) -> Medium {
                 + step(0.0, phase) * exp(-behind / 0.12)
                     * exp(-pow(r / (disk_radius * max(1.0 - 2.0 * behind, 0.05)), 2.0)));
 
-        // In air the exhaust afterburns with it, mixes and cools; in vacuum it cools as
-        // it expands. The rim, mixing with cold air, runs cooler, and turbine exhaust
-        // lining the nozzle wall is a cool, sooty collar until it catches fire. The shocks
-        // heat the exhaust again.
+        // The exhaust cone: the exhaust as it leaves the nozzle, before the air mixes into
+        // it, a sharp-edged cone from the nozzle's lip to a point a few nozzle widths out
+        // (shorter once the jet fans out in thin air), as hot as the nozzle lets it leave.
+        let cone_length = re * (2.0 + 4.0 * level) * (1.0 - 0.6 * expansion);
+        let cone_radius = re * max(1.0 - a / cone_length, 0.0) + 1e-4;
+        let cone = 1.0 - smoothstep(0.7, 1.0, r / cone_radius);
+        // The plume around and past it is cooler: in air the exhaust afterburns with it,
+        // mixes and cools; in vacuum it cools as it expands. The rim, mixing with cold air,
+        // runs cooler, and turbine exhaust lining the nozzle wall is a cool, sooty collar
+        // until it catches fire. The shocks heat the exhaust again.
         let air = 1.0 - expansion;
         let afterburn = air * smoothstep(0.0, jet.mix.y, a);
         let hot = jet.heat.w;
@@ -312,32 +329,36 @@ fn medium(p: vec3<f32>, e: f32, glow: bool) -> Medium {
         let film_length = 2.5 * re * (1.0 + 0.3 * e);
         let collar = jet.mix.z * step(1e-4, params.smoke.w) * smoothstep(0.3, 0.7, q)
             * (1.0 - smoothstep(0.6 * film_length, film_length, a));
-        let theta = mix(jet.heat.z, 1.0, afterburn) * cooling * rim * (1.0 - 0.3 * splash)
-            * (1.0 + 0.06 * rough * e + 0.12 * stir) * (1.0 - 0.65 * collar)
-            * (1.0 + 0.12 * (knot + disk));
+        let plume = PLUME_HEAT * mix(jet.heat.z, 1.0, afterburn) * cooling * rim
+            * (1.0 - 0.3 * splash) * (1.0 + 0.06 * rough * e + 0.12 * stir)
+            * (1.0 - 0.65 * collar) * (1.0 + 0.12 * (knot + disk));
+        let theta = max(plume, cone * (1.0 - collar) * min(jet.heat.z / EXIT_HEAT, 1.0));
+        // The layer where the plume mixes with the air grows from the nozzle's lip: thin
+        // around the cone, so the cone shows through it, and the whole jet past it.
+        let mixing = mix(PLUME_AT_EXIT, 1.0, smoothstep(0.2, 1.0, a / cone_length));
         let dense = rho * (1.0 + 6.0 * collar);
         density += dense;
-        soot += dense * jet.mix.x;
+        // In air the flame burns soot away; a solid's alumina stays as smoke.
+        let burnt = air * smoothstep(0.5 * hot, 2.0 * hot, a);
+        soot += dense * jet.mix.x * max(max(cone, mixing), collar)
+            * mix(1.0, params.medium.w, burnt);
         condensed = max(condensed, expansion * smoothstep(3.0, 10.0, w / re));
         heat += dense * theta;
         width += dense * w;
 
         if glow {
-            // The gas: a soft column, dimming as it widens (less so in air, where it keeps
-            // burning) and with distance, shifting towards red as it cools.
+            // The gas: the exhaust cone, bright and sharp-edged, and the plume, a soft column
+            // that takes over past the cone, dimming as it widens (less so in air, where it
+            // keeps burning) and with distance, shifting towards red as it cools.
             let fade = jet.flow.w;
             let along = exp(-a / fade) * (1.0 - 0.5 * splash) * end;
             let reddening = smoothstep(0.0, 2.0 * fade, a);
             let flame = params.flame.rgb
                 * mix(vec3<f32>(1.0), vec3<f32>(1.0, 0.45, 0.25), reddening);
             let turbulence = mix(1.0, 1.0 + 0.55 * e, rough);
-            // Potential core: bright, narrowing to the axis.
-            let core_length = re * (2.0 + 6.0 * level) * (1.0 - 0.6 * expansion);
-            let core_radius = re * max(1.0 - a / core_length, 0.0) + 1e-3;
-            let core = exp(-pow(r / core_radius, 2.0)) * (1.0 - smoothstep(0.5, 1.0, a / core_length));
-            // The turbine exhaust film is too cool to glow and hides the core inside it.
+            // The turbine exhaust film is too cool to glow and hides the cone inside it.
             gas += jet.heat.y * (1.0 - 0.95 * collar) * (flame * body * pow(thin, mix(1.0, 2.0, expansion)) * along
-                * turbulence + params.core.rgb * core * 5.0
+                * turbulence * mixing + params.core.rgb * cone * CONE_GLOW
                 + params.shock.rgb * (knot * 5.0 + disk * 100.0));
         }
     }

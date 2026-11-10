@@ -976,6 +976,7 @@ fn update_engines(
         let axis = plume_axis(exhaust, airflow, vessel.flight.dynamic_pressure as f32, jet);
         let cluster = PlumeCluster::new(
             &jets,
+            plume.look.length,
             axis,
             vessel.flight.static_pressure,
             height as f32,

@@ -8,7 +8,11 @@
 // The gas glows in its own colours (linear RGB): `core` for the hot core at the nozzle,
 // `flame` for the body of the plume, `shock` for the shock diamonds and Mach disks.
 // `luminance` is how bright a metre of that glow is at full thrust, cd/m² per m (sunlit
-// white paint is about 30 000 cd/m²).
+// white paint is about 30 000 cd/m²). Each jet leaves its nozzle as a short, bright exhaust
+// cone inside a cooler plume; `length` is how far that plume reaches in air at full thrust,
+// in nozzle exit radii (its glow falls to 1/e over it; 16 if left out): a liquid engine's
+// fades a few nozzle widths past its cone, a solid motor's burns far. In vacuum every plume
+// fans out into a wide, faint cone, whatever its `length`.
 //
 // `soot` (0..1) is how much particle matter the exhaust carries: it hides what is behind the
 // plume, glows like a black body up to `temperature` (K) where the exhaust afterburns with
@@ -27,6 +31,7 @@
     flame: [1.0, 0.45, 0.13],
     shock: [1.0, 0.9, 0.7],
     luminance: 20000,
+    length: 16,
     soot: 0.5,
     temperature: 2300,
     smoke: [0.2, 0.18, 0.16],
@@ -40,6 +45,7 @@
     flame: [1.0, 0.55, 0.2],
     shock: [1.0, 0.92, 0.78],
     luminance: 45000,
+    length: 14,
     soot: 0.12,
     temperature: 2450,
     smoke: [0.3, 0.27, 0.24],
@@ -54,6 +60,7 @@
     flame: [0.45, 0.5, 1.0],
     shock: [1.0, 0.82, 0.72],
     luminance: 1500,
+    length: 10,
     haze: 0.6,
   },
   {
@@ -68,6 +75,7 @@
     flame: [1.0, 0.5, 0.35],
     shock: [1.0, 0.8, 0.65],
     luminance: 25000,
+    length: 10,
     soot: 0.03,
     temperature: 1900,
     smoke: [0.55, 0.4, 0.3],
@@ -81,6 +89,7 @@
     flame: [0.45, 0.45, 1.0],
     shock: [1.0, 0.62, 0.38],
     luminance: 15000,
+    length: 12,
     soot: 0.004,
     temperature: 1900,
     haze: 0.5,
@@ -94,6 +103,7 @@
     flame: [1.0, 0.6, 0.25],
     shock: [1.0, 0.9, 0.75],
     luminance: 18000,
+    length: 14,
     soot: 0.15,
     temperature: 2200,
     smoke: [0.35, 0.33, 0.3],
@@ -107,6 +117,7 @@
     flame: [1.0, 0.5, 0.25],
     shock: [1.0, 0.88, 0.7],
     luminance: 22000,
+    length: 12,
     soot: 0.05,
     temperature: 2000,
     smoke: [0.4, 0.35, 0.3],
@@ -120,6 +131,7 @@
     flame: [0.9, 0.45, 0.2],
     shock: [1.0, 0.85, 0.7],
     luminance: 3000,
+    length: 8,
     haze: 0.1,
   },
   {
@@ -130,6 +142,7 @@
     flame: [0.9, 0.45, 0.65],
     shock: [1.0, 0.8, 0.8],
     luminance: 1200,
+    length: 10,
     haze: 0.3,
   },
   {
@@ -141,6 +154,7 @@
     flame: [1.0, 0.55, 0.18],
     shock: [1.0, 0.85, 0.6],
     luminance: 40000,
+    length: 60,
     soot: 0.85,
     temperature: 2700,
     smoke: [0.75, 0.74, 0.72],
@@ -156,6 +170,7 @@
     flame: [1.0, 0.5, 0.2],
     shock: [1.0, 0.9, 0.7],
     luminance: 15000,
+    length: 14,
     soot: 0.1,
     temperature: 2000,
     smoke: [0.3, 0.27, 0.24],

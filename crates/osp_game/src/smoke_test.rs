@@ -101,14 +101,18 @@ impl Plugin for SmokeTestPlugin {
                 .filter_map(|t| t.trim().parse().ok())
                 .collect();
             let mut actions = if let Some(last) = times.last() {
-                // Launch, then stills at the given times (debugging the ascent).
-                let mut actions = vec![
-                    (0.5, Action::MapView(false)),
-                    (1.0, Action::Ui("ui.show:attitude_info")),
-                    (1.0, Action::Ui("ui.show:vessel_info")),
-                    (1.0, Action::Ui("ui.show:structure_info")),
-                    (3.5, Action::Launch),
-                ];
+                // Launch, then stills at the given times (debugging the ascent). With
+                // `OSP_CAPTURE_BARE=1` the flight UI is hidden, to see the vessel whole.
+                let mut actions = vec![(0.5, Action::MapView(false)), (3.5, Action::Launch)];
+                if std::env::var_os("OSP_CAPTURE_BARE").is_some() {
+                    actions.push((1.0, Action::Ui("ui.hide_group:flight")));
+                } else {
+                    actions.extend([
+                        (1.0, Action::Ui("ui.show:attitude_info")),
+                        (1.0, Action::Ui("ui.show:vessel_info")),
+                        (1.0, Action::Ui("ui.show:structure_info")),
+                    ]);
+                }
                 actions.extend_from_slice(PITCH_KICK);
                 // `OSP_CAPTURE_STAGE_AT=<s>,...`: stage at those times too.
                 let stages = std::env::var("OSP_CAPTURE_STAGE_AT").unwrap_or_default();
@@ -2805,8 +2809,8 @@ const PITCH_KICK: &[(f64, Action)] = &[
 
 /// One still once the terrain has loaded (`OSP_CAPTURE_QUICK=1`), or with
 /// `OSP_CAPTURE_AT=<s>,<s>,...` a launch and stills `view<n>.png` at those times (staging
-/// at `OSP_CAPTURE_STAGE_AT=<s>,...`). Combine with `OSP_CAMERA=<yaw°>,<pitch°>,<distance
-/// m>` to frame them.
+/// at `OSP_CAPTURE_STAGE_AT=<s>,...`, the flight UI hidden with `OSP_CAPTURE_BARE=1`).
+/// Combine with `OSP_CAMERA=<yaw°>,<pitch°>,<distance m>` to frame them.
 const QUICK_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (8.0, Action::Capture("view.png")),

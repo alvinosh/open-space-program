@@ -2,7 +2,10 @@
 //! in `shaders/plume.wesl`.
 //!
 //! The look comes from a `plumes` record: the colours the gas glows in, the particles
-//! (soot) it carries and how hot they burn, and the haze it condenses into as it cools.
+//! (soot) it carries and how hot they burn, the haze it condenses into as it cools, and how
+//! far the flame reaches in air (a solid motor's far, a liquid engine's a few nozzle widths).
+//! Each jet starts in a short, bright exhaust cone, the exhaust as it leaves the nozzle,
+//! inside a cooler plume that mixes with the air and fades.
 //! The shape of each engine's jet comes from its state: its thrust level (a start grows the
 //! plume out of the nozzle, throttling shortens and dims it) and its exit pressure against
 //! the ambient pressure. A jet that leaves the nozzle at or below the ambient pressure stays
@@ -74,6 +77,11 @@ pub struct PlumeDef {
     /// the plume as a column; 0: it leaves none (see `crate::exhaust_trail`).
     #[serde(default)]
     pub trail: f32,
+    /// How far the flame reaches in air at full thrust, in nozzle exit radii: its glow falls
+    /// to 1/e over this. A solid motor's burns far; a liquid engine's fades a few nozzle
+    /// widths past its exhaust cone. In vacuum every plume fans out over `VACUUM_LENGTH`.
+    #[serde(default = "flame_length")]
+    pub length: f32,
     /// What it is the exhaust of: engines without a `plume` of their own get the look whose
     /// propellants they all burn (the one that names the most). An entry is one propellant
     /// or several alternatives joined by `|` (`"Kerosene|RP-1"`: either will do); a cooled
@@ -91,6 +99,12 @@ pub struct PlumeDef {
 }
 
 impl PlumeDef {
+    /// Share of the particles left once the flame has burnt out in air: a liquid engine's
+    /// soot mostly burns away, a solid's alumina (a look that leaves a `trail`) stays smoke.
+    pub fn particles_left(&self) -> f32 {
+        if self.trail > 0.0 { 1.0 } else { SOOT_LEFT }
+    }
+
     /// The look for an engine: the one it names, or else the one for what it burns and what
     /// kind of engine it is (the most specific), or else the fallback. Electric engines have
     /// none unless they name one.
@@ -122,6 +136,10 @@ impl PlumeDef {
 
 fn soot_colour() -> [f32; 3] {
     [0.2, 0.18, 0.16]
+}
+
+fn flame_length() -> f32 {
+    16.0
 }
 
 /// The shape of one engine's jet for its state, in metres.
@@ -175,6 +193,10 @@ pub struct PlumeShape {
 
 /// How much wider the jet gets where it splashes on the ground.
 const SPLASH: f32 = 2.5;
+/// How far a plume reaches in vacuum at full thrust, in nozzle exit radii, whatever its
+/// look's `length` in air: expanding into nothing, every exhaust fans out into a wide, faint
+/// cone.
+const VACUUM_LENGTH: f32 = 30.0;
 /// Share of the fade length over which the jet turns from the nozzle axis onto the plume's.
 const BEND_LENGTH: f32 = 0.3;
 /// Largest bend drawn, as the tangent of the angle between nozzle and plume axis.
@@ -198,16 +220,20 @@ const SEA_LEVEL_HEAT: f64 = 0.9;
 const PARTICLE_EXTINCTION: f32 = 6.0;
 /// Air temperature for the particles' glow, K.
 const AIR: f32 = 290.0;
+/// Share of a liquid engine's soot left once its flame has burnt out in air.
+const SOOT_LEFT: f32 = 0.25;
 
 impl PlumeShape {
     /// `merged_radius` is the radius of a nozzle with the whole exit area of the engine's
-    /// cluster (its own for a single engine): merged jets burn longer. `exit_pressure` is
-    /// the engine's at full thrust, `ambient` the air's, both Pa; `level` the thrust share;
-    /// `ground` how far the ground is from the nozzle exit along the axis, m (infinite when
-    /// clear); `bend` the nozzle axis against the plume's (see [`plume_axes`]).
+    /// cluster (its own for a single engine): merged jets burn longer. `length` is the
+    /// look's (see [`PlumeDef::length`]). `exit_pressure` is the engine's at full thrust,
+    /// `ambient` the air's, both Pa; `level` the thrust share; `ground` how far the ground is
+    /// from the nozzle exit along the axis, m (infinite when clear); `bend` the nozzle axis
+    /// against the plume's (see [`plume_axes`]).
     pub fn new(
         exit_radius: f32,
         merged_radius: f32,
+        length: f32,
         exit_pressure: f64,
         level: f64,
         ambient: f64,
@@ -231,7 +257,8 @@ impl PlumeShape {
                 (0.3 + 0.1 * ratio.sqrt()).min(0.8),
             )
         };
-        let fade_per_radius = (24.0 + 36.0 * (level as f32).sqrt()) * (1.0 - 0.5 * expansion);
+        let fade_per_radius =
+            (0.4 + 0.6 * (level as f32).sqrt()) * (length + (VACUUM_LENGTH - length) * expansion);
         let fade = merged_radius.max(exit_radius) * fade_per_radius;
         // In air the jet mixes with it and widens slowly; in vacuum it fans out (the faint
         // edge goes wider still, but the glow stays within about 35°).
@@ -328,10 +355,11 @@ pub struct PlumeCluster {
 }
 
 impl PlumeCluster {
-    /// `axis` is where the plume runs (see [`plume_axis`]), `ambient` the air's pressure,
-    /// Pa. `height` is how high the vessel's base is above the ground, m, and `up` the local
-    /// vertical, for where the plume meets the ground.
-    pub fn new(jets: &[Jet], axis: Vec3, ambient: f64, height: f32, up: Vec3) -> Self {
+    /// `length` is the look's flame length (see [`PlumeDef::length`]), `axis` where the
+    /// plume runs (see [`plume_axis`]), `ambient` the air's pressure, Pa. `height` is how
+    /// high the vessel's base is above the ground, m, and `up` the local vertical, for where
+    /// the plume meets the ground.
+    pub fn new(jets: &[Jet], length: f32, axis: Vec3, ambient: f64, height: f32, up: Vec3) -> Self {
         let rotation = Quat::from_rotation_arc(Vec3::NEG_Y, axis);
         // The axis through the middle of the nozzles by exit area (a turbine exhaust pipe
         // hardly counts), the exit plane through the outlet nearest the vessel.
@@ -366,6 +394,7 @@ impl PlumeCluster {
                 let mut shape = PlumeShape::new(
                     jet.radius,
                     merged,
+                    length,
                     jet.exit_pressure,
                     jet.level,
                     ambient,
@@ -548,7 +577,8 @@ pub struct PlumeParams {
     /// rgb: the particles' albedo, w: their load.
     pub smoke: Vec4,
     /// x: the particles' hottest temperature (K, 0 if they don't glow), y: haze, z: eddy
-    /// size at the exit, m.
+    /// size at the exit, m, w: share of the particles left once the flame has burnt out in
+    /// air.
     pub medium: Vec4,
     /// The hottest part of the flame, which lights the smoke: rgb its luminance (cd/m²),
     /// w its radius.
@@ -632,7 +662,12 @@ impl PlumeParams {
             flame: rgb(look.flame, 0.0),
             shock: rgb(look.shock, 0.0),
             smoke: rgb(look.smoke, look.soot),
-            medium: Vec4::new(look.temperature, look.haze, 1.4 * exit, 0.0),
+            medium: Vec4::new(
+                look.temperature,
+                look.haze,
+                1.4 * exit,
+                look.particles_left(),
+            ),
             glow: glow.extend(radius),
             up: up.extend(hot),
             quality: Vec4::new(
@@ -700,12 +735,15 @@ mod tests {
     use super::*;
 
     const SEA_LEVEL_ENGINE: f64 = 70_000.0;
+    /// A liquid engine's flame length, exit radii.
+    const LENGTH: f32 = 16.0;
 
     /// A plume from a sea-level engine's nozzle, not bent.
     fn straight(level: f64, ambient: f64, ground: f32) -> PlumeShape {
         PlumeShape::new(
             0.45,
             0.45,
+            LENGTH,
             SEA_LEVEL_ENGINE,
             level,
             ambient,
@@ -732,6 +770,7 @@ mod tests {
             smoke: soot_colour(),
             haze: 0.3,
             trail: 0.0,
+            length: LENGTH,
             propellants: vec!["Kerosene".into(), "LqdOxygen".into()],
             kinds: Vec::new(),
             fallback: false,
@@ -861,6 +900,28 @@ mod tests {
         assert!(low.cell > straight(1.0, ATM, f32::INFINITY).cell);
     }
 
+    /// A liquid engine's flame ends a few nozzle widths out in air, a solid's burns far; in
+    /// vacuum both fan out alike.
+    #[test]
+    fn liquid_flames_are_short_in_air_and_fan_out_in_vacuum() {
+        let shape = |length, ambient| {
+            PlumeShape::new(
+                0.45,
+                0.45,
+                length,
+                SEA_LEVEL_ENGINE,
+                1.0,
+                ambient,
+                f32::INFINITY,
+                Vec2::ZERO,
+            )
+        };
+        let (liquid, solid) = (shape(LENGTH, ATM), shape(60.0, ATM));
+        assert!(liquid.fade < 0.3 * solid.fade && liquid.length < 0.3 * solid.length);
+        assert!(liquid.fade < 10.0, "{}", liquid.fade);
+        assert_eq!(shape(LENGTH, 0.0).fade, shape(60.0, 0.0).fade);
+    }
+
     #[test]
     fn the_ground_cuts_the_plume_and_its_bounds_make_room_for_the_splash() {
         let clear = straight(1.0, ATM, f32::INFINITY);
@@ -884,11 +945,21 @@ mod tests {
     #[test]
     fn overexpanded_jets_end_their_cells_in_mach_disks() {
         // An RS-25 at sea level leaves at a fifth of the air's pressure.
-        let rs25 = PlumeShape::new(1.15, 1.15, 19_000.0, 1.0, ATM, f32::INFINITY, Vec2::ZERO);
-        let matched = PlumeShape::new(0.45, 0.45, ATM, 1.0, ATM, f32::INFINITY, Vec2::ZERO);
+        let rs25 = PlumeShape::new(
+            1.15,
+            1.15,
+            LENGTH,
+            19_000.0,
+            1.0,
+            ATM,
+            f32::INFINITY,
+            Vec2::ZERO,
+        );
+        let matched = PlumeShape::new(0.45, 0.45, LENGTH, ATM, 1.0, ATM, f32::INFINITY, Vec2::ZERO);
         let thin = PlumeShape::new(
             1.15,
             1.15,
+            LENGTH,
             19_000.0,
             1.0,
             2_000.0,
@@ -945,7 +1016,16 @@ mod tests {
     #[test]
     fn vacuum_engines_leave_their_exhaust_cooler() {
         let sea = straight(1.0, 0.0, f32::INFINITY);
-        let vacuum = PlumeShape::new(1.5, 1.5, 4_000.0, 1.0, 0.0, f32::INFINITY, Vec2::ZERO);
+        let vacuum = PlumeShape::new(
+            1.5,
+            1.5,
+            LENGTH,
+            4_000.0,
+            1.0,
+            0.0,
+            f32::INFINITY,
+            Vec2::ZERO,
+        );
         assert!((sea.heat - 0.9).abs() < 1e-3, "{}", sea.heat);
         assert!(vacuum.heat < 0.8 * sea.heat, "{}", vacuum.heat);
     }
@@ -956,6 +1036,7 @@ mod tests {
             PlumeShape::new(
                 0.45,
                 0.45,
+                LENGTH,
                 SEA_LEVEL_ENGINE,
                 1.0,
                 20_000.0,
@@ -982,7 +1063,7 @@ mod tests {
     #[test]
     fn a_cluster_merges_into_one_longer_plume_that_bounds_every_jet() {
         let up = Vec3::Y;
-        let cluster = PlumeCluster::new(&nine(1.0), Vec3::NEG_Y, ATM, f32::INFINITY, up);
+        let cluster = PlumeCluster::new(&nine(1.0), LENGTH, Vec3::NEG_Y, ATM, f32::INFINITY, up);
         let single = straight(1.0, ATM, f32::INFINITY);
         assert_eq!(cluster.jets.len(), 9);
         assert!((cluster.origin - Vec3::new(0.0, -2.0, 0.0)).length() < 1e-5);
@@ -999,7 +1080,7 @@ mod tests {
             }
         }
         // One engine on its own is the single plume.
-        let one = PlumeCluster::new(&nine(1.0)[8..], Vec3::NEG_Y, ATM, f32::INFINITY, up);
+        let one = PlumeCluster::new(&nine(1.0)[8..], LENGTH, Vec3::NEG_Y, ATM, f32::INFINITY, up);
         assert_eq!(one.jets[0].0, single);
         assert_eq!(one.length, single.length);
     }
@@ -1014,8 +1095,15 @@ mod tests {
             kind: JetKind::TurbineExhaust,
             ..engine
         };
-        let alone = PlumeCluster::new(&[engine], Vec3::NEG_Y, ATM, f32::INFINITY, Vec3::Y);
-        let both = PlumeCluster::new(&[engine, pipe], Vec3::NEG_Y, ATM, f32::INFINITY, Vec3::Y);
+        let alone = PlumeCluster::new(&[engine], LENGTH, Vec3::NEG_Y, ATM, f32::INFINITY, Vec3::Y);
+        let both = PlumeCluster::new(
+            &[engine, pipe],
+            LENGTH,
+            Vec3::NEG_Y,
+            ATM,
+            f32::INFINITY,
+            Vec3::Y,
+        );
         let (main, gg) = (both.jets[0].0, both.jets[1].0);
         assert!(gg.heat < 0.5 * main.heat && gg.soot > 2.0 * main.soot);
         assert!(gg.afterburn > 2.0 * main.afterburn);
@@ -1031,18 +1119,18 @@ mod tests {
             kind: JetKind::Main { film: true },
             ..engine
         };
-        let k5 = PlumeCluster::new(&[lined], Vec3::NEG_Y, ATM, f32::INFINITY, Vec3::Y);
+        let k5 = PlumeCluster::new(&[lined], LENGTH, Vec3::NEG_Y, ATM, f32::INFINITY, Vec3::Y);
         assert_eq!(k5.jets[0].0.film, 1.0);
     }
 
     #[test]
     fn the_cluster_meets_the_ground_below_its_exit_plane() {
         // The base 30 m up, the nozzle exits 2 m below it.
-        let cluster = PlumeCluster::new(&nine(1.0), Vec3::NEG_Y, ATM, 30.0, Vec3::Y);
+        let cluster = PlumeCluster::new(&nine(1.0), LENGTH, Vec3::NEG_Y, ATM, 30.0, Vec3::Y);
         assert!((cluster.ground - 28.0).abs() < 1e-4, "{}", cluster.ground);
         assert_eq!(cluster.length, 28.0);
         // Sideways it never does.
-        let flat = PlumeCluster::new(&nine(1.0), Vec3::X, ATM, 30.0, Vec3::Y);
+        let flat = PlumeCluster::new(&nine(1.0), LENGTH, Vec3::X, ATM, 30.0, Vec3::Y);
         assert_eq!(flat.ground, f32::INFINITY);
     }
 
@@ -1068,8 +1156,9 @@ mod tests {
             temperature: 0.0,
             ..look.clone()
         };
-        let sea = PlumeCluster::new(&nine(1.0), Vec3::NEG_Y, ATM, f32::INFINITY, Vec3::Y);
-        let vacuum = PlumeCluster::new(&nine(1.0), Vec3::NEG_Y, 0.0, f32::INFINITY, Vec3::Y);
+        let sea = PlumeCluster::new(&nine(1.0), LENGTH, Vec3::NEG_Y, ATM, f32::INFINITY, Vec3::Y);
+        let vacuum =
+            PlumeCluster::new(&nine(1.0), LENGTH, Vec3::NEG_Y, 0.0, f32::INFINITY, Vec3::Y);
         let lumens = |c: &PlumeCluster, l: &PlumeDef| plume_light(c, l).0;
         assert!(lumens(&sea, &look) > 10.0 * lumens(&sea, &clean));
         assert!(lumens(&sea, &look) > 10.0 * lumens(&vacuum, &look));

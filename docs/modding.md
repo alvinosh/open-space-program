@@ -74,7 +74,7 @@ parts of it instead.
 | `crew_names` | Names for the crew | `first` and `last`: every record's go into one pool, and each person gets one of each, the same for the same seat of the same part |
 | `processes` | Ways of turning resources into others, run by a part's `process` component | `name`, `inputs` and `outputs` (resource: kg/s at full speed; the outputs may not weigh more than the inputs), `dump` (outputs let go of when there is no room, instead of slowing down), `power` (W at full speed). The example mod has electrolysis |
 | `game_modes` | What a new game can be | `name`, `description`, `mods` (what it turns on, everything else is off), `default` (what a player who has not chosen yet gets) |
-| `plumes` | Exhaust looks | `propellants` it is the exhaust of (alternatives with `\|`), `kinds`, `fallback`, `core`, `flame` and `shock` colours (linear RGB), `luminance` (cd/m² per m at full thrust), `soot` (0..1), `temperature` (K), `smoke` (colour), `haze` (0..1); see [Engine response and plumes](#engine-response-and-plumes) |
+| `plumes` | Exhaust looks | `propellants` it is the exhaust of (alternatives with `\|`), `kinds`, `fallback`, `core`, `flame` and `shock` colours (linear RGB), `luminance` (cd/m² per m at full thrust), `soot` (0..1), `temperature` (K), `smoke` (colour), `haze` (0..1), `length` (how far the flame reaches in air, nozzle exit radii; 16 if left out); see [Engine response and plumes](#engine-response-and-plumes) |
 | `resources` | Propellants and gases | `density` (kg/m³ as stored), storage `temperature` (K) and `pressure` (Pa) |
 | `materials` | Structural materials | `density` (kg/m³), `yield_strength` and `elastic_modulus` (Pa), `max_temperature` (K, 1200 if left out), `specific_heat` (J/kg K, 900 if left out) |
 | `liveries` | Paint schemes for stages, which the stage converter copies into parts | `name`, `paint`; see [Stage appearance](#stage-appearance) |
@@ -744,7 +744,10 @@ propellant flow follow the level, so a tail-off still pushes and settles propell
 burn executor cuts early by what the tail-off will still give.
 
 The plume is drawn from the engine's state: it grows out of the nozzle as the engine spools
-up, and shortens and dims as it throttles down. `exit_pressure` (Pa, at full thrust; scales
+up, and shortens and dims as it throttles down. Each jet leaves its nozzle as a short, bright
+exhaust cone inside a cooler plume that mixes with the air; the look's `length` sets how far
+that plume reaches in air (a liquid engine's a few nozzle widths past its cone, a solid
+motor's much further), and in vacuum every plume fans out alike. `exit_pressure` (Pa, at full thrust; scales
 with thrust) against the ambient pressure sets its shape: at or below the ambient pressure
 the jet is a narrow column with shock diamonds; as the air thins it overtakes it, the cells
 stretch and the plume fans out and fades into vacuum. Well below the ambient pressure (an
