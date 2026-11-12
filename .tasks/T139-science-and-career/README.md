@@ -16,3 +16,8 @@ The science half is planned in the T260 project: what it is for (T271), experime
 samples (T273), sending data (T274) and labs (T275). The career stays here.
 
 Science for the tech tree was decided in T271 and is built in T284.
+
+## 2026-11-12
+
+Replaced by epic T287: science and the tech tree (T288 to T292, T272 to T275, T284) and the career's
+money, facilities and contracts (T293 to T295).

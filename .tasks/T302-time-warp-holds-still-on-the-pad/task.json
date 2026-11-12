@@ -1,0 +1,18 @@
+{
+  "id": "T302",
+  "title": "Time warp above physics warp holds still on the pad",
+  "kind": "bug",
+  "status": "done",
+  "area": "physics",
+  "size": "S",
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/universe.rs (advance_rails, can_use_rails)"
+  ],
+  "created": "2026-11-12",
+  "updated": "2026-11-12",
+  "done": "2026-11-12",
+  "milestone": "M3",
+  "priority": 57.07326
+}

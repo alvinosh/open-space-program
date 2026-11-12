@@ -1,0 +1,20 @@
+{
+  "id": "T288",
+  "title": "Two tech trees laid out: Casual for the base game's parts, Realistic from RP-1's",
+  "kind": "feature",
+  "status": "done",
+  "area": "science",
+  "size": "M",
+  "parent": "T287",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/tech.rs",
+    "mods/realism/tech_nodes/rp1.json5",
+    "crates/osp_sim/src/palette.rs"
+  ],
+  "created": "2026-11-12",
+  "updated": "2026-11-12",
+  "done": "2026-11-12",
+  "milestone": "M3",
+  "priority": 57.0731
+}

@@ -1,0 +1,19 @@
+{
+  "id": "T303",
+  "title": "Parts can go on a capsule's side",
+  "kind": "bug",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/building.rs (Spot::Surface)",
+    "T272"
+  ],
+  "created": "2026-11-12",
+  "updated": "2026-11-12",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2439
+}

@@ -23,3 +23,10 @@ T261); Casual has no failures.
 - Dose past a part's tolerance shortens its life (T267).
 - The part window and the monitor say what a failure would take out, where a spare would carry on.
 - Chance comes from T268's seeded generators.
+
+## 2026-11-12
+
+T267 left parts' dose here: the radiation at a vessel and what falls on it over each step are in the
+`Environment` (`radiation`, `exposure`, by kind), and `System::irradiate` is the hook; a part would
+need its own shielding (`Radiation::through`) and a count of what it took, if failures are to rise
+with it.

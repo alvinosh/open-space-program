@@ -2,7 +2,7 @@
   "id": "T139",
   "title": "Science and career",
   "kind": "feature",
-  "status": "backlog",
+  "status": "dropped",
   "area": "content",
   "size": "XL",
   "parent": "T071",
@@ -12,7 +12,7 @@
     "T271"
   ],
   "created": "2026-10-30",
-  "updated": "2026-11-10",
+  "updated": "2026-11-12",
   "done": null,
   "milestone": "later",
   "priority": 125

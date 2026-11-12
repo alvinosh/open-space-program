@@ -1,0 +1,23 @@
+{
+  "id": "T292",
+  "title": "Tank sizes and tank types unlocked by the tree",
+  "kind": "feature",
+  "status": "done",
+  "area": "science",
+  "size": "M",
+  "parent": "T287",
+  "depends_on": [
+    "T289"
+  ],
+  "refs": [
+    "crates/osp_sim/src/tech.rs",
+    "crates/osp_editor/src/parts_list.rs",
+    "assets/core/tech_nodes/casual.json5",
+    "mods/realism/patches/tech.json5"
+  ],
+  "created": "2026-11-12",
+  "updated": "2026-11-12",
+  "done": "2026-11-12",
+  "milestone": "M3",
+  "priority": 57.07325
+}

@@ -5,7 +5,7 @@
   "status": "todo",
   "area": "science",
   "size": "M",
-  "parent": "T260",
+  "parent": "T287",
   "depends_on": [
     "T273",
     "T262"
@@ -14,8 +14,8 @@
     ".tasks/T260-ships-that-live/spec.md §6.5"
   ],
   "created": "2026-11-10",
-  "updated": "2026-11-10",
+  "updated": "2026-11-12",
   "done": null,
   "milestone": "M3",
-  "priority": 57.077
+  "priority": 57.07375
 }

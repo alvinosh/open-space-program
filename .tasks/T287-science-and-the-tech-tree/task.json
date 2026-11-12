@@ -1,0 +1,18 @@
+{
+  "id": "T287",
+  "title": "Science and the tech tree: instruments earn science, science unlocks parts, in Casual and Realistic",
+  "kind": "epic",
+  "status": "todo",
+  "area": "science",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "T271",
+    "T139"
+  ],
+  "created": "2026-11-12",
+  "updated": "2026-11-12",
+  "done": null,
+  "milestone": "M3"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "T301",
+  "title": "Smoke: a whole career played through, Casual and Realistic",
+  "kind": "test",
+  "status": "todo",
+  "area": "test",
+  "size": "XL",
+  "parent": "T287",
+  "depends_on": [
+    "T291",
+    "T293",
+    "T294",
+    "T295",
+    "T284",
+    "T290"
+  ],
+  "refs": [
+    "crates/osp_smoke",
+    "T291"
+  ],
+  "created": "2026-11-12",
+  "updated": "2026-11-12",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.07372
+}

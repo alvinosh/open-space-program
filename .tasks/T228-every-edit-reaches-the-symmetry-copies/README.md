@@ -20,3 +20,12 @@ and flies crooked.
 ## Where it comes from
 
 From the editor review of 2026-11-07: the user asked for everything wrong with the editor from a UX point of view, then for each finding to be filed as a task. The epic, T221, lists them all.
+
+## 2026-11-12
+
+The user: "if you add 4 fins with symetry, when you edit one all of them should be edited, same for
+mirror, and even if you decide to reposition the mirror part should also be repositioned."
+
+Added to the scope: repositioning one part of a set, by the Move and Turn tools (T206) or by grabbing
+it and putting it on elsewhere (T216), moves every copy, a mirror copy mirrored. Check each way in a
+capture; the user says a mirror copy stays behind today.

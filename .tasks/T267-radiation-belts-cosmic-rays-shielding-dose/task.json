@@ -2,7 +2,7 @@
   "id": "T267",
   "title": "Radiation: belts, cosmic rays, shielding and dose",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "environment",
   "size": "L",
   "parent": "T260",
@@ -17,8 +17,8 @@
     ".tasks/T260-ships-that-live/spec.md §5.1 to §5.4"
   ],
   "created": "2026-11-10",
-  "updated": "2026-11-10",
-  "done": null,
+  "updated": "2026-11-12",
+  "done": "2026-11-12",
   "milestone": "M3",
   "priority": 57.068
 }

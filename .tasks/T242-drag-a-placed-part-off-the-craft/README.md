@@ -31,3 +31,8 @@ placed part starts at all with a real mouse, not only the scripted pointer the c
 - Not checked: dragging with a real mouse (the captures use the scripted pointer); still to ask
   whether letting go in empty space should take it off or only over the list.
 
+
+## 2026-11-12
+
+The user asked for KSP's behaviour: a part let go off the craft stays there, see-through, instead of
+being taken off. That is T297; letting go over the parts list still throws it away.

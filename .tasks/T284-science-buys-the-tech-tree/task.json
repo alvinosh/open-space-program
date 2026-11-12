@@ -5,11 +5,12 @@
   "status": "todo",
   "area": "content",
   "size": "L",
-  "parent": "T260",
+  "parent": "T287",
   "depends_on": [
     "T272",
     "T273",
-    "T274"
+    "T274",
+    "T289"
   ],
   "refs": [
     "crates/osp_sim/src/tech.rs",
@@ -20,8 +21,8 @@
     ".tasks/T260-ships-that-live/spec.md §6.7"
   ],
   "created": "2026-11-10",
-  "updated": "2026-11-10",
+  "updated": "2026-11-12",
   "done": null,
   "milestone": "M3",
-  "priority": 57.0775
+  "priority": 57.0735
 }

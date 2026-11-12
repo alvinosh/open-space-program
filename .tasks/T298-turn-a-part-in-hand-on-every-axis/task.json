@@ -1,0 +1,20 @@
+{
+  "id": "T298",
+  "title": "Keys to turn a part in hand on every axis",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/building.rs (Q and E)",
+    "crates/osp_editor/src/hangar.rs (WASD view keys)",
+    "T238"
+  ],
+  "created": "2026-11-12",
+  "updated": "2026-11-12",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2434
+}

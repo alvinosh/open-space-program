@@ -2,20 +2,21 @@
   "id": "T272",
   "title": "Experiments that run over time",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "science",
   "size": "L",
-  "parent": "T260",
+  "parent": "T287",
   "depends_on": [
     "T271",
-    "T261"
+    "T261",
+    "T288"
   ],
   "refs": [
     ".tasks/T260-ships-that-live/spec.md §6.1, §6.2, §6.3, §6.6"
   ],
   "created": "2026-11-10",
-  "updated": "2026-11-10",
-  "done": null,
+  "updated": "2026-11-12",
+  "done": "2026-11-12",
   "milestone": "M3",
-  "priority": 57.074
+  "priority": 57.07335
 }

@@ -1,0 +1,21 @@
+{
+  "id": "T295",
+  "title": "Contracts: goals offered for money in a career",
+  "kind": "feature",
+  "status": "todo",
+  "area": "career",
+  "size": "L",
+  "parent": "T287",
+  "depends_on": [
+    "T293"
+  ],
+  "refs": [
+    "T165",
+    "crates/osp_sim/src/mission.rs"
+  ],
+  "created": "2026-11-12",
+  "updated": "2026-11-12",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.07365
+}

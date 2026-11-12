@@ -18,3 +18,9 @@ part, as a sandbox, and the date rule stays for historical scenarios.
 ## 2026-11-10
 
 Confirmed by the user: a new game can still start with every part, as a sandbox.
+
+## 2026-11-12
+
+Pacing asked for by the user (T301): Casual goes sounding rockets, suborbital, orbit, Moon; Realistic
+much slower, with many more sounding rockets and uncrewed probes before the first crew. The rewards
+are set so each mode's tree is earned at that pace.

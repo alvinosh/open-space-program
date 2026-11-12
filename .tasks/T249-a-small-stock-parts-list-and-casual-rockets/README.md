@@ -13,3 +13,9 @@ core stage").
 ## Done when
 
 - Every stock craft flies its scenario on the short list, in the base game alone.
+
+## 2026-11-12
+
+Said by the user: "in casual modes there will only be one tank type". Today the base game has eight
+(`assets/core/tank_types/stock.json5`); Casual should keep one. Casual sizes are locked by the tree
+(T292).

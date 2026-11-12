@@ -2,7 +2,7 @@
   "id": "T264",
   "title": "Cabins: volume, pressure, air and leaks",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "crew",
   "size": "L",
   "parent": "T260",
@@ -14,8 +14,8 @@
     ".tasks/T260-ships-that-live/spec.md §3.3, §4.1, §4.2, §14.2"
   ],
   "created": "2026-11-10",
-  "updated": "2026-11-10",
-  "done": null,
+  "updated": "2026-11-12",
+  "done": "2026-11-12",
   "milestone": "M3",
   "priority": 57.065
 }

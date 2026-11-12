@@ -1,0 +1,23 @@
+{
+  "id": "T286",
+  "title": "Cabins joined by a tunnel share their air, a hatch shuts one off, and a cabin's volume comes from its shape",
+  "kind": "feature",
+  "status": "todo",
+  "area": "crew",
+  "size": "M",
+  "parent": "T260",
+  "depends_on": [
+    "T264"
+  ],
+  "refs": [
+    "crates/osp_sim/src/systems/cabin.rs",
+    "crates/osp_sim/src/systems.rs (Systems::share_air, board)",
+    "crates/osp_sim/src/propulsion/supply.rs (Store, decay)",
+    ".tasks/T260-ships-that-live/spec.md §3.3, §4.2"
+  ],
+  "created": "2026-11-12",
+  "updated": "2026-11-12",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.0739
+}

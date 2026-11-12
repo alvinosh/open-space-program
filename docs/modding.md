@@ -66,12 +66,17 @@ parts of it instead.
 
 | Collection | Contents | Notes |
 | --- | --- | --- |
-| `bodies` | Planets, moons, stars | Keplerian `orbit` (J2000 ecliptic, degrees), IAU `rotation`, optional `atmosphere`, `scattering` (the sky, see [Skies](#skies)), `terrain` dataset and `max_terrain_height` (m) |
+| `bodies` | Planets, moons, stars | Keplerian `orbit` (J2000 ecliptic, degrees), IAU `rotation`, optional `atmosphere`, `scattering` (the sky, see [Skies](#skies)), `terrain` dataset and `max_terrain_height` (m), `albedo`, and `radiation`, which only rules with radiation count (mSv/h for an unshielded person): the root's `cosmic` (galactic cosmic rays all through the system), a body's `magnetosphere` (the share of them kept out at its surface, less with the square of the distance), its `belts` (each a `name`, the field lines crossing the magnetic equator from `inner` to `outer` radii out, most at `peak`, its `rate` there, falling to 1/e by `latitude` degrees off it), `floor` (radii up below which the air takes the belts' particles), and `surface` (what the ground gives off, on it). `science`: where experiments' situations change over it, m above sea level: `flying_high` (flying above it is flying high; 0.18 of the air's height if left out) and `space_high` (in space above it is in space high; a third of its radius if left out). The base game's Earth: 18 km and 2000 km; the Realism mod uses RP-1's (40 km and 35,786 km) |
 | `engines` | Engines | `thrust_vac` (N), `isp_vac`/`isp_sl` (s), `min_throttle`, `response`, `ignitions`, `requires_ullage`, `gimbal_range` (degrees, 0 = fixed), `propellants: { Name: mass ratio }`, `length` and `exit_diameter` (m), `exit_pressure` (Pa), `plume`, `turbine_exhaust`, `model`, `model_scale` (draw the model this many times its size), `nodes` (see below); see [Engine response and plumes](#engine-response-and-plumes), optional `thrust_curve` ([share of propellant left, share of full thrust] points, as a solid's) |
 | `engine_families` | Engines that are configurations of one engine | `configs` (ids of `engines` records, oldest first), `default_config`, `model`, and `title`, `manufacturer`, `description`. Each engine names its `family`. The parts list shows a family as one part, its default configuration (or its first), and the part settings pick another, which swaps the part's engine in place; a craft names the configuration it uses. The Realism mod has 348 |
-| `rules` | How much of the real thing a game asks for, where that is not a matter of its parts' data | One record, `game`: `avionics` (control takes avionics rated for the vessel's mass and where it is, or a crew for a small one; off, any pod flies whatever it is on, and a vessel with no pod takes no commands). The Realistic Avionics mod turns it on. `life_support`: the `life_support` record people live by, or `null` (the base game) for none; the Realistic Life Support mod sets `"realistic"` |
-| `life_support` | What people need to live, for parts with life support; the rules pick one | `name`, `needs`: each a `resource`, what people call it (`name`, "air"), what a person uses of it a `daily` (kg), what they make of it a day (`makes`, resource: kg), how long they last with none of it, `lasts` (s, before each person's resilience of 1 to 1.2; without it, going short does not matter), and the shares of that after which they are `weak` (1/3) and `critical` (2/3). `cabin`: what a cabin's air takes of what is breathed out before it kills (resource: kg per m³). `room_per_seat` (m³, 2), `fitted` (processes every cabin has, `process` and `per_seat`), `dump` (what people make that goes overboard when there is nowhere to keep it). The base game's is `casual` (one `Supplies`), the Realistic Life Support mod's `realistic` |
+| `rules` | How much of the real thing a game asks for, where that is not a matter of its parts' data | One record, `game`: `avionics` (control takes avionics rated for the vessel's mass and where it is, or a crew for a small one; off, any pod flies whatever it is on, and a vessel with no pod takes no commands). The Realistic Avionics mod turns it on. `life_support`: the `life_support` record people live by, or `null` (the base game) for none; the Realistic Life Support mod sets `"realistic"`. `radiation`: the `radiation` record people take dose by, or `null` (the base game) for none; the Realistic Radiation mod sets `"realistic"`. `tech_tree`: the `tech_trees` record a science game unlocks parts on; the base game's is `"casual"`, the Realism mod sets `"rp1"` |
+| `radiation` | What radiation does to people; the rules pick one | `name`, `shielding`: the kg/m² of a part's walls (its dry mass over its skin) or of air that cut each kind to 1/e, `cosmic`, `trapped` (the belts) and `surface`; and the doses (Sv) at which a person is `sick`, `weak`, `critical`, and `dies`, each times their resilience of 1 to 1.2. Dose does not go away, and time warp stops at each. The rates are the bodies' |
+| `tech_trees` | Trees a science game unlocks parts on; the rules pick one | `name`, `description`, `roots` (the nodes a science game starts with: the tree is every `tech_nodes` record reached from them), `layout`: `"positions"` (each node's `position`, [column, row]) or `"years"` (a column a year, a band of rows a `category`). A node that unlocks nothing the game has is not shown and is passed through, and a node costs at least what it builds on. The base game's is `casual`, the Realism mod's `rp1` |
+| `tech_nodes` | The nodes of the tech trees, and the dates parts became available | `title`, `description`, `cost` (science), `parents` (all needed, or one with `any_parent`), `year`, `category`, `position`, and `parts`: parts-list entries it unlocks (`tank`, `engine:K-0`, `pod:C-1 Capsule`) besides the records whose `tech` names it (an engine configuration, a tank type: a career builds tanks only of the types it has unlocked), and `sizes`: `{ diameter, length }`, m, the biggest a career may make procedural parts (tanks, tubes, nose cones) once it has the node, the biggest of its nodes counting; a tree that limits a size says it at a root. Every part in a mode's parts list is in one node of its tree: `cargo test -p osp_sim --test tech_trees` checks, and `cargo run -p osp_sim --example tech_tree_preview` draws both trees to `target/tech_trees` |
+| `life_support` | What people need to live, for parts with life support; the rules pick one | `name`, `needs`: each a `resource`, what people call it (`name`, "air"), what a person uses of it a `daily` (kg), what they make of it a day (`makes`, resource: kg), how long they last with none of it, `lasts` (s, before each person's resilience of 1 to 1.2; without it, going short does not matter), and the shares of that after which they are `weak` (1/3) and `critical` (2/3). `air`: a cabin's `gases` (each a `resource` kept only in cabins, `name`, `molar_mass` kg/mol, the partial pressure it starts at and is kept at, `keep` Pa, from `from`, and the `most` there can be of it, Pa), its `temperature` (K, 294), how long the regulator takes to fill an empty cabin (`refill`, s, 60) and its valve (`vent`, m², 0.001). `limits`: what the air has to be for people to be well, each a `name`, a `gas` (the whole pressure if left out), `least` and `most` (Pa), and `lasts`, `weak` and `critical` as a need's. `room_per_seat` (m³, 2), `fitted` (processes every cabin has, `process` and `per_seat`), `dump` (what people make that goes overboard when there is nowhere to keep it). The base game's is `casual` (one `Supplies`), the Realistic Life Support mod's `realistic` |
 | `crew_names` | Names for the crew | `first` and `last`: every record's go into one pool, and each person gets one of each, the same for the same seat of the same part |
+| `experiments` | What scientific instruments collect, run by a part's `experiment` component | `name`, `description`, `duration` (s for a whole set in one place), `size` (bytes of data) or `sample` (kg of material that has to come home), `power` (W while it runs), `value` (science a whole set is worth), `situations` (where it works: `landed`, `splashed`, `flying_low`, `flying_high`, `space_low`, `space_high`), `bodies` (only over these), `sunlight` (only in it), and `tech` and `year`. The base game's take a minute or a few; the Realism mod gives them RP-1's figures |
+| `instruments` | Scientific instruments for the parts list (its Science group): a box put on a side like an antenna | `name`, `description`, `experiments` (the records it runs), `mass` (kg), `size` (the box, m: across, deep, out from what it is on), `color` (linear RGB), `tech`. Placed in each mode's tree as `instrument:<id>` |
 | `processes` | Ways of turning resources into others, run by a part's `process` component | `name`, `inputs` and `outputs` (resource: kg/s at full speed; the outputs may not weigh more than the inputs), `dump` (outputs let go of when there is no room, instead of slowing down), `power` (W at full speed). The example mod has electrolysis |
 | `game_modes` | What a new game can be | `name`, `description`, `mods` (what it turns on, everything else is off), `default` (what a player who has not chosen yet gets) |
 | `plumes` | Exhaust looks | `propellants` it is the exhaust of (alternatives with `\|`), `kinds`, `fallback`, `core`, `flame` and `shock` colours (linear RGB), `luminance` (cd/m² per m at full thrust), `soot` (0..1), `temperature` (K), `smoke` (colour), `haze` (0..1), `length` (how far the flame reaches in air, nozzle exit radii; 16 if left out); see [Engine response and plumes](#engine-response-and-plumes) |
@@ -287,25 +292,44 @@ component works with any shape that has what it needs:
   everyone all they want, the highest `priority` (0 to 255, 100) goes first and the rest of that
   priority share in proportion to what they want; people come first (255), then fuel cells (250).
   Time warp stops where a tank it draws on runs dry or one it fills is full.
+- `experiment`: runs the `experiments` record `experiment`, from the start if `on` (true); the part
+  window starts and stops it. It collects while it is somewhere the record says it works and has the
+  power it asks for (shed first, at priority 20), and pauses otherwise; one whole set in each place
+  (its body and situation), then it rests until it is taken somewhere new. Time warp stops where it
+  finishes a set and where a coast crosses from space low to space high. An `instruments` record makes
+  a part with these for the parts list.
 - `life_support`: makes a part with seats a cabin. The people in it use what the rules' `life_support`
-  record says from its own lockers and the tanks the part can reach, and breathe out into its air,
-  which takes so much (`cabin`) and no more: with it full they cannot breathe. It is fitted with the
-  record's processes (Realistic: a LiOH scrubber a seat). Its lockers carry `days` of what its seats
-  need and its processes burn, and whatever else `carries` says (kg); `volume` is its cabin (m³, the
-  record's room per seat if left out). What the lockers carry is in the part's mass as built.
+  record says from its own lockers and the tanks the part can reach. If the record gives cabins
+  `air`, the cabin holds its gases at partial pressures from what there is of each in its volume,
+  starts at what the regulator keeps, and the regulator tops each up from the tanks; people breathe
+  from it and into it, and with a gas at its `most` (CO2) nothing more goes in, so they cannot
+  breathe out. The air goes out through a hole and, let down, through its valve, to vacuum; the
+  action `cabin_let_down` opens the valve and stops the regulator, `cabin_fill` closes it and starts
+  it again. The air going out of one of the record's `limits` counts as going short of it. It is
+  fitted with the record's processes (Realistic: a LiOH scrubber a seat). Its lockers carry `days`
+  of what its seats need, as what tops the air up for what is breathed from it, and what its
+  processes burn, and whatever else `carries` says (kg); `volume` is its cabin (m³, the record's room
+  per seat if left out). What the lockers carry is in the part's mass as built.
   Short of something with a `lasts`, each person goes
   from short to weak to critical and dies at `lasts` times their own resilience; with part of what
   they need they decline in proportion, and once they have it all again they recover as fast as they
   declined. Time warp stops at each stage. Under rules with no `life_support` (the base game) it is
   left off the part and they need nothing. The casual game's people use 1 kg of `Supplies` a day and
-  last 15 days without. The Realistic Life Support mod's use 0.84 kg of `LqdOxygen`, 3 kg of `Water`
-  and 0.6 kg of `Food` a day, and last 5 minutes without air, 3 days without water and 30 without
-  food; they make 1 kg of `CO2`, 2.5 of `WasteWater` and 0.1 of `Waste`. Its `water_recovery` process
-  turns waste water back into water.
+  last 15 days without. The Realistic Life Support mod's use 0.84 kg of the cabin's oxygen
+  (`CabinOxygen`, topped up from `LqdOxygen`), 3 kg of `Water` and 0.6 kg of `Food` a day, and last
+  5 minutes without air, 3 days without water and 30 without food; they make 1 kg of `CO2`, 2.5 of
+  `WasteWater` and 0.1 of `Waste`. Its cabins hold 21 kPa of oxygen and 80 of nitrogen (`Nitrogen`
+  tops it up), and up to 8 kPa of CO2. Below 6.3 kPa of pressure people last 90 s, below 10 kPa of
+  oxygen an hour, and over 2 kPa of CO2 half a day. Its `water_recovery` process turns waste water
+  back into water.
 - `crew`: `seats`, `aboard` if not all start in them, and `names` for who sits in them (the rest are
   named from `crew_names`). The action `board` moves one person, and how they are, to the
-  part's seats from others on the vessel, through a docked tunnel too. Too much acceleration for too
-  long loses them: nothing under 5 g does, and 15 g takes 30 s, as the inverse fourth power of g.
+  part's seats from others on the vessel, through a docked tunnel too. With the cabin's air under
+  `limits`, `suits_on` and `suits_off` put their suits on and take them off: in suits the cabin's
+  air is nothing to them, and they breathe what tops it up (their suits take what they breathe out).
+  Under rules with `radiation`, each person takes a dose through the walls of the part they sit in
+  and the air above, and sickens by stages as it builds up. Too much acceleration for too long loses
+  them: nothing under 5 g does, and 15 g takes 30 s, as the inverse fourth power of g.
 - `storage`: `type` (a tank type), `contents` (mass ratios), and the `cell` it fills when
   the shape has more than one (a common bulkhead's `lower` and `upper`, two tanks on one
   part). In a plain cylinder with √2:1 domes or a sphere, what it holds settles as such a
@@ -1329,6 +1353,7 @@ The flight UI is a set of modules, each its own layout in the `flight` group:
 | `manifest` | Universe Manifest (F11): every body and vessel, filtered by kind, with Follow, Target, Fly, Recover or Destroy, and Clear debris | `#items` |
 | `transfer_planner` | Transfer planner (F4): porkchop plot (`widget: "porkchop"`) and the picked transfer | `#plot` |
 | `alarm_clock` | Alarm clock (F6): the alarms set, soonest first, and a timer to set | `#alarms`, `#new` |
+| `tech_tree` | A career's tech tree over everything (`tree.open`): the picked node's panel, with Unlock in its footer, and the tree (`widget: "tech_tree"`: cards drawn by the game, a click picks one, drag to look round, the wheel zooms) with zoom buttons in its corner | |
 | `vessel_info` | Thrust, TWR, mass, delta-v | `#propulsion` |
 | `attitude_info` | Centre of mass, inertia, control authority, rates | `#attitude` |
 | `structure_info` | Every tank and fin set: make-up, strength, current load | `#parts` |
@@ -1361,7 +1386,7 @@ changes what the layout wrote. A mod's screen uses them too and gets the game's 
 
 | Widget | Properties | What it is |
 | --- | --- | --- |
-| `screen` | `title`, `title_if` (a condition for showing the heading), `subtitle`, `display: true` (the big title), `back: false`, `shade: false` (the panel alone, so the scene beside it takes the pointer), `children` | The left panel: Back (`menu.back`), the heading, and a body that scrolls |
+| `screen` | `title`, `title_if` (a condition for showing the heading), `subtitle`, `display: true` (the big title), `back: false`, `shade: false` (the panel alone, so the scene beside it takes the pointer), `children`, `footer` (nodes kept at the bottom of the panel however long the body is: what the screen is for, like Start) | The left panel: Back (`menu.back`), the heading, a body that scrolls, and the footer under a hairline |
 | `menu_row` | `text`, `action`, `meta` (a value at the right, with `meta_class` a class for it), `detail` (a line under it, with `detail_if` a condition for showing it and `detail_class` a class for it), `active`, `visible` | A full-width row to click, which is how you go anywhere |
 | `menu_divider` | | A line between groups of rows |
 | `setting_row` | `label`, `children` | One line of a settings page: a label and what sets it |
@@ -1487,6 +1512,11 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `mods.modes[]`, `mods.custom` | The modes a new game can be: `id`, `name`, `description`, `on`. `mods.custom` while the choice is none of them |
 | `mods.problems[]` | `error` (bool), `text` |
 | `menu.screen`, `menu.playing`, `menu.tutorials[]` | The screen showing; a game is in progress; the tutorials: `id`, `name`, `description`, `steps` |
+| `menu.career` | A new game will be a career: parts unlocked on the rules' tech tree with science, kept in the save. Otherwise a sandbox, with every part |
+| `career.active`, `career.science` | The game the editor builds for (a new one, or the one in progress) is a career; its science to spend |
+| `tree.picked`, `tree.notice` | The tech tree's picked node; why the last unlock was refused |
+| `tree.node.picked`, `tree.node.title`, `tree.node.when`, `tree.node.state`, `tree.node.description`, `tree.node.sizes`, `tree.node.cost`, `tree.node.can_unlock`, `tree.node.blocked` | The picked node: there is one; its title; its tier or year and cost; where it stands (unlocked, ready, what it needs first); what it lets procedural parts be made as big as; its cost; it can be unlocked now; or why not, for the button |
+| `tree.node.parts[]`, `tree.node.builds_on[]`, `tree.node.leads_to[]` | What it unlocks (`name`: parts, then engine configurations, tank types, batteries, avionics); the nodes it builds on and those that build on it (`id`, `title`, `state`) |
 | `menu.new_game`, `menu.vessels[]`, `menu.vessel_line`, `menu.game_line` | New game was picked and has not started; the vessels in the game to fly (`id`, `name`, `where`, `flying`, `state`, `destroying`: asked once), debris left out; how many, in words; the line under Paused |
 | `menu.saves[]`, `menu.has_saves`, `menu.save_name`, `menu.next_save`, `menu.notice` | The saves, newest first: `file`, `current` (the one the game in progress goes to), `name`, `saved` (how long ago), `time` (the game's date), `flying`, `vessels`, `problem` (why it cannot be loaded), `detail` (the line to show: the problem, or what is flying, the date and the vessels), `has_quicksaves`, `quicksaves[]` (its own, newest first, with the same fields; `file` is `<save>/quicksave_<n>`); whether there are any; the save the game in progress goes to; what a new save would be called; what just happened |
 | `saves.flash` | What a quicksave or quickload just said over the flight, for a few seconds |
@@ -1498,7 +1528,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.temperature`, `vessel.has_shield`, `vessel.ablator`, `vessel.heat_flux`, `vessel.has_parachutes`, `vessel.parachutes_open`, `vessel.afloat` | Its hottest part, K; its heat shield: ablator left, kg, and the heat on it, kW/m²; how many canopies are open; whether it floats on a sea |
 | `dialog.title`, `dialog.text`, `dialog.answers[]` | The question being asked: its answers have `index`, `label`, and `plain`, `primary` or `danger` for how the button looks |
 | `editor.heading`, `editor.has_vessel`, `editor.can_launch`, `editor.occupied`, `editor.clear_label`, `editor.list_open`, `editor.vessels[]`, `editor.place_name`, `editor.name`, `editor.height`, `editor.mass`, `editor.parts`, `editor.place`, `editor.pad`, `editor.runway`, `editor.orbit`, `editor.notice` | The craft on show in the editor (see the `editor` layout); where it will launch from (`pad`, `runway`, `orbit`); which site or orbit each of those is, empty if there is none; why a launch or a change failed |
-| `editor.palette_open`, `editor.group`, `editor.palette[]` (`id`, `name`, `detail`, `held`), `editor.palette_more`, `editor.search_shown`, `editor.floating` (what is in hand is drawn at the pointer), `editor.holding`, `editor.has_parts` | The editor's parts list: whether it is out, the group shown, its rows (at most 60), how many more a search would find, what the search box shows; whether a part is in hand; whether the craft has any parts |
+| `editor.palette_open`, `editor.group`, `editor.palette[]` (`id`, `name`, `detail`, `held`), `editor.palette_more`, `editor.locked` (in a career, how many parts are still locked in the tech tree; the list shows only what is unlocked), `editor.search_shown`, `editor.floating` (what is in hand is drawn at the pointer), `editor.holding`, `editor.has_parts` | The editor's parts list: whether it is out, the group shown, its rows (at most 60), how many more a search would find, what the search box shows; whether a part is in hand; whether the craft has any parts |
 | `editor.rail` | Which screen the editor's rail on the left shows: `vessels` (the list of vessels), `part` (the picked part's settings), `parts` (the parts list), or nothing |
 | `editor.tool` | What the pointer does to a picked part in the editor: `shape` (the handles that size it), `move` (arrows that slide it) or `turn` (rings that turn it) |
 | `editor.symmetry`, `editor.mirror`, `editor.snap` | How parts go on in the editor: the radial count (`1`, `x4`), whether mirror symmetry is on instead, and how far a turn goes in a step (`15°`) |
@@ -1525,6 +1555,9 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.pitch_up`, `vessel.pitch_down`, `vessel.yaw_left`, `vessel.yaw_right`, `vessel.roll_left`, `vessel.roll_right` | hold |
 | `camera.port_view` | Look out of the vessel's docking port through a crosshair, or back at the vessel |
 | `debug.colliders` | Draw what vessels collide with, or stop |
+| `debug.science:<amount>` | Give the career that much science, to try the tech tree with |
+| `tree.open`, `tree.close` | Open a career's tech tree over the editor or the menu; close it (Esc and Back too, before anything under it) |
+| `tree.pick:<node>`, `tree.unlock`, `tree.zoom:<in\|out\|fit>` | Pick a node of the tree; unlock the picked one with science; zoom the tree about the middle, or fit it to the view |
 | `vessel.sas_toggle`, `vessel.sas_mode:<mode>` | SAS on/off; select a mode (switches SAS on). The selected mode again goes back to `stability`, and `stability` again switches SAS off. `burn` does nothing with no burn planned. A `burn` or target mode whose burn or target goes falls back to `stability` |
 | `vessel.rcs_toggle` | RCS on/off |
 | `vessel.translate_forward`, `vessel.translate_back`, `vessel.translate_left`, `vessel.translate_right`, `vessel.translate_up`, `vessel.translate_down` | hold; RCS translation |
@@ -1567,6 +1600,7 @@ Press **F12** in game for a live list. Lists are marked `[]`; their item fields 
 | `vessel.abort` | Begin the craft's `abort`, if it has one |
 | `guidance.land`, `guidance.hover`, `guidance.hold:<m/s>`, `guidance.entry`, `guidance.off` | What its computer flies by itself: down to the ground from where it is on its engine, holding its height, sinking at a rate, or rolling its lift through an entry to hold about 4 g |
 | `dialog.answer:<index>`, `dialog.cancel` | Take an answer of the question being asked (`dialog.answers[]`); close it, as Esc and Back do |
+| `game.kind:<sandbox\|career>` | What a new game will be (`menu.career`). A career starts with the tech tree's roots; the editor offers only what it has unlocked, an engine only in its unlocked configurations, and a craft with a locked part is not launched |
 | `game.new` | Go to the editor to choose what to launch in a new game. Nothing changes until the launch; the game in progress goes on if the player goes back |
 | `game.save`, `game.save_as`, `game.save_to:<file>`, `game.load:<file>`, `game.continue`, `game.delete_save:<file>` | Save the game in progress to its save; to a new save, or over the save `file`, which it then goes to (from the Save screen, either goes back to Pause); carry on from a save or a quicksave (`<save>/quicksave_<n>`); from the newest save this game can read; delete one, a save with its quicksaves |
 | `game.quicksave`, `game.quickload` | In flight only, not in a tutorial: add a quicksave to the save the game in progress goes to, starting that save if there is none; carry on from its newest quicksave. Bound to a held key (F9), `game.quickload` waits for it to be held a second; fired from a button it loads at once. Neither changes the save itself, so leaving still asks to save |
