@@ -40,6 +40,9 @@ pub fn catalog(registry: &Registry) -> PartCatalog {
         processes: registry.all("processes", &mut diagnostics),
         crew_names: registry.all("crew_names", &mut diagnostics),
         engine_families: registry.all("engine_families", &mut diagnostics),
+        radiation: registry.all("radiation", &mut diagnostics),
+        experiments: registry.all("experiments", &mut diagnostics),
+        instruments: registry.all("instruments", &mut diagnostics),
     };
     for d in &diagnostics {
         eprintln!("{d}");

@@ -19,6 +19,8 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use serde::{Deserialize, Serialize};
+
+use crate::career::Career;
 use thiserror::Error;
 
 use crate::{
@@ -139,6 +141,9 @@ pub struct Universe {
     captures: Vec<SoftCapture>,
     /// What the player wants to be stopped for (see [`crate::alarm`]).
     pub alarms: AlarmClock,
+    /// The career this is, if it is one: what it has unlocked and has to spend. A sandbox has none
+    /// (see [`crate::career`]).
+    pub career: Option<Career>,
     time: SimTime,
     next_id: u64,
 }
@@ -188,6 +193,9 @@ pub struct Snapshot {
     /// Saves from before the alarm clock have none.
     #[serde(default)]
     alarms: AlarmClock,
+    /// A sandbox, and saves from before careers, have none.
+    #[serde(default)]
+    career: Option<Career>,
 }
 
 impl Universe {
@@ -206,6 +214,7 @@ impl Universe {
             contacts: Contacts::default(),
             captures: Vec::new(),
             alarms: AlarmClock::default(),
+            career: None,
             time,
             next_id: 0,
         };
@@ -917,6 +926,7 @@ impl Universe {
             clear_of: self.clear_of.clone(),
             captures: self.captures.clone(),
             alarms: self.alarms.clone(),
+            career: self.career.clone(),
         }
     }
 
@@ -940,6 +950,7 @@ impl Universe {
         self.contacts.clear();
         self.captures = snapshot.captures;
         self.alarms = snapshot.alarms;
+        self.career = snapshot.career;
         Ok(())
     }
 

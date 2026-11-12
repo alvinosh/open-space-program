@@ -148,15 +148,59 @@
       border_color: "$rail_edge",
     },
     menu_body: { margin: [24, 0, 0, 0], padding: [0, 8, 0, 0], gap: 0, grow: 1, shrink: 1, min_height: 0, scroll: true },
+    // What a screen is for (Start, Save), under a hairline at the bottom of the rail, never
+    // scrolled away; its right edge in line with the body's, which leaves room for a scroll thumb.
+    menu_footer: { margin: [16, 8, 0, 0], padding: [16, 0, 0, 0], gap: 8, shrink: 0, border: [1, 0, 0, 0], border_color: "$hairline" },
     menu_display: { margin: [0, 12], font_size: 28, font_weight: 600, letter_spacing: 2.5, uppercase: true, color: "$text_strong" },
     menu_heading: { margin: [0, 12], font_size: 20, font_weight: 600, color: "$text_strong" },
     menu_subtitle: { margin: [4, 12, 0, 12], font_size: 12, color: "$text_dim" },
     menu_section: { margin: [16, 12, 4, 12], font_size: 12, font_weight: 600, letter_spacing: 1.2, uppercase: true, color: "$text_dim" },
     menu_text: { margin: [0, 12], font_size: 15, color: "$text" },
+    // What the choice above it means, as it is set.
+    menu_hint: { margin: [8, 12, 0, 12], font_size: 12, color: "$text_dim" },
     menu_divider: { height: 1, margin: [8, 12], background: "$hairline" },
     menu_notice: { margin: [16, 12, 0, 12], font_size: 15, color: "$text" },
     menu_warning: { font_size: 12, color: "#ffc24a" },
     menu_tabs: { gap: 0, margin: [0, 12, 8, 12] },
+    // --- the tech tree (layouts/tech_tree.json5, osp_game::tree_screen) ---
+    // Over everything but a question: the panel, and the tree on a dark ground beside it. Cards
+    // say how a node stands: unlocked (lit), ready (an accent edge), locked (sunk, dim); the picked
+    // one has a bright edge. Lines are lit from what is unlocked.
+    tree_screen: {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: "100%",
+      height: "100%",
+      direction: "row",
+      background: "#070d14",
+      z_index: 80,
+    },
+    tree_rail: { width: 380, shrink: 0, align_items: "stretch" },
+    tree_view: { grow: 1, height: "100%", clip: true },
+    tree_zoom: { position: "absolute", right: 20, bottom: 20, gap: 4 },
+    tree_part: { margin: [2, 12] },
+    tree_year: { font_size: 12, font_weight: 600, letter_spacing: 1.2, color: "$text_dim" },
+    tree_line: { background: [1, 1, 1, 0.1] },
+    tree_line_lit: { background: "$primary" },
+    tree_card: {
+      direction: "column",
+      align_items: "stretch",
+      justify_content: "start",
+      border: 1.5,
+      radius: 6,
+      clip: true,
+      background: "$control",
+      hover_background: "$control_hover",
+      border_color: "$rail_edge",
+      active_border_color: "#ffffff",
+    },
+    tree_card_unlocked: { background: "$selected", border_color: "$primary" },
+    tree_card_ready: { background: "$control", border_color: "$accent" },
+    tree_card_locked: { background: "$track", border_color: "$hairline" },
+    tree_card_title: { font_size: 15, font_weight: 600, color: "$text_strong" },
+    tree_card_title_locked: { color: "$text_dim" },
+    tree_card_line: { font_size: 12, color: "$text_dim" },
     // One question over everything (`layouts/dialog.json5`). The shade takes the pointer, so nothing
     // behind it can be clicked until the question is answered.
     dialog_shade: {
@@ -233,6 +277,8 @@
     btn_danger: { color: "$danger", hover_background: "$danger_hover" },
     btn_off: { color: "$text_dim", hover_background: "$control" },
     btn_wide: { margin: [0, 12] },
+    // The one thing a screen is for: taller, easy to find and to hit.
+    btn_large: { height: 48 },
     // As wide as each other, so choices line up down a page and their segments stay even.
     choice: { width: 300, shrink: 0, gap: 2, padding: 2, radius: 6, background: "$track" },
     choice_item: {
@@ -250,6 +296,8 @@
       color: "$text_dim",
       active_color: "$text_strong",
     },
+    // A choice that is what a screen asks, like a new game's kind and mode: easier to hit.
+    choice_item_tall: { height: 36 },
     tab: {
       margin: [0, 16, 0, 0],
       padding: [8, 2],
@@ -335,7 +383,7 @@
     editor_part_text: { grow: 1, shrink: 1, min_width: 0 },
     editor_options: { gap: 2, margin: [2, 0, 6, 102] },
     editor_option: { height: 26, padding: [0, 8], font_size: 12, background: "$clear", hover_background: "$control_hover", active_background: "$selected", active_color: "$accent" },
-    editor_part_problem: { margin: [8, 0, 0, 0] },
+    editor_part_problem: { margin: [4, 0, 8, 0] },
     editor_part_remove: { margin: [12, 0, 0, 0] },
     editor_occupied: { margin: [12, 12, 0, 12], gap: 8 },
     editor_clear: { align_self: "stretch" },

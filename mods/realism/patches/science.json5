@@ -1,0 +1,17 @@
+// RP-1's experiments and science situations, in place of the base game's quick ones
+// (RP-1/GameData/RP-1/Science: Experiments/*.cfg for each experiment's data, time, power and value,
+// BodyScienceParams.cfg for where each body's situations change). Film from a camera is a sample
+// that has to come home, as it was on the V-2s.
+[
+  { op: "merge", collection: "experiments", target: "temperature", value: { duration: 600, size: 75, power: 1, value: 4 } },
+  { op: "merge", collection: "experiments", target: "pressure", value: { duration: 600, size: 75, power: 1, value: 4 } },
+  // A month of a byte a second.
+  { op: "merge", collection: "experiments", target: "magnetic_field", value: { duration: 2620800, size: 2620800, power: 0.206, value: 6 } },
+  { op: "merge", collection: "experiments", target: "photography", value: { duration: 600, size: 0, sample: 2, power: 5, value: 5 } },
+  { op: "merge", collection: "experiments", target: "surface_sample", value: { duration: 300, sample: 0.08, power: 20, value: 6 } },
+
+  { op: "merge", collection: "bodies", target: "Earth", value: { science: { flying_high: 40000, space_high: 35786000 } } },
+  { op: "merge", collection: "bodies", target: "Mars", value: { science: { flying_high: 50000, space_high: 3000000 } } },
+  { op: "merge", collection: "bodies", target: "Venus", value: { science: { flying_high: 50000, space_high: 6000000 } } },
+  { op: "merge", collection: "bodies", target: "Mercury", value: { science: { space_high: 2500000 } } },
+]

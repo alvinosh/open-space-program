@@ -53,7 +53,7 @@ use bevy::{
 };
 use osp_sim::{
     assembly::{Mount, Side},
-    builder::{self, Place},
+    builder::{self, Allowed, Place},
     component::ComponentDef,
     craft::Craft,
     data::{CraftDef, CraftPartDef, PartCatalog, SurfaceAtDef},
@@ -513,6 +513,8 @@ struct Making<'a> {
     built: &'a Craft,
     catalog: &'a PartCatalog,
     entries: &'a [Entry],
+    /// What the game may build: a new part is made no bigger, of no locked tank type.
+    allowed: &'a Allowed,
     symmetry: u32,
     mirror: bool,
     roll: f64,
@@ -540,6 +542,7 @@ impl Making<'_> {
                 };
                 let mut part = entry.part.clone();
                 part.id = new_id(self.draft, &entry.stem, 0);
+                self.allowed.bring_within(&mut part, self.catalog);
                 Ok((part, how))
             }
             Held::Moved(id) => {
@@ -567,16 +570,19 @@ impl Making<'_> {
         let new = matches!(held, Held::New(_));
         let holder_of = |id: &str| self.built.find(id).ok_or("it has nothing to go on");
         // Sized for where it goes, a new one: as wide as a node, or for the hull it stands on.
+        // No wider than the game allows, though what it goes on is.
         let side = match spot {
             Spot::Node { by, width, .. } => {
                 if new && by.is_some() {
                     palette::fit(&mut part, *width);
+                    self.allowed.sizes.shrink(&mut part);
                 }
                 by.is_none()
             }
             Spot::Surface { width, .. } => {
                 if new {
                     palette::fit(&mut part, *width);
+                    self.allowed.sizes.shrink(&mut part);
                 }
                 how == OnSurface::Side
             }
@@ -1133,11 +1139,13 @@ pub(crate) fn place_parts(
     let Some(built) = placing.built.as_ref().map(|(_, _, craft)| craft.clone()) else {
         return;
     };
+    let allowed = (editor.builder()).map_or_else(Allowed::everything, |b| b.allowed().clone());
     let making = Making {
         draft: &draft,
         built: &built,
         catalog,
         entries,
+        allowed: &allowed,
         symmetry: placing.symmetry,
         mirror: placing.mirror,
         roll: placing.roll,
@@ -1438,19 +1446,26 @@ fn show_in_hand(
     mut data: ResMut<UiData>,
     mut tiles: Query<(Entity, &mut Visibility, Has<GlobalZIndex>), With<DragPayload>>,
     mut hidden: Local<Option<Entity>>,
-    mut entries: Local<Option<Vec<Entry>>>,
+    mut entries: Local<Option<(Vec<Entry>, PartCatalog)>>,
 ) {
     if entries.is_none() || content.is_changed() {
         let parts = catalog(&content.0.registry, &mut Vec::new());
-        *entries = Some(palette::entries(&parts));
+        *entries = Some((palette::entries(&parts), parts));
     }
     let draft = editor.builder().map(|b| b.draft());
-    let parts = match (&placing.held, draft) {
-        (Some(Held::New(id)), Some(_)) => (entries.iter().flatten())
+    let parts = match (&placing.held, draft, entries.as_ref()) {
+        // As it will go on: no bigger than the game allows.
+        (Some(Held::New(id)), Some(_), Some((entries, catalog))) => (entries.iter())
             .find(|e| &e.id == id)
-            .map(|e| vec![e.part.clone()])
+            .map(|e| {
+                let mut part = e.part.clone();
+                if let Some(builder) = editor.builder() {
+                    builder.allowed().bring_within(&mut part, catalog);
+                }
+                vec![part]
+            })
             .unwrap_or_default(),
-        (Some(Held::Moved(id)), Some(draft)) => {
+        (Some(Held::Moved(id)), Some(draft), _) => {
             let held = held_through(draft, id);
             // The part first: it holds the rest.
             let mut parts: Vec<_> = (draft.parts.iter())
@@ -1514,6 +1529,7 @@ fn put_root(
         .ok_or("no such part")?;
     let mut part = entry.part.clone();
     part.id = new_id(builder.draft(), &entry.stem, 0);
+    builder.allowed().bring_within(&mut part, catalog);
     builder
         .place(catalog, part, None)
         .map(|_| ())

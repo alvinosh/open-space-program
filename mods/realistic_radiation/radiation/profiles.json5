@@ -1,0 +1,19 @@
+// What radiation does. `shielding` is how much of a part's mass per square metre of its skin (kg/m²)
+// cuts each kind to 1/e: cosmic rays go through 40 g/cm² and more, the belts' trapped particles stop
+// in a few, what the ground gives off is between. The air above a world's surface shields the same
+// way. The rates themselves are the bodies' (`radiation` in assets/core/bodies).
+//
+// Dose builds up and does not go away. At `sick` Sv a person is sick, at `weak` weak, at `critical`
+// critical, and at `dies` they die, each later by their own resilience (1 to 1.2 times). Time warp
+// stops at each.
+[
+  {
+    id: "realistic",
+    name: "Realistic",
+    shielding: { cosmic: 400, trapped: 20, surface: 100 },
+    sick: 1.0,
+    weak: 2.0,
+    critical: 4.0,
+    dies: 6.0,
+  },
+]

@@ -1,0 +1,83 @@
+// The tech tree of a career (osp_game::tree_screen), over everything: a panel with the picked node
+// and the tree beside it. `tree.open` opens it (the editor bar, the pause menu), `tree.close`, Esc or
+// Back close it. The tree itself is the `tech_tree` widget: cards that pick a node
+// (`tree.pick:<node>`), drag to look round, the wheel to zoom. The panel shows `tree.node.*` and
+// unlocks the picked node with `tree.unlock`, from the footer, where it always shows.
+{
+  id: "tech_tree",
+  visible: false,
+  root: {
+    widget: "row",
+    class: "tree_screen",
+    children: [
+      {
+        widget: "column",
+        class: "menu_rail tree_rail",
+        children: [
+          { widget: "button", class: "back", text: "‹ Back", action: "tree.close", tooltip: "Back to where you were (Esc)" },
+          { widget: "label", class: "menu_heading", text: "Tech tree" },
+          { widget: "label", class: "menu_subtitle", text: "{career.science} science to spend. Drag the tree to look round it, the wheel zooms." },
+          {
+            widget: "column",
+            class: "menu_body",
+            children: [
+              { widget: "label", class: "menu_text", text: "Click a node to see what it unlocks.", visible: "!tree.node.picked" },
+              {
+                widget: "column",
+                visible: "tree.node.picked",
+                children: [
+                  { widget: "label", class: "menu_heading", text: "{tree.node.title}" },
+                  { widget: "label", class: "menu_subtitle", text: "{tree.node.when}" },
+                  { widget: "label", class: "menu_hint", text: "{tree.node.description}", visible: "tree.node.description" },
+                  { widget: "label", class: "menu_section", text: "Where it stands" },
+                  { widget: "label", class: "menu_text", text: "{tree.node.state}" },
+                  { widget: "label", class: "menu_section", text: "Unlocks", visible: "tree.node.parts" },
+                  {
+                    widget: "column",
+                    repeat: "tree.node.parts",
+                    children: [{ widget: "label", class: "menu_text tree_part", text: "{item.name}" }],
+                  },
+                  { widget: "label", class: "menu_section", text: "Bigger parts", visible: "tree.node.sizes" },
+                  { widget: "label", class: "menu_text", text: "{tree.node.sizes}", visible: "tree.node.sizes" },
+                  { widget: "label", class: "menu_section", text: "Builds on", visible: "tree.node.builds_on" },
+                  {
+                    widget: "column",
+                    repeat: "tree.node.builds_on",
+                    children: [{ widget: "menu_row", text: "{item.title}", meta: "{item.state}", action: "tree.pick:{item.id}" }],
+                  },
+                  { widget: "label", class: "menu_section", text: "Leads to", visible: "tree.node.leads_to" },
+                  {
+                    widget: "column",
+                    repeat: "tree.node.leads_to",
+                    children: [{ widget: "menu_row", text: "{item.title}", meta: "{item.state}", action: "tree.pick:{item.id}" }],
+                  },
+                ],
+              },
+            ],
+          },
+          { widget: "label", class: "menu_notice", text: "{tree.notice}", visible: "tree.notice" },
+          {
+            widget: "column",
+            class: "menu_footer",
+            visible: "tree.node.picked",
+            children: [
+              { widget: "button", class: "btn btn_primary btn_large btn_wide", text: "Unlock for {tree.node.cost}", action: "tree.unlock", visible: "tree.node.can_unlock" },
+              { widget: "button", class: "btn btn_off btn_large btn_wide", text: "{tree.node.blocked}", visible: "tree.node.blocked" },
+            ],
+          },
+        ],
+      },
+      { widget: "tech_tree", class: "tree_view" },
+      // Over the tree's corner, for a trackpad or to find the whole tree again.
+      {
+        widget: "row",
+        class: "tree_zoom",
+        children: [
+          { widget: "button", class: "btn", text: "−", action: "tree.zoom:out", tooltip: "Zoom out (or the wheel)" },
+          { widget: "button", class: "btn", text: "Fit", action: "tree.zoom:fit", tooltip: "The whole tree, or as much as is readable" },
+          { widget: "button", class: "btn", text: "+", action: "tree.zoom:in", tooltip: "Zoom in (or the wheel)" },
+        ],
+      },
+    ],
+  },
+}

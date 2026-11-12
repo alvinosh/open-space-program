@@ -242,6 +242,31 @@ impl Geometry {
         out
     }
 
+    /// The area of its outside, m², over the subparts that are (or, `proxy`, that stand in for a
+    /// model), less those inside it: their walls and skins, or the surface of a solid that has
+    /// neither.
+    pub fn skin_area(&self, proxy: bool) -> f64 {
+        (self.subparts.iter())
+            .filter(|sub| sub.proxy == proxy && !sub.unseen)
+            .map(|sub| match &sub.kind {
+                Kind::Revolved(r) => {
+                    let walls: f64 = (0..r.walls().len())
+                        .map(|i| r.wall_moments(i).measure)
+                        .sum();
+                    if walls > 0.0 {
+                        walls
+                    } else {
+                        (0..r.regions().len())
+                            .map(|i| r.region_mesh(i).surface_moments().measure)
+                            .sum()
+                    }
+                }
+                Kind::Lofted(l) => l.skin_moments().measure,
+                Kind::Lattice(_) | Kind::Model(_) => 0.0,
+            })
+            .sum()
+    }
+
     pub fn node(&self, name: &str) -> Option<&Node> {
         self.nodes.iter().find(|n| n.name == name)
     }

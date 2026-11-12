@@ -382,9 +382,14 @@ fn advance_simulation(
             if let Some(alarm) = sim.universe.next_alarm() {
                 target = target.min(alarm);
             }
+            let before = sim.universe.time();
             let outcome = sim.universe.advance_rails(target);
             if outcome.interrupted {
                 warp.stop(&stop_reason(&outcome.events), now);
+            } else if sim.universe.time() == before && target > before {
+                // Something holds time here without saying why: better stopped than frozen at a
+                // rate that does nothing.
+                warp.stop("Warp stopped: something needs attention now", now);
             }
             messages.write_batch(outcome.events.into_iter().map(SimEventMessage));
             sim.accumulator = 0.0;

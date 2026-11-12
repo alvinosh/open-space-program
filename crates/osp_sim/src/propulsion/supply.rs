@@ -17,6 +17,11 @@
 //! [`Propulsion::next_system_event`], which is where a tank someone draws on runs dry or one someone
 //! fills is full.
 //!
+//! What a system keeps can also leak away, a share of what there is each second (a cabin's air
+//! through a hole, [`System::decay`]). With what goes in and out besides steady over the step, what
+//! is left follows e^-kt towards where the two balance, which the step works out exactly; a maker
+//! filling such a store can make what leaks out of it besides the room it has.
+//!
 //! [`System::wants`]: crate::systems::System::wants
 //! [`System::plan`]: crate::systems::System::plan
 //! [`System::uses`]: crate::systems::System::uses
@@ -61,6 +66,11 @@ struct Store {
     tanks: usize,
     /// The part and system each bin after the tanks is.
     systems: Vec<(PartId, usize)>,
+    /// The share of what each slot holds that it loses a second, 1/s ([`System::decay`]).
+    decay: Vec<Vec<f64>>,
+    /// What the bins held after the lots ran and before anything leaked, as of the last
+    /// [`allocate`].
+    linear: Vec<Vec<f64>>,
 }
 
 impl Store {
@@ -73,6 +83,7 @@ impl Store {
             })
             .collect();
         let mut amounts: Vec<Vec<f64>> = p.tanks.iter().map(|t| t.amounts.clone()).collect();
+        let mut decay: Vec<Vec<f64>> = amounts.iter().map(|a| vec![0.0; a.len()]).collect();
         let mut systems = Vec::new();
         for (part, on) in p.systems.by_part() {
             for (index, system) in on.iter().enumerate() {
@@ -87,6 +98,9 @@ impl Store {
                         .collect(),
                 );
                 amounts.push(stored.iter().map(|(_, held, _)| *held).collect());
+                let mut lost = system.decay();
+                lost.resize(stored.len(), 0.0);
+                decay.push(lost);
                 systems.push((part, index));
             }
         }
@@ -95,6 +109,32 @@ impl Store {
             amounts,
             tanks: p.tanks.len(),
             systems,
+            decay,
+            linear: Vec::new(),
+        }
+    }
+
+    /// What leaks out of `bins`' `resource` a second as they stand, kg/s.
+    fn leaking(&self, bins: &[usize], resource: &str) -> f64 {
+        (self.slots(bins, resource))
+            .map(|(k, c, _)| self.decay[k][c] * self.amounts[k][c])
+            .sum()
+    }
+
+    /// Let each slot that leaks lose what it does over `dt`, from what it held at `start`, with
+    /// what the lots put in and took out since spread evenly over the step: from `m0` with `s`
+    /// going in a second, `m0 e^-kdt + s (1 - e^-kdt) / k`.
+    fn leak(&mut self, start: &[Vec<f64>], dt: f64) {
+        for ((decay, amounts), start) in self.decay.iter().zip(&mut self.amounts).zip(start) {
+            for ((&k, amount), &m0) in decay.iter().zip(amounts).zip(start) {
+                let x = k * dt;
+                if x <= 0.0 {
+                    continue;
+                }
+                // (1 - e^-x) / x, which is 1 as x goes to nothing.
+                let spread = -(-x).exp_m1() / x;
+                *amount = m0 * (-x).exp() + (*amount - m0) * spread;
+            }
         }
     }
 
@@ -305,26 +345,94 @@ fn give(lots: &[Lot], wanting: &[(usize, f64)], amount: f64) -> Vec<(usize, f64)
     given
 }
 
-/// Run `lots` on `store` together, as if all of them run through the step at once: the share each
-/// gets. Each starts at full speed. Where what is there and what the others make falls short of
-/// what is taken, the takers are cut back, the highest priority keeping the most; where the room
-/// and what the others take falls short of what is made, the makers are. Over again until nothing
-/// changes, which it soon does, as shares only ever fall. Then everything made goes in, and
-/// everything taken comes out. With what each takes and makes steady through the step, what the
-/// bins hold moves in a straight line from start to end, so it is never out of bounds on the way.
-fn allocate(store: &mut Store, lots: &[Lot]) -> Vec<f64> {
+/// A first guess at each lot's share, which [`allocate`] then cuts back until nothing is out of
+/// bounds: each pool shares what it has between the lots that want it, each asking for what the
+/// other pools let it have, over again until that settles. Asking for what it can use, a lot that
+/// wants far more than it can put anywhere (a regulator topping up a full cabin) takes nothing from
+/// those that share its inputs with it.
+fn settle_on(lots: &[Lot], pools: &[Pool], start: &[(f64, f64, f64)]) -> Vec<f64> {
+    let n = lots.len();
+    // What each pool lets each lot have, as a share: 1 where it does not hold it back.
+    let mut caps = vec![vec![1.0_f64; n]; pools.len()];
+    let least = |caps: &[Vec<f64>], i: usize, but: Option<usize>| {
+        (caps.iter().enumerate())
+            .filter(|(p, _)| Some(*p) != but)
+            .map(|(_, c)| c[i])
+            .fold(1.0_f64, f64::min)
+    };
+    for _ in 0..100 {
+        let shares: Vec<f64> = (0..n).map(|i| least(&caps, i, None)).collect();
+        let mut next = vec![vec![1.0_f64; n]; pools.len()];
+        for (p, (pool, &(held, room, lost))) in pools.iter().zip(start).enumerate() {
+            // Those on one side ask for what the other pools let them have; those on the other
+            // side give and take at their shares.
+            let asking = |list: &[(usize, f64)]| -> Vec<(usize, f64)> {
+                (list.iter())
+                    .map(|&(i, kg)| (i, kg * least(&caps, i, Some(p))))
+                    .collect()
+            };
+            let at =
+                |list: &[(usize, f64)]| -> f64 { list.iter().map(|&(i, kg)| kg * shares[i]).sum() };
+            let kept = !pool.bins.is_empty();
+            let mut hold_back = |wanting: Vec<(usize, f64)>, full: &[(usize, f64)], there: f64| {
+                let asked: f64 = wanting.iter().map(|(_, kg)| kg).sum();
+                if asked <= there * (1.0 + 1e-12) + TRACE {
+                    return;
+                }
+                for (i, got) in give(lots, &wanting, there) {
+                    let ask = wanting.iter().find(|(w, _)| *w == i).expect("asked").1;
+                    let whole = full.iter().find(|(w, _)| *w == i).expect("wanted").1;
+                    // Given all it asked for, this pool is not what holds it back.
+                    if got < ask * (1.0 - 1e-12) {
+                        next[p][i] = next[p][i].min(got / whole);
+                    }
+                }
+            };
+            let there = held
+                + if kept {
+                    at(&pool.makers) + at(&pool.dumpers)
+                } else {
+                    0.0
+                };
+            hold_back(asking(&pool.takers), &pool.takers, there);
+            let outlet = if kept {
+                room + at(&pool.takers) + lost
+            } else {
+                0.0
+            };
+            hold_back(asking(&pool.makers), &pool.makers, outlet);
+        }
+        if next == caps {
+            break;
+        }
+        caps = next;
+    }
+    (0..n).map(|i| least(&caps, i, None)).collect()
+}
+
+/// Run `lots` on `store` together for `dt` seconds, as if all of them run through the step at once:
+/// the share each gets. Each starts at full speed. Where what is there and what the others make
+/// falls short of what is taken, the takers are cut back, the highest priority keeping the most;
+/// where the room, what the others take and what leaks out falls short of what is made, the makers
+/// are. Over again until nothing changes, which it soon does, as shares only ever fall. Then
+/// everything made goes in, and everything taken comes out. With what each takes and makes steady
+/// through the step, what the bins hold moves in a straight line from start to end, so it is never
+/// out of bounds on the way; then what leaks goes, exactly.
+fn allocate(store: &mut Store, lots: &[Lot], dt: f64) -> Vec<f64> {
     let pools = pools(store, lots);
-    let start: Vec<(f64, f64)> = (pools.iter())
+    let begun = store.amounts.clone();
+    let start: Vec<(f64, f64, f64)> = (pools.iter())
         .map(|p| {
             let held = trace_free(store.held(&p.bins, p.resource));
             let room = trace_free(store.room(&p.bins, p.resource));
-            (held, room)
+            let lost = store.leaking(&p.bins, p.resource) * dt;
+            (held, room, lost)
         })
         .collect();
-    let mut shares = vec![1.0; lots.len()];
+    let mut shares = settle_on(lots, &pools, &start);
     for _ in 0..100 {
         let mut most = vec![1.0_f64; lots.len()];
-        for (pool, &(held, room)) in pools.iter().zip(&start) {
+        for (pool, &(held, room, lost)) in pools.iter().zip(&start) {
             let now = |list: &[(usize, f64)]| -> Vec<(usize, f64)> {
                 list.iter().map(|&(i, kg)| (i, shares[i] * kg)).collect()
             };
@@ -347,7 +455,7 @@ fn allocate(store: &mut Store, lots: &[Lot]) -> Vec<f64> {
                     most[i] = most[i].min(got / full);
                 }
             }
-            let outlet = if kept { room + taken } else { 0.0 };
+            let outlet = if kept { room + taken + lost } else { 0.0 };
             if made > outlet * (1.0 + 1e-12) + TRACE {
                 for (i, got) in give(lots, &makers, outlet) {
                     let full = pool
@@ -383,6 +491,8 @@ fn allocate(store: &mut Store, lots: &[Lot]) -> Vec<f64> {
             store.take(&lot.tiers, resource, kg * share);
         }
     }
+    store.linear = store.amounts.clone();
+    store.leak(&begun, dt);
     store.settle();
     shares
 }
@@ -393,13 +503,15 @@ impl Propulsion {
     /// on its ground support at a launch site, which powers it and feeds what its systems burn:
     /// nothing comes out of its stores or goes into its tanks.
     pub fn step_systems(&mut self, environment: &Environment, dt: f64, supplied: bool) {
+        self.systems.share_air();
         let wanted = self.lots(|s| s.wants(dt));
-        let shares = self.exchange(&wanted, supplied, false);
+        let shares = self.exchange(&wanted, supplied, false, dt);
         self.tell(&wanted, &shares, |s, shares| s.plan(shares));
         self.systems.step(environment, dt, supplied);
         let used = self.lots(|s| s.uses(dt));
-        let shares = self.exchange(&used, supplied, true);
+        let shares = self.exchange(&used, supplied, true, dt);
         self.tell(&used, &shares, |s, shares| s.exchanged(shares, dt));
+        self.systems.share_air();
     }
 
     /// Seconds until a system needs attention: it says so, or a tank one draws on runs dry or one
@@ -411,7 +523,7 @@ impl Propulsion {
         }
         // What each would reach next at the shares the tanks give now.
         let wanted = self.lots(|s| s.wants(1.0));
-        let shares = self.shares(&wanted).0;
+        let shares = self.shares(&wanted, 1.0).0;
         let staged: Vec<f64> = (wanted.iter().zip(&shares))
             .filter_map(|(s, shares)| self.systems.on(s.part)[s.index].next_event_given(shares))
             .collect();
@@ -436,19 +548,32 @@ impl Propulsion {
                 }
             }
         }
+        // What leaks out besides runs a store dry sooner and fills it later: as it does, neither
+        // comes before this.
         let ends = flows
             .into_iter()
             .filter_map(|((feeds, resource), (net, kept))| {
+                let lost = store.leaking(&feeds, &resource);
                 let (left, rate) = if net > 0.0 {
-                    (store.held(&feeds, &resource), net)
+                    (store.held(&feeds, &resource), net + lost)
                 } else if kept {
-                    (store.room(&feeds, &resource), -net)
+                    (store.room(&feeds, &resource), -net - lost)
                 } else {
                     (0.0, 0.0)
                 };
                 (rate > 0.0 && left > TRACE).then(|| left / rate)
             });
-        own.into_iter().chain(staged).chain(ends).reduce(f64::min)
+        // Where what systems keep crosses a line of theirs, at what goes in and out of it now.
+        let running = self.lots(|s| s.exchanging());
+        let (_, after) = self.shares(&running, 1.0);
+        let crossings = (store.systems.iter().enumerate()).filter_map(|(k, &(part, index))| {
+            let bin = store.tanks + k;
+            let inflows: Vec<f64> = (after.linear[bin].iter().zip(&store.amounts[bin]))
+                .map(|(end, start)| end - start)
+                .collect();
+            self.systems.on(part)[index].next_event_at(&inflows)
+        });
+        (own.into_iter().chain(staged).chain(ends).chain(crossings)).reduce(f64::min)
     }
 
     /// How much of `resource` there is for what is on `part`: in the tanks it reaches and what its
@@ -475,12 +600,13 @@ impl Propulsion {
         all
     }
 
-    /// The share of each lot, by system; taken out of the tanks and put in them if `commit`.
-    fn exchange(&mut self, all: &[Lots], supplied: bool, commit: bool) -> Vec<Vec<f64>> {
+    /// The share of each lot over `dt` seconds, by system; taken out of the tanks and put in them
+    /// if `commit`.
+    fn exchange(&mut self, all: &[Lots], supplied: bool, commit: bool, dt: f64) -> Vec<Vec<f64>> {
         if supplied {
             return all.iter().map(|s| vec![1.0; s.lots.len()]).collect();
         }
-        let (shares, store) = self.shares(all);
+        let (shares, store) = self.shares(all, dt);
         if commit {
             let mut amounts = store.amounts.into_iter();
             for (tank, amounts) in self.tanks.iter_mut().zip(amounts.by_ref()) {
@@ -493,8 +619,9 @@ impl Propulsion {
         shares
     }
 
-    /// The share of each lot, by system, and what the tanks and bins would hold after.
-    fn shares(&self, all: &[Lots]) -> (Vec<Vec<f64>>, Store) {
+    /// The share of each lot over `dt` seconds, by system, and what the tanks and bins would hold
+    /// after.
+    fn shares(&self, all: &[Lots], dt: f64) -> (Vec<Vec<f64>>, Store) {
         let mut store = Store::new(self);
         let lots: Vec<Lot> = (all.iter())
             .flat_map(|s| {
@@ -507,7 +634,7 @@ impl Propulsion {
                 })
             })
             .collect();
-        let flat = allocate(&mut store, &lots);
+        let flat = allocate(&mut store, &lots, dt);
         let mut flat = flat.into_iter();
         let shares = (all.iter())
             .map(|s| flat.by_ref().take(s.lots.len()).collect())

@@ -19,7 +19,7 @@
 //! [`warnings`] says what would stop a craft working without making it wrong to build: engines
 //! nothing feeds, and exhaust that hits something that stays on.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
@@ -27,14 +27,15 @@ use serde::{Deserialize, Serialize};
 use crate::{
     aero::{outer_triangles, voxel::Body},
     assembly::{Mount, Pose, Side},
-    component::{BuiltPart, Component, ComponentDef},
+    component::{BuiltPart, Component, ComponentDef, storage::StorageDef},
     craft::Craft,
-    data::{CraftDef, CraftPartDef, PartCatalog, SurfaceAtDef},
+    data::{CraftDef, CraftPartDef, PartCatalog, SurfaceAtDef, TankTypeDef},
     geometry::{
         Node,
         preset::{NodeDef, ShapeDef},
     },
-    properties, shaping,
+    properties,
+    shaping::{self, Limits},
 };
 
 /// The biggest a part's node can be against the node that holds it.
@@ -65,6 +66,9 @@ pub enum Rule {
     Overlap,
     /// It does not fit in what holds it, a container or a fairing.
     Fit,
+    /// The game does not allow it yet: bigger than its tech tree allows, a tank type still locked
+    /// ([`Allowed`]).
+    Allowed,
 }
 
 /// Why an operation is refused.
@@ -166,6 +170,125 @@ impl Place {
     }
 }
 
+/// What a game lets be built: in a career, procedural parts no bigger than its tech tree allows
+/// so far and tanks of the types it has unlocked ([`crate::tech::ScienceTree::allowed`]); in a
+/// sandbox, anything. A builder holds one ([`Builder::allow`]): it refuses to make a part bigger
+/// than that, or of a locked tank type.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Allowed {
+    pub sizes: Limits,
+    /// The tank types that may be built, the one to make a new tank of first; every one if none.
+    pub tank_types: Option<Vec<String>>,
+}
+
+/// A length as a player reads it, m: `2`, `2.5`, `1.25`.
+fn metres(value: f64) -> String {
+    let text = format!("{value:.2}");
+    let text = text.trim_end_matches('0').trim_end_matches('.');
+    format!("{text} m")
+}
+
+fn storages(part: &CraftPartDef) -> impl Iterator<Item = &StorageDef> {
+    part.components.iter().filter_map(|c| match c {
+        ComponentDef::Storage(s) => Some(s),
+        _ => None,
+    })
+}
+
+impl Allowed {
+    /// Anything: a sandbox.
+    pub fn everything() -> Self {
+        Self::default()
+    }
+
+    pub fn tank_type(&self, id: &str) -> bool {
+        (self.tank_types.as_ref()).is_none_or(|types| types.iter().any(|t| t == id))
+    }
+
+    /// Why `part` cannot be built, if it cannot: a size past its limit, a tank type still locked.
+    pub fn refuses(&self, part: &CraftPartDef) -> Option<String> {
+        let mut why: Vec<String> = (self.sizes.over(part).into_iter())
+            .map(|(size, limit)| {
+                format!(
+                    "{} {}, {} so far",
+                    size.label.to_lowercase(),
+                    metres(size.value),
+                    metres(limit)
+                )
+            })
+            .collect();
+        for storage in storages(part).filter(|s| !self.tank_type(&s.tank_type)) {
+            why.push(format!("{} tank", storage.tank_type));
+        }
+        (!why.is_empty()).then(|| why.join(", "))
+    }
+
+    /// What changing `before` into `after` does that is not allowed: a size made bigger past its
+    /// limit, a tank type it did not have and is still locked. A part that was past a limit may
+    /// stay so, or be made smaller.
+    pub fn refuses_change(&self, before: &CraftPartDef, after: &CraftPartDef) -> Option<String> {
+        let was: BTreeMap<&str, f64> = (shaping::part_sizes(before).into_iter())
+            .map(|s| (s.name, s.value))
+            .collect();
+        for (size, limit) in self.sizes.over(after) {
+            if was
+                .get(size.name)
+                .is_none_or(|v| size.value > v * (1.0 + 1e-9))
+            {
+                return Some(format!(
+                    "the tech tree allows a {} of {} so far",
+                    size.label.to_lowercase(),
+                    metres(limit)
+                ));
+            }
+        }
+        let had: BTreeSet<&str> = storages(before).map(|s| s.tank_type.as_str()).collect();
+        (storages(after))
+            .find(|s| !self.tank_type(&s.tank_type) && !had.contains(s.tank_type.as_str()))
+            .map(|s| format!("{} tanks are still locked in the tech tree", s.tank_type))
+    }
+
+    /// `part`, a new one, made so it can be built: sizes past their limits brought back to them,
+    /// tanks of locked types made of allowed ones ([`Self::allowed_tank_types`]).
+    pub fn bring_within(&self, part: &mut CraftPartDef, catalog: &PartCatalog) {
+        self.sizes.shrink(part);
+        self.allowed_tank_types(part, catalog);
+    }
+
+    /// `part` with each tank of a locked type made of the first allowed type that holds what it
+    /// holds and, if it can, is as highly pressurised.
+    pub fn allowed_tank_types(&self, part: &mut CraftPartDef, catalog: &PartCatalog) {
+        let Some(types) = &self.tank_types else {
+            return;
+        };
+        for component in &mut part.components {
+            let ComponentDef::Storage(storage) = component else {
+                continue;
+            };
+            if types.contains(&storage.tank_type) {
+                continue;
+            }
+            let kind = |id: &str| catalog.tank_types.iter().find(|t| t.id == id);
+            let holds = |t: &TankTypeDef| {
+                storage.contents.keys().all(|name| {
+                    (catalog.resources.iter().find(|r| &r.id == name))
+                        .is_some_and(|r| crate::component::storage::cannot_hold(t, r).is_none())
+                })
+            };
+            let high = |t: &TankTypeDef| t.pressure >= 1e6;
+            let wanted = kind(&storage.tank_type);
+            let usable: Vec<&TankTypeDef> = (types.iter())
+                .filter_map(|id| kind(id))
+                .filter(|t| holds(t) && wanted.is_none_or(|w| w.cast == t.cast))
+                .collect();
+            let alike = (usable.iter()).find(|t| wanted.is_none_or(|w| high(w) == high(t)));
+            if let Some(choice) = alike.or(usable.first()) {
+                storage.tank_type = choice.id.clone();
+            }
+        }
+    }
+}
+
 /// A draft craft and the operations on it. Each operation is checked against the parts in
 /// `catalog`, which it is given each time, so a builder can be kept while the content changes.
 #[derive(Debug, Clone)]
@@ -173,6 +296,7 @@ pub struct Builder {
     draft: CraftDef,
     undo: Vec<CraftDef>,
     redo: Vec<CraftDef>,
+    allowed: Allowed,
 }
 
 impl Builder {
@@ -195,7 +319,28 @@ impl Builder {
             draft,
             undo: Vec::new(),
             redo: Vec::new(),
+            allowed: Allowed::default(),
         }
+    }
+
+    /// Hold its changes to what `allowed` lets be built from now on.
+    pub fn allow(&mut self, allowed: Allowed) {
+        self.allowed = allowed;
+    }
+
+    pub fn allowed(&self) -> &Allowed {
+        &self.allowed
+    }
+
+    /// Whether changing `id` from as it is in the draft to as it is in `next` is allowed.
+    fn allows(&self, next: &CraftDef, id: &str) -> Result<(), Refusal> {
+        let find = |draft: &CraftDef| draft.parts.iter().find(|p| p.id == id).cloned();
+        if let (Some(before), Some(after)) = (find(&self.draft), find(next))
+            && let Some(why) = self.allowed.refuses_change(&before, &after)
+        {
+            return Err(Refusal::new(Rule::Allowed, why));
+        }
+        Ok(())
     }
 
     pub fn draft(&self) -> &CraftDef {
@@ -566,6 +711,7 @@ impl Builder {
         for &(size, value) in sizes {
             shaping::resize(part, size, value).map_err(|e| Refusal::new(Rule::Part, e))?;
         }
+        self.allows(&next, id)?;
         if kept {
             check(&next, catalog, &[id])?;
         } else {
@@ -593,13 +739,22 @@ impl Builder {
         let mixes = properties::mixes(&self.draft, catalog, id);
         let mut next = self.draft.clone();
         let part = part_mut(&mut next, id)?;
+        let had = storages(part)
+            .map(|s| s.tank_type.clone())
+            .collect::<Vec<_>>();
         properties::set(part, field, text, &mixes, catalog)
             .map_err(|e| Refusal::new(Rule::Part, e))?;
+        // A tank given something else to hold may have been given a type to hold it in: one
+        // allowed, if the old one cannot.
+        if field != "tank_type" && storages(part).any(|s| !had.contains(&s.tank_type)) {
+            self.allowed.allowed_tank_types(part, catalog);
+        }
         // Another configuration of an engine may burn something else: tanks as the parts list gave
         // them follow it, as they follow an engine put on.
         if field == "configuration" {
             properties::fill_from_engines(&mut next, catalog, &[id.to_owned()]);
         }
+        self.allows(&next, id)?;
         if kept {
             check(&next, catalog, &[id])?;
         } else {
@@ -1944,6 +2099,69 @@ mod tests {
         let [a2, b2] = pivots(&Builder::of(next));
         assert!(near(b2, reflect(a2)));
         assert!((a2.z - a.z - by.z).abs() < 1e-6 && (a2 - a).length() > 0.3);
+    }
+
+    /// A career's builder makes nothing bigger than its tree allows, nor a tank of a locked type,
+    /// and a new part is brought within both.
+    #[test]
+    fn a_career_holds_sizes_and_tank_types_to_what_it_has_unlocked() {
+        let catalog = catalog();
+        let mut builder = stack(&catalog);
+        let types = |ids: &[&str]| Some(ids.iter().map(|t| t.to_string()).collect());
+        builder.allow(Allowed {
+            sizes: Limits {
+                diameter: 2.5,
+                length: f64::INFINITY,
+            },
+            tank_types: types(&["Stiffened Al 2219", "Balloon Stainless", "COPV"]),
+        });
+        builder
+            .resize(&catalog, "top", &[("diameter", 2.5)])
+            .unwrap();
+        let wider = builder.resize(&catalog, "top", &[("diameter", 3.0)]);
+        assert_eq!(wider.as_ref().map_err(|r| r.rule), Err(Rule::Allowed));
+        assert_eq!(
+            wider.unwrap_err().message,
+            "the tech tree allows a diameter of 2.5 m so far"
+        );
+        // Past the limit already, it may stay so or shrink, not grow.
+        builder.allow(Allowed {
+            sizes: Limits {
+                diameter: 2.0,
+                length: f64::INFINITY,
+            },
+            ..builder.allowed().clone()
+        });
+        builder.resize(&catalog, "top", &[("length", 5.0)]).unwrap();
+        builder
+            .resize(&catalog, "top", &[("diameter", 2.2)])
+            .unwrap();
+        let wider = builder.resize(&catalog, "top", &[("diameter", 2.3)]);
+        assert_eq!(wider.map_err(|r| r.rule), Err(Rule::Allowed));
+        // A locked tank type is refused, an unlocked one taken.
+        let locked = builder.set_field(&catalog, "top", "tank_type", "Isogrid Al-Li");
+        assert_eq!(locked.map_err(|r| r.rule), Err(Rule::Allowed));
+        builder
+            .set_field(&catalog, "top", "tank_type", "Balloon Stainless")
+            .unwrap();
+        // A new tank of a locked type is made of the first allowed one as lightly pressurised.
+        let mut new = entry("tank", &catalog);
+        resize_part(&mut new, "diameter", 4.0);
+        builder.allow(Allowed {
+            tank_types: types(&["COPV", "Balloon Stainless"]),
+            ..builder.allowed().clone()
+        });
+        builder.allowed().bring_within(&mut new, &catalog);
+        assert!(builder.allowed().refuses(&new).is_none());
+        let kind = (new.components.iter()).find_map(|c| match c {
+            ComponentDef::Storage(s) => Some(s.tank_type.as_str()),
+            _ => None,
+        });
+        assert_eq!(kind, Some("Balloon Stainless"));
+    }
+
+    fn resize_part(part: &mut CraftPartDef, size: &str, value: f64) {
+        shaping::resize(part, size, value).unwrap();
     }
 
     #[test]

@@ -8,4 +8,7 @@
   { id: "WasteWater", density: 1000.0 },
   { id: "Waste", density: 1000.0 },
   { id: "LiOH", density: 1000.0 }, // granules in canisters
+  // A cabin's air, kept nowhere else: at sea-level pressure and room temperature.
+  { id: "CabinOxygen", density: 1.33 },
+  { id: "CabinNitrogen", density: 1.16 },
 ]

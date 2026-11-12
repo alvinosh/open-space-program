@@ -37,10 +37,12 @@ pub enum Group {
     Control,
     /// Power, radios and what commands a vessel with no crew.
     Systems,
+    /// Scientific instruments.
+    Science,
 }
 
 impl Group {
-    pub const ALL: [Group; 7] = [
+    pub const ALL: [Group; 8] = [
         Group::Pods,
         Group::Tanks,
         Group::Engines,
@@ -48,6 +50,7 @@ impl Group {
         Group::Aero,
         Group::Control,
         Group::Systems,
+        Group::Science,
     ];
 
     /// As actions write it.
@@ -60,6 +63,7 @@ impl Group {
             Group::Aero => "aero",
             Group::Control => "control",
             Group::Systems => "systems",
+            Group::Science => "science",
         }
     }
 
@@ -77,6 +81,7 @@ impl Group {
             Group::Aero => "Aero",
             Group::Control => "Control",
             Group::Systems => "Power and comms",
+            Group::Science => "Science",
         }
     }
 }
@@ -741,13 +746,16 @@ fn systems(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
         ));
     }
     // What the crew live on, as the rules have it: a day's worth of each in proportion, in a tank
-    // that keeps the coldest of them.
-    if let Ok(Some(needs)) = catalog.life_support_needs() {
-        let contents: serde_json::Map<String, serde_json::Value> = (needs.iter())
-            .map(|need| (need.resource.clone(), json!(need.daily)))
+    // that keeps the coldest of them. What they breathe from the cabin's air is what tops it up.
+    if let Ok(Some(profile)) = catalog.life_support_profile() {
+        let supplies: Vec<(&str, f64)> = (profile.needs.iter())
+            .map(|need| (profile.supply_of(&need.resource), need.daily))
             .collect();
-        let cold = needs.iter().any(|need| {
-            (catalog.resources.iter()).any(|r| r.id == need.resource && r.temperature < 250.0)
+        let contents: serde_json::Map<String, serde_json::Value> = (supplies.iter())
+            .map(|(resource, daily)| ((*resource).to_owned(), json!(daily)))
+            .collect();
+        let cold = supplies.iter().any(|(resource, _)| {
+            (catalog.resources.iter()).any(|r| r.id == *resource && r.temperature < 250.0)
         });
         let tank_type = if cold {
             "Insulated Al-Li"
@@ -836,6 +844,53 @@ fn built_figures(part: &CraftPartDef, size: &str, catalog: &PartCatalog) -> Stri
 
 /// Everything a craft can be built from, `catalog`'s records after the procedural parts, each group
 /// by name.
+/// The key a value is written under: an externally tagged enum's variant (`cylinder_tank`, `storage`).
+fn tag<T: serde::Serialize>(value: &T) -> Option<String> {
+    match serde_json::to_value(value).ok()? {
+        serde_json::Value::Object(map) if map.len() == 1 => map.keys().next().cloned(),
+        serde_json::Value::String(text) => Some(text),
+        _ => None,
+    }
+}
+
+/// How a part is made, to tell which entry it came from: what sizes it, the kind of its shape and the
+/// kinds of its components.
+fn made_as(part: &CraftPartDef) -> (Option<String>, Option<String>, Vec<String>) {
+    let mut components: Vec<String> = part.components.iter().filter_map(tag).collect();
+    components.sort();
+    (
+        part.procedural.as_ref().and_then(tag),
+        part.shape.as_ref().and_then(tag),
+        components,
+    )
+}
+
+/// The entries of `entries` a placed part could have come from: one of the same template (an engine's
+/// of its family), or those made the same way, and of those the one of its name if one is. None for
+/// a part made some other way, by hand.
+pub fn sources<'a>(
+    part: &CraftPartDef,
+    entries: &'a [Entry],
+    catalog: &PartCatalog,
+) -> Vec<&'a Entry> {
+    if let Some(template) = &part.template {
+        let same = |entry: &&Entry| {
+            entry.part.template.as_ref().is_some_and(|t| {
+                t == template || catalog.configurations(t).iter().any(|c| c.id == *template)
+            })
+        };
+        return entries.iter().filter(same).collect();
+    }
+    let made = made_as(part);
+    let like: Vec<&Entry> = (entries.iter())
+        .filter(|e| e.part.template.is_none() && made_as(&e.part) == made)
+        .collect();
+    let named: Vec<&Entry> = (like.iter().copied())
+        .filter(|e| part.name.is_some() && e.part.name == part.name)
+        .collect();
+    if named.is_empty() { like } else { named }
+}
+
 pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
     let template = |id: &str, name: &str| part(json!({ "id": "", "name": name, "template": id }));
     let mut out: Vec<Entry> = (procedural(catalog).into_iter())
@@ -966,11 +1021,49 @@ pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
             stem: "reaction_wheel".into(),
         }))
         .collect();
-    for list in [&mut pods, &mut engines, &mut control] {
+    let mut science: Vec<Entry> = catalog.instruments.iter().map(instrument).collect();
+    for list in [&mut pods, &mut engines, &mut control, &mut science] {
         list.sort_by_key(|entry| entry.name.to_lowercase());
         out.append(list);
     }
     out
+}
+
+/// A scientific instrument's entry: a box of its size and mass carrying its experiments, put on a
+/// side by its bottom like an antenna.
+fn instrument(def: &crate::data::InstrumentDef) -> Entry {
+    let name = if def.name.is_empty() {
+        def.id.clone()
+    } else {
+        def.name.clone()
+    };
+    let experiments: Vec<serde_json::Value> = (def.experiments.iter())
+        .map(|id| json!({ "experiment": { "experiment": id } }))
+        .collect();
+    Entry {
+        id: format!("instrument:{}", def.id),
+        name: name.clone(),
+        group: Group::Science,
+        detail: mass(def.mass),
+        about: def.description.clone(),
+        width: None,
+        propellant: None,
+        part: part(json!({
+            "id": "", "name": name,
+            "shape": { "box": { "size": def.size } },
+            "structure": { "mass": def.mass },
+            "components": experiments,
+            "nodes": [{
+                "name": "bottom",
+                "position": [0.0, 0.0, 0.0],
+                "direction": [0.0, 0.0, -1.0],
+                "size": def.size[0].max(def.size[1]),
+            }],
+            "paint": { "color": def.color, "finish": "metal" },
+        })),
+        surface: Some(("bottom".to_owned(), 0.0)),
+        stem: def.id.clone(),
+    }
 }
 
 /// `part`, a palette entry's procedural part, sized for what it goes on, `width` across: the node
@@ -1025,6 +1118,20 @@ mod tests {
 
     fn catalog() -> PartCatalog {
         crate::vessel::tests::catalog()
+    }
+
+    /// Every entry's own part traces back to it, and to nothing else: a career can tell a placed
+    /// part's entry from the part.
+    #[test]
+    fn every_entry_s_part_traces_back_to_it() {
+        let catalog = catalog();
+        let all = entries(&catalog);
+        for entry in &all {
+            let found: Vec<&str> = (sources(&entry.part, &all, &catalog).iter())
+                .map(|e| e.id.as_str())
+                .collect();
+            assert_eq!(found, [entry.id.as_str()], "{}", entry.id);
+        }
     }
 
     #[test]

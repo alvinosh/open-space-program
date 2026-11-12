@@ -337,3 +337,33 @@ fn the_fingerprint_changes_with_the_game_and_only_with_it() {
     assert_eq!(universe.time(), time);
     assert_ne!(save::fingerprint(&universe).unwrap(), restored);
 }
+
+/// A career keeps its science and what it has unlocked through a save, and a sandbox stays one.
+#[test]
+fn a_career_keeps_its_science_and_unlocks() {
+    use osp_sim::{
+        career::Career,
+        data::{TechNodeDef, TechTreeDef},
+        tech::science_tree,
+    };
+    let content = content();
+    let catalog = record::catalog(&content.registry);
+    let trees: Vec<TechTreeDef> = content.registry.all("tech_trees", &mut Vec::new());
+    let nodes: Vec<TechNodeDef> = content.registry.all("tech_nodes", &mut Vec::new());
+    let tree = science_tree(&catalog, &trees, &nodes).unwrap().unwrap();
+
+    let mut universe = scenario(&content, "leo");
+    let sandbox = bytes(&universe);
+    let mut loaded = scenario(&content, "leo");
+    loaded.restore(save::read(&sandbox).unwrap()).unwrap();
+    assert_eq!(loaded.career, None);
+
+    let mut career = Career::new(&tree);
+    career.science = 1234.5;
+    let next = tree.ready(&career.unlocked)[0].id.clone();
+    career.unlock(&next, &tree).unwrap();
+    universe.career = Some(career.clone());
+    let saved = bytes(&universe);
+    loaded.restore(save::read(&saved).unwrap()).unwrap();
+    assert_eq!(loaded.career, Some(career));
+}

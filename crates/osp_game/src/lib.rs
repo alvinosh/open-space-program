@@ -12,6 +12,7 @@
 mod alarm_clock;
 mod alerts;
 pub mod camera;
+pub mod career;
 pub mod content;
 pub mod controls;
 pub mod dialog;
@@ -34,6 +35,7 @@ pub mod saves;
 pub mod settings;
 pub mod sim;
 pub mod smoke_test;
+pub mod tree_screen;
 mod sound;
 mod targeting;
 mod transfer_planner;
@@ -74,7 +76,7 @@ impl Plugin for GamePlugin {
                 .chain(),
         )
         // Content first: everything else is built from the loaded mods.
-        .add_plugins(content::ContentPlugin)
+        .add_plugins((content::ContentPlugin, career::CareerPlugin))
         .init_resource::<part_pictures::PartPictures>()
         .init_resource::<part_pictures::PartInHand>()
         .add_plugins((
@@ -115,6 +117,7 @@ impl Plugin for GamePlugin {
             manifest::ManifestPlugin,
             transfer_planner::TransferPlannerPlugin,
             alarm_clock::AlarmClockPlugin,
+            tree_screen::TreeScreenPlugin,
         ));
     }
 }

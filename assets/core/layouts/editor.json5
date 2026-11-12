@@ -28,7 +28,8 @@
 // `held`; a `part_picture` shows the picture of the `part` it names), a tab at a time by what they
 // do (`editor.group:<pods|tanks|engines|structure|aero|control|systems>`, `editor.group` the one shown, or
 // `search` while searching), or what `editor.search:<text>` finds in all of them
-// (`editor.search_shown`); `editor.palette_more` says how many more there are, or that nothing is
+// (`editor.search_shown`); `editor.locked` says how many parts a career has still to unlock;
+// `editor.palette_more` says how many more there are, or that nothing is
 // found. Two filters narrow them, while the tab has anything they could narrow: by width,
 // `editor.size:<id|any>` (`editor.size`, the choices `editor.sizes`, shown while
 // `editor.sizes_shown`), and by what they burn, `editor.propellant:<id|any>` (`editor.propellant`,
@@ -134,6 +135,10 @@
                 widget: "button", class: "tab editor_tab", action: "editor.group:systems", active: "editor.group == systems", tooltip: "Power and comms: batteries, solar panels, antennas",
                 children: [{ widget: "image", class: "editor_tab_icon", image: "icons/editor/systems.svg", active: "editor.group == systems" }],
               },
+              {
+                widget: "button", class: "tab editor_tab", action: "editor.group:science", active: "editor.group == science", tooltip: "Science: instruments that measure where they go",
+                children: [{ widget: "image", class: "editor_tab_icon", image: "icons/editor/science.svg", active: "editor.group == science" }],
+              },
             ],
           },
           {
@@ -187,6 +192,7 @@
                 ],
               },
               { widget: "label", class: "menu_subtitle editor_parts_more", text: "{editor.palette_more}", visible: "editor.palette_more" },
+              { widget: "label", class: "menu_subtitle editor_parts_more", text: "{editor.locked}", visible: "editor.locked" },
             ],
           },
           {
@@ -209,6 +215,9 @@
         children: [
           { widget: "button", class: "back editor_part_back", text: "‹ Parts", action: "editor.parts", tooltip: "Back to the parts (Esc)" },
           { widget: "label", class: "menu_heading", text: "{editor.part.name}" },
+          // Why the last change was not made: under the name, where it is seen however long the
+          // settings are.
+          { widget: "label", class: "menu_warning editor_part_problem", text: "{editor.part.problem}", visible: "editor.part.problem" },
           {
             widget: "column",
             class: "menu_body editor_part_body",
@@ -281,7 +290,6 @@
                   },
                 ],
               },
-              { widget: "label", class: "menu_warning editor_part_problem", text: "{editor.part.problem}", visible: "editor.part.problem" },
               { widget: "button", class: "btn btn_danger editor_part_remove", text: "Remove", tooltip: "Take it off, with what it holds (Delete)", action: "editor.remove" },
             ],
           },
@@ -302,6 +310,11 @@
           {
             widget: "button", class: "btn editor_icon_btn", action: "editor.parts", active: "editor.rail == parts", visible: "editor.has_vessel", tooltip: "Parts: the list to build from",
             children: [{ widget: "image", class: "editor_bar_icon", image: "icons/editor/parts.svg", active: "editor.rail == parts" }],
+          },
+          // A career's tech tree (osp_game::tree_screen).
+          {
+            widget: "button", class: "btn editor_icon_btn", action: "tree.open", visible: "career.active", tooltip: "Tech tree: unlock parts with science",
+            children: [{ widget: "image", class: "editor_bar_icon", image: "icons/editor/tree.svg" }],
           },
           // What the pointer does to a picked part (osp_editor::moving).
           {

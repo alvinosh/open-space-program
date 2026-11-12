@@ -19,13 +19,16 @@
 //!
 //! The `part_picture` widget (`part: "{item.id}"`) shows the picture of an entry.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use bevy::prelude::*;
 use osp_game::{
     FrameSet,
+    career::CareerTree,
     content::{GameContent, catalog},
+    menu::Menu,
     part_pictures::PartPictures,
+    sim::Sim,
 };
 use osp_sim::palette::{self, Entry, Group, Propellant};
 use osp_ui::{
@@ -201,12 +204,13 @@ fn brief(about: &str) -> String {
 fn publish_list(
     list: Res<PartsList>,
     (placing, editor): (Res<Placing>, Res<Editor>),
+    (career, menu, sim): (Res<CareerTree>, Res<Menu>, Res<Sim>),
     content: Res<GameContent>,
     hover: Res<UiHover>,
     mut pictures: ResMut<PartPictures>,
     mut data: ResMut<UiData>,
     mut palette: Local<Option<Palette>>,
-    mut published: Local<Option<(PartsList, bool, Option<String>)>>,
+    mut published: Local<Option<(PartsList, bool, Option<String>, Option<BTreeSet<String>>)>>,
     mut pointed_at: Local<Option<Option<String>>>,
 ) {
     if palette.is_none() || content.is_changed() {
@@ -243,7 +247,14 @@ fn publish_list(
     }
 
     let open = placing.is_open() && editor.is_open();
-    let now = (list.clone(), open, placing.held_entry().map(str::to_owned));
+    // In a career, only what it has unlocked.
+    let unlocked = career.unlocked(&menu, &sim);
+    let now = (
+        list.clone(),
+        open,
+        placing.held_entry().map(str::to_owned),
+        unlocked.clone(),
+    );
     if published.as_ref() == Some(&now) {
         return;
     }
@@ -263,8 +274,25 @@ fn publish_list(
         },
     );
 
-    let chosen = list.chosen(&palette.entries);
+    let has = |entry: &&Entry| match (&career.tree, &unlocked) {
+        (Some(tree), Some(unlocked)) => tree.has_entry(&entry.id, unlocked),
+        _ => true,
+    };
+    let chosen: Vec<&Entry> = list
+        .chosen(&palette.entries)
+        .into_iter()
+        .filter(has)
+        .collect();
     let shown: Vec<&Entry> = chosen.iter().copied().filter(|e| list.keeps(e)).collect();
+    let locked = palette.entries.len() - palette.entries.iter().filter(has).count();
+    data.set(
+        "editor.locked",
+        match locked {
+            0 => String::new(),
+            1 => "1 part is still locked in the tech tree".to_owned(),
+            n => format!("{n} parts are still locked in the tech tree"),
+        },
+    );
     let held = placing.held_entry();
     let tiles: Vec<UiRecord> = (shown.iter().take(MOST_TILES))
         .map(|e| {

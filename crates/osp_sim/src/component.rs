@@ -349,6 +349,18 @@ pub enum ComponentDef {
     LifeSupport(LifeSupportDef),
     Process(ProcessComponentDef),
     FuelLine(FuelLineDef),
+    Experiment(ExperimentComponentDef),
+}
+
+/// A scientific instrument's experiment: an `experiments` record, run where it works.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentComponentDef {
+    /// The record it runs.
+    pub experiment: String,
+    /// Running from the start, wherever it works.
+    #[serde(default = "yes")]
+    pub on: bool,
 }
 
 /// A line that carries propellant one way, from what the part is on to the part `to` (by its id),
@@ -496,10 +508,27 @@ fn cabin(
     }
     let people = f64::from(seats);
     let volume = def.volume.unwrap_or(profile.room_per_seat * people);
+    if let Some(air) = &profile.air {
+        let bad = |gas: &crate::data::GasDef| {
+            !(gas.molar_mass > 0.0 && gas.keep >= 0.0 && gas.most() > 0.0 && gas.most() >= gas.keep)
+        };
+        if !(air.temperature > 0.0 && air.refill > 0.0 && air.vent >= 0.0)
+            || air.gases.iter().any(bad)
+        {
+            return Err(
+                "a cabin's air has gases of some weight, kept below their most, at some \
+                        temperature, and a regulator that fills it in some time"
+                    .into(),
+            );
+        }
+    }
     let mut fitted = Vec::new();
     let mut lockers: BTreeMap<String, f64> = BTreeMap::new();
+    // What is breathed from the cabin's air is carried as what tops the air up.
     for need in &profile.needs {
-        *lockers.entry(need.resource.clone()).or_default() += need.daily * people * def.days;
+        *lockers
+            .entry(profile.supply_of(&need.resource).to_owned())
+            .or_default() += need.daily * people * def.days;
     }
     for kit in &profile.fitted {
         let record = (catalog.processes.iter())
@@ -516,7 +545,7 @@ fn cabin(
         }
         // What it burns that the cabin's air does not give it is carried.
         for (resource, rate) in &record.inputs {
-            if !profile.cabin.contains_key(resource) {
+            if !profile.is_air(resource) {
                 *lockers.entry(resource.clone()).or_default() += rate * scale * 86_400.0 * def.days;
             }
         }
@@ -534,9 +563,11 @@ fn cabin(
     let life_support = LifeSupport {
         needs: profile.needs.clone(),
         dump: profile.dump.clone(),
-        air: (profile.cabin.iter())
-            .map(|(resource, per_m3)| (resource.clone(), per_m3 * volume))
-            .collect(),
+        cabin: profile.air.clone().map(|air| CabinAir {
+            volume,
+            air,
+            limits: profile.limits.clone(),
+        }),
         lockers: lockers.into_iter().collect(),
     };
     Ok((life_support, fitted))
@@ -568,12 +599,22 @@ pub struct LifeSupport {
     /// What people make that is let go of when there is nowhere to keep it.
     #[serde(default)]
     pub dump: Vec<String>,
-    /// What the cabin's air can take of each thing breathed out, kg.
+    /// Its air, if the rules give cabins air.
     #[serde(default)]
-    pub air: Vec<(String, f64)>,
+    pub cabin: Option<CabinAir>,
     /// What its lockers carry, full, kg.
     #[serde(default)]
     pub lockers: Vec<(String, f64)>,
+}
+
+/// A cabin's air as built: how big it is, what the air is made of and kept at, and what it has to
+/// be for people to be well.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CabinAir {
+    /// m³.
+    pub volume: f64,
+    pub air: crate::data::AirDef,
+    pub limits: Vec<crate::data::AirLimitDef>,
 }
 
 /// What talks to the ground and to other vessels, in S-band.
@@ -905,6 +946,9 @@ pub enum Component {
         /// Who sits in each seat.
         #[serde(default)]
         names: Vec<String>,
+        /// What radiation does to them, under rules with radiation.
+        #[serde(default)]
+        radiation: Option<crate::data::RadiationProfileDef>,
     },
     Decoupler(DecouplerDef),
     DockingPort(DockingPortDef),
@@ -924,6 +968,11 @@ pub enum Component {
     LifeSupport(LifeSupport),
     Process(ProcessUnit),
     FuelLine(FuelLineDef),
+    /// An experiment, with its record.
+    Experiment {
+        def: crate::data::ExperimentDef,
+        on: bool,
+    },
 }
 
 /// A coat on a part's walls, as built.
@@ -1178,6 +1227,7 @@ impl PartDef {
                         seats: def.seats,
                         aboard: def.aboard,
                         names,
+                        radiation: catalog.radiation_profile().map_err(&bad)?.cloned(),
                     }
                 }
                 ComponentDef::Decoupler(def) => {
@@ -1302,6 +1352,20 @@ impl PartDef {
                         return Err(bad("a heat shield has some ablator to burn".into()));
                     }
                     Component::HeatShield(def.clone())
+                }
+                ComponentDef::Experiment(def) => {
+                    let record = (catalog.experiments.iter())
+                        .find(|e| e.id == def.experiment)
+                        .ok_or_else(|| {
+                            bad(format!("no experiment is called `{}`", def.experiment))
+                        })?;
+                    if let Some(problem) = record.problem() {
+                        return Err(bad(problem));
+                    }
+                    Component::Experiment {
+                        def: record.clone(),
+                        on: def.on,
+                    }
                 }
                 ComponentDef::Process(def) => {
                     let record = (catalog.processes.iter())

@@ -45,16 +45,23 @@ impl SimTime {
         (self.0 - earlier.0) as f64 * SECONDS_PER_TICK
     }
 
-    /// `self + seconds`, rounded to the nearest tick.
+    /// `self + seconds`, rounded to the nearest tick. As far as time goes, not round past its end:
+    /// a span too long for it (from a rate of next to nothing, say) is the end of time.
     pub fn add_seconds(self, seconds: f64) -> Self {
-        Self(self.0 + (seconds * TICKS_PER_SECOND as f64).round() as i64)
+        Self(
+            self.0
+                .saturating_add((seconds * TICKS_PER_SECOND as f64).round() as i64),
+        )
     }
 
     /// `self + seconds`, rounded up to the next tick: the first representable instant at or
     /// after the exact time. Events use this so the state at the event tick is always on
     /// the far side of the boundary that triggered it.
     pub fn add_seconds_ceil(self, seconds: f64) -> Self {
-        Self(self.0 + (seconds * TICKS_PER_SECOND as f64).ceil() as i64)
+        Self(
+            self.0
+                .saturating_add((seconds * TICKS_PER_SECOND as f64).ceil() as i64),
+        )
     }
 
     pub const fn add_ticks(self, ticks: i64) -> Self {

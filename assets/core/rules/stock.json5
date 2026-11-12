@@ -4,6 +4,9 @@
 // flies whatever it is on, and a vessel with neither does nothing it is told. `life_support`: the
 // record of `life_support` people live by in a part with life support (null: they need nothing).
 // The casual game's is one supply; the Realistic Life Support mod's is air, water and food.
+// `radiation`: the record of `radiation` people take dose by (null: radiation does nothing); the
+// Realistic Radiation mod sets it. `tech_tree`: the record of `tech_trees` a science game unlocks
+// parts on; the Realism mod sets RP-1's.
 [
-  { id: "game", avionics: false, life_support: "casual" },
+  { id: "game", avionics: false, life_support: "casual", radiation: null, tech_tree: "casual" },
 ]

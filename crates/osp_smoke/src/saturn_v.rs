@@ -2041,6 +2041,17 @@ fn entry(w: &mut World) -> Flight {
         oxygen > 0.0 && water > 0.0 && food > 0.0,
         format!("{oxygen:.0} kg of oxygen, {water:.0} kg of water, {food:.0} kg of food left"),
     );
+    let dose = (w.vessel().propulsion.systems.people())
+        .map(|(_, person)| person.dose)
+        .fold(0.0, f64::max);
+    w.info(
+        Area::Crew,
+        "The most radiation anyone took",
+        format!(
+            "{:.1} mSv (Apollo 11: 1.8 mGy absorbed, a few mSv)",
+            dose * 1e3
+        ),
+    );
     let chutes = w.vessel().propulsion.systems.all::<Parachute>().count();
     w.info(
         Area::Recovery,

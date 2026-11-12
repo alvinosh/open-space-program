@@ -1,0 +1,11 @@
+// Radiation that harms people: cosmic rays everywhere, the belts a planet's field holds, and what a
+// world's ground gives off, through the walls of the part they sit in. Dose builds up, and past the
+// profile's doses people sicken.
+{
+  id: "realistic_radiation",
+  name: "Realistic Radiation",
+  version: "0.1.0",
+  authors: ["Open Space Program"],
+  description: "Cosmic rays, radiation belts and the ground give the crew a dose through their cabin's walls. Too much and they sicken, and can die.",
+  dependencies: ["core"],
+}

@@ -1,8 +1,10 @@
-// What a new game will have, before it starts: a mode (`mods.modes`, `mods.mode:<id>`) or the mods one
-// at a time (`mods.available`, `mods.toggle:<id>`), which is Custom when it is no mode (`mods.custom`).
-// Turning a mod on brings what it depends on, turning one off takes what depends on it. The choice
-// is remembered for the next new game, and the save keeps it for this one. Start asks to save a game
-// in progress first.
+// What a new game will be, before it starts: a sandbox or a career (`menu.career`, `game.kind:<kind>`),
+// and a mode (`mods.modes`, `mods.mode:<id>`) or the mods one at a time (`mods.available`,
+// `mods.toggle:<id>`), which is Custom when it is no mode (`mods.custom`). Each choice is a row of
+// segments with a line under it saying what the lit one means. Turning a mod on brings what it
+// depends on, turning one off takes what depends on it. The choice is remembered for the next new
+// game, and the save keeps it for this one. Start is in the footer, where it stays however many mods
+// there are; it asks to save a game in progress first.
 {
   id: "menu_new_game",
   group: "menu",
@@ -10,17 +12,37 @@
   root: {
     widget: "screen",
     title: "New game",
-    subtitle: "How real should it be? The game keeps these mods for as long as you play it.",
+    subtitle: "Choose how to play. The game keeps these choices for as long as you play it.",
     children: [
+      { widget: "label", class: "menu_section", text: "Game" },
+      {
+        widget: "row",
+        class: "choice choice_wide",
+        children: [
+          { widget: "button", class: "choice_item choice_item_tall", text: "Sandbox", action: "game.kind:sandbox", active: "!menu.career" },
+          { widget: "button", class: "choice_item choice_item_tall", text: "Career", action: "game.kind:career", active: "menu.career" },
+        ],
+      },
+      { widget: "label", class: "menu_hint", text: "Every part from the start, to build and fly whatever you like.", visible: "!menu.career" },
+      { widget: "label", class: "menu_hint", text: "Start with a first capsule and tanks. Science from your flights unlocks the tech tree.", visible: "menu.career" },
+      { widget: "label", class: "menu_section", text: "How real" },
+      {
+        widget: "row",
+        class: "choice choice_wide",
+        repeat: "mods.modes",
+        children: [
+          { widget: "button", class: "choice_item choice_item_tall", text: "{item.name}", action: "mods.mode:{item.id}", active: "item.on" },
+        ],
+      },
       {
         widget: "column",
         repeat: "mods.modes",
         children: [
-          { widget: "menu_row", text: "{item.name}", detail: "{item.description}", action: "mods.mode:{item.id}", active: "item.on" },
+          { widget: "label", class: "menu_hint", text: "{item.description}", visible: "item.on" },
         ],
       },
+      { widget: "label", class: "menu_hint", text: "Custom: your own choice of the mods below.", visible: "mods.custom" },
       { widget: "label", class: "menu_section", text: "Mods" },
-      { widget: "label", class: "menu_text", text: "Custom: not one of the modes above.", visible: "mods.custom" },
       { widget: "label", class: "menu_text", text: "No mods are installed.", visible: "!mods.available" },
       {
         widget: "column",
@@ -29,8 +51,10 @@
           { widget: "menu_row", text: "{item.name}", meta: "{item.state}", detail: "{item.description}", action: "mods.toggle:{item.id}", active: "item.on" },
         ],
       },
-      { widget: "menu_divider" },
-      { widget: "button", class: "btn btn_primary", text: "Start", action: "ask.leave:game.new" },
+    ],
+    footer: [
+      { widget: "button", class: "btn btn_primary btn_large btn_wide", text: "Start career", action: "ask.leave:game.new", visible: "menu.career" },
+      { widget: "button", class: "btn btn_primary btn_large btn_wide", text: "Start sandbox", action: "ask.leave:game.new", visible: "!menu.career" },
     ],
   },
 }

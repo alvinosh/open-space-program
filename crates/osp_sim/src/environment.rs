@@ -12,7 +12,7 @@ use std::f64::consts::PI;
 
 use glam::DVec3;
 
-use crate::{body::BodyId, orbit::Orbit, system::SolarSystem, time::SimTime};
+use crate::{body::BodyId, orbit::Orbit, radiation::Radiation, system::SolarSystem, time::SimTime};
 
 /// Sunlight at 1 AU, W/m².
 pub const SOLAR_CONSTANT: f64 = 1361.0;
@@ -36,6 +36,13 @@ pub struct Environment {
     pub albedo_flux: f64,
     /// Heat radiated by that body, W/m² on a surface facing it.
     pub infrared_flux: f64,
+    /// Radiation here, Sv/s by kind, before any shielding ([`crate::radiation`]).
+    pub radiation: Radiation,
+    /// The air above, kg/m², which shields from it like a wall.
+    pub air_column: f64,
+    /// What falls on the vessel over the step being run, Sv by kind, before any shielding: the
+    /// vessel works it out along its way.
+    pub exposure: Radiation,
 }
 
 impl Environment {
@@ -48,6 +55,9 @@ impl Environment {
         solar_flux: 0.0,
         albedo_flux: 0.0,
         infrared_flux: 0.0,
+        radiation: Radiation::NONE,
+        air_column: 0.0,
+        exposure: Radiation::NONE,
     };
 }
 
@@ -78,6 +88,7 @@ pub fn at(system: &SolarSystem, frame: BodyId, position: DVec3, time: SimTime) -
         // In balance: it gives out over its whole surface what it takes in over its disc.
         infrared_flux = at_body * (1.0 - body.albedo) / 4.0 * view;
     }
+    let (radiation, air_column) = crate::radiation::at(system, frame, position);
     Environment {
         sun_direction,
         sun_distance,
@@ -86,6 +97,9 @@ pub fn at(system: &SolarSystem, frame: BodyId, position: DVec3, time: SimTime) -
         solar_flux: full * sunlit,
         albedo_flux,
         infrared_flux,
+        radiation,
+        air_column,
+        exposure: Radiation::NONE,
     }
 }
 

@@ -205,6 +205,12 @@ impl Plugin for SmokeTestPlugin {
                 WARP_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_MODS").is_some() {
                 MODS_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_CAREER").is_some() {
+                CAREER_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_SCIENCE").is_some() {
+                SCIENCE_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_CAREER_REALISTIC").is_some() {
+                CAREER_REALISTIC_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_SAVE_MODS").is_some() {
                 SAVE_MODS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_BASE_ENGINES").is_some() {
@@ -447,6 +453,8 @@ pub enum Action {
     EditorPointAtHandle(usize, f32),
     /// Move the view's scripted pointer this many pixels right and down.
     PointerBy(f32, f32),
+    /// Open the window of the flown vessel's part of this name, as a right click on it does.
+    PartWindow(&'static str),
     /// Stop the capture with a failure unless this part of the craft in the editor is held by this
     /// node of its own.
     ExpectHeldBy(&'static str, &'static str),
@@ -1657,19 +1665,19 @@ const MODS_SCRIPT: &[(f64, Action)] = &[
     (2.0, Action::ExpectScreen("title")),
     (2.1, Action::Ui("menu.open:new_game")),
     (2.2, Action::ExpectScreen("new_game")),
-    (2.3, Action::ExpectData("mods.count == 6")),
+    (2.3, Action::ExpectData("mods.count == 8")),
     (2.4, Action::ExpectData("mods.custom")),
     (3.0, Action::Capture("new_game_custom.png")),
     (3.1, Action::UiPointAt("mods.toggle:realism")),
     (3.2, Action::UiPress(PointerButton::Primary)),
     (3.3, Action::UiRelease(PointerButton::Primary)),
-    (3.9, Action::ExpectData("mods.count == 6")),
+    (3.9, Action::ExpectData("mods.count == 8")),
     (4.0, Action::UiPointAt("mods.mode:casual")),
     (4.1, Action::UiPress(PointerButton::Primary)),
     (4.2, Action::UiRelease(PointerButton::Primary)),
     (4.3, Action::ExpectData("!mods.custom")),
     (4.8, Action::Capture("new_game_casual.png")),
-    (4.9, Action::ExpectData("mods.count == 6")),
+    (4.9, Action::ExpectData("mods.count == 8")),
     (5.0, Action::UiPointAt("ask.leave:game.new")),
     (5.1, Action::UiPress(PointerButton::Primary)),
     (5.2, Action::UiRelease(PointerButton::Primary)),
@@ -1683,10 +1691,186 @@ const MODS_SCRIPT: &[(f64, Action)] = &[
     (11.3, Action::ExpectData("!mods.custom")),
     (11.8, Action::Capture("new_game_realistic.png")),
     (11.9, Action::Ui("ask.leave:game.new")),
-    (16.0, Action::ExpectData("mods.count == 5")),
+    (16.0, Action::ExpectData("mods.count == 7")),
     (16.1, Action::Ui("editor.show:saturn_v")),
     (20.0, Action::ExpectEditor(Some("saturn_v"))),
     (20.1, Action::Exit),
+];
+
+/// `OSP_CAPTURE_CAREER=1` (with `OSP_USER_DIR=<empty folder>`): New game offers a sandbox or a career.
+/// A Casual career's editor offers only the first node's parts and says how many are still locked,
+/// and a stock craft with locked parts is not launched, with what is locked said.
+const CAREER_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::Ui("game.exit")),
+    (2.0, Action::ExpectScreen("title")),
+    (2.1, Action::Ui("menu.open:new_game")),
+    (2.2, Action::ExpectScreen("new_game")),
+    (2.3, Action::Ui("mods.mode:casual")),
+    (2.4, Action::ExpectData("!menu.career")),
+    (2.5, Action::UiPointAt("game.kind:career")),
+    (2.6, Action::UiPress(PointerButton::Primary)),
+    (2.65, Action::UiRelease(PointerButton::Primary)),
+    (2.8, Action::ExpectData("menu.career")),
+    (3.2, Action::Capture("career_new_game.png")),
+    (3.3, Action::Ui("ask.leave:game.new")),
+    (8.0, Action::ExpectEditor(Some(""))),
+    (8.1, Action::Ui("editor.new")),
+    (8.5, Action::Unlock),
+    (8.6, Action::ExpectData("editor.rail == parts")),
+    (8.7, Action::ExpectData("editor.locked")),
+    (8.8, Action::Ui("editor.group:engines")),
+    (10.5, Action::Capture("career_engines.png")),
+    (10.6, Action::Ui("editor.group:pods")),
+    (12.0, Action::Capture("career_pods.png")),
+    (12.1, Action::Ui("editor.show:pathfinder_crew")),
+    (15.0, Action::ExpectEditor(Some("pathfinder_crew"))),
+    (15.1, Action::Ui("editor.launch")),
+    (15.5, Action::ExpectData("editor.notice")),
+    (16.5, Action::Capture("career_locked_launch.png")),
+    // Tanks as wide as the tree allows: 2 m in a new Casual career.
+    (16.6, Action::Ui("editor.new")),
+    (17.0, Action::Ui("editor.group:tanks")),
+    (17.1, Action::Ui("editor.add:tank")),
+    (17.8, Action::ExpectPartCount(1)),
+    (17.9, Action::Ui("editor.pick:tank")),
+    (18.2, Action::ExpectData("editor.rail == part")),
+    (18.3, Action::ExpectField("tank", "diameter", "2")),
+    (18.4, Action::Ui("editor.set:diameter:3")),
+    (18.9, Action::ExpectField("tank", "diameter", "2")),
+    (19.0, Action::ExpectData("editor.part.problem")),
+    (19.5, Action::Capture("career_tank_too_wide.png")),
+    // The tech tree from the editor bar: a node picked on it, science for it, unlocked, and its
+    // parts in the list after Esc.
+    (
+        19.55,
+        Action::ExpectData("editor.locked == 36 parts are still locked in the tech tree"),
+    ),
+    (19.6, Action::UiPointAt("tree.open")),
+    (19.7, Action::UiPress(PointerButton::Primary)),
+    (19.75, Action::UiRelease(PointerButton::Primary)),
+    (20.6, Action::ExpectData("tree.node.picked")),
+    (20.7, Action::Capture("career_tree.png")),
+    (20.8, Action::UiPointAt("tree.pick:basic_rocketry")),
+    (20.9, Action::UiPress(PointerButton::Primary)),
+    (20.95, Action::UiRelease(PointerButton::Primary)),
+    (21.3, Action::ExpectData("tree.picked == basic_rocketry")),
+    (21.35, Action::ExpectData("!tree.node.can_unlock")),
+    (21.4, Action::Ui("debug.science:12")),
+    (21.8, Action::ExpectData("tree.node.can_unlock")),
+    (22.0, Action::Capture("career_tree_ready.png")),
+    (22.1, Action::UiPointAt("tree.unlock")),
+    (22.2, Action::UiPress(PointerButton::Primary)),
+    (22.25, Action::UiRelease(PointerButton::Primary)),
+    (22.7, Action::ExpectData("career.science == 7")),
+    (22.8, Action::Capture("career_tree_unlocked.png")),
+    (22.9, Action::Ui("game.menu")),
+    (23.4, Action::ExpectPartCount(1)),
+    (
+        23.5,
+        Action::ExpectData("editor.locked == 33 parts are still locked in the tech tree"),
+    ),
+    (23.6, Action::Ui("editor.parts")),
+    (23.7, Action::Ui("editor.group:engines")),
+    (24.8, Action::Capture("career_engines_after.png")),
+    (24.9, Action::Exit),
+];
+
+/// `OSP_CAPTURE_SCIENCE=1`: a capsule with a thermometer and a barometer on its side, from the
+/// parts list's Science tab, launched; on the pad they collect their readings, landed on Earth, and
+/// say so in their windows.
+const SCIENCE_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.new")),
+    (2.0, Action::Unlock),
+    (2.1, Action::Ui("editor.group:pods")),
+    (2.2, Action::Ui("editor.add:pod:C-1 Capsule")),
+    (3.0, Action::ExpectPartCount(1)),
+    (3.1, Action::Ui("editor.add:tank")),
+    (3.4, Action::EditorPointAtNode("pod", "bottom")),
+    (4.2, Action::Press(MouseButton::Left)),
+    (4.3, Action::Release(MouseButton::Left)),
+    (5.2, Action::ExpectPartCount(2)),
+    (5.3, Action::Ui("editor.group:science")),
+    (6.2, Action::Capture("science_parts.png")),
+    (6.3, Action::Ui("editor.add:instrument:thermometer")),
+    (
+        6.6,
+        Action::EditorPointAtSurface("tank", "barrel", 0.6, 0.7),
+    ),
+    (7.4, Action::Capture("science_preview.png")),
+    (7.5, Action::Press(MouseButton::Left)),
+    (7.6, Action::Release(MouseButton::Left)),
+    (8.5, Action::ExpectPartCount(3)),
+    (8.6, Action::Ui("editor.add:instrument:barometer")),
+    (
+        8.9,
+        Action::EditorPointAtSurface("tank", "barrel", 0.68, 0.7),
+    ),
+    (9.7, Action::Press(MouseButton::Left)),
+    (9.8, Action::Release(MouseButton::Left)),
+    (10.7, Action::ExpectPartCount(4)),
+    (10.8, Action::ClearPointer),
+    (11.6, Action::Capture("science_on_craft.png")),
+    (11.7, Action::Ui("editor.launch")),
+    (16.0, Action::PartWindow("Thermometer")),
+    (17.0, Action::Capture("science_running.png")),
+    // On rails, crew aboard: a whole set of ten minutes in a few seconds.
+    (17.1, Action::Warp(5)),
+    (32.0, Action::Capture("science_done.png")),
+    (32.1, Action::Exit),
+];
+
+/// A new Realistic career: a new tank is as wide as a V-2 and of an early tank type, and the later
+/// types are not offered.
+const CAREER_REALISTIC_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::Ui("game.exit")),
+    (2.0, Action::ExpectScreen("title")),
+    (2.1, Action::Ui("menu.open:new_game")),
+    (2.2, Action::ExpectScreen("new_game")),
+    (2.3, Action::Ui("mods.mode:realistic")),
+    (2.5, Action::UiPointAt("game.kind:career")),
+    (2.6, Action::UiPress(PointerButton::Primary)),
+    (2.65, Action::UiRelease(PointerButton::Primary)),
+    (2.8, Action::ExpectData("menu.career")),
+    (3.3, Action::Ui("ask.leave:game.new")),
+    (12.0, Action::ExpectEditor(Some(""))),
+    (12.1, Action::Ui("editor.new")),
+    (12.5, Action::Unlock),
+    (12.6, Action::Ui("editor.group:tanks")),
+    (12.7, Action::Ui("editor.add:tank")),
+    (13.5, Action::ExpectPartCount(1)),
+    (13.6, Action::Ui("editor.pick:tank")),
+    (13.9, Action::ExpectData("editor.rail == part")),
+    (14.0, Action::ExpectField("tank", "diameter", "1.7")),
+    (
+        14.1,
+        Action::ExpectField("tank", "tank_type", "Al Gridded Tank"),
+    ),
+    (14.2, Action::Ui("editor.expand:tank_type")),
+    (14.9, Action::Capture("career_realistic_tank_types.png")),
+    (15.0, Action::Ui("editor.set:tank_type:Stiffened Al 2219")),
+    (
+        15.5,
+        Action::ExpectField("tank", "tank_type", "Al Gridded Tank"),
+    ),
+    (15.6, Action::ExpectData("editor.part.problem")),
+    (16.1, Action::Capture("career_realistic_locked_type.png")),
+    // RP-1's tree: as it opens, at its start, then zoomed out over all of it.
+    (16.2, Action::Ui("tree.open")),
+    (17.2, Action::ExpectData("tree.node.picked")),
+    (17.3, Action::Capture("career_realistic_tree.png")),
+    (17.4, Action::Ui("tree.zoom:out")),
+    (17.5, Action::Ui("tree.zoom:out")),
+    (17.6, Action::Ui("tree.zoom:out")),
+    (18.6, Action::Capture("career_realistic_tree_overview.png")),
+    (18.7, Action::Ui("tree.close")),
+    (19.2, Action::ExpectPartCount(1)),
+    (19.3, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_SAVE_MODS=1` (with `OSP_USER_DIR=<empty folder>`): a save keeps its mods. The Saturn V
@@ -3051,6 +3235,17 @@ fn run_script(
         Action::Ui(action) => {
             ui.write(UiAction(action.into()));
         }
+        Action::PartWindow(name) => {
+            let vessel = sim.active_vessel();
+            let part = (vessel.propulsion.parts().parts().iter()).find(|p| p.name == name);
+            let Some(part) = part else {
+                error!("smoke test: the flown vessel has no part called `{name}`");
+                exit.write(AppExit::error());
+                return;
+            };
+            let show = format!("ui.show:part_info:{}-{}", vessel.id().0, part.id.0);
+            ui.write(UiAction(show));
+        }
         Action::ExpectGame(count, flying) => {
             let vessels = sim.universe.vessels.iter();
             let found = vessels.filter(|v| !v.is_debris()).count();
@@ -3128,7 +3323,14 @@ fn run_script(
         }
         Action::ExpectData(condition) => {
             if !ui_pointer.data.condition(condition) {
-                error!("smoke test: `{condition}` does not hold");
+                // What the key on the left of the condition is, to say what was there instead.
+                let key =
+                    (condition.trim_start_matches('!').split_whitespace().next()).unwrap_or("");
+                let found = ui_pointer.data.get(key).map(|v| format!("{v:?}"));
+                error!(
+                    "smoke test: `{condition}` does not hold ({key} is {})",
+                    found.as_deref().unwrap_or("not set")
+                );
                 exit.write(AppExit::error());
             }
         }

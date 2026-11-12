@@ -108,6 +108,9 @@ pub fn inspect(w: &mut World) -> Audit {
                 }
                 Component::Parachute(c) => runs.push(format!("parachute: {:.0} m", c.diameter)),
                 Component::HeatShield(h) => runs.push(format!("heat shield: {:.0} kg", h.ablator)),
+                Component::Experiment { def, .. } => {
+                    runs.push(format!("experiment: {}", def.title()))
+                }
                 Component::LifeSupport(_) => runs.push("life support".to_owned()),
                 Component::Process(unit) => runs.push(format!("process: {}", unit.def.id)),
             }

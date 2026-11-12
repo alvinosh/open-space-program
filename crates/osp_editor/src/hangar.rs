@@ -32,6 +32,8 @@
 //! ([`CameraRig::held`]). Right or left drag looks around, middle drag or WASD, Q and E moves,
 //! the wheel zooms, all of it inside the hangar's dome.
 
+use std::collections::BTreeSet;
+
 use bevy::{
     asset::RenderAssetUsages,
     camera::Exposure,
@@ -47,6 +49,7 @@ use osp_mods::ModManifest;
 use osp_sim::{
     builder::Builder,
     data::{CraftDef, LaunchSiteDef, LaunchSiteStartDef, OrbitStartDef, PartCatalog, StartDef},
+    palette,
     propulsion::Propulsion,
     time::SimTime,
     vessel::{Vessel, VesselId},
@@ -56,6 +59,8 @@ use osp_ui::{LayoutVisibility, PointerOverUi, UiAction, UiData, UiDocuments, UiR
 use osp_game::{
     FrameSet,
     camera::{CameraRig, MainCamera, update_camera},
+    career::CareerTree,
+    tree_screen::{TreeScreen, tree_actions},
     content::{GameContent, PlayerMods, catalog},
     controls::InputLocked,
     dialog::{Dialog, Question},
@@ -141,8 +146,12 @@ impl Plugin for HangarPlugin {
                 editor_actions
                     .in_set(FrameSet::Input)
                     .in_set(EditorActions)
-                    .after(menu_actions),
+                    .after(menu_actions)
+                    .before(tree_actions),
                 revert_actions.in_set(FrameSet::Input).after(editor_actions),
+                follow_the_career
+                    .in_set(FrameSet::Input)
+                    .after(editor_actions),
                 // As soon as it opens or closes, for the menu and flight to go by.
                 tell_the_game.in_set(FrameSet::Input).after(revert_actions),
                 drive_camera.in_set(FrameSet::Camera).after(update_camera),
@@ -153,6 +162,32 @@ impl Plugin for HangarPlugin {
                 publish_editor,
             ),
         );
+    }
+}
+
+/// Hold the craft on show to what the game it is built for may build: in a career, procedural parts
+/// no bigger than its tree allows and tanks of the types it has unlocked.
+fn follow_the_career(
+    career: Res<CareerTree>,
+    menu: Res<Menu>,
+    sim: Res<Sim>,
+    mut editor: ResMut<Editor>,
+    mut known: Local<Option<(Option<BTreeSet<String>>, osp_sim::builder::Allowed)>>,
+) {
+    if editor.builder().is_none() {
+        return;
+    }
+    let unlocked = career.unlocked(&menu, &sim);
+    if career.is_changed() || known.as_ref().is_none_or(|(had, _)| *had != unlocked) {
+        *known = Some((unlocked, career.allowed(&menu, &sim)));
+    }
+    let Some((_, allowed)) = known.as_ref() else {
+        return;
+    };
+    if editor.builder().is_some_and(|b| b.allowed() != allowed)
+        && let Some(builder) = editor.builder_mut()
+    {
+        builder.allow(allowed.clone());
     }
 }
 
@@ -1054,7 +1089,7 @@ pub(crate) fn editor_actions(
         ResMut<Assets<Image>>,
     ),
     mut restarted: MessageWriter<SimRestarted>,
-    content: Res<GameContent>,
+    (content, career, tree): (Res<GameContent>, Res<CareerTree>, Res<TreeScreen>),
     docs: Res<UiDocuments>,
     (mut dialog, mut shaping, mut placing, mut moving): (
         ResMut<Dialog>,
@@ -1068,6 +1103,8 @@ pub(crate) fn editor_actions(
         match action.name() {
             // Esc and Back close the question being asked, and nothing more.
             "game.menu" | "menu.back" | "editor.back" if dialog.is_open() => {}
+            // The tech tree over the editor closes first (`tree_screen`).
+            "game.menu" | "menu.back" | "editor.back" if tree.is_open() => {}
             // Esc puts back a part in hand, then lets go of the part picked, before it leaves.
             "game.menu" if editor.0.is_some() && placing.let_go() => {}
             "game.menu" if editor.0.is_some() && moving.let_go() => {}
@@ -1292,6 +1329,25 @@ pub(crate) fn editor_actions(
                 let vessel = sim.universe.vessel(showing.vessel);
                 let sequences = vessel.map(|v| v.propulsion.sequences.clone());
                 let catalog = catalog(registry, &mut Vec::new());
+                // A career builds only what it has unlocked; a new one is carried into the game
+                // it starts.
+                let starting = (menu.new_game && menu.career)
+                    .then(|| career.pending.clone())
+                    .flatten();
+                let building = if menu.new_game {
+                    starting.as_ref()
+                } else {
+                    sim.universe.career.as_ref()
+                };
+                if let (Some(of), Some(tree)) = (building, &career.tree) {
+                    let entries = palette::entries(&catalog);
+                    let locked = of.locked_parts(tree, &catalog, &entries, &craft);
+                    if !locked.is_empty() {
+                        showing.notice =
+                            format!("Still locked in the tech tree: {}", locked.join(", "));
+                        continue;
+                    }
+                }
                 let universe = &mut sim.universe;
                 let launched =
                     universe.launch(&all, &catalog, &craft, &start, sequences.clone(), new_game);
@@ -1317,6 +1373,7 @@ pub(crate) fn editor_actions(
                 if menu.new_game {
                     saves.forget_current();
                     mods.new_game_starts();
+                    sim.universe.career = starting;
                 }
                 last_launch.set(LaunchPoint {
                     game: sim.universe.snapshot(),

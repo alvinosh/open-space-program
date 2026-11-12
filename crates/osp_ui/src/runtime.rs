@@ -505,8 +505,9 @@ pub fn spawn_box(
                 ..default()
             },
             BackgroundColor(Color::srgba(0.22, 0.88, 0.77, 0.6)),
-            // Above docked windows, below windows raised over the dock.
-            GlobalZIndex(999),
+            // Over what scrolls under it, which is spawned after it, and nothing else: a global
+            // order would show it through whatever covers the layout (a question, the tech tree).
+            ZIndex(1),
             Pickable::IGNORE,
             ChildOf(entity),
         ));
@@ -1301,7 +1302,8 @@ pub fn update_gauges(
     }
 }
 
-/// Apply hover and active colours.
+/// Apply hover and active colours. What is lit (a chosen segment, a mod that is on) keeps its lit
+/// colour under the pointer, so it never looks unchosen while the pointer is on it.
 pub fn update_states(
     data: Res<UiData>,
     mut nodes: Query<(
@@ -1316,7 +1318,8 @@ pub fn update_states(
 ) {
     for (colors, active, hovered, mut background, border) in &mut nodes {
         let active = usize::from(active.is_some_and(|a| data.condition(&a.0)));
-        let hover = colors.hover.filter(|_| hovered.is_some_and(|h| h.get()));
+        let lit = active == 1 && colors.background[1] != colors.background[0];
+        let hover = (colors.hover).filter(|_| !lit && hovered.is_some_and(|h| h.get()));
         background.set_if_neq(BackgroundColor(hover.unwrap_or(colors.background[active])));
         if let (Some(mut border), Some(pair)) = (border, colors.border) {
             border.set_if_neq(BorderColor::all(pair[active]));

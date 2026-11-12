@@ -1,0 +1,63 @@
+// What scientific instruments do (osp_sim::systems::Experiment). An experiment collects one whole
+// set in each place: over each body, in each situation it works in (`landed`, `splashed`,
+// `flying_low`, `flying_high`, `space_low`, `space_high`; osp_sim::science). It runs while its
+// instrument is on, has the power it asks for and is somewhere it works, and pauses otherwise.
+//
+// `duration`: seconds a whole set takes. `size`: bytes of data a whole set comes to, or `sample`:
+// kg of material that has to come home. `power`: W while it runs. `value`: science a whole set is
+// worth, before the place counts. `bodies`: only over these. `sunlight`: only in sunlight.
+//
+// The base game's are quick, a minute or a few; the Realism mod makes them as long as RP-1's.
+[
+  {
+    id: "temperature",
+    name: "Temperature",
+    description: "The temperature outside, on the ground, in the air or in space.",
+    duration: 60,
+    size: 2000,
+    power: 0.5,
+    value: 4,
+    situations: ["landed", "splashed", "flying_low", "flying_high", "space_low", "space_high"],
+  },
+  {
+    id: "pressure",
+    name: "Air pressure",
+    description: "How much air there is outside, or how little.",
+    duration: 60,
+    size: 2000,
+    power: 0.5,
+    value: 4,
+    situations: ["landed", "flying_low", "flying_high", "space_low", "space_high"],
+  },
+  {
+    id: "magnetic_field",
+    name: "Magnetic field",
+    description: "The strength and direction of a body's magnetic field, on its ground or around it in space.",
+    duration: 600,
+    size: 50000,
+    power: 1,
+    value: 8,
+    situations: ["landed", "space_low", "space_high"],
+  },
+  {
+    id: "photography",
+    name: "Photographs",
+    description: "Pictures of the ground from high up, in daylight.",
+    duration: 120,
+    size: 500000,
+    power: 2,
+    value: 6,
+    situations: ["flying_high", "space_low"],
+    sunlight: true,
+  },
+  {
+    id: "surface_sample",
+    name: "Surface sample",
+    description: "A scoop of the ground, to be brought home and studied.",
+    duration: 120,
+    sample: 0.5,
+    power: 5,
+    value: 10,
+    situations: ["landed"],
+  },
+]

@@ -3,6 +3,14 @@
 // Rotation uses the IAU WGCCRE 2015 models (pole RA/Dec in ICRF, prime meridian W = W0 + rate·d,
 // d = days since J2000); periodic correction terms are omitted.
 // Bodies may be listed in any order; parents are resolved by id.
+//
+// `radiation` is what only rules with radiation count (mSv/h, what an unshielded person takes):
+// the Sun's `cosmic` is the galactic cosmic rays all through the system; a planet's `magnetosphere`
+// keeps that share of them out at its surface, less with the square of the distance; its `belts`
+// hold particles on the field lines that cross the magnetic equator `inner` to `outer` radii out,
+// most at `peak`, falling to 1/e by `latitude` degrees off it, and none below `floor` radii up,
+// where the air takes them; `surface` is what the ground gives off, on it. Rough figures: low orbit
+// comes to about 0.3 mSv a day through a capsule's walls, the heart of the inner belt a hundred.
 [
   {
     id: "Sun",
@@ -16,6 +24,7 @@
     },
     // Sunlight above the air is white: it is the air that yellows and reddens it.
     color: [1.0, 0.97, 0.92],
+    radiation: { cosmic: 0.06 },
   },
   {
     id: "Mercury",
@@ -99,6 +108,16 @@
   {
     id: "Earth",
     albedo: 0.306,
+    // Experiments are flying high above 18 km, and in space high above 2000 km, where low orbits end.
+    science: { flying_high: 18000, space_high: 2000000 },
+    radiation: {
+      magnetosphere: 0.7,
+      floor: 0.1,
+      belts: [
+        { name: "inner belt", inner: 1.15, peak: 1.5, outer: 2.5, rate: 60 },
+        { name: "outer belt", inner: 2.8, peak: 4.5, outer: 7.0, rate: 20 },
+      ],
+    },
     parent: "Sun",
     gm: 3.986004418e+14,
     radius: 6371000.0,
@@ -172,6 +191,7 @@
   {
     id: "Moon",
     albedo: 0.11,
+    radiation: { surface: 0.01 },
     parent: "Earth",
     gm: 4.9048695e+12,
     radius: 1737400.0,
@@ -194,6 +214,7 @@
   {
     id: "Mars",
     albedo: 0.25,
+    radiation: { surface: 0.005 },
     parent: "Sun",
     gm: 4.282837e+13,
     radius: 3389500.0,
@@ -248,6 +269,11 @@
   {
     id: "Jupiter",
     albedo: 0.503,
+    radiation: {
+      magnetosphere: 0.9,
+      floor: 0.05,
+      belts: [{ name: "radiation belts", inner: 1.5, peak: 3.0, outer: 8.0, rate: 3000 }],
+    },
     parent: "Sun",
     gm: 1.26686534e+17,
     radius: 69911000,

@@ -1488,13 +1488,31 @@ impl Vessel {
     /// What the surroundings give the vessel for its systems: no need to work it out for a
     /// vessel with none that wants to know.
     fn system_environment(&self, system: &SolarSystem, time: SimTime) -> Environment {
-        if !self.propulsion.systems.uses_light() {
+        let systems = &self.propulsion.systems;
+        if !systems.uses_light() && !systems.exposed() {
             return Environment::DARK;
         }
         let mut environment = self.environment(system, time);
         environment.sun_in_vessel =
             self.attitude_at(system, time).inverse() * environment.sun_direction;
         environment
+    }
+
+    /// Where it is at `time`, as experiments see it, in `environment` (its sunlight).
+    pub fn place(
+        &self,
+        system: &SolarSystem,
+        time: SimTime,
+        environment: &Environment,
+    ) -> crate::science::Place {
+        let body = system.body(self.parent);
+        let altitude = self.state_at(system, time).position.length() - body.radius;
+        let landed = self.is_landed() || self.wheels_down;
+        crate::science::Place {
+            body: body.name.clone(),
+            situation: crate::science::Situation::of(body, altitude, landed, self.is_afloat()),
+            sunlit: environment.sunlit >= 0.5,
+        }
     }
 
     /// How its power stands at `time`.
@@ -1609,7 +1627,20 @@ impl Vessel {
         if !self.is_landed() {
             self.ground_support = false;
         }
-        let environment = self.system_environment(system, time);
+        let mut environment = self.system_environment(system, time);
+        if self.propulsion.systems.exposed() {
+            // What falls on it on its way: along a coast exactly, otherwise as it is here.
+            environment.exposure = match &self.motion {
+                Motion::Coasting(orbit) => {
+                    crate::radiation::over_coast(system, self.parent, orbit, time, dt)
+                }
+                _ => environment.radiation.scaled(dt),
+            };
+        }
+        if self.propulsion.systems.situated() {
+            let place = self.place(system, time, &environment);
+            self.propulsion.systems.situate(&place);
+        }
         let supplied = self.ground_support;
         self.propulsion.step_systems(&environment, dt, supplied);
         let brownout = self.propulsion.systems.brownout();
@@ -1622,8 +1653,9 @@ impl Vessel {
         self.browned_out = brownout;
     }
 
-    /// When the vessel's systems next need attention after `after`: one of them says so, or a
-    /// coast goes into or out of a shadow while one of them runs on sunlight.
+    /// When the vessel's systems next need attention after `after`: one of them says so, a coast
+    /// goes into or out of a shadow while one of them runs on sunlight, or someone aboard takes the
+    /// dose of radiation that sickens them further.
     pub fn next_system_event(
         &self,
         system: &SolarSystem,
@@ -1645,7 +1677,46 @@ impl Vessel {
             }
             _ => None,
         };
-        own.into_iter().chain(light).min()
+        let doses = systems.doses_until(environment.air_column);
+        let sickens = doses
+            .iter()
+            .filter_map(|(shares, dose)| match &self.motion {
+                Motion::Coasting(orbit) => crate::radiation::time_to_dose(
+                    system,
+                    self.parent,
+                    orbit,
+                    after,
+                    until,
+                    shares,
+                    *dose,
+                ),
+                _ => {
+                    // On the ground under the air the rate can be next to nothing, and the dose
+                    // ages away: only one before `until` counts.
+                    let rate = environment.radiation.weighted(shares);
+                    let seconds = dose / rate;
+                    (rate > 0.0 && seconds <= until.seconds_since(after))
+                        .then(|| after.add_seconds(seconds))
+                }
+            });
+        // Where an experiment's situation changes on a coast: in or out across where space
+        // turns high. (Into the air is a trajectory event of its own.)
+        let body = system.body(self.parent);
+        let situation = match &self.motion {
+            Motion::Coasting(orbit) if systems.situated() => {
+                let high = body.radius + body.space_high();
+                [crate::orbit::Direction::Outbound, crate::orbit::Direction::Inbound]
+                    .into_iter()
+                    .filter_map(|way| orbit.next_radius_crossing(after, until, high, way, body.radius))
+                    .min()
+            }
+            _ => None,
+        };
+        own.into_iter()
+            .chain(light)
+            .chain(sickens)
+            .chain(situation)
+            .min()
     }
 
     /// Apply a trajectory event found by [`Self::next_trajectory_event`].
@@ -2732,6 +2803,15 @@ pub(crate) mod tests {
             .collect(),
             crew_names: records(include_str!("../../../assets/core/crew_names/stock.json5")),
             engine_families: Vec::new(),
+            radiation: records(include_str!(
+                "../../../mods/realistic_radiation/radiation/profiles.json5"
+            )),
+            experiments: records(include_str!(
+                "../../../assets/core/experiments/stock.json5"
+            )),
+            instruments: records(include_str!(
+                "../../../assets/core/instruments/stock.json5"
+            )),
         }
     }
 

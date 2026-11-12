@@ -14,7 +14,7 @@
 //! nothing), and `editor.part.picked`, `editor.part.name`, `editor.part.rows` and
 //! `editor.part.problem` (see the `editor` layout).
 
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use bevy::prelude::*;
 use osp_sim::{
@@ -25,7 +25,9 @@ use osp_ui::{LayoutVisibility, UiAction, UiData, UiRecord, UiValue, record};
 
 use osp_game::{
     FrameSet,
+    career::CareerTree,
     content::{GameContent, catalog},
+    menu::Menu,
     sim::Sim,
 };
 
@@ -226,12 +228,14 @@ fn apply(
 
 /// The rows of the settings for `part`, `open` the choice dropped down, with the sizes a handle in
 /// hand has in place of the part's own. Its tank can hold `mixes`, what the engines it feeds burn.
+/// A choice offers what `offered` (the field, the option) lets it, and what it is now.
 fn rows(
     part: &CraftPartDef,
     mixes: &[Mix],
     catalog: &PartCatalog,
     open: Option<&str>,
     dragged: &[(&str, f64)],
+    offered: &dyn Fn(&str, &str) -> bool,
 ) -> Vec<UiRecord> {
     let mut out = Vec::new();
     let mut section = "Part";
@@ -268,6 +272,7 @@ fn rows(
                     .find(|(o, _)| *o == value)
                     .map_or(value.clone(), |(_, l)| l.clone());
                 let choices: Vec<UiRecord> = (options.iter())
+                    .filter(|(option, _)| *option == value || offered(id, option))
                     .map(|(option, shown)| {
                         record([
                             ("label", shown.clone().into()),
@@ -318,11 +323,13 @@ fn rows(
 }
 
 /// `editor.part.*`, see the module.
+#[allow(clippy::too_many_arguments)]
 fn publish_part_settings(
     window: Res<PartSettings>,
     shaping: Res<Shaping>,
     editor: Res<Editor>,
     content: Res<GameContent>,
+    (career, menu, sim): (Res<CareerTree>, Res<Menu>, Res<Sim>),
     mut data: ResMut<UiData>,
     mut stores: Local<Option<PartCatalog>>,
     mut fed: Local<Option<(Vec<CraftPartDef>, String, Vec<Mix>)>>,
@@ -333,6 +340,7 @@ fn publish_part_settings(
             Option<String>,
             String,
             Vec<(String, u64)>,
+            Option<BTreeSet<String>>,
         )>,
     >,
 ) {
@@ -367,6 +375,7 @@ fn publish_part_settings(
         _ => Vec::new(),
     };
     let dragged = shaping.drag_values();
+    let unlocked = career.unlocked(&menu, &sim);
     let now = (
         part.clone(),
         mixes.clone(),
@@ -375,6 +384,7 @@ fn publish_part_settings(
         (dragged.iter())
             .map(|(name, value)| ((*name).to_owned(), value.to_bits()))
             .collect(),
+        unlocked.clone(),
     );
     if published.as_ref() == Some(&now) && !content.is_changed() {
         return;
@@ -389,6 +399,17 @@ fn publish_part_settings(
     };
     let name = part.name.clone().unwrap_or_else(|| part.id.clone());
     data.set("editor.part.name", name);
+    // In a career, an engine is offered in the configurations it has unlocked, and a tank in
+    // the types.
+    let allowed = editor.builder().map(|b| b.allowed());
+    let offered = |field: &str, option: &str| match (&career.tree, &unlocked) {
+        (Some(tree), Some(unlocked)) if field == "configuration" => {
+            (catalog.engines.iter().find(|e| e.id == option))
+                .is_none_or(|e| tree.has_record(&e.catalog, unlocked))
+        }
+        _ if field == "tank_type" => allowed.is_none_or(|a| a.tank_type(option)),
+        _ => true,
+    };
     data.set(
         "editor.part.rows",
         rows(
@@ -397,6 +418,7 @@ fn publish_part_settings(
             catalog,
             window.open_field.as_deref(),
             &dragged,
+            &offered,
         ),
     );
 }

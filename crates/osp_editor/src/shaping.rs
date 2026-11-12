@@ -628,7 +628,8 @@ pub(crate) fn shape_parts(
     if went_down {
         shaping.press = None;
         if let (Some(over), Some(part)) = (shaping.over, picked) {
-            shaping.drag = start_drag(shaping, over, part, &draft, catalog, &sim, vessel);
+            let limits = (editor.builder()).map_or_else(Default::default, |b| b.allowed().sizes);
+            shaping.drag = start_drag(shaping, over, part, &draft, catalog, &sim, vessel, &limits);
         } else if !shaping.handles.0 {
             shaping.press = cursor;
         }
@@ -694,9 +695,12 @@ fn start_drag(
     catalog: &PartCatalog,
     sim: &Sim,
     vessel: VesselId,
+    limits: &shaping::Limits,
 ) -> Option<Drag> {
     let placed = shaping.grips.get(over)?;
-    let sizes = shaping::part_sizes(&draft.parts[part]);
+    // No bigger than the game allows: the handle stops there.
+    let mut sizes = shaping::part_sizes(&draft.parts[part]);
+    limits.cap(&mut sizes);
     let on_show = sim
         .universe
         .vessel(vessel)?

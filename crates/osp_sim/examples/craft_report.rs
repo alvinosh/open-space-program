@@ -45,6 +45,9 @@ fn main() {
         processes: registry.all("processes", &mut diagnostics),
         crew_names: registry.all("crew_names", &mut diagnostics),
         engine_families: registry.all("engine_families", &mut diagnostics),
+        radiation: registry.all("radiation", &mut diagnostics),
+        experiments: registry.all("experiments", &mut diagnostics),
+        instruments: registry.all("instruments", &mut diagnostics),
     };
     let tech = TechTree::new(registry.all::<TechNodeDef>("tech_nodes", &mut diagnostics));
     for d in &diagnostics {

@@ -444,6 +444,9 @@ pub fn catalog(registry: &Registry, diagnostics: &mut Vec<Diagnostic>) -> PartCa
         processes: registry.all::<ProcessDef>("processes", diagnostics),
         crew_names: registry.all("crew_names", diagnostics),
         engine_families: registry.all("engine_families", diagnostics),
+        radiation: registry.all("radiation", diagnostics),
+        experiments: registry.all("experiments", diagnostics),
+        instruments: registry.all("instruments", diagnostics),
     }
 }
 
@@ -628,6 +631,7 @@ mod tests {
             "realistic_fuels",
             "realistic_avionics",
             "realistic_life_support",
+            "realistic_radiation",
             "realism",
         ] {
             assert!(mode("realistic").mods.iter().any(|m| m == id), "{id}");

@@ -14,6 +14,7 @@ mod battery;
 mod cabin;
 mod crew;
 mod electric;
+mod experiment;
 mod leg;
 mod parachute;
 mod process;
@@ -26,9 +27,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Deserializ
 
 pub use self::{
     battery::Battery,
-    cabin::{Cabin, Stowed},
-    crew::{BOARD, Crew, Person, Stage},
+    cabin::{Cabin, FILL, LET_DOWN, Stowed},
+    crew::{BOARD, Crew, Person, SUITS_OFF, SUITS_ON, Stage},
     electric::{ANTENNA_OFF, ANTENNA_ON, Antenna, Avionics, FuelCell, Load, Rtg, SolarArray},
+    experiment::{EXPERIMENT_PRIORITY, Experiment, START_EXPERIMENT, STOP_EXPERIMENT},
     leg::{DEPLOY_LEG, Leg},
     parachute::{ARM, CUT, ChuteState, DEPLOY, Parachute},
     process::{Process, START, STOP},
@@ -39,6 +41,8 @@ use crate::{
     component::Component,
     environment::Environment,
     parts::{Part, PartId, PartTree},
+    radiation::Radiation,
+    science::Place,
     staging::Action,
 };
 
@@ -190,6 +194,55 @@ pub trait System: SavedState + Debug + Send + Sync {
     /// What it now holds of each of [`Self::stored`], kg.
     fn set_stored(&mut self, _amounts: &[f64]) {}
 
+    /// The share of what it holds of each of [`Self::stored`] that it loses a second, 1/s: a
+    /// cabin's air through a hole. The account of the tanks works the loss out exactly, with what
+    /// goes in and out besides, over a step of any length.
+    fn decay(&self) -> Vec<f64> {
+        Vec::new()
+    }
+
+    /// Seconds until it needs attention if what goes into each of [`Self::stored`] a second,
+    /// besides what it loses by [`Self::decay`], stays `inflows` (kg/s, less than nothing going out):
+    /// a cabin's air crosses a limit people live by.
+    fn next_event_at(&self, _inflows: &[f64]) -> Option<f64> {
+        None
+    }
+
+    /// The air on its part, if it keeps it: a cabin.
+    fn air(&self) -> Option<Air> {
+        None
+    }
+
+    /// Tell it the air on its part, if any keeps air there, before each step and after it.
+    fn breathe(&mut self, _air: Option<&Air>) {}
+
+    /// Make a hole of `area` (m²) in it, or a bigger one, if it holds air.
+    fn breach(&mut self, _area: f64) {}
+
+    /// Whether radiation does anything to it, so the vessel works out what falls on it.
+    fn exposed(&self) -> bool {
+        false
+    }
+
+    /// Take `exposure` (Sv by kind, before any shielding) through its part's walls and `column`
+    /// kg/m² of air above.
+    fn irradiate(&mut self, _exposure: &Radiation, _column: f64) {}
+
+    /// The share of each kind of radiation that reaches it under `column` kg/m² of air, and the dose
+    /// (Sv) through them after which it needs attention, if anything waits on one: someone sickens.
+    fn dose_until(&self, _column: f64) -> Option<(Radiation, f64)> {
+        None
+    }
+
+    /// Whether it needs to know where its part is, as experiments see it, so the vessel works it
+    /// out before each step and time warp stops where it changes.
+    fn situated(&self) -> bool {
+        false
+    }
+
+    /// Tell it where its part is, before a step.
+    fn situate(&mut self, _place: &Place) {}
+
     /// Seconds until it needs attention if the tanks go on giving it these shares of what it
     /// [`Self::wants`], as they would now: people going short reach their next stage.
     fn next_event_given(&self, _shares: &[f64]) -> Option<f64> {
@@ -283,6 +336,15 @@ impl Exchange {
             ..Self::default()
         }
     }
+}
+
+/// A cabin's air as it is now.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Air {
+    /// Pa.
+    pub pressure: f64,
+    /// Each gas's resource and partial pressure, Pa.
+    pub partial: Vec<(String, f64)>,
 }
 
 /// People come first for what they breathe, drink and eat.
@@ -413,6 +475,12 @@ pub const KINDS: &[Kind] = &[
         actions: &[process::START, process::STOP],
         name: "process",
         load: load::<Process>,
+    },
+    Kind {
+        of: experiment::of,
+        actions: &[START_EXPERIMENT, STOP_EXPERIMENT],
+        name: "experiment",
+        load: load::<Experiment>,
     },
     Kind {
         of: leg::of,
@@ -700,6 +768,23 @@ impl Systems {
         self.parts.iter().map(|(part, on)| (*part, on.as_slice()))
     }
 
+    /// Make a hole of `area` (m²) in what holds air on `part`.
+    pub fn breach(&mut self, part: PartId, area: f64) {
+        for system in self.parts.get_mut(&part).into_iter().flatten() {
+            system.breach(area);
+        }
+    }
+
+    /// Give every system the air on its part, as it is now.
+    pub(crate) fn share_air(&mut self) {
+        for systems in self.parts.values_mut() {
+            let air = systems.iter().find_map(|s| s.air());
+            for system in systems.iter_mut() {
+                system.breathe(air.as_ref());
+            }
+        }
+    }
+
     /// Everyone aboard, by the part they sit in.
     pub fn people(&self) -> impl Iterator<Item = (PartId, &Person)> + '_ {
         (self.all::<Crew>()).flat_map(|(part, crew)| crew.people.iter().map(move |p| (part, p)))
@@ -722,7 +807,39 @@ impl Systems {
         for system in self.parts.values_mut().flatten() {
             system.step(dt);
         }
+        if environment.exposure != Radiation::NONE {
+            for system in self.parts.values_mut().flatten() {
+                system.irradiate(&environment.exposure, environment.air_column);
+            }
+        }
         self.conduct(dt);
+    }
+
+    /// Whether any of them needs to know where it is ([`System::situated`]).
+    pub fn situated(&self) -> bool {
+        self.parts.values().flatten().any(|s| s.situated())
+    }
+
+    /// Tell every one that needs it where it is.
+    pub fn situate(&mut self, place: &Place) {
+        for system in self.parts.values_mut().flatten() {
+            if system.situated() {
+                system.situate(place);
+            }
+        }
+    }
+
+    /// Whether radiation does anything to any of them.
+    pub fn exposed(&self) -> bool {
+        self.parts.values().flatten().any(|s| s.exposed())
+    }
+
+    /// What each system that waits on a dose takes of radiation under `column` kg/m² of air, and the
+    /// dose it waits for ([`System::dose_until`]).
+    pub fn doses_until(&self, column: f64) -> Vec<(Radiation, f64)> {
+        (self.parts.values().flatten())
+            .filter_map(|s| s.dose_until(column))
+            .collect()
     }
 
     /// Run one power network for `dt` seconds. What it makes goes to the loads, the highest
@@ -1100,6 +1217,7 @@ mod tests {
             solar_flux: 1361.0 * sunlit,
             albedo_flux: 0.0,
             infrared_flux: 0.0,
+            ..Environment::DARK
         }
     }
 

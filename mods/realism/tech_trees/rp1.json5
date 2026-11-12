@@ -1,0 +1,11 @@
+// RP-1's tree, as the Realistic science game's: its nodes (tech_nodes/rp1.json5) from the start and
+// the parts it starts with. Nodes that unlock none of the parts the game has are passed through.
+[
+  {
+    id: "rp1",
+    name: "Realistic",
+    description: "RP-1's tree: from sounding rockets in the 1940s to what flies today and what may fly next, by year.",
+    roots: ["start", "unlockParts"],
+    layout: "years",
+  },
+]

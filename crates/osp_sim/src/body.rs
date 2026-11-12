@@ -105,6 +105,10 @@ pub struct Body {
     pub color: [f32; 3],
     /// The share of the sunlight on it that it reflects.
     pub albedo: f64,
+    /// The radiation around it.
+    pub radiation: Option<crate::data::BodyRadiationDef>,
+    /// Where its science situations change, as its record gives them.
+    pub science: crate::data::BodyScienceDef,
 }
 
 impl Body {
@@ -150,6 +154,18 @@ impl Body {
 
     pub fn atmosphere_height(&self) -> f64 {
         self.atmosphere.as_ref().map_or(0.0, |a| a.height)
+    }
+
+    /// Flying above this, m over its sea level, is flying high: as its record says, or where the
+    /// air has thinned to about a sixth of its height.
+    pub fn flying_high(&self) -> f64 {
+        (self.science.flying_high).unwrap_or(0.18 * self.atmosphere_height())
+    }
+
+    /// In space above this, m over its sea level, is in space high: as its record says, or at a
+    /// third of its radius (the Earth's low orbits end at 2000 km).
+    pub fn space_high(&self) -> f64 {
+        (self.science.space_high).unwrap_or(0.3 * self.radius)
     }
 
     pub fn has_atmosphere_at(&self, altitude: f64) -> bool {

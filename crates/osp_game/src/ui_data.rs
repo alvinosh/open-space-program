@@ -425,7 +425,7 @@ fn publish_flight(
             .flat_map(|(_, crew)| {
                 crew.people
                     .iter()
-                    .map(|person| match person.stage(&crew.needs) {
+                    .map(|person| match crew.stage_of(person) {
                         (Stage::Fine, _) => person.name.clone(),
                         (stage, of) => format!(
                             "{} ({}{})",
@@ -442,16 +442,23 @@ fn publish_flight(
             .all::<Crew>()
             .map(|(part, _)| part)
             .collect::<Vec<_>>();
-        // Each thing they need: what there is for them, lockers and all, and how long it lasts.
+        // Each thing they need: what there is for them, lockers and all, and how long it lasts. What
+        // they breathe from the cabin's air is what tops it up.
         let aboard = f64::from(systems.crew_aboard());
-        let needs = (systems.all::<Crew>())
+        let (needs, gases) = (systems.all::<Crew>())
             .find(|(_, crew)| !crew.needs.is_empty())
-            .map(|(_, crew)| crew.needs.clone())
+            .map(|(_, crew)| (crew.needs.clone(), crew.gases.clone()))
             .unwrap_or_default();
+        let supply = |resource: &str| {
+            (gases.iter())
+                .find(|(gas, _)| gas == resource)
+                .and_then(|(_, from)| from.clone())
+                .unwrap_or_else(|| resource.to_owned())
+        };
         let supplies: Vec<String> = (needs.iter())
             .map(|need| {
                 let kg: f64 = (cabin.iter())
-                    .map(|&part| vessel.propulsion.held_for(part, &need.resource))
+                    .map(|&part| vessel.propulsion.held_for(part, &supply(&need.resource)))
                     .sum();
                 let days = kg / (need.daily * aboard).max(1e-9);
                 if aboard > 0.0 {
@@ -463,16 +470,50 @@ fn publish_flight(
             .collect();
         data.set("vessel.supplies", supplies.join(", "));
         data.set("vessel.has_supplies", !needs.is_empty());
-        let (foul, most) = (systems.all::<Cabin>())
-            .flat_map(|(_, cabin)| cabin.kept[..cabin.air].iter())
-            .fold((0.0, 0.0), |(held, most), kept| {
-                (held + kept.held, most + kept.capacity)
+        // Each cabin's air: its pressure, its oxygen and its CO2, and whether it is going.
+        let tree = vessel.propulsion.parts();
+        let cabins: Vec<String> = (systems.all::<Cabin>())
+            .filter(|(_, cabin)| !cabin.gases.is_empty())
+            .map(|(part, cabin)| {
+                let name = tree.get(part).map_or("Cabin", |p| p.name.as_str());
+                let kpa = |gas: &str| cabin.partial_of(gas).unwrap_or(0.0) / 1e3;
+                let state = if cabin.venting {
+                    ", let down"
+                } else if cabin.hole > 0.0 {
+                    ", leaking"
+                } else {
+                    ""
+                };
+                format!(
+                    "{name}: {:.0} kPa, oxygen {:.1}, CO2 {:.2}{state}",
+                    cabin.pressure() / 1e3,
+                    kpa("oxygen"),
+                    kpa("CO2"),
+                )
+            })
+            .collect();
+        data.set("vessel.cabins", cabins.join("\n"));
+        data.set("vessel.has_air", !cabins.is_empty());
+        // Radiation here, outside and in the first crew's part, and what each person has taken.
+        let exposed = (systems.all::<Crew>()).find(|(_, crew)| crew.radiation.is_some());
+        data.set("vessel.has_radiation", exposed.is_some());
+        if let Some((_, crew)) = exposed {
+            use osp_sim::radiation::MSV_PER_HOUR;
+            let here = vessel.environment(system, now);
+            let outside = here.radiation.total() / MSV_PER_HOUR;
+            let inside = (crew.through(here.air_column)).map_or(0.0, |through| {
+                here.radiation.weighted(&through) / MSV_PER_HOUR
             });
-        data.set(
-            "vessel.air_fouled",
-            if most > 0.0 { 100.0 * foul / most } else { 0.0 },
-        );
-        data.set("vessel.has_air", most > 0.0);
+            data.set(
+                "vessel.radiation",
+                format!("{outside:.3} mSv/h outside, {inside:.3} inside"),
+            );
+            let doses: Vec<String> = (systems.all::<Crew>())
+                .flat_map(|(_, crew)| &crew.people)
+                .map(|person| format!("{} {:.1} mSv", person.name, person.dose * 1e3))
+                .collect();
+            data.set("vessel.doses", doses.join(", "));
+        }
         let hottest = (systems.all::<Thermal>())
             .map(|(_, thermal)| thermal.temperature)
             .fold(0.0, f64::max);

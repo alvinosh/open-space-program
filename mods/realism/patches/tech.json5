@@ -1,0 +1,101 @@
+// A science game with the real parts unlocks them on RP-1's tree (tech_trees/rp1.json5).
+//
+// RP-1's nodes unlock the records whose `tech` names them. What has no such record is placed here,
+// in the node of its technology and year: the procedural parts, the base game's parts (each by the
+// real engine it stands for), RCS blocks and reaction wheels, and the imported engines and capsules
+// RP-1 itself has no node for. tech_nodes/rp1.json5 is generated, so this is where to change it.
+//
+// Where RP-1 prices a node below one it builds on, the game charges it what that one costs
+// (`ScienceTree::cost`): the tree never gets cheaper as it goes.
+//
+// RP-1 leaves procedural parts any size (it limits rockets by their launch complex instead). Here
+// the materials nodes raise the widest tank a career can build, by the widest stage of their years:
+// the V-2's 1.65 m from the start, Redstone, Thor and Jupiter, Atlas and Titan, Saturn I, Saturn IB,
+// then the Saturn V and the N1. The base game's tank types get the node of the tanks they stand for.
+[
+  { op: "set", collection: "rules", target: "game", path: "tech_tree", value: "rp1" },
+
+  // Placements, by node.
+  { op: "merge", collection: "tech_nodes", target: "start", value: { parts: ["tank", "structural", "nose_cone", "decoupler", "fin", "fuel_line", "instrument:thermometer", "instrument:barometer", "instrument:camera"] } },
+  { op: "merge", collection: "tech_nodes", target: "scienceSatellite", value: { parts: ["instrument:magnetometer"] } },
+  { op: "merge", collection: "tech_nodes", target: "surfaceScience", value: { parts: ["instrument:surface_sampler"] } },
+  { op: "merge", collection: "tech_nodes", target: "rocketryTesting", value: { parts: ["engine:A-1", "engine:A-3A"] } },
+  { op: "merge", collection: "tech_nodes", target: "earlyRocketry", value: { parts: ["rcs:Cold Gas Quad", "engine:RD-1", "engine:Wasserfall"] } },
+  { op: "merge", collection: "tech_nodes", target: "earlySolids", value: { parts: ["engine:S-1", "engine:30Klbf"] } },
+  { op: "merge", collection: "tech_nodes", target: "basicRocketryRP0", value: { parts: ["engine:XLR41-NA-1"] } },
+  { op: "merge", collection: "tech_nodes", target: "supersonicFlightRP0", value: { parts: ["wing", "wheel", "nose_wheel", "engine:R-6", "engine:DSpr-1"] } },
+  { op: "merge", collection: "tech_nodes", target: "matureSupersonic", value: { parts: ["engine:DSpe-1", "engine:XLR40-NA-2"] } },
+  { op: "merge", collection: "tech_nodes", target: "postWarAvionics", value: { parts: ["battery", "avionics"] } },
+  { op: "merge", collection: "tech_nodes", target: "avionicsPrototypes", value: { parts: ["probe_core"] } },
+  { op: "merge", collection: "tech_nodes", target: "earlyAvionics", value: { parts: ["antenna"] } },
+  { op: "merge", collection: "tech_nodes", target: "lunarRangeComms", value: { parts: ["small_dish"] } },
+  { op: "merge", collection: "tech_nodes", target: "interplanetaryComms", value: { parts: ["dish"] } },
+  { op: "merge", collection: "tech_nodes", target: "improvedComms", value: { parts: ["relay_dish"] } },
+  { op: "merge", collection: "tech_nodes", target: "deepSpaceComms", value: { parts: ["large_dish"] } },
+  { op: "merge", collection: "tech_nodes", target: "highDataRateComms", value: { parts: ["deep_relay"] } },
+  { op: "merge", collection: "tech_nodes", target: "primitiveSolarPanels", value: { parts: ["solar_panel"] } },
+  { op: "merge", collection: "tech_nodes", target: "firstRTG", value: { parts: ["rtg"] } },
+  { op: "merge", collection: "tech_nodes", target: "improvedPower", value: { parts: ["fuel_cell"] } },
+  { op: "merge", collection: "tech_nodes", target: "crewSurvivability", value: { parts: ["supplies"] } },
+  { op: "merge", collection: "tech_nodes", target: "solids1956", value: { parts: ["engine:Cajun"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry1958", value: { parts: ["engine:A-10", "engine:XLR83-NA-1"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry1959", value: { parts: ["engine:A-87"] } },
+  { op: "merge", collection: "tech_nodes", target: "earlyFlightControl", value: { parts: ["rcs:Peroxide Quad", "wheel:RW-1"] } },
+  { op: "merge", collection: "tech_nodes", target: "basicCapsules", value: { parts: ["pod:C-1 Capsule"] } },
+  { op: "merge", collection: "tech_nodes", target: "solids1962", value: { parts: ["engine:TE-M-316"] } },
+  { op: "merge", collection: "tech_nodes", target: "earlyHydrolox", value: { parts: ["engine:H-10"] } },
+  { op: "merge", collection: "tech_nodes", target: "improvedFlightControl", value: { parts: ["rcs:Hypergolic Quad"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry1963", value: { parts: ["engine:RD-510-11D214"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry1966", value: { parts: ["engine:11D416", "engine:RD-0225"] } },
+  { op: "merge", collection: "tech_nodes", target: "improvedHydrolox", value: { parts: ["engine:H-2"] } },
+  { op: "merge", collection: "tech_nodes", target: "dockingCrewTransfer", value: { parts: ["rcs:R-4D Quad", "rcs:S-IVB APS"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry1967", value: { parts: ["engine:K-5"] } },
+  { op: "merge", collection: "tech_nodes", target: "matureCapsules", value: { parts: ["pod:Mk1-1/2 \"Karrot\" Command Pod"] } },
+  { op: "merge", collection: "tech_nodes", target: "lunarLanding", value: { parts: ["engine:RD-858", "engine:RD-859"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry1969", value: { parts: ["engine:KRD-442", "engine:KRD-61", "engine:KRD-79"] } },
+  { op: "merge", collection: "tech_nodes", target: "spaceStationControl", value: { parts: ["wheel:Attitude Control Unit"] } },
+  { op: "merge", collection: "tech_nodes", target: "earlyNuclearPropulsion", value: { parts: ["engine:SmallEngine-Hydrogen"] } },
+  { op: "merge", collection: "tech_nodes", target: "solids1972", value: { parts: ["engine:STAR-24C"] } },
+  { op: "merge", collection: "tech_nodes", target: "hydrolox1981", value: { parts: ["engine:H-25", "engine:RS-25-35"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry1981", value: { parts: ["engine:AJ10-190-OMS"] } },
+  { op: "merge", collection: "tech_nodes", target: "basicNuclearPropulsion", value: { parts: ["engine:RD-600"] } },
+  { op: "merge", collection: "tech_nodes", target: "hydrolox1986", value: { parts: ["engine:RS-25-50"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry1986", value: { parts: ["engine:S5.92"] } },
+  { op: "merge", collection: "tech_nodes", target: "advancedCapsules", value: { parts: ["pod:Hermes M-PRC Personal Rentry Capsule"] } },
+  { op: "merge", collection: "tech_nodes", target: "hydrolox1992", value: { parts: ["engine:RL20P-3"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry1992", value: { parts: ["engine:YF-40"] } },
+  { op: "merge", collection: "tech_nodes", target: "hydrolox1998", value: { parts: ["engine:RS-25-150"] } },
+  { op: "merge", collection: "tech_nodes", target: "solids1998", value: { parts: ["engine:MPS-241"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry1998", value: { parts: ["engine:BAR-5-NMF", "engine:BAR-15-LRF", "engine:BAR-25-LRRP", "engine:BAR-50-LRFP"] } },
+  { op: "merge", collection: "tech_nodes", target: "elecPropulsion1998", value: { parts: ["engine:PPS-1350-S"] } },
+  { op: "merge", collection: "tech_nodes", target: "advancedNuclearPropulsion", value: { parts: ["engine:NYRATH"] } },
+  { op: "merge", collection: "tech_nodes", target: "modernCapsules", value: { parts: ["pod:Rodan Command Pod"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry2014", value: { parts: ["engine:K-0", "engine:K-1 Booster", "engine:K-1 Vacuum"] } },
+  { op: "merge", collection: "tech_nodes", target: "stagedCombustion2014", value: { parts: ["engine:K-19"] } },
+  { op: "merge", collection: "tech_nodes", target: "stagedCombustion2019", value: { parts: ["engine:M-2", "engine:M-2 Vacuum", "engine:Raptor-1", "engine:Raptor-1V"] } },
+  { op: "merge", collection: "tech_nodes", target: "orbitalRocketry2019", value: { parts: ["engine:TQ-11", "engine:TQ-12"] } },
+  { op: "merge", collection: "tech_nodes", target: "hydrolox2019", value: { parts: ["engine:BE-3U"] } },
+  { op: "merge", collection: "tech_nodes", target: "elecPropulsion2019", value: { parts: ["engine:StarlinkHETV1"] } },
+  { op: "merge", collection: "tech_nodes", target: "commercialCapsules", value: { parts: ["pod:C-4 Capsule", "pod:Rodan Tourism Command Pod"] } },
+  { op: "merge", collection: "tech_nodes", target: "colonization2051NuclearProp", value: { parts: ["engine:Lightbulb"] } },
+
+  // The widest procedural part, m.
+  { op: "merge", collection: "tech_nodes", target: "start", value: { sizes: { diameter: 1.7 } } },
+  { op: "merge", collection: "tech_nodes", target: "postWarMaterialsScience", value: { sizes: { diameter: 1.8 } } },
+  { op: "merge", collection: "tech_nodes", target: "earlyMaterialsScience", value: { sizes: { diameter: 2.7 } } },
+  { op: "merge", collection: "tech_nodes", target: "materialsScienceSatellite", value: { sizes: { diameter: 3.1 } } },
+  { op: "merge", collection: "tech_nodes", target: "materialsScienceHuman", value: { sizes: { diameter: 5.6 } } },
+  { op: "merge", collection: "tech_nodes", target: "materialsScienceAdvCapsules", value: { sizes: { diameter: 6.7 } } },
+  { op: "merge", collection: "tech_nodes", target: "materialsScienceLunar", value: { sizes: { diameter: 13 } } },
+  { op: "merge", collection: "tech_nodes", target: "materialsScienceNF", value: { sizes: { diameter: 20 } } },
+
+  // The base game's tank types, by the tanks they stand for. Solid Grain is a motor's, not locked.
+  { op: "merge", collection: "tank_types", target: "Balloon Stainless", value: { tech: "materialsScienceSatellite" } },
+  { op: "merge", collection: "tank_types", target: "Stiffened Al 2219", value: { tech: "materialsScienceHuman" } },
+  { op: "merge", collection: "tank_types", target: "Insulated Al-Li", value: { tech: "materialsScienceHuman" } },
+  { op: "merge", collection: "tank_types", target: "Titanium Sphere", value: { tech: "materialsScienceAdvCapsules" } },
+  { op: "merge", collection: "tank_types", target: "COPV", value: { tech: "materialsScienceAdvCapsules" } },
+  { op: "merge", collection: "tank_types", target: "Isogrid Al-Li", value: { tech: "materialsScienceInternational" } },
+  { op: "merge", collection: "tank_types", target: "Composite", value: { tech: "materialsScienceInternational" } },
+
+]

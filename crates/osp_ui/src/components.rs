@@ -4,7 +4,7 @@
 //!
 //! | Widget | Written as | Builds |
 //! | --- | --- | --- |
-//! | `screen` | `title`, `title_if`, `subtitle`, `display: true`, `back: false`, `shade: false`, `children` | The left panel: Back, heading (shown while `title_if` holds if there is one), a scrolling body and what just happened (`menu.notice`), over the whole window so the scene takes no clicks, unless `shade: false` leaves it the panel alone |
+//! | `screen` | `title`, `title_if`, `subtitle`, `display: true`, `back: false`, `shade: false`, `children`, `footer` | The left panel: Back, heading (shown while `title_if` holds if there is one), a scrolling body, what just happened (`menu.notice`) and the `footer`'s nodes at the bottom, where they stay however long the body is (a screen's Start or Save), over the whole window so the scene takes no clicks, unless `shade: false` leaves it the panel alone |
 //! | `menu_row` | `text`, `action`, `meta`, `meta_class`, `detail`, `detail_if`, `detail_class` | A full-width row to click: its text, a value at the right and a line under it, shown while `detail_if` holds if there is one |
 //! | `setting_row` | `label`, `children` | One line of a settings page: a label and what sets it |
 //! | `setting_choice` | `label`, `key`, `action`, `options` | A `setting_row` with a `choice`, each option firing `<action>:<value>` and lit while `<key> == <value>` |
@@ -59,7 +59,7 @@ pub fn expand(mut def: NodeDef, problems: &mut Vec<String>) -> NodeDef {
         .map(|child| expand(child, problems))
         .collect();
     match def.widget.as_str() {
-        "screen" => screen(def),
+        "screen" => screen(def, problems),
         "menu_row" => menu_row(def),
         "setting_row" => setting_row(def),
         "setting_choice" => setting_choice(def, problems),
@@ -68,7 +68,23 @@ pub fn expand(mut def: NodeDef, problems: &mut Vec<String>) -> NodeDef {
     }
 }
 
-fn screen(mut def: NodeDef) -> NodeDef {
+fn screen(mut def: NodeDef, problems: &mut Vec<String>) -> NodeDef {
+    let footer: Vec<NodeDef> = match def.extra.remove("footer") {
+        Some(Value::Array(nodes)) => (nodes.into_iter())
+            .filter_map(|n| match serde_json::from_value(n) {
+                Ok(n) => Some(expand(n, problems)),
+                Err(e) => {
+                    problems.push(format!("a screen's footer: {e}"));
+                    None
+                }
+            })
+            .collect(),
+        Some(other) => {
+            problems.push(format!("a screen's footer is a list of nodes, not {other}"));
+            Vec::new()
+        }
+        None => Vec::new(),
+    };
     let mut rail = Vec::new();
     if def.extra.remove("back") != Some(Value::Bool(false)) {
         rail.push(NodeDef {
@@ -106,6 +122,9 @@ fn screen(mut def: NodeDef) -> NodeDef {
         visible: Some("menu.notice".into()),
         ..label("menu_notice", "{menu.notice}".into())
     });
+    if !footer.is_empty() {
+        rail.push(with_children(node("column", "menu_footer"), footer));
+    }
     if def.extra.remove("shade") == Some(Value::Bool(false)) {
         return NodeDef {
             widget: "column".into(),
@@ -258,10 +277,13 @@ mod tests {
     /// What can be clicked in a menu.
     const CONTROLS: [&str; 5] = ["back", "menu_row", "btn", "choice_item", "tab"];
     /// The classes the components and controls are made of.
-    const MENU_CLASSES: [&str; 30] = [
+    const MENU_CLASSES: [&str; 33] = [
         "menu_shade",
         "menu_rail",
         "menu_body",
+        "menu_footer",
+        "menu_hint",
+        "btn_large",
         "menu_display",
         "menu_heading",
         "menu_subtitle",
@@ -401,6 +423,37 @@ mod tests {
         );
         assert_eq!(rail.children[0].action.as_deref(), Some("menu.back"));
         assert_eq!(rail.children[3].children[0].class, "menu_row");
+    }
+
+    /// What a screen is for, its Start, stays at the bottom of the panel under the body, which
+    /// scrolls.
+    #[test]
+    fn a_footer_stays_under_the_scrolling_body() {
+        let screen = built(json!({
+            "widget": "screen",
+            "title": "New game",
+            "children": [{ "widget": "menu_row", "text": "A mod" }],
+            "footer": [{ "widget": "button", "class": "btn btn_primary", "text": "Start", "action": "game.new" }],
+        }));
+        let rail = &screen.children[0];
+        let classes: Vec<_> = rail.children.iter().map(|c| c.class.as_str()).collect();
+        assert_eq!(
+            classes,
+            [
+                "back",
+                "menu_heading",
+                "menu_body",
+                "menu_notice",
+                "menu_footer"
+            ]
+        );
+        let start = &rail.children[4].children[0];
+        assert_eq!(start.action.as_deref(), Some("game.new"));
+        assert!(rail.extra.is_empty() && screen.extra.is_empty());
+        let mut problems = Vec::new();
+        let node = serde_json::from_value(json!({ "widget": "screen", "footer": "Start" }));
+        expand(node.unwrap(), &mut problems);
+        assert_eq!(problems.len(), 1, "{problems:?}");
     }
 
     #[test]

@@ -2,22 +2,29 @@
 //! they use what the rules' profile says people need, from the tanks it can reach. Going short of
 //! something they cannot last without, each goes through stages, short, weak and critical, and
 //! dies at the profile's time times their own resilience; given it back, they recover as fast as
-//! they declined. With part of what they need, the shortfall is shared. Time warp stops at each
-//! stage. Any crew can be lost to acceleration.
+//! they declined. With part of what they need, the shortfall is shared. The cabin's air going out
+//! of a limit the profile sets (too little pressure, too much CO2) counts the same way, unless they
+//! have their suits on, which give them air from the cabin's supply. Under rules with radiation,
+//! each takes a dose through the walls of the part they sit in, its mass over its skin, and sickens
+//! by stages as it builds up; it does not go away. Time warp stops at each stage. Any crew can be
+//! lost to acceleration.
 
 use std::{any::Any, collections::BTreeMap};
 
 use serde::{Deserialize, Serialize};
 
-use super::{CREW_PRIORITY, Exchange, FlightNow, PartHeat, Reading, System};
+use super::{Air, CREW_PRIORITY, Exchange, FlightNow, PartHeat, Reading, System};
 use crate::{
     component::Component,
-    data::{NeedDef, fnv},
+    data::{AirLimitDef, NeedDef, RadiationProfileDef, fnv},
     parts::Part,
+    radiation::Radiation,
     staging::Action,
 };
 
 pub const BOARD: Action = Action::new("board", "Move someone here");
+pub const SUITS_ON: Action = Action::new("suits_on", "Suits on");
+pub const SUITS_OFF: Action = Action::new("suits_off", "Suits off");
 
 /// Standard gravity, m/s².
 const G: f64 = 9.80665;
@@ -32,6 +39,10 @@ const DAY: f64 = 86_400.0;
 const WHOLE: f64 = 1.0 - 1e-9;
 /// A stage reached this close is reached, s: warp stops at it, to the rounding.
 const ON_TIME: f64 = 1e-6;
+/// A dose this close to one, as a share of it, is that dose: warp stops at it, to the rounding.
+const REACHED: f64 = 1e-9;
+/// What people go short of when it is radiation that sickens them.
+const RADIATION: &str = "radiation sickness";
 
 /// How a person is doing, from well to nearly dead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -62,6 +73,9 @@ pub struct Person {
     /// How long, in effect, they have gone without each need, s, by resource.
     #[serde(default)]
     pub short: BTreeMap<String, f64>,
+    /// The radiation they have taken, Sv.
+    #[serde(default)]
+    pub dose: f64,
 }
 
 impl Person {
@@ -71,7 +85,29 @@ impl Person {
             name,
             resilience,
             short: BTreeMap::new(),
+            dose: 0.0,
         }
+    }
+
+    /// The doses at which they are sick, weak, critical, and die, Sv.
+    fn doses(&self, profile: &RadiationProfileDef) -> [f64; 4] {
+        [profile.sick, profile.weak, profile.critical, profile.dies].map(|d| d * self.resilience)
+    }
+
+    /// How their dose has left them, and whether it has killed them.
+    fn sickness(&self, profile: &RadiationProfileDef) -> (Stage, bool) {
+        let reached = |at: f64| self.dose >= at * (1.0 - REACHED);
+        let [sick, weak, critical, dies] = self.doses(profile);
+        let stage = if reached(critical) {
+            Stage::Critical
+        } else if reached(weak) {
+            Stage::Weak
+        } else if reached(sick) {
+            Stage::Short
+        } else {
+            Stage::Fine
+        };
+        (stage, reached(dies))
     }
 
     fn short_of(&self, need: &NeedDef) -> f64 {
@@ -145,6 +181,24 @@ pub struct Crew {
     /// What they make that is let go of when there is nowhere to keep it.
     #[serde(default)]
     pub dump: Vec<String>,
+    /// What the cabin's air has to be for them to be well.
+    #[serde(default)]
+    pub limits: Vec<AirLimitDef>,
+    /// Which of `limits` the air is out of now.
+    #[serde(default)]
+    pub outside: Vec<bool>,
+    /// Each gas of the cabin's air, and what its regulator tops it up from: a suit breathes that.
+    #[serde(default)]
+    pub gases: Vec<(String, Option<String>)>,
+    /// Their suits are on: the cabin's air is nothing to them.
+    #[serde(default)]
+    pub suited: bool,
+    /// What radiation does to them, under rules with radiation.
+    #[serde(default)]
+    pub radiation: Option<RadiationProfileDef>,
+    /// What their part's walls give them, kg/m²: its mass over its skin.
+    #[serde(default)]
+    pub shielding: f64,
     /// How much of what a body can take of acceleration it has taken, 0..1.
     #[serde(default)]
     strain: f64,
@@ -160,18 +214,24 @@ pub(super) fn of(component: &Component, part: &Part) -> Option<Box<dyn System>> 
         seats,
         aboard,
         names,
+        radiation,
     } = component
     else {
         return None;
     };
-    let (needs, dump) = (part.built.iter().flat_map(|built| &built.components))
-        .find_map(|c| match c {
-            Component::LifeSupport(life_support) => {
-                Some((life_support.needs.clone(), life_support.dump.clone()))
-            }
+    let life_support =
+        (part.built.iter().flat_map(|built| &built.components)).find_map(|c| match c {
+            Component::LifeSupport(life_support) => Some(life_support),
             _ => None,
-        })
+        });
+    let (needs, dump) = life_support
+        .map(|l| (l.needs.clone(), l.dump.clone()))
         .unwrap_or_default();
+    let cabin = life_support.and_then(|l| l.cabin.as_ref());
+    let limits = cabin.map(|c| c.limits.clone()).unwrap_or_default();
+    let gases = (cabin.iter().flat_map(|c| &c.air.gases))
+        .map(|gas| (gas.resource.clone(), gas.from.clone()))
+        .collect();
     let aboard = aboard.unwrap_or(*seats).min(*seats);
     let mut crew = Crew {
         seats: *seats,
@@ -185,12 +245,35 @@ pub(super) fn of(component: &Component, part: &Part) -> Option<Box<dyn System>> 
             .collect(),
         needs,
         dump,
+        outside: vec![false; limits.len()],
+        limits,
+        gases,
+        suited: false,
+        radiation: radiation.clone(),
+        shielding: shielding(part),
         strain: 0.0,
         peak_g: 0.0,
         said: None,
     };
     crew.name_everyone();
     Some(Box::new(crew))
+}
+
+/// What a part's walls give whoever is inside, kg/m²: what it weighs, dry, over the area of its
+/// skin (that of its stand-in shape if it is drawn from a model).
+fn shielding(part: &Part) -> f64 {
+    let Some(built) = &part.built else {
+        return 0.0;
+    };
+    let geometry = &built.geometry;
+    let area = Some(geometry.skin_area(false))
+        .filter(|a| *a > 0.0)
+        .unwrap_or_else(|| geometry.skin_area(true));
+    if area > 0.0 {
+        built.mass.mass / area
+    } else {
+        0.0
+    }
 }
 
 impl Crew {
@@ -230,9 +313,60 @@ impl Crew {
     /// How the one doing worst is.
     pub fn worst(&self) -> Stage {
         (self.people.iter())
-            .map(|p| p.stage(&self.needs).0)
+            .map(|p| self.stage_of(p).0)
             .max()
             .unwrap_or(Stage::Fine)
+    }
+
+    /// Everything they can go short of: what they use, then the cabin's air limits.
+    pub fn conditions(&self) -> Vec<NeedDef> {
+        (self.needs.iter().cloned())
+            .chain(self.limits.iter().map(AirLimitDef::need))
+            .collect()
+    }
+
+    /// How `person` is doing by the worst of everything, and what they are short of most.
+    pub fn stage_of(&self, person: &Person) -> (Stage, Option<String>) {
+        let conditions = self.conditions();
+        let (stage, of) = person.stage(&conditions);
+        let sick = (self.radiation.as_ref()).map_or(Stage::Fine, |p| person.sickness(p).0);
+        if sick > stage {
+            return (sick, Some(RADIATION.to_owned()));
+        }
+        (stage, of.map(str::to_owned))
+    }
+
+    /// The share of each kind of radiation that gets to them under `column` kg/m² of air.
+    pub fn through(&self, column: f64) -> Option<Radiation> {
+        let profile = self.radiation.as_ref()?;
+        Some(Radiation::through(
+            self.shielding + column,
+            &profile.shielding,
+        ))
+    }
+
+    /// The share they have of each of the cabin's air limits: none out of one, unless suited.
+    fn limit_shares(&self) -> impl Iterator<Item = f64> + '_ {
+        (0..self.limits.len()).map(|k| {
+            let out = self.outside.get(k).copied().unwrap_or(false);
+            if out && !self.suited { 0.0 } else { 1.0 }
+        })
+    }
+
+    /// What a need for `resource` is taken from: in a suit, a gas of the cabin's air comes from
+    /// what tops it up.
+    fn source(&self, resource: &str) -> String {
+        let from = (self.gases.iter())
+            .find(|(gas, _)| gas == resource)
+            .and_then(|(_, from)| from.clone());
+        match from {
+            Some(from) if self.suited => from,
+            _ => resource.to_owned(),
+        }
+    }
+
+    fn is_air(&self, resource: &str) -> bool {
+        self.gases.iter().any(|(gas, _)| gas == resource)
     }
 }
 
@@ -272,17 +406,23 @@ impl System for Crew {
     }
 
     /// Each need is a lot of its own: short of water, they still breathe. What they make of it
-    /// goes with it: with nowhere to breathe out to, they cannot breathe.
+    /// goes with it: with nowhere to breathe out to, they cannot breathe. In suits, they breathe
+    /// what tops the cabin's air up, and what they breathe out goes into their suits.
     fn wants(&self, dt: f64) -> Vec<Exchange> {
         let people = f64::from(self.aboard);
+        let mut dump = self.dump.clone();
+        if self.suited {
+            dump.extend(self.gases.iter().map(|(gas, _)| gas.clone()));
+        }
         self.rates().map_or(Vec::new(), |rates| {
             (self.needs.iter().zip(rates))
                 .map(|(need, rate)| Exchange {
-                    inputs: vec![(need.resource.clone(), rate * dt)],
+                    inputs: vec![(self.source(&need.resource), rate * dt)],
                     outputs: (need.makes.iter())
+                        .filter(|(made, _)| !(self.suited && self.is_air(made)))
                         .map(|(made, daily)| (made.clone(), daily * people / DAY * dt))
                         .collect(),
-                    dump: self.dump.clone(),
+                    dump: dump.clone(),
                     priority: CREW_PRIORITY,
                 })
                 .collect()
@@ -294,9 +434,13 @@ impl System for Crew {
             return;
         }
         self.name_everyone();
-        let needs = self.needs.clone();
+        let needs = self.conditions();
+        let shares: Vec<f64> = (shares.iter().copied())
+            .take(self.needs.len())
+            .chain(self.limit_shares())
+            .collect();
         let before: Vec<Stage> = self.people.iter().map(|p| p.stage(&needs).0).collect();
-        for (need, &share) in needs.iter().zip(shares) {
+        for (need, &share) in needs.iter().zip(&shares) {
             if need.lasts.is_none() {
                 continue;
             }
@@ -348,7 +492,11 @@ impl System for Crew {
     /// hangs on it.
     fn next_event_given(&self, shares: &[f64]) -> Option<f64> {
         let mut soonest: Option<f64> = None;
-        for (need, &share) in self.needs.iter().zip(shares) {
+        let shares: Vec<f64> = (shares.iter().copied())
+            .take(self.needs.len())
+            .chain(self.limit_shares())
+            .collect();
+        for (need, &share) in self.conditions().iter().zip(&shares) {
             if share >= WHOLE {
                 continue;
             }
@@ -384,8 +532,82 @@ impl System for Crew {
         self.said.take()
     }
 
+    fn exposed(&self) -> bool {
+        self.radiation.is_some() && !self.people.is_empty()
+    }
+
+    fn irradiate(&mut self, exposure: &Radiation, column: f64) {
+        let (Some(profile), Some(through)) = (self.radiation.clone(), self.through(column)) else {
+            return;
+        };
+        let dose = exposure.weighted(&through);
+        if dose <= 0.0 {
+            return;
+        }
+        let mut news = Vec::new();
+        let mut alive = Vec::new();
+        for mut person in std::mem::take(&mut self.people) {
+            let (was, _) = person.sickness(&profile);
+            person.dose += dose;
+            let (now, dead) = person.sickness(&profile);
+            if dead {
+                news.push(format!("{} has died of {RADIATION}", person.name));
+                self.lost += 1;
+                continue;
+            }
+            if now != was {
+                news.push(match now {
+                    Stage::Short => format!("{} is sick from radiation", person.name),
+                    stage => format!("{} is {} from {RADIATION}", person.name, stage.word()),
+                });
+            }
+            alive.push(person);
+        }
+        self.aboard = alive.len() as u32;
+        self.people = alive;
+        if !news.is_empty() {
+            self.say(news.join(". "));
+        }
+    }
+
+    /// The least dose anyone aboard still has to take to reach their next stage.
+    fn dose_until(&self, column: f64) -> Option<(Radiation, f64)> {
+        let profile = self.radiation.as_ref()?;
+        let through = self.through(column)?;
+        let left = (self.people.iter())
+            .filter_map(|person| {
+                (person.doses(profile).into_iter())
+                    .find(|at| person.dose < at * (1.0 - REACHED))
+                    .map(|at| at - person.dose)
+            })
+            .reduce(f64::min)?;
+        Some((through, left))
+    }
+
+    fn breathe(&mut self, air: Option<&Air>) {
+        self.outside = (self.limits.iter())
+            .map(|limit| air.is_some_and(|air| limit.broken_by(air.pressure, &air.partial)))
+            .collect();
+    }
+
     fn actions(&self) -> Vec<Action> {
-        vec![BOARD]
+        match (self.limits.is_empty(), self.suited) {
+            (true, _) => vec![BOARD],
+            (false, false) => vec![BOARD, SUITS_ON],
+            (false, true) => vec![BOARD, SUITS_OFF],
+        }
+    }
+
+    fn act(&mut self, action: Action) -> Option<String> {
+        if action.kind == SUITS_ON.kind && !self.suited && !self.limits.is_empty() {
+            self.suited = true;
+            Some("Suits on".to_owned())
+        } else if action.kind == SUITS_OFF.kind && self.suited {
+            self.suited = false;
+            Some("Suits off".to_owned())
+        } else {
+            None
+        }
     }
 
     fn take_person(&mut self) -> Option<Person> {
@@ -424,6 +646,7 @@ mod tests {
         time::SimTime,
         vessel::{Vessel, tests::catalog},
     };
+    use std::collections::BTreeMap;
 
     /// A one-seat capsule with life support and nothing aboard to breathe, in low orbit.
     fn capsule(catalog: &PartCatalog) -> Vessel {
@@ -476,10 +699,11 @@ mod tests {
         assert!(!has_life_support(&casual));
         assert!(casual.propulsion.systems.consumers().is_empty());
 
-        // Five minutes without oxygen, by the profile.
-        realistic.step_systems(&system, t, 200.0);
+        // With nothing to top its air up or take the CO2 out, the cabin's own air lasts hours,
+        // not a day.
+        realistic.step_systems(&system, t, 3_600.0);
         assert_eq!(realistic.propulsion.systems.crew_lost(), 0, "not yet");
-        realistic.step_systems(&system, t.add_seconds(200.0), 200.0);
+        realistic.step_systems(&system, t.add_seconds(3_600.0), 86_400.0);
         assert_eq!(realistic.propulsion.systems.crew_lost(), 1);
 
         casual.step_systems(&system, t, 86_400.0);
@@ -497,7 +721,11 @@ mod tests {
         assert_eq!(back.any().downcast_ref::<Crew>(), Some(crew));
     }
 
-    use crate::{environment::Environment, propulsion::Propulsion, systems::Cabin};
+    use crate::{
+        environment::Environment,
+        propulsion::Propulsion,
+        systems::{Cabin, FILL, LET_DOWN},
+    };
 
     const THREE_DAYS: f64 = 259_200.0;
 
@@ -551,7 +779,7 @@ mod tests {
         let (_, crew) = p.systems.all::<Crew>().next().unwrap();
         crew.people
             .iter()
-            .map(|person| person.stage(&crew.needs).0)
+            .map(|person| crew.stage_of(person).0)
             .collect()
     }
 
@@ -762,23 +990,42 @@ mod tests {
         p.tanks.iter().map(|t| t.held("Water")).sum()
     }
 
-    /// Without LiOH the scrubber cannot run: the cabin's 0.3 kg of CO2 room fills in 0.3 of a
-    /// day, and with nowhere to breathe out, they last as long as they would without air.
+    /// The kg of a gas of `molar_mass` at `pascals` in the test cabin: 2 m³ at 294 K.
+    fn kg_at(pascals: f64, molar_mass: f64) -> f64 {
+        pascals * 2.0 * molar_mass / (8.314_462_618 * 294.0)
+    }
+
+    /// Without LiOH the scrubber cannot run: one person breathes out a kilogram of CO2 a day into
+    /// the cabin. Past 2 kPa of it they go short of clean air, and are weak a third of the half day
+    /// they last later. At 8 kPa no more goes in: with nowhere to breathe out, they last as long as
+    /// they would without air. The same at the highest warp and a minute at a time.
     #[test]
-    fn a_long_flight_without_a_scrubber_is_lost_to_co2() {
+    fn breathing_without_a_scrubber_fouls_the_air_until_the_crew_weakens_and_dies() {
         let supplies = "LqdOxygen: 30, Food: 20";
-        let mut foul = realistic_cabin(&format!("{{ carries: {{ {supplies} }} }}"), "", 50.0);
+        let foul = realistic_cabin(&format!("{{ carries: {{ {supplies} }} }}"), "", 50.0);
         let (_, cabin) = foul.systems.all::<Cabin>().next().unwrap();
-        assert_eq!(cabin.air_of("CO2"), Some((0.0, 0.3)));
-        let log = run(&mut foul, 2.0 * 86_400.0, f64::INFINITY);
-        let full = 0.3 * 86_400.0;
-        let person = &people(&realistic_cabin("{}", "", 0.0))[0];
-        let (_, died) = log.died[0].clone();
-        let expected = full + 300.0 * person.resilience;
-        assert!(
-            (died - expected).abs() < 1e-3,
-            "died at {died}, not {expected}"
-        );
+        let most = kg_at(8_000.0, 0.044);
+        assert_eq!(cabin.air_of("CO2"), Some((0.0, most)));
+        let person = people(&foul)[0].clone();
+        let per_second = 1.0 / 86_400.0;
+        let foul_from = kg_at(2_000.0, 0.044) / per_second;
+        let weak = foul_from + 43_200.0 / 3.0 * person.resilience;
+        let full = most / per_second;
+        assert!(weak < full, "they weaken before the air is full");
+        let died = full + 300.0 * person.resilience;
+        for longest in [f64::INFINITY, 60.0] {
+            let mut p = foul.clone();
+            let log = run(&mut p, 2.0 * 86_400.0, longest);
+            if longest.is_infinite() {
+                // Warp stops where the air fouls, and then not until they are weak.
+                let stop = log.reached[&(person.name.clone(), Stage::Fine)];
+                assert!((stop - foul_from).abs() < 1e-3, "first stop at {stop}");
+            }
+            let when = log.reached[&(person.name.clone(), Stage::Weak)];
+            assert!((when - weak).abs() < 1e-3, "weak at {when}, not {weak}");
+            let (_, at) = log.died[0].clone();
+            assert!((at - died).abs() < 1e-3, "died at {at}, not {died}");
+        }
 
         let mut clean = realistic_cabin(
             &format!("{{ carries: {{ {supplies}, LiOH: 15 }} }}"),
@@ -820,5 +1067,259 @@ mod tests {
         // The scrubber's LiOH at its full 1.2 kg of CO2 a day.
         assert!((carried("LiOH").unwrap() - 1.5114e-5 * 86_400.0 * 10.0).abs() < 1e-6);
         assert_eq!(p.systems.all::<crate::systems::Process>().count(), 1);
+    }
+
+    fn cabin_of(p: &Propulsion) -> &Cabin {
+        p.systems.all::<Cabin>().next().unwrap().1
+    }
+
+    fn cabin_part(p: &Propulsion) -> crate::parts::PartId {
+        p.systems.all::<Cabin>().next().unwrap().0
+    }
+
+    fn locker(p: &Propulsion, resource: &str) -> f64 {
+        let kept = cabin_of(p).kept.iter().find(|k| k.resource == resource);
+        kept.map_or(0.0, |k| k.held)
+    }
+
+    /// A hole of a square centimetre in a cabin with nothing to top its air up lets the air out at
+    /// the rate choked flow through it gives, by e^-kt, and the crew is lost a minute and a half
+    /// after the pressure falls below the 6.3 kPa people can live at: the same at the highest warp
+    /// and a second at a time.
+    #[test]
+    fn a_leak_lets_the_air_out_at_the_rate_its_hole_gives_and_the_crew_is_lost() {
+        let mut fresh = realistic_cabin("{ carries: { Food: 20, LiOH: 15 } }", "", 50.0);
+        let part = cabin_part(&fresh);
+        fresh.systems.breach(part, 1e-4);
+        let k = cabin_of(&fresh).leak_rate();
+        // 0.8 of a nozzle's choked flow at the speed of sound in air at 294 K, out of 2 m³.
+        assert!((1.0 / k - 125.7).abs() < 0.05, "{} s", 1.0 / k);
+        let p0 = cabin_of(&fresh).pressure();
+        assert!((p0 - 101_000.0).abs() < 1e-6, "{p0} Pa");
+
+        let mut p = fresh.clone();
+        run(&mut p, 60.0, f64::INFINITY);
+        let expected = p0 * (-k * 60.0).exp();
+        let now = cabin_of(&p).pressure();
+        assert!(
+            (now - expected).abs() < 1e-3 * expected,
+            "{now}, not {expected} Pa"
+        );
+
+        let person = people(&fresh)[0].clone();
+        let below = (p0 / 6_300.0).ln() / k;
+        let died = below + 90.0 * person.resilience;
+        let mut when = Vec::new();
+        for longest in [f64::INFINITY, 1.0] {
+            let mut p = fresh.clone();
+            let log = run(&mut p, 600.0, longest);
+            assert_eq!(p.systems.crew_lost(), 1);
+            let (_, at) = log.died[0].clone();
+            // Breathing takes a little of the oxygen besides.
+            assert!((at - died).abs() < 2.0, "died at {at}, not {died}");
+            when.push(at);
+        }
+        assert!((when[0] - when[1]).abs() < 1e-3, "{when:?}");
+
+        // The hole goes with the cabin into a save.
+        let (_, cabin) = fresh.systems.all::<Cabin>().next().unwrap();
+        let saved = rmp_serde::to_vec_named(&cabin.boxed()).unwrap();
+        let back: Box<dyn System> = rmp_serde::from_slice(&saved).unwrap();
+        assert_eq!(back.any().downcast_ref::<Cabin>(), Some(cabin));
+    }
+
+    /// A hole of a square millimetre is held: the regulator tops the air up from the lockers as
+    /// fast as it goes, so the pressure stays where it is and the nitrogen in the lockers goes at
+    /// the rate the hole gives, exactly, at any warp. Once that is gone the nitrogen in the air
+    /// goes too, but the oxygen is still kept at 21 kPa, which people live at.
+    #[test]
+    fn a_small_leak_is_held_while_what_tops_the_air_up_lasts() {
+        let kit = "{ carries: { LqdOxygen: 30, Nitrogen: 2, Food: 20, LiOH: 15 } }";
+        let mut fresh = realistic_cabin(kit, "", 50.0);
+        let part = cabin_part(&fresh);
+        fresh.systems.breach(part, 1e-6);
+        let k = cabin_of(&fresh).leak_rate();
+        let nitrogen = kg_at(80_000.0, 0.028);
+        let p0 = cabin_of(&fresh).pressure();
+        for longest in [f64::INFINITY, 60.0] {
+            let mut p = fresh.clone();
+            run(&mut p, 3_600.0, longest);
+            let now = cabin_of(&p).pressure();
+            assert!((now - p0).abs() < 1e-6 * p0, "{now} Pa");
+            let used = 2.0 - locker(&p, "Nitrogen");
+            let expected = k * nitrogen * 3_600.0;
+            assert!((used - expected).abs() < 1e-9, "{used}, not {expected} kg");
+        }
+        let gone = 2.0 / (k * nitrogen);
+        let mut p = fresh.clone();
+        run(&mut p, gone + 20.0 / k, f64::INFINITY);
+        assert!(locker(&p, "Nitrogen") < 1e-9);
+        let cabin = cabin_of(&p);
+        assert!(cabin.partial_of("nitrogen").unwrap() < 1.0);
+        let oxygen = cabin.partial_of("oxygen").unwrap();
+        assert!((oxygen - 21_000.0).abs() < 1e-6 * 21_000.0, "{oxygen} Pa");
+        assert_eq!(p.systems.crew_lost(), 0);
+        assert_eq!(stages(&p), [Stage::Fine]);
+    }
+
+    /// A one-seat capsule weighing `mass` kg (2 m across and 2 m long, 18.8 m² of skin) in a
+    /// circular orbit `altitude` m over the Earth, with nobody needing anything but radiation
+    /// counting.
+    fn exposed_capsule(altitude: f64, mass: f64) -> Vessel {
+        let craft: CraftDef = records(&format!(
+            r#"{{ id: "x", name: "", parts: [{{ id: "cabin",
+                shape: {{ shell: {{ bottom_diameter: 2, sections: [{{ length: 2 }}],
+                    cap_bottom: true, cap_top: true }} }},
+                structure: {{ mass: {mass} }},
+                components: [{{ container: {{}} }}, {{ crew: {{ seats: 1 }} }}] }}] }}"#
+        ))
+        .remove(0);
+        let start = OrbitStartDef {
+            body: "Earth".into(),
+            periapsis_altitude: altitude,
+            apoapsis_altitude: altitude,
+            inclination: 0.0,
+            longitude_of_ascending_node: 0.0,
+            plane: None,
+            argument_of_periapsis: 0.0,
+            mean_anomaly: 0.0,
+            spin: [0.0; 3],
+        };
+        Vessel::in_orbit(&craft, &catalog(), &rss(), &start, SimTime::J2000).unwrap()
+    }
+
+    fn dose(vessel: &Vessel) -> f64 {
+        let (_, crew) = vessel.propulsion.systems.all::<Crew>().next().unwrap();
+        crew.people.first().map_or(0.0, |p| p.dose)
+    }
+
+    /// Fly `vessel`'s systems for `days`, in steps no longer than `longest` seconds, cut where they
+    /// say, as time warp cuts them: when its one person first reached each stage, s.
+    fn fly(vessel: &mut Vessel, days: f64, longest: f64) -> BTreeMap<Stage, f64> {
+        let system = rss();
+        let start = SimTime::J2000;
+        let end = start.add_seconds(days * 86_400.0);
+        let mut reached = BTreeMap::new();
+        let mut t = start;
+        while t < end {
+            let horizon = end.min(t.add_seconds(longest.min(1e9)));
+            let next = vessel.next_system_event(&system, t, horizon);
+            let to = next.map_or(horizon, |n| n.min(horizon));
+            vessel.step_systems(&system, t, to.seconds_since(t));
+            t = to;
+            let (_, crew) = vessel.propulsion.systems.all::<Crew>().next().unwrap();
+            if let Some(person) = crew.people.first() {
+                reached
+                    .entry(crew.stage_of(person).0)
+                    .or_insert(t.seconds_since(start));
+            }
+        }
+        reached
+    }
+
+    /// A day in the heart of the inner belt is far worse than a day in low orbit, and a capsule
+    /// with heavier walls lets less of it through.
+    #[test]
+    fn a_capsule_in_the_inner_belt_takes_far_more_than_one_in_low_orbit() {
+        let mut low = exposed_capsule(400e3, 1_000.0);
+        let mut belt = exposed_capsule(3_500e3, 1_000.0);
+        let mut heavy = exposed_capsule(3_500e3, 4_000.0);
+        for vessel in [&mut low, &mut belt, &mut heavy] {
+            fly(vessel, 1.0, f64::INFINITY);
+        }
+        let (_, crew) = low.propulsion.systems.all::<Crew>().next().unwrap();
+        assert!(
+            (crew.shielding - 1_000.0 / 18.85).abs() < 0.5,
+            "{}",
+            crew.shielding
+        );
+        // Cosmic rays only, much of them kept out, a little cut by the walls.
+        assert!(
+            dose(&low) > 0.2e-3 && dose(&low) < 0.4e-3,
+            "{} Sv",
+            dose(&low)
+        );
+        assert!(
+            dose(&belt) > 100.0 * dose(&low),
+            "{} {}",
+            dose(&belt),
+            dose(&low)
+        );
+        assert!(
+            dose(&heavy) < 0.01 * dose(&belt),
+            "{} {}",
+            dose(&heavy),
+            dose(&belt)
+        );
+    }
+
+    /// Parked in the inner belt, a person takes about a tenth of a sievert a day: sick at 1 Sv and
+    /// weak at 2, times their resilience, and time warp stops there, at the highest warp as an hour
+    /// at a time.
+    #[test]
+    fn radiation_sickens_by_stages_at_its_doses_at_any_warp() {
+        let fresh = exposed_capsule(3_500e3, 1_000.0);
+        let person = people(&fresh.propulsion)[0].clone();
+        let mut when = Vec::new();
+        for longest in [f64::INFINITY, 3_600.0] {
+            let mut vessel = fresh.clone();
+            let reached = fly(&mut vessel, 25.0, longest);
+            let sick = reached[&Stage::Short];
+            let weak = reached[&Stage::Weak];
+            assert!(
+                sick > 5.0 * 86_400.0 && weak < 25.0 * 86_400.0,
+                "{reached:?}"
+            );
+            when.push((sick, weak));
+            // Stopped at the dose, then on until weak.
+            let mut again = fresh.clone();
+            fly(&mut again, sick / 86_400.0, f64::INFINITY);
+            let at = dose(&again);
+            assert!((at - person.resilience).abs() < 1e-6 * at, "{at} Sv");
+            assert_eq!(vessel.propulsion.systems.crew_lost(), 0);
+        }
+        let ((a, b), (c, d)) = (when[0], when[1]);
+        assert!((a - c).abs() < 5.0 && (b - d).abs() < 5.0, "{when:?}");
+    }
+
+    /// Let down, the cabin is empty in a couple of minutes. With their suits on, the crew breathe
+    /// the oxygen the air is topped up from and are well; filled again, it is back at sea-level
+    /// pressure in the minute the regulator takes, and they take their suits off. Without suits
+    /// they are lost.
+    #[test]
+    fn a_cabin_let_down_and_filled_again_with_the_crew_in_suits() {
+        let kit = "{ carries: { LqdOxygen: 30, Nitrogen: 5, Food: 20, LiOH: 15 } }";
+        let fresh = realistic_cabin(kit, "", 50.0);
+        let part = cabin_part(&fresh);
+        let p0 = cabin_of(&fresh).pressure();
+
+        let mut p = fresh.clone();
+        assert_eq!(p.systems.act(part, SUITS_ON).as_deref(), Some("Suits on"));
+        assert!(p.systems.act(part, LET_DOWN).is_some());
+        run(&mut p, 3_600.0, f64::INFINITY);
+        assert!(
+            cabin_of(&p).pressure() < 1.0,
+            "{} Pa",
+            cabin_of(&p).pressure()
+        );
+        assert_eq!(p.systems.crew_lost(), 0);
+        assert_eq!(stages(&p), [Stage::Fine]);
+        // An hour of one person's breathing came out of the lockers' oxygen.
+        let breathed = 30.0 - locker(&p, "LqdOxygen");
+        assert!((breathed - 0.84 / 24.0).abs() < 1e-9, "{breathed} kg");
+
+        assert!(p.systems.act(part, FILL).is_some());
+        run(&mut p, 120.0, f64::INFINITY);
+        let now = cabin_of(&p).pressure();
+        assert!((now - p0).abs() < 1e-6 * p0, "{now} Pa");
+        assert!(p.systems.act(part, SUITS_OFF).is_some());
+        run(&mut p, 3_600.0, f64::INFINITY);
+        assert_eq!(stages(&p), [Stage::Fine]);
+
+        let mut q = fresh.clone();
+        q.systems.act(part, LET_DOWN);
+        let log = run(&mut q, 600.0, f64::INFINITY);
+        assert_eq!(q.systems.crew_lost(), 1);
+        assert!(log.died[0].1 < 300.0, "died at {}", log.died[0].1);
     }
 }

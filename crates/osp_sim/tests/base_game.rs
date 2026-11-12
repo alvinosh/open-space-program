@@ -340,14 +340,21 @@ fn life_support_comes_from_the_rules_of_the_mods_on() {
     assert_eq!(
         what,
         [
-            ("LqdOxygen", 0.84, Some(300.0)),
+            ("CabinOxygen", 0.84, Some(300.0)),
             ("Water", 3.0, Some(3.0 * 86_400.0)),
             ("Food", 0.6, Some(30.0 * 86_400.0))
         ]
     );
-    for need in needs {
-        let known = realistic.resources.iter().any(|r| r.id == need.resource);
-        assert!(known, "{} is not a resource", need.resource);
+    // People breathe the cabin's air, which is topped up from liquid oxygen and nitrogen, and
+    // every gas in it and what tops it up is a resource.
+    let profile = (realistic.life_support_profile().unwrap()).unwrap();
+    assert_eq!(profile.supply_of("CabinOxygen"), "LqdOxygen");
+    let air = profile.air.as_ref().expect("Realistic cabins have air");
+    let gases = (air.gases.iter()).flat_map(|gas| [Some(&gas.resource), gas.from.as_ref()]);
+    let named = needs.iter().map(|need| Some(&need.resource));
+    for resource in gases.chain(named).flatten() {
+        let known = realistic.resources.iter().any(|r| r.id == *resource);
+        assert!(known, "{resource} is not a resource");
     }
 }
 

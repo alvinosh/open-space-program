@@ -507,6 +507,64 @@ pub fn neighbour_widths(craft: &Craft, part: usize) -> Vec<(f64, String)> {
     out
 }
 
+/// The biggest a player may make a part's sizes, m: a career's, from its tech tree
+/// ([`crate::builder::Allowed`]). Widths (a diameter, a cone's top or bottom) are held to
+/// `diameter` and a length to `length`; a wing's span and chords and a box's sides to nothing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Limits {
+    pub diameter: f64,
+    pub length: f64,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self::NONE
+    }
+}
+
+impl Limits {
+    /// No limit: a sandbox.
+    pub const NONE: Self = Self {
+        diameter: f64::INFINITY,
+        length: f64::INFINITY,
+    };
+
+    /// The most `size` may be made.
+    pub fn of(&self, size: &Size) -> f64 {
+        match size {
+            s if s.width => self.diameter,
+            s if s.name == "length" => self.length,
+            _ => f64::INFINITY,
+        }
+    }
+
+    /// `sizes` with no more than the limits as their most; one past them already may stay as it
+    /// is, not grow.
+    pub fn cap(&self, sizes: &mut [Size]) {
+        for size in sizes {
+            let limit = self.of(size).max(size.value).max(size.least);
+            size.most = size.most.min(limit);
+        }
+    }
+
+    /// The sizes of `part` past their limits, each with its limit.
+    pub fn over(&self, part: &CraftPartDef) -> Vec<(Size, f64)> {
+        (part_sizes(part).into_iter())
+            .filter_map(|size| {
+                let limit = self.of(&size);
+                (size.value > limit * (1.0 + 1e-9)).then_some((size, limit))
+            })
+            .collect()
+    }
+
+    /// Bring every size of `part` past its limit back to it.
+    pub fn shrink(&self, part: &mut CraftPartDef) {
+        for (size, limit) in self.over(part) {
+            let _ = resize(part, size.name, limit);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -708,6 +766,43 @@ mod tests {
         let mut engine = part.clone();
         engine.template = Some("Some engine".into());
         assert!(part_sizes(&engine).is_empty() && part_grips(&engine).is_empty());
+    }
+
+    /// A career's limits hold widths and lengths, not a box's sides, and let a part already past
+    /// them stay but not grow.
+    #[test]
+    fn limits_hold_widths_and_lengths_and_bring_a_part_back_within_them() {
+        let limits = Limits {
+            diameter: 5.0,
+            length: 30.0,
+        };
+        let mut part = tank();
+        assert!(limits.over(&part).is_empty());
+        let most = |part: &CraftPartDef, limits: &Limits, name: &str| {
+            let mut sizes = part_sizes(part);
+            limits.cap(&mut sizes);
+            sizes.iter().find(|s| s.name == name).unwrap().most
+        };
+        assert_eq!(most(&part, &limits, "length"), 30.0);
+        assert_eq!(most(&part, &limits, "diameter"), 5.0);
+        // 4 m already, with 3 m allowed: it may stay 4 m, not grow.
+        let narrow = Limits {
+            diameter: 3.0,
+            ..limits
+        };
+        assert_eq!(most(&part, &narrow, "diameter"), 4.0);
+        resize(&mut part, "diameter", 6.0).unwrap();
+        let over = limits.over(&part);
+        assert_eq!(over.len(), 1);
+        assert_eq!((over[0].0.name, over[0].1), ("diameter", 5.0));
+        limits.shrink(&mut part);
+        assert!(limits.over(&part).is_empty());
+        assert!((value(part.shape.as_ref().unwrap(), "diameter") - 5.0).abs() < 1e-9);
+        // A box's sides are not held.
+        let mut cuboid = tank();
+        cuboid.shape = Some(shape("{ box: { size: [9, 9, 50] } }"));
+        assert!(limits.over(&cuboid).is_empty());
+        assert!(Limits::NONE.over(&part).is_empty());
     }
 
     #[test]

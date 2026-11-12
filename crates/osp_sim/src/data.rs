@@ -68,6 +68,95 @@ pub struct BodyDef {
     /// and radiates back as heat.
     #[serde(default)]
     pub albedo: f64,
+    /// The radiation around it, which only rules with `radiation` count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radiation: Option<BodyRadiationDef>,
+    /// Where its science situations change ([`crate::science::Situation`]).
+    #[serde(default)]
+    pub science: BodyScienceDef,
+}
+
+/// Where an experiment's situation changes over a body, m above its sea level. A size it does not
+/// give is worked out ([`crate::body::Body::flying_high`], [`crate::body::Body::space_high`]).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BodyScienceDef {
+    /// Flying above this is flying high.
+    #[serde(default)]
+    pub flying_high: Option<f64>,
+    /// In space above this is in space high.
+    #[serde(default)]
+    pub space_high: Option<f64>,
+}
+
+/// The radiation a body brings. Rates are what an unshielded person takes, mSv/h.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BodyRadiationDef {
+    /// Galactic cosmic rays all through the system whose root it is (the Sun's), mSv/h.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub cosmic: f64,
+    /// The share of cosmic rays its magnetic field keeps out at its surface, less with the square
+    /// of the distance further out.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub magnetosphere: f64,
+    /// Particles its field holds, along the field lines of a dipole on its spin axis.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub belts: Vec<BeltDef>,
+    /// Below this height (in its radii) the air takes the belts' particles, and from it to twice as
+    /// high they come back in full.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub floor: f64,
+    /// From its ground, on the surface, mSv/h; less as it fills less of the sky.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub surface: f64,
+}
+
+/// A belt of trapped particles: on the field lines that cross the magnetic equator `inner` to
+/// `outer` body radii out, most at `peak`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BeltDef {
+    pub name: String,
+    pub inner: f64,
+    pub peak: f64,
+    pub outer: f64,
+    /// At its peak on the magnetic equator, mSv/h.
+    pub rate: f64,
+    /// The magnetic latitude, degrees, at which it is down to 1/e of that.
+    #[serde(default = "default_belt_latitude")]
+    pub latitude: f64,
+}
+
+fn default_belt_latitude() -> f64 {
+    30.0
+}
+
+/// What radiation does (collection `radiation`): how much shielding stops each kind, and the dose
+/// at which people sicken. The rules name the one a game uses ([`RulesDef::radiation`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RadiationProfileDef {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    /// The shielding, kg/m², that cuts each kind to 1/e: cosmic rays go through a great deal, the
+    /// belts' particles very little.
+    pub shielding: RadiationKindsDef,
+    /// The dose, Sv, at which a person is sick, weak, critical, and dies, before their resilience.
+    pub sick: f64,
+    pub weak: f64,
+    pub critical: f64,
+    pub dies: f64,
+}
+
+/// A figure for each kind of radiation.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RadiationKindsDef {
+    pub cosmic: f64,
+    pub trapped: f64,
+    pub surface: f64,
 }
 
 /// IAU/WGCCRE rotation model, referenced to the ICRF (J2000 equator and equinox).
@@ -113,6 +202,10 @@ pub struct RulesDef {
     /// The record of `life_support` that people aboard parts with life support live by: what each
     /// needs and how long they last without it. None: nobody needs anything.
     pub life_support: Option<String>,
+    /// The record of `radiation` people take dose by. None: radiation does nothing.
+    pub radiation: Option<String>,
+    /// The record of `tech_trees` a science game unlocks parts on.
+    pub tech_tree: Option<String>,
 }
 
 impl Default for RulesDef {
@@ -121,6 +214,8 @@ impl Default for RulesDef {
             id: "game".to_owned(),
             avionics: true,
             life_support: Some("realistic".to_owned()),
+            radiation: Some("realistic".to_owned()),
+            tech_tree: Some("rp1".to_owned()),
         }
     }
 }
@@ -134,10 +229,12 @@ pub struct LifeSupportProfileDef {
     #[serde(default)]
     pub name: String,
     pub needs: Vec<NeedDef>,
-    /// What a cabin's air can take of each thing breathed out before it kills, kg per m³ of cabin:
-    /// with it full, people cannot breathe out, and go short of air.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub cabin: BTreeMap<String, f64>,
+    /// What a cabin's air is made of and kept at. Without it a cabin has no air of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub air: Option<AirDef>,
+    /// What the air has to be for people to be well; out of it, they go short as of a need.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub limits: Vec<AirLimitDef>,
     /// Cabin per seat, m³, where a part does not say.
     #[serde(default = "default_room_per_seat")]
     pub room_per_seat: f64,
@@ -151,6 +248,137 @@ pub struct LifeSupportProfileDef {
 
 fn default_room_per_seat() -> f64 {
     2.0
+}
+
+impl LifeSupportProfileDef {
+    /// What a need for `resource` is met from in the lockers and tanks: a gas of the cabin's air
+    /// comes from what its regulator tops it up with.
+    pub fn supply_of<'a>(&'a self, resource: &'a str) -> &'a str {
+        (self.air.iter().flat_map(|air| &air.gases))
+            .find(|gas| gas.resource == resource)
+            .and_then(|gas| gas.from.as_deref())
+            .unwrap_or(resource)
+    }
+
+    /// Whether `resource` is a gas of the cabin's air.
+    pub fn is_air(&self, resource: &str) -> bool {
+        (self.air.iter().flat_map(|air| &air.gases)).any(|gas| gas.resource == resource)
+    }
+}
+
+/// A cabin's air: the gases in it, each a resource only cabins keep, at partial pressures from what
+/// there is of each in the cabin's volume.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AirDef {
+    /// K, until cabins have a temperature of their own.
+    #[serde(default = "default_cabin_temperature")]
+    pub temperature: f64,
+    pub gases: Vec<GasDef>,
+    /// How long the regulator takes to fill an empty cabin, s: it tops each gas up at its `keep`
+    /// over this long, and gives no more than that against a leak.
+    #[serde(default = "default_refill")]
+    pub refill: f64,
+    /// The valve a cabin is let down through, m².
+    #[serde(default = "default_vent")]
+    pub vent: f64,
+}
+
+fn default_cabin_temperature() -> f64 {
+    294.0
+}
+
+fn default_refill() -> f64 {
+    60.0
+}
+
+fn default_vent() -> f64 {
+    1e-3
+}
+
+/// One gas of a cabin's air.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GasDef {
+    /// Its resource, kept nowhere but in cabins.
+    pub resource: String,
+    /// What people call it; the resource's id if left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// kg/mol.
+    pub molar_mass: f64,
+    /// The partial pressure a cabin starts at and its regulator keeps it at, Pa, from `from`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub keep: f64,
+    /// What the regulator tops it up from; it is not topped up without it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    /// The most there can be of it, Pa: `keep` if left out. With it full no more goes in: of CO2,
+    /// people cannot breathe out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub most: Option<f64>,
+}
+
+impl GasDef {
+    /// What people call it.
+    pub fn called(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.resource)
+    }
+
+    /// The most there can be of it, Pa.
+    pub fn most(&self) -> f64 {
+        self.most.unwrap_or(self.keep)
+    }
+}
+
+/// A bound on a cabin's air for people to be well: a gas's partial pressure, or the whole pressure,
+/// kept at or above `least` and at or below `most`. Out of it, people go short of it as of a need,
+/// by stages, and die after `lasts`; back in it, they recover as fast.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AirLimitDef {
+    /// What people go short of: "air pressure", "clean air".
+    pub name: String,
+    /// The gas's resource; the whole pressure if left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gas: Option<String>,
+    /// Pa.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub least: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub most: Option<f64>,
+    /// s, before each person's resilience.
+    pub lasts: f64,
+    #[serde(default = "default_weak")]
+    pub weak: f64,
+    #[serde(default = "default_critical")]
+    pub critical: f64,
+}
+
+impl AirLimitDef {
+    /// It as a need people go short of, which the crew's stages count like any other.
+    pub fn need(&self) -> NeedDef {
+        NeedDef {
+            resource: self.name.clone(),
+            name: Some(self.name.clone()),
+            daily: 0.0,
+            lasts: Some(self.lasts),
+            makes: BTreeMap::new(),
+            weak: self.weak,
+            critical: self.critical,
+        }
+    }
+
+    /// Whether air at `pressure` (Pa), whose gases are at `partial` (resource, Pa), is out of it.
+    pub fn broken_by(&self, pressure: f64, partial: &[(String, f64)]) -> bool {
+        let value = match &self.gas {
+            None => pressure,
+            Some(gas) => (partial.iter())
+                .find(|(resource, _)| resource == gas)
+                .map_or(0.0, |(_, p)| *p),
+        };
+        self.least.is_some_and(|least| value < least) || self.most.is_some_and(|most| value > most)
+    }
 }
 
 /// A process every cabin has: `process`, at a scale of `per_seat` for each of its seats.
@@ -283,6 +511,9 @@ pub struct PartCatalog {
     /// What people can be given to live on; the rules pick one.
     #[serde(default)]
     pub life_support: Vec<LifeSupportProfileDef>,
+    /// What radiation can do; the rules pick one.
+    #[serde(default)]
+    pub radiation: Vec<RadiationProfileDef>,
     /// What `process` components can run.
     #[serde(default)]
     pub processes: Vec<ProcessDef>,
@@ -292,6 +523,106 @@ pub struct PartCatalog {
     /// Engines that are configurations of one engine, which the parts list shows as one part.
     #[serde(default)]
     pub engine_families: Vec<EngineFamilyDef>,
+    /// What scientific instruments can do.
+    #[serde(default)]
+    pub experiments: Vec<ExperimentDef>,
+    /// The parts that carry them.
+    #[serde(default)]
+    pub instruments: Vec<InstrumentDef>,
+}
+
+/// An experiment (collection `experiments`): what an instrument collects, over how long, and where
+/// it works. A whole set is collected once in each place ([`crate::science::subject`]): its body
+/// and situation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExperimentDef {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// Seconds it takes to collect a whole set in one place, running all the time.
+    pub duration: f64,
+    /// Bytes a whole set comes to, for a measurement.
+    #[serde(default)]
+    pub size: f64,
+    /// kg a whole set weighs, for a physical sample (soil, film) that has to come home: then it
+    /// has no `size`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample: Option<f64>,
+    /// W while it runs.
+    #[serde(default)]
+    pub power: f64,
+    /// Science a whole set is worth, before where it was done counts.
+    #[serde(default)]
+    pub value: f64,
+    /// Where it works.
+    pub situations: Vec<crate::science::Situation>,
+    /// Only over these bodies; over any if none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bodies: Vec<String>,
+    /// Only in sunlight.
+    #[serde(default)]
+    pub sunlight: bool,
+    #[serde(flatten)]
+    pub catalog: CatalogInfo,
+}
+
+impl ExperimentDef {
+    /// What is wrong with it as a record, if anything.
+    pub fn problem(&self) -> Option<String> {
+        let id = &self.id;
+        if !(self.duration > 0.0 && self.duration.is_finite()) {
+            return Some(format!("experiment `{id}` takes some time"));
+        }
+        let nothing = |v: f64| v.is_nan() || v <= 0.0;
+        match self.sample {
+            Some(kg) if nothing(kg) => Some(format!(
+                "experiment `{id}` collects a sample that weighs something"
+            )),
+            None if nothing(self.size) => Some(format!("experiment `{id}` makes some data")),
+            _ if self.situations.is_empty() => Some(format!("experiment `{id}` works somewhere")),
+            _ if self.power < 0.0 || self.value < 0.0 => {
+                Some(format!("experiment `{id}` has no negative power or value"))
+            }
+            _ => None,
+        }
+    }
+
+    /// What the player reads.
+    pub fn title(&self) -> &str {
+        if self.name.is_empty() {
+            &self.id
+        } else {
+            &self.name
+        }
+    }
+}
+
+/// A scientific instrument (collection `instruments`): a part that carries experiments, put on a
+/// craft's side like an antenna.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InstrumentDef {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// The `experiments` it runs.
+    pub experiments: Vec<String>,
+    /// kg.
+    pub mass: f64,
+    /// Its box, m: across, deep, and out from what it is on.
+    pub size: [f64; 3],
+    /// Linear RGB.
+    #[serde(default = "instrument_color")]
+    pub color: [f64; 3],
+    #[serde(flatten)]
+    pub catalog: CatalogInfo,
+}
+
+fn instrument_color() -> [f64; 3] {
+    [0.75, 0.62, 0.3]
 }
 
 impl PartCatalog {
@@ -353,6 +684,18 @@ impl PartCatalog {
             .ok_or_else(|| {
                 format!("the rules' life support `{id}` has no record in `life_support`")
             })
+    }
+
+    /// What radiation does under the rules: nothing if they name no record, an error if they name
+    /// one nobody wrote.
+    pub fn radiation_profile(&self) -> Result<Option<&RadiationProfileDef>, String> {
+        let Some(id) = &self.rules.radiation else {
+            return Ok(None);
+        };
+        (self.radiation.iter())
+            .find(|profile| profile.id == *id)
+            .map(Some)
+            .ok_or_else(|| format!("the rules' radiation `{id}` has no record in `radiation`"))
     }
 
     /// What people aboard a part with life support need, under the rules.
@@ -804,7 +1147,7 @@ pub struct ReliabilityDef {
 
 /// What every catalogue record can say about itself besides its physics: names, the year
 /// it first flew and the tech tree node that unlocks it.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CatalogInfo {
     pub title: Option<String>,
@@ -1464,6 +1807,10 @@ fn one() -> f64 {
     1.0
 }
 
+fn is_zero(value: &f64) -> bool {
+    *value == 0.0
+}
+
 fn default_slope() -> f64 {
     0.4
 }
@@ -1522,6 +1869,55 @@ pub struct TechNodeDef {
     /// Where it is drawn in the tree, in the source tree's layout units.
     #[serde(default)]
     pub position: Option<[f64; 2]>,
+    /// Parts-list entries it unlocks besides the records whose `tech` names it: the procedural
+    /// parts, and parts whose records say nothing of a tree (`tank`, `pod:C-1 Capsule`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<String>,
+    /// How big it lets procedural parts be made, as Procedural Parts' tech limits: a career may
+    /// build to the biggest of the nodes it has unlocked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sizes: Option<SizeLimitsDef>,
+}
+
+/// The biggest a node lets procedural parts be made (tanks, structural tubes, nose cones), m. A
+/// size it does not give is left to the other nodes.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SizeLimitsDef {
+    /// The widest across: a diameter, a cone's top or bottom.
+    #[serde(default)]
+    pub diameter: Option<f64>,
+    /// The longest.
+    #[serde(default)]
+    pub length: Option<f64>,
+}
+
+/// A tech tree a game can be played on (collection `tech_trees`): the `tech_nodes` reached from its
+/// roots. The rules name the one a game uses ([`RulesDef::tech_tree`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TechTreeDef {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// The nodes a science game starts with.
+    pub roots: Vec<String>,
+    /// How it is drawn.
+    #[serde(default)]
+    pub layout: TreeLayout,
+}
+
+/// How a tech tree is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TreeLayout {
+    /// Where each node's `position` says: [column, row].
+    #[default]
+    Positions,
+    /// A column for each year, oldest on the left, and a band of rows for each `category`.
+    Years,
 }
 
 /// A battery technology (collection `batteries`).

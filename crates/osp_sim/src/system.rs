@@ -140,6 +140,8 @@ impl SolarSystem {
                 soi,
                 color: body_def.color,
                 albedo: body_def.albedo,
+                radiation: body_def.radiation.clone(),
+                science: body_def.science,
             });
         }
         let roots = bodies.iter().filter(|b| b.parent.is_none()).count();

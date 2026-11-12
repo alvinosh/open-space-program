@@ -29,6 +29,7 @@ use crate::{
     editing::{EditorStatus, LastLaunch},
     saves::{SaveEntry, Saves, ago, now},
     sim::{DEFAULT_SCENARIO, Sim, SimRestarted, TimeWarp},
+    tree_screen::TreeScreen,
     ui_data::format_date,
 };
 
@@ -50,6 +51,7 @@ impl Plugin for MenuPlugin {
             playing: !open,
             stack: Vec::new(),
             new_game: false,
+            career: false,
             notice: String::new(),
         })
         .add_systems(
@@ -85,6 +87,9 @@ pub struct Menu {
     /// New game was picked: the next launch from the editor starts it, in place of the game in
     /// progress.
     pub new_game: bool,
+    /// A new game will be a career, which unlocks parts with science, not a sandbox with all of
+    /// them.
+    pub career: bool,
     /// What just went wrong, for the screen showing.
     pub notice: String,
 }
@@ -247,7 +252,7 @@ fn save_list(saves: &Saves, mode_of: &ModeOf) -> Vec<UiRecord> {
         .collect()
 }
 
-/// `menu.screen`, `menu.playing`, `menu.new_game`, `menu.tutorials`, `menu.vessels`,
+/// `menu.screen`, `menu.playing`, `menu.new_game`, `menu.career`, `menu.tutorials`, `menu.vessels`,
 /// `menu.vessel_line`, `menu.saves`, `menu.has_saves`, `menu.can_continue`, `menu.continue_line`,
 /// `menu.save_name`, `menu.next_save`, `menu.game_line`, `menu.notice`, `menu.can_revert` and
 /// `menu.revert_line`. See
@@ -283,6 +288,7 @@ fn publish_menu(
         data.set("menu.screen", menu.screen());
         data.set("menu.playing", menu.playing);
         data.set("menu.new_game", menu.new_game);
+        data.set("menu.career", menu.career);
         let vessels = vessel_list(&sim, &menu);
         let line = match vessels.len() {
             1 => "1 vessel".to_owned(),
@@ -376,7 +382,7 @@ pub fn menu_actions(
     mut saves: ResMut<Saves>,
     mut last_launch: ResMut<LastLaunch>,
     editor: Res<EditorStatus>,
-    dialog: Res<Dialog>,
+    (dialog, tree): (Res<Dialog>, Res<TreeScreen>),
     mut restarted: MessageWriter<SimRestarted>,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -384,6 +390,8 @@ pub fn menu_actions(
         match action.name() {
             // Esc and Back close the question being asked, and nothing more.
             "game.menu" | "menu.back" if dialog.is_open() => {}
+            // The tech tree over the menu closes first (`tree_screen`).
+            "game.menu" | "menu.back" if tree.is_open() => {}
             // The editor sees to Esc and Back while it is open.
             "game.menu" | "menu.back" if editor.is_open() => {}
             // Esc closes what is open over the view before it opens the menu.
@@ -418,6 +426,12 @@ pub fn menu_actions(
                 }
                 menu.push(screen);
             }
+            // What a new game will be.
+            "game.kind" => match action.arg() {
+                Some("career") => menu.career = true,
+                Some("sandbox") => menu.career = false,
+                _ => {}
+            },
             // The editor opens on it too.
             "game.new" if !editor.is_open() => {
                 saves.notice.clear();
@@ -481,6 +495,7 @@ mod tests {
             playing,
             stack: Vec::new(),
             new_game: false,
+            career: false,
             notice: String::new(),
         }
     }

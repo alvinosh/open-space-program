@@ -1,0 +1,49 @@
+// Scientific instruments (osp_sim::palette, group Science): parts that carry `experiments`, put on
+// a craft's side like an antenna. `mass` in kg; `size` the box, m: across, deep, and out from what
+// it is on.
+[
+  {
+    id: "thermometer",
+    name: "Thermometer",
+    description: "Reads the temperature wherever it goes. The first thing a sounding rocket carries.",
+    experiments: ["temperature"],
+    mass: 1,
+    size: [0.06, 0.05, 0.14],
+  },
+  {
+    id: "barometer",
+    name: "Barometer",
+    description: "Reads the air pressure, down to the near nothing of space.",
+    experiments: ["pressure"],
+    mass: 1,
+    size: [0.09, 0.06, 0.09],
+    color: [0.55, 0.6, 0.66],
+  },
+  {
+    id: "magnetometer",
+    name: "Magnetometer",
+    description: "Maps magnetic fields from orbit or on the ground. Needs power for its ten minutes.",
+    experiments: ["magnetic_field"],
+    mass: 3,
+    size: [0.07, 0.07, 0.35],
+    color: [0.3, 0.32, 0.36],
+  },
+  {
+    id: "camera",
+    name: "Camera",
+    description: "Photographs the ground from high in the air or low orbit, in daylight.",
+    experiments: ["photography"],
+    mass: 5,
+    size: [0.16, 0.16, 0.2],
+    color: [0.18, 0.18, 0.2],
+  },
+  {
+    id: "surface_sampler",
+    name: "Surface sampler",
+    description: "Scoops up the ground under a landed craft and keeps it for the trip home.",
+    experiments: ["surface_sample"],
+    mass: 8,
+    size: [0.16, 0.22, 0.26],
+    color: [0.7, 0.7, 0.68],
+  },
+]

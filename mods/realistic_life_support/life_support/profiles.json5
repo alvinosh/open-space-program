@@ -4,8 +4,19 @@
 // declined once they have it again. `name` is what people call it; `makes`, what each person makes of
 // it a day.
 //
-// A cabin's air takes what is breathed out until it is too foul to breathe: 0.15 kg of CO2 a cubic
-// metre is about 8 % at sea-level pressure. `room_per_seat` is the cabin where a part does not say.
+// People breathe the cabin's air: oxygen and nitrogen at sea-level pressure, which a regulator keeps
+// there from the tanks (`keep`, Pa, from `from`), filling an empty cabin in `refill` seconds. What
+// they breathe out stays in it, up to `most` (8 kPa of CO2): past that they cannot breathe out, and
+// go short of air. A cabin starts full; it is let down through its valve (`vent`, m²) and leaks
+// through any hole, both to vacuum. Its air is at `temperature` (K). `room_per_seat` is the cabin
+// where a part does not say.
+//
+// `limits` are what the air has to be for people to be well: a gas's partial pressure (`gas`), or
+// the whole pressure, at or above `least` and at or below `most` (Pa). Out of one, people go short
+// of it like any need and die after `lasts`, unless their suits are on. Below 6.3 kPa body fluids
+// boil (the Armstrong limit); below 10 kPa of oxygen people pass out within the hour; over 2 kPa of
+// CO2 they sicken within hours, and die in half a day.
+//
 // Every cabin is fitted with a LiOH scrubber a seat, and carries the LiOH for the days it carries
 // supplies for. Waste water and waste go overboard when there is nowhere to keep them.
 [
@@ -13,11 +24,25 @@
     id: "realistic",
     name: "Realistic",
     needs: [
-      { resource: "LqdOxygen", name: "air", daily: 0.84, lasts: 300, makes: { CO2: 1.0 } },
+      { resource: "CabinOxygen", name: "air", daily: 0.84, lasts: 300, makes: { CO2: 1.0 } },
       { resource: "Water", name: "water", daily: 3.0, lasts: 259200, makes: { WasteWater: 2.5 } }, // 3 days
       { resource: "Food", name: "food", daily: 0.6, lasts: 2592000, makes: { Waste: 0.1 } }, // 30 days
     ],
-    cabin: { CO2: 0.15 },
+    air: {
+      temperature: 294,
+      gases: [
+        { resource: "CabinOxygen", name: "oxygen", molar_mass: 0.032, keep: 21000, from: "LqdOxygen" },
+        { resource: "CabinNitrogen", name: "nitrogen", molar_mass: 0.028, keep: 80000, from: "Nitrogen" },
+        { resource: "CO2", molar_mass: 0.044, most: 8000 },
+      ],
+      refill: 60,
+      vent: 0.001,
+    },
+    limits: [
+      { name: "air pressure", least: 6300, lasts: 90 },
+      { name: "oxygen", gas: "CabinOxygen", least: 10000, lasts: 3600 },
+      { name: "clean air", gas: "CO2", most: 2000, lasts: 43200 },
+    ],
     room_per_seat: 2.0,
     fitted: [{ process: "lioh_scrubber", per_seat: 1 }],
     dump: ["WasteWater", "Waste"],
