@@ -1,0 +1,23 @@
+{
+  "id": "T313",
+  "title": "Upgrades on the space centre buildings, shown in the view",
+  "kind": "feature",
+  "status": "todo",
+  "area": "ui",
+  "size": "M",
+  "parent": "T310",
+  "depends_on": [
+    "T311",
+    "T312"
+  ],
+  "refs": [
+    "osp_game::career (facilities)",
+    "assets/core/facilities/stock.json5",
+    "assets/core/layouts/editor.json5 (career.facilities in the panel)"
+  ],
+  "created": "2026-11-13",
+  "updated": "2026-11-13",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2446
+}

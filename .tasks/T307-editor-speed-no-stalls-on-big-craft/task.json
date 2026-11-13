@@ -1,0 +1,20 @@
+{
+  "id": "T307",
+  "title": "Editor speed: no stalls while building, even on big craft",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/building.rs (place_parts, previews built on a thread)",
+    "crates/osp_editor/src/hangar.rs (rebuilding what is shown)",
+    "crates/osp_editor/src/shaping.rs (rebuilds while dragging a handle)"
+  ],
+  "created": "2026-11-13",
+  "updated": "2026-11-13",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.24375
+}

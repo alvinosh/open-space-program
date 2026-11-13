@@ -1,0 +1,20 @@
+{
+  "id": "T310",
+  "title": "Space centre: a view of the Cape, with buildings for missions, the tech tree, rockets and planes",
+  "kind": "epic",
+  "status": "todo",
+  "area": "menu",
+  "size": null,
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "assets/core/layouts/editor.json5 (tree.open, ui.toggle:contracts, the facilities in the panel)",
+    "osp_game::tree_screen, osp_game::career (contracts, facilities)",
+    "assets/core/launch_sites/stock.json5 (cape_canaveral, cape_slf)",
+    "T294, T295, T290, T185"
+  ],
+  "created": "2026-11-13",
+  "updated": "2026-11-13",
+  "done": null,
+  "milestone": "M3"
+}

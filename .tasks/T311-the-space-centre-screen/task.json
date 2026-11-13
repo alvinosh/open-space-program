@@ -1,0 +1,20 @@
+{
+  "id": "T311",
+  "title": "The space centre screen: the Cape in 3D, buildings to go into",
+  "kind": "feature",
+  "status": "todo",
+  "area": "ui",
+  "size": "L",
+  "parent": "T310",
+  "depends_on": [],
+  "refs": [
+    "assets/core/launch_sites/stock.json5",
+    "osp_editor::hangar (new rocket, new plane)",
+    "osp_game menu flow (game.new, load)"
+  ],
+  "created": "2026-11-13",
+  "updated": "2026-11-13",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2444
+}
