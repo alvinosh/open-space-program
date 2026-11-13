@@ -5,6 +5,11 @@
 //! bandwidth of the data. The margin is how far it is over what a link needs. A link is there if
 //! it has a margin and no body lies across the line. A vessel out of reach of the ground can go
 //! through a vessel with a relay antenna that has a link of its own, by as many hops as it takes.
+//!
+//! A link carries data at its radio's rate while it has [`FULL_RATE_MARGIN`] to spare, and slower
+//! as the margin falls below that, down to a tenth at its edge ([`rate`]): so further away, slower.
+//! Through relays the slowest hop sets it, and vessels sending through one relay share what it
+//! passes on ([`shared_rates`]).
 
 use std::f64::consts::PI;
 
@@ -24,6 +29,9 @@ pub const S_BAND: f64 = 2.2e9;
 const DISH_EFFICIENCY: f64 = 0.55;
 /// Signal over noise per bit a link needs, as a share: about 10 dB.
 const NEEDED_PER_BIT: f64 = 10.0;
+/// The margin a link sends at its radio's full rate with, dB: below it, the radio codes its data
+/// more heavily to keep it whole, and sends that much slower.
+pub const FULL_RATE_MARGIN: f64 = 10.0;
 
 /// A dish's gain at `frequency`, over an antenna that sends all ways alike, as a share.
 pub fn dish_gain(diameter: f64, frequency: f64) -> f64 {
@@ -101,6 +109,55 @@ pub struct Link {
     /// How many relays it goes through.
     #[serde(default)]
     pub hops: u32,
+    /// What it carries, bit/s: its slowest hop's [`rate`], before what it shares with other vessels
+    /// going through the same relays.
+    #[serde(default)]
+    pub rate: f64,
+    /// The vessels it goes through, nearest first, by their place in the list it was worked out
+    /// from. Not saved: it is worked out again.
+    #[serde(skip)]
+    pub relays: Vec<usize>,
+}
+
+/// What `radio` sends at over a link `margin` dB over what it needs, bit/s: all of its rate with
+/// [`FULL_RATE_MARGIN`] to spare, less below that, a tenth at the link's edge, and nothing past it.
+pub fn rate(radio: &Radio, margin: f64) -> f64 {
+    if margin <= 0.0 {
+        return 0.0;
+    }
+    radio.data_rate * 10f64.powf((margin - FULL_RATE_MARGIN).min(0.0) / 10.0)
+}
+
+/// What each vessel with a link sends at, bit/s, when those `sending` all send at once: a relay
+/// passes on no more than its own link carries, shared alike among everyone whose data goes through
+/// it, its own included. `links` as [`spread_links`] works them out.
+pub fn shared_rates(links: &[Option<Link>], sending: &[bool]) -> Vec<f64> {
+    // How many send over each vessel's own link to the ground: itself, and those through it.
+    let mut users = vec![0usize; links.len()];
+    for (i, link) in links.iter().enumerate() {
+        let Some(link) = link.as_ref().filter(|_| sending[i]) else {
+            continue;
+        };
+        users[i] += 1;
+        for &relay in &link.relays {
+            users[relay] += 1;
+        }
+    }
+    (links.iter().enumerate())
+        .map(|(i, link)| {
+            let Some(link) = link.as_ref().filter(|_| sending[i]) else {
+                return 0.0;
+            };
+            let onward = |j: usize| {
+                links[j]
+                    .as_ref()
+                    .map_or(0.0, |l| l.rate / users[j].max(1) as f64)
+            };
+            (link.relays.iter())
+                .map(|&j| onward(j))
+                .fold(link.rate / users[i].max(1) as f64, f64::min)
+        })
+        .collect()
 }
 
 /// How far over what it needs a signal is at `distance`, dB: what `radio` sends to a receiver
@@ -136,6 +193,8 @@ pub fn best_link(
                 margin,
                 delay: distance / SPEED_OF_LIGHT,
                 hops: 0,
+                rate: rate(radio, margin),
+                relays: Vec::new(),
             })
         })
         .max_by(|a, b| a.margin.total_cmp(&b.margin))
@@ -190,7 +249,7 @@ pub fn spread_links(
             };
             let through = (vessels.iter().zip(&links).enumerate())
                 .filter(|(j, _)| *j != i)
-                .filter_map(|(_, (other, link))| {
+                .filter_map(|(j, (other, link))| {
                     let (link, relay) = (link.as_ref()?, other.relay.as_ref()?);
                     let (delay, margin) = relay_link(
                         system,
@@ -204,6 +263,10 @@ pub fn spread_links(
                         margin: margin.min(link.margin),
                         delay: delay + link.delay,
                         hops: link.hops + 1,
+                        rate: rate(radio, margin).min(link.rate),
+                        relays: std::iter::once(j)
+                            .chain(link.relays.iter().copied())
+                            .collect(),
                     })
                 })
                 .min_by(|a, b| a.delay.total_cmp(&b.delay));
@@ -408,6 +471,8 @@ mod tests {
             margin: 9.0,
             delay: 1.3,
             hops: 0,
+            rate: 1000.0,
+            relays: Vec::new(),
         }
     }
 
@@ -641,6 +706,51 @@ mod tests {
             assert!(launcher.commandable());
         }
 
+        /// Telemetry only sends: a sounding rocket with it flies whether it has a link or not, a
+        /// probe core cannot be told anything through it, and its data still goes home over it.
+        #[test]
+        fn telemetry_sends_data_but_carries_no_commands() {
+            let system = rss();
+            let t = SimTime::J2000;
+            let vessel = |probe: bool| -> Vessel {
+                let def: CraftDef = records(&format!(
+                    r#"{{ id: "x", name: "", parts: [{{ id: "bus",
+                        shape: {{ shell: {{ bottom_diameter: 1, sections: [{{ length: 1 }}],
+                            cap_bottom: true, cap_top: true }} }},
+                        structure: {{ mass: 100 }},
+                        components: [{{ container: {{}} }},
+                            {{ antenna: {{ power: 1, data_rate: 512, telemetry: true }} }},
+                            {{ avionics: {{ controlled_mass: 1000, needs_link: {probe} }} }}] }}] }}"#
+                ))
+                .remove(0);
+                let start = OrbitStartDef {
+                    body: "Earth".into(),
+                    periapsis_altitude: 35_629e3,
+                    apoapsis_altitude: 35_629e3,
+                    inclination: 0.0,
+                    longitude_of_ascending_node: 0.0,
+                    plane: None,
+                    argument_of_periapsis: 0.0,
+                    mean_anomaly: 0.0,
+                    spin: [0.0; 3],
+                };
+                let mut v = Vessel::in_orbit(&def, &catalog(), &system, &start, t).unwrap();
+                v.propulsion.require_control_under(&RulesDef::default());
+                v
+            };
+            let mut rocket = vessel(false);
+            assert!(rocket.commandable(), "no link, and nothing waits on one");
+            let antenna = rocket.propulsion.systems.all::<Antenna>().next().unwrap().1;
+            assert!(antenna.telemetry && !antenna.relay);
+            rocket.set_link(Some(ground()));
+            assert!(rocket.commandable());
+            let mut probe = vessel(true);
+            probe.set_link(Some(ground()));
+            assert!(!probe.commandable(), "telemetry hears nothing");
+            let now = probe.coasting().map_or(t, |_| t);
+            assert!(!probe.upload_burn(burn(now.add_seconds(100.0)), now));
+        }
+
         #[test]
         fn a_dish_that_is_no_relay_passes_nothing_on() {
             let mut universe = probe_and_dish(false);
@@ -722,6 +832,264 @@ mod tests {
             let now = u.time();
             assert!(u.vessels[0].upload_burn(burn(now.add_seconds(1000.0)), now));
             assert_eq!(u.vessels[0].plan.burns().len(), 1);
+        }
+    }
+
+    /// Data sent home: how fast, how a pass over a station sends what it does at any warp, and
+    /// relays shared.
+    mod sending {
+        use super::*;
+        use crate::{
+            career::Career,
+            data::{CraftDef, OrbitStartDef},
+            systems::Held,
+            test_data::records,
+            universe::Universe,
+            vessel::{Vessel, tests::catalog},
+        };
+
+        /// A probe with a 1 m dish of `data_rate` bit/s, an RTG to keep it on and a drive holding
+        /// `bytes` of one whole set of data worth [`WORTH`], `altitude` up over the Earth's equator, alone with the
+        /// ground `stations`, sending at the links' rates if `rates` says so, in a career.
+        fn probe(
+            altitude: f64,
+            data_rate: f64,
+            bytes: f64,
+            stations: &str,
+            rates: bool,
+        ) -> Universe {
+            let system = rss();
+            let t = SimTime::J2000;
+            let craft: CraftDef = records(&format!(
+                r#"{{ id: "probe", name: "Probe", parts: [{{ id: "bus",
+                    shape: {{ shell: {{ bottom_diameter: 1, sections: [{{ length: 1 }}],
+                        cap_bottom: true, cap_top: true }} }},
+                    structure: {{ mass: 100 }},
+                    components: [{{ container: {{}} }},
+                        {{ antenna: {{ diameter: 1, power: 20, data_rate: {data_rate} }} }},
+                        {{ rtg: {{ power: 500 }} }}, {{ drive: {{ data: 1e9 }} }}] }}] }}"#
+            ))
+            .remove(0);
+            let start = OrbitStartDef {
+                body: "Earth".into(),
+                periapsis_altitude: altitude,
+                apoapsis_altitude: altitude,
+                inclination: 0.0,
+                longitude_of_ascending_node: 0.0,
+                plane: None,
+                argument_of_periapsis: 0.0,
+                mean_anomaly: 0.0,
+                spin: [0.0; 3],
+            };
+            let mut vessel = Vessel::in_orbit(&craft, &catalog(), &system, &start, t).unwrap();
+            put(&mut vessel, bytes);
+            let mut universe = Universe::new(system, vec![vessel], t);
+            universe.focus = Some(universe.vessels[0].id());
+            universe.set_stations(&records::<GroundStationDef>(stations));
+            universe.data_rates = rates;
+            universe.career = Some(Career {
+                tree: "t".into(),
+                science: 0.0,
+                funds: 0.0,
+                facilities: Default::default(),
+                unlocked: Default::default(),
+                returned: Default::default(),
+            });
+            universe
+        }
+
+        /// Put a whole set of `bytes` of data worth [`WORTH`] on `vessel`'s drive.
+        fn put(vessel: &mut Vessel, bytes: f64) {
+            let systems = &mut vessel.propulsion.systems;
+            let (part, _) = systems.drives().next().unwrap();
+            let drive = systems.on_mut(part).iter_mut().find_map(|s| s.drive_mut());
+            let held = Held {
+                amount: bytes,
+                whole: bytes,
+                sample: false,
+                worth: WORTH,
+            };
+            assert_eq!(drive.unwrap().put("measure@Earth.space_low", held), 0.0);
+        }
+
+        /// What the probe's set of data is worth.
+        const WORTH: f64 = 10.0;
+
+        /// The ground stations as they are.
+        const STATIONS: &str = include_str!("../../../assets/core/ground_stations/stations.json5");
+        /// One dish on the equator.
+        const ONE_ON_THE_EQUATOR: &str =
+            r#"[{ id: "eq", body: "Earth", latitude: 0, longitude: 0, dish: 26, noise: 50 }]"#;
+
+        fn left(universe: &Universe) -> f64 {
+            universe.vessels[0].propulsion.systems.sendable()
+        }
+
+        fn returned(universe: &Universe) -> f64 {
+            let career = universe.career.as_ref().unwrap();
+            career.returned.values().sum()
+        }
+
+        /// On rails up to `seconds` from now, in jumps no longer than `longest`.
+        fn fly(universe: &mut Universe, seconds: f64, longest: f64) {
+            let end = universe.time().add_seconds(seconds);
+            while universe.time() < end {
+                let to = end.min(universe.time().add_seconds(longest));
+                universe.advance_rails(to);
+            }
+        }
+
+        #[test]
+        fn the_rate_falls_with_distance_past_the_margin_to_spare() {
+            let dsn = dish_gain(26.0, S_BAND);
+            let radio = apollo();
+            let near = margin(&radio, dsn, 50.0, 1e7);
+            assert!(near > FULL_RATE_MARGIN);
+            assert_eq!(rate(&radio, near), radio.data_rate);
+            let edge = reach(&radio, dsn, 50.0);
+            let at = |share: f64| rate(&radio, margin(&radio, dsn, 50.0, share * edge));
+            // Full rate nearer than a third of the way to the edge (10 dB to spare), then as the
+            // square of the distance, a tenth at the edge.
+            assert_eq!(at(0.3), radio.data_rate);
+            let ratio = at(0.9) / at(0.5);
+            assert!((ratio - (0.5f64 / 0.9).powi(2)).abs() < 1e-9, "{ratio}");
+            assert!((at(0.999_999) - 0.1 * radio.data_rate).abs() < 1.0);
+            assert_eq!(at(1.01), 0.0);
+        }
+
+        /// High over the Earth, always in sight of a station: 50 kB at the link's rate takes 50 kB
+        /// over the rate, and comes home a whole set.
+        #[test]
+        fn a_file_takes_its_size_over_the_rate() {
+            let mut universe = probe(35_629e3, 1000.0, 50e3, STATIONS, true);
+            let rate = universe.vessels[0].link().expect("in sight").rate;
+            assert_eq!(rate, 1000.0);
+            let takes = 50e3 * 8.0 / rate;
+            fly(&mut universe, takes / 2.0, 60.0);
+            assert!((left(&universe) - 25e3).abs() < 1.0, "{}", left(&universe));
+            assert!((returned(&universe) - 0.5).abs() < 1e-4);
+            fly(&mut universe, takes, 60.0);
+            assert_eq!(left(&universe), 0.0);
+            assert!((returned(&universe) - 1.0).abs() < 1e-9);
+        }
+
+        /// In a game that does not send at rates it all goes at once, as soon as there is a link.
+        #[test]
+        fn without_rates_it_all_goes_with_the_link() {
+            let mut universe = probe(35_629e3, 1000.0, 50e3, STATIONS, false);
+            universe.advance_rails(universe.time().add_seconds(1.0));
+            assert_eq!(left(&universe), 0.0);
+            assert!((returned(&universe) - 1.0).abs() < 1e-9);
+            // With no station, nothing.
+            let mut universe = probe(35_629e3, 1000.0, 50e3, "[]", false);
+            fly(&mut universe, 1000.0, 100.0);
+            assert_eq!(left(&universe), 50e3);
+        }
+
+        /// Low over the equator with one station on it, over two orbits: nothing goes while the
+        /// station is out of sight, it goes on where it left off on the next pass, and nothing is
+        /// lost. One long jump sends what jumps of ten seconds do.
+        #[test]
+        fn losing_the_link_pauses_a_file_and_nothing_is_lost_at_any_warp() {
+            let mut sent = Vec::new();
+            for longest in [1e9, 10.0] {
+                let mut universe = probe(400e3, 1000.0, 1e6, ONE_ON_THE_EQUATOR, true);
+                let period = universe.vessels[0].coasting().unwrap().period().unwrap();
+                let (mut linked, mut dark) = (0, 0);
+                let end = universe.time().add_seconds(2.0 * period);
+                while universe.time() < end {
+                    let before = left(&universe);
+                    let to = end.min(universe.time().add_seconds(longest));
+                    universe.advance_rails(to);
+                    if longest < 1e9 {
+                        // A jump that ends without a link and started without one sends nothing.
+                        if universe.vessels[0].link().is_none() && before == left(&universe) {
+                            dark += 1;
+                        } else {
+                            linked += 1;
+                        }
+                    }
+                }
+                let gone = 1e6 - left(&universe);
+                assert!(
+                    (returned(&universe) * 1e6 - gone).abs() < 1e-3,
+                    "nothing lost"
+                );
+                if longest < 1e9 {
+                    // Two passes of a few minutes each, in two orbits.
+                    assert!(dark > 4 * linked, "{dark} dark, {linked} linked");
+                    assert!(linked > 0);
+                }
+                sent.push(gone);
+            }
+            assert!(sent[0] > 10e3, "{sent:?}");
+            assert!((sent[0] - sent[1]).abs() < 0.01 * sent[1], "{sent:?}");
+        }
+
+        /// A measurement sent home from orbit earns what it is worth, the same again half that, and
+        /// the science unlocks a node whose engine the parts list then has.
+        #[test]
+        fn data_sent_home_earns_science_less_each_time_and_unlocks_the_tree() {
+            let catalog = catalog();
+            let tree = crate::career::tests::tree(&catalog);
+            let mut universe = probe(35_629e3, 1000.0, 50e3, STATIONS, false);
+            universe.career = Some(Career::new(&tree));
+            let science = |u: &Universe| u.career.as_ref().unwrap().science;
+            universe.advance_rails(universe.time().add_seconds(1.0));
+            assert!((science(&universe) - WORTH).abs() < 1e-9);
+            let said = universe.vessels[0].log.last().map(|e| e.message.clone());
+            assert_eq!(said.as_deref(), Some("Data sent home: 10.0 science"));
+
+            put(&mut universe.vessels[0], 50e3);
+            universe.advance_rails(universe.time().add_seconds(1.0));
+            assert!((science(&universe) - 1.5 * WORTH).abs() < 1e-9);
+
+            let career = universe.career.as_mut().unwrap();
+            assert!(!career.has_entry(&tree, "engine:A-10"));
+            career.unlock("rocketry", &tree).unwrap();
+            assert!(career.has_entry(&tree, "engine:A-10"));
+            assert!((career.science - 1.5 * WORTH + 5.0).abs() < 1e-9);
+        }
+
+        /// A relay passes on no more than its own link carries: two probes through it share that,
+        /// alike, and with the relay sending too it is a third each.
+        #[test]
+        fn two_probes_through_one_relay_share_its_rate() {
+            let link = |rate: f64, relays: Vec<usize>| {
+                Some(Link {
+                    rate,
+                    relays,
+                    ..ground()
+                })
+            };
+            let links = vec![
+                link(800.0, vec![2]),
+                link(800.0, vec![2]),
+                link(1000.0, vec![]),
+            ];
+            assert_eq!(
+                shared_rates(&links, &[true, true, false]),
+                [500.0, 500.0, 0.0]
+            );
+            assert_eq!(
+                shared_rates(&links, &[true, false, false]),
+                [800.0, 0.0, 0.0]
+            );
+            let third = 1000.0 / 3.0;
+            assert_eq!(
+                shared_rates(&links, &[true, true, true]),
+                [third, third, third]
+            );
+            // Through two relays the second one's share counts too.
+            let chain = vec![
+                link(800.0, vec![1, 2]),
+                link(900.0, vec![2]),
+                link(1000.0, vec![]),
+            ];
+            assert_eq!(
+                shared_rates(&chain, &[true, true, false]),
+                [450.0, 450.0, 0.0]
+            );
         }
     }
 }

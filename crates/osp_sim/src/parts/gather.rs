@@ -349,6 +349,7 @@ fn components(
             | Component::LifeSupport(_)
             | Component::Process(_)
             | Component::Experiment { .. }
+            | Component::Drive(_)
             | Component::FuelLine(_) => {}
             Component::Engine(engine) => kinds.push(PartKind::Engine(engine.clone())),
             Component::Rcs(block) => kinds.push(PartKind::Rcs(block.clone())),

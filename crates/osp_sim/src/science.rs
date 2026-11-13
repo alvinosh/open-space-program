@@ -3,6 +3,10 @@
 //! and the situation ([`subject`]). Over a body the situations are, by height: landed or splashed
 //! down, flying low and flying high in its air, and in space low and high above it
 //! ([`crate::body::Body::flying_high`], [`crate::body::Body::space_high`]).
+//!
+//! A whole set is worth its experiment's `value` times what its body's record gives its situation
+//! ([`crate::data::SituationValues`]). Brought home or sent, the first whole set of a subject earns
+//! all of that, the next half of it, then a quarter, and so on ([`earned`]): twice it in all.
 
 use serde::{Deserialize, Serialize};
 
@@ -89,6 +93,29 @@ pub struct Place {
     pub situation: Situation,
     /// In sunlight.
     pub sunlit: bool,
+    /// What a whole set done here is worth, times its experiment's `value`: the body's figure for
+    /// the situation.
+    #[serde(default = "one")]
+    pub value: f64,
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+/// What has come home of a subject: whole sets, and the science a whole set of it is worth.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Returned {
+    pub sets: f64,
+    pub worth: f64,
+}
+
+/// The science `sets` more whole sets of a subject worth `worth` earn, when `before` have come home
+/// already: all of `worth` for the first, half for the second, a quarter for the third, smoothly in
+/// between.
+pub fn earned(worth: f64, before: f64, sets: f64) -> f64 {
+    let left = |sets: f64| 0.5f64.powf(sets.max(0.0));
+    2.0 * worth * (left(before) - left(before + sets)).max(0.0)
 }
 
 impl Place {
@@ -122,6 +149,7 @@ mod tests {
             body: "Earth".into(),
             situation: Situation::FlyingHigh,
             sunlit: true,
+            value: 1.0,
         };
         let id = subject("temperature", &place);
         assert_eq!(id, "temperature@Earth.flying_high");
@@ -131,5 +159,20 @@ mod tests {
         );
         assert_eq!(place.describe(), "flying high over Earth");
         assert_eq!(parse_subject("nothing"), None);
+    }
+
+    /// The first whole set earns all it is worth, the second half, the third a quarter; and two
+    /// halves earn what one whole does.
+    #[test]
+    fn each_set_of_the_same_earns_half_the_one_before() {
+        assert!((earned(10.0, 0.0, 1.0) - 10.0).abs() < 1e-12);
+        assert!((earned(10.0, 1.0, 1.0) - 5.0).abs() < 1e-12);
+        assert!((earned(10.0, 2.0, 1.0) - 2.5).abs() < 1e-12);
+        let halves = earned(10.0, 0.0, 0.5) + earned(10.0, 0.5, 0.5);
+        assert!((halves - 10.0).abs() < 1e-12);
+        assert!(
+            (earned(10.0, 0.0, 100.0) - 20.0).abs() < 1e-9,
+            "twice it in all"
+        );
     }
 }

@@ -1,0 +1,33 @@
+// What a career launches and builds with, upgraded a level at a time with money (osp_sim::career).
+// Each level: `price` (funds to reach it; the first is what a career starts with), and the limits it
+// sets: `mass` (kg, the most a rocket may weigh leaving the pad), `height` and `width` (m, the
+// tallest and widest craft; a plane's length counts as its height), `parts`. A limit a level does
+// not give it does not set. A sandbox has none. The Realism mod sets the Realistic game's levels.
+//
+// The base game's, by its craft: the first pad takes a sounding rocket or a suborbital hop (the
+// Sounder, 27 t), the next a first orbit (the Talon and Titan, 140 to 160 t), then a crew to orbit
+// (the Pathfinder, 530 t), then the Moon (the Colossus, 2,550 t).
+[
+  {
+    id: "launch_pad",
+    name: "Launch pad",
+    description: "What it can launch: the heaviest rocket it takes leaving the pad.",
+    levels: [
+      { mass: 30000 },
+      { price: 60000, mass: 180000 },
+      { price: 250000, mass: 700000 },
+      { price: 900000, mass: 3000000 },
+    ],
+  },
+  {
+    id: "builder",
+    name: "Builder",
+    description: "What can be built in it: the tallest, the widest, and how many parts.",
+    levels: [
+      { height: 30, width: 6, parts: 40 },
+      { price: 40000, height: 50, width: 10, parts: 100 },
+      { price: 150000, height: 80, width: 16, parts: 250 },
+      { price: 600000, height: 130, width: 30 },
+    ],
+  },
+]

@@ -338,7 +338,8 @@ fn the_fingerprint_changes_with_the_game_and_only_with_it() {
     assert_ne!(save::fingerprint(&universe).unwrap(), restored);
 }
 
-/// A career keeps its science and what it has unlocked through a save, and a sandbox stays one.
+/// A career keeps its science, what has come home and what it has unlocked through a save, and a
+/// sandbox stays one.
 #[test]
 fn a_career_keeps_its_science_and_unlocks() {
     use osp_sim::{
@@ -360,6 +361,10 @@ fn a_career_keeps_its_science_and_unlocks() {
 
     let mut career = Career::new(&tree);
     career.science = 1234.5;
+    career.funds = 98_765.0;
+    career
+        .returned
+        .insert("temperature@Earth.landed".into(), 1.5);
     let next = tree.ready(&career.unlocked)[0].id.clone();
     career.unlock(&next, &tree).unwrap();
     universe.career = Some(career.clone());

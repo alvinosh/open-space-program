@@ -16,11 +16,14 @@
 //! never holds up time warp. Debris that needs physics when rails warp starts, or enters an
 //! atmosphere on rails, is left behind (removed), as Kerbal Space Program does.
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use serde::{Deserialize, Serialize};
 
-use crate::career::Career;
+use crate::career::{Career, CraftSize};
 use thiserror::Error;
 
 use crate::{
@@ -42,12 +45,13 @@ use crate::{
     orbit::{Orbit, StateVector},
     propulsion::Port,
     rendezvous::Target,
+    science::Returned,
     staging::{Activation, Sequences},
     system::{SolarSystem, SystemError},
     terrain::{self, HeightSource},
     time::{SimTime, Ticks},
     tutorial::Tutorial,
-    vessel::{Vessel, VesselError, VesselEvent, VesselEventKind, VesselId},
+    vessel::{Situation, Vessel, VesselError, VesselEvent, VesselEventKind, VesselId},
 };
 
 /// Fixed physics tick.
@@ -108,6 +112,52 @@ pub struct SimEvent {
 }
 
 /// Result of a rails advance.
+/// The longest span of a jump on rails that data is sent over at one rate, s.
+const SENDING_SPAN: f64 = 600.0;
+/// Spans an orbit is cut into for sending, at least: some 15 s in a low orbit, a few short of a
+/// pass over a station.
+const SPANS_PER_ORBIT: f64 = 360.0;
+
+/// What a vessel brought home ([`Universe::recover_vessel`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Recovered {
+    pub name: String,
+    /// Data on its drives, B.
+    pub data: f64,
+    /// Samples on its drives, kg.
+    pub samples: f64,
+    /// What it held of each subject.
+    pub sets: BTreeMap<String, Returned>,
+    /// What that earned, in a career.
+    pub science: f64,
+}
+
+impl Recovered {
+    /// What to tell the player.
+    pub fn notice(&self) -> String {
+        let brought = self.brought();
+        if self.science > 0.0 {
+            format!("{brought}: {:.1} science", self.science)
+        } else {
+            brought
+        }
+    }
+
+    fn brought(&self) -> String {
+        let name = &self.name;
+        match (self.data > 0.0, self.samples > 0.0) {
+            (false, false) => format!("Recovered {name}"),
+            (true, false) => format!("Recovered {name} with {:.1} kB of data", self.data / 1e3),
+            (false, true) => format!("Recovered {name} with {:.2} kg of samples", self.samples),
+            (true, true) => format!(
+                "Recovered {name} with {:.1} kB of data and {:.2} kg of samples",
+                self.data / 1e3,
+                self.samples
+            ),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct RailsOutcome {
     pub events: Vec<SimEvent>,
@@ -126,6 +176,10 @@ pub struct Universe {
     pub stations: Vec<Station>,
     /// Time warp stops where the focused vessel gains or loses its link.
     pub warp_stops_at_links: bool,
+    /// Data goes home at the rate each vessel's link carries ([`comms::rate`]), as in a Realistic
+    /// game; otherwise all of it at once whenever there is a link. The game's rules say which
+    /// ([`crate::data::RulesDef::data_rates`]).
+    pub data_rates: bool,
     /// Physics ticks until the links are looked at again.
     link_ticks: u32,
     /// The guided run the player is on, if any (see [`crate::tutorial`]). A restart ends it.
@@ -206,6 +260,7 @@ impl Universe {
             focus: None,
             stations: Vec::new(),
             warp_stops_at_links: false,
+            data_rates: false,
             link_ticks: 0,
             mission: None,
             tutorial: None,
@@ -241,6 +296,63 @@ impl Universe {
     /// The vessel with `id`, if it is still in the game.
     pub fn vessel(&self, id: VesselId) -> Option<&Vessel> {
         self.vessels.iter().find(|v| v.id() == id)
+    }
+
+    /// What a career's facilities limit of `id` as it stands: its mass with what is in its tanks,
+    /// its height along its stack and its width the widest way across (the box round what it
+    /// collides with), and its parts.
+    pub fn craft_size(&mut self, id: VesselId) -> Option<CraftSize> {
+        let index = self.find_vessel(id)?;
+        let Self {
+            colliders, vessels, ..
+        } = self;
+        let vessel = &vessels[index];
+        let tree = vessel.propulsion.parts();
+        let (height, width) = match colliders.of(tree).bounds() {
+            Some(bounds) => {
+                let span = bounds.max - bounds.min;
+                (span.z, span.x.max(span.y))
+            }
+            None => (vessel.propulsion.length(), 0.0),
+        };
+        Some(CraftSize {
+            mass: vessel.mass_properties().mass,
+            height,
+            width,
+            parts: tree.parts().len(),
+        })
+    }
+
+    /// Whether `id` can be fetched home: it is down, on the ground or afloat, on a world with one of
+    /// `sites`.
+    pub fn recoverable(&self, id: VesselId, sites: &[LaunchSiteDef]) -> bool {
+        let Some(vessel) = self.vessel(id) else {
+            return false;
+        };
+        let body = &self.system.body(vessel.parent()).name;
+        vessel.situation(&self.system, self.time) == Situation::Landed
+            && sites.iter().any(|site| &site.body == body)
+    }
+
+    /// Bring `id` home: it leaves, and in a career the data and samples on its drives count as
+    /// having reached the ground. Whether it can be fetched where it is is the caller's to say
+    /// ([`Self::recoverable`]).
+    pub fn recover_vessel(&mut self, id: VesselId) -> Option<Recovered> {
+        let vessel = self.vessel(id)?;
+        let systems = &vessel.propulsion.systems;
+        let held = |sample| -> f64 { systems.drives().map(|(_, d)| d.holds(sample)).sum() };
+        let mut recovered = Recovered {
+            name: vessel.name.clone(),
+            data: held(false),
+            samples: held(true),
+            sets: systems.held(),
+            science: 0.0,
+        };
+        if let Some(career) = &mut self.career {
+            recovered.science = career.receive(&recovered.sets);
+        }
+        self.remove_vessel(id);
+        Some(recovered)
     }
 
     /// Take a vessel out of the game; whoever targeted it loses the target.
@@ -1031,7 +1143,15 @@ impl Universe {
     /// Work out each vessel's link: straight to the ground, or else through vessels with relay
     /// antennas that have a link of their own, by as many hops as it takes.
     pub fn update_links(&mut self) {
-        let time = self.time;
+        let links = self.links_at(self.time);
+        for (vessel, link) in self.vessels.iter_mut().zip(links) {
+            vessel.set_link(link);
+        }
+    }
+
+    /// Each vessel's link at `time`, with the radios they have now, where they are then on their
+    /// way: within a jump on rails, where they all move as they are told.
+    fn links_at(&self, time: SimTime) -> Vec<Option<Link>> {
         let root = self.system.root();
         let on_the_air: Vec<OnTheAir> = (self.vessels.iter())
             .map(|v| OnTheAir {
@@ -1048,9 +1168,91 @@ impl Universe {
                 best_link(&self.system, &self.stations, v.parent(), at, radio, time)
             })
             .collect();
-        let links = comms::spread_links(&self.system, root, &on_the_air, direct, time);
-        for (vessel, link) in self.vessels.iter_mut().zip(links) {
-            vessel.set_link(link);
+        comms::spread_links(&self.system, root, &on_the_air, direct, time)
+    }
+
+    /// Which vessels have data on their drives and a radio on to send it with.
+    fn senders(&self) -> Vec<bool> {
+        (self.vessels.iter())
+            .map(|v| v.radio().is_some() && v.propulsion.systems.sendable() > 0.0)
+            .collect()
+    }
+
+    /// Send home what the vessels' drives hold over the `seconds` up to now, on the links they have
+    /// now: all of it if there is a link, unless the game sends at the links' rates
+    /// ([`Self::data_rates`]). What reaches the ground counts in a career.
+    fn send_data(&mut self, seconds: f64) {
+        let sending = self.senders();
+        if !sending.contains(&true) {
+            return;
+        }
+        let links: Vec<Option<Link>> = self.vessels.iter().map(|v| v.link().cloned()).collect();
+        let bytes: Vec<f64> = if self.data_rates {
+            (comms::shared_rates(&links, &sending).into_iter())
+                .map(|bits| bits * seconds / 8.0)
+                .collect()
+        } else {
+            (links.iter().zip(&sending))
+                .map(|(link, sending)| {
+                    if link.is_some() && *sending {
+                        f64::INFINITY
+                    } else {
+                        0.0
+                    }
+                })
+                .collect()
+        };
+        self.deliver(&bytes);
+    }
+
+    /// Send home what the vessels' drives hold over a jump on rails of `seconds` from `from`, at the
+    /// rate each link carries as they move: the links are worked out at the middle of short spans
+    /// of it ([`SENDING_SPAN`], or less than that of an orbit), so a pass over a station sends what
+    /// it does at any warp. In a game that does not send at rates, as [`Self::send_data`].
+    fn send_over(&mut self, from: SimTime, seconds: f64) {
+        if !self.data_rates {
+            self.send_data(seconds);
+            return;
+        }
+        let sending = self.senders();
+        if !sending.contains(&true) || seconds <= 0.0 {
+            return;
+        }
+        let span = (self.vessels.iter().zip(&sending))
+            .filter(|(_, sending)| **sending)
+            .filter_map(|(v, _)| v.coasting()?.period())
+            .filter(|p| p.is_finite() && *p > 0.0)
+            .map(|p| p / SPANS_PER_ORBIT)
+            .fold(SENDING_SPAN, f64::min);
+        let spans = (seconds / span).ceil().max(1.0);
+        let each = seconds / spans;
+        let mut bytes = vec![0.0; self.vessels.len()];
+        for k in 0..spans as usize {
+            let links = self.links_at(from.add_seconds((k as f64 + 0.5) * each));
+            for (all, bits) in bytes.iter_mut().zip(comms::shared_rates(&links, &sending)) {
+                *all += bits * each / 8.0;
+            }
+        }
+        self.deliver(&bytes);
+    }
+
+    /// Take `bytes` of data off each vessel's drives, as far as they hold it: it has reached the
+    /// ground, and in a career earns its science. A vessel whose drives are clear says what its data
+    /// earned since they last were.
+    fn deliver(&mut self, bytes: &[f64]) {
+        let time = self.time;
+        for (vessel, &bytes) in self.vessels.iter_mut().zip(bytes) {
+            if bytes <= 0.0 {
+                continue;
+            }
+            let sent = vessel.propulsion.systems.send(bytes);
+            if let Some(career) = &mut self.career {
+                vessel.sent_science += career.receive(&sent);
+            }
+            if vessel.propulsion.systems.sendable() <= 0.0 && vessel.sent_science > 0.0 {
+                let science = std::mem::take(&mut vessel.sent_science);
+                vessel.record(time, format!("Data sent home: {science:.1} science"));
+            }
         }
     }
 
@@ -1128,6 +1330,7 @@ impl Universe {
                 self.remove_vessel(event.vessel);
             }
         }
+        self.send_data(PHYSICS_STEP.as_seconds());
         self.catch_ports();
         for vessel in self.close_captures() {
             events.push(SimEvent {
@@ -1143,10 +1346,19 @@ impl Universe {
         events
     }
 
-    /// Let the mission and the tutorial look at the universe as it is now.
+    /// Let the mission and the tutorial look at the universe as it is now. A goal met in a career
+    /// pays its reward into its funds.
     fn observe_mission(&mut self, events: &[SimEvent], physics: bool) {
         if let Some(mut mission) = self.mission.take() {
+            let before: Vec<bool> = mission.goals().iter().map(|g| g.met_at.is_some()).collect();
             mission.observe(self, events, physics);
+            if let Some(career) = &mut self.career {
+                for (goal, was) in mission.goals().iter().zip(before) {
+                    if goal.met_at.is_some() && !was {
+                        career.earn(goal.def.reward);
+                    }
+                }
+            }
             self.mission = Some(mission);
         }
         if let Some(mut tutorial) = self.tutorial.take() {
@@ -1237,6 +1449,7 @@ impl Universe {
                 vessel.step_systems(&self.system, started, elapsed);
             }
             self.update_links();
+            self.send_over(started, elapsed);
             if change == Some(self.time) {
                 outcome.interrupted = true;
             }
@@ -1654,5 +1867,56 @@ mod tests {
             earth,
             "should have reached the Moon"
         );
+    }
+
+    /// On the pad, a vessel can be brought home; in orbit, or on a world with no launch site, it
+    /// cannot; recovered, it is gone.
+    #[test]
+    fn a_vessel_can_be_recovered_only_when_it_is_down_on_a_world_with_a_launch_site() {
+        let system = rss();
+        let (pad, t) = pad_vessel(&system);
+        let (leo, _) = leo_vessel(&system);
+        let mut universe = Universe::new(system, vec![pad, leo], t);
+        let (pad, leo) = (universe.vessels[0].id(), universe.vessels[1].id());
+        let sites = launch_sites();
+        assert!(universe.recoverable(pad, &sites));
+        assert!(!universe.recoverable(leo, &sites));
+        let elsewhere: Vec<LaunchSiteDef> = (sites.iter().cloned())
+            .map(|site| LaunchSiteDef {
+                body: "Moon".into(),
+                ..site
+            })
+            .collect();
+        assert!(!universe.recoverable(pad, &elsewhere));
+        let recovered = universe.recover_vessel(pad).unwrap();
+        assert!(
+            recovered.notice().starts_with("Recovered "),
+            "{recovered:?}"
+        );
+        assert!(!universe.recoverable(pad, &sites), "gone");
+        assert_eq!(universe.vessels.len(), 1);
+    }
+
+    /// A rocket on the pad is measured as it stands: what it weighs with its propellant, its parts,
+    /// and its height and width from the box round it.
+    #[test]
+    fn a_craft_is_measured_as_it_stands() {
+        let system = rss();
+        let (pad, t) = pad_vessel(&system);
+        let mut universe = Universe::new(system, vec![pad], t);
+        let id = universe.vessels[0].id();
+        let size = universe.craft_size(id).unwrap();
+        let vessel = &universe.vessels[0];
+        assert_eq!(size.mass, vessel.mass_properties().mass);
+        assert_eq!(size.parts, vessel.propulsion.parts().parts().len());
+        let length = vessel.propulsion.length();
+        assert!(
+            (size.height - length).abs() < 0.2 * length,
+            "{size:?} {length}"
+        );
+        let widest = (vessel.propulsion.sections.iter())
+            .map(|s| s.diameter)
+            .fold(0.0, f64::max);
+        assert!(size.width >= 0.95 * widest, "{size:?} {widest}");
     }
 }

@@ -74,13 +74,15 @@ fn the_casual_tree_has_every_casual_part_once_and_rises() {
     // Written to rise, tier by tier.
     assert_eq!(check(&tree, true), Vec::<String>::new());
     let entries = palette::entries(&catalog);
-    assert_eq!(entries.len(), 45);
+    assert_eq!(entries.len(), 47);
     assert!(entries.iter().all(|e| tree.node_of(&e.id).is_some()));
     // Seven tiers, a first rocket in the first.
     let start = tree.roots();
     assert_eq!(start, BTreeSet::from(["first_steps".to_owned()]));
-    // A sounding rocket's instruments too.
+    // A sounding rocket's instruments too, and what brings their readings home.
     for part in [
+        "parachute",
+        "telemetry",
         "pod:C-1 Capsule",
         "tank",
         "engine:K-0",
@@ -107,6 +109,11 @@ fn the_realistic_tree_has_every_realistic_part_once() {
     );
     let entries = palette::entries(&catalog);
     assert!(entries.iter().all(|e| tree.node_of(&e.id).is_some()));
+    // A first sounding rocket can bring its readings home.
+    let start = tree.roots();
+    for part in ["parachute", "telemetry", "instrument:thermometer"] {
+        assert!(tree.has_entry(part, &start), "{part}");
+    }
 }
 
 /// Unlocking a node makes its parts available and opens what builds on it, and only that.
@@ -238,4 +245,45 @@ fn nodes_say_what_they_lead_to_and_year_columns_have_their_years() {
         );
     }
     assert_eq!(labels.len() as f64 - 1.0, labels.last().unwrap().0);
+}
+
+/// Each mode's facilities: a launch pad and a builder whose levels cost more and allow more, the
+/// first pad taking the mode's first rockets and not the next ones (liftoff masses from
+/// `golden/craft.json`: the Sounder 27.2 t, the Talon 137.9 t; the V-2 12.8 t, the Mercury-Redstone
+/// 28.9 t).
+#[test]
+fn facilities_grow_level_by_level_and_start_with_the_first_rockets() {
+    use osp_sim::data::FacilityDef;
+    for (realistic, fits, too_big) in [(false, 27.2e3, 137.9e3), (true, 12.8e3, 28.9e3)] {
+        let content = mode(realistic);
+        let mut problems = Vec::new();
+        let facilities: Vec<FacilityDef> = content.registry.all("facilities", &mut problems);
+        assert!(problems.is_empty(), "{problems:?}");
+        let ids: Vec<&str> = facilities.iter().map(|f| f.id.as_str()).collect();
+        assert_eq!(ids, ["launch_pad", "builder"], "{realistic}");
+        for facility in &facilities {
+            assert!(facility.levels.len() >= 3, "{}", facility.id);
+            assert_eq!(facility.levels[0].price, 0.0);
+            for pair in facility.levels.windows(2) {
+                let (a, b) = (&pair[0], &pair[1]);
+                assert!(b.price > a.price, "{} {realistic}", facility.id);
+                let grows = |x: Option<f64>, y: Option<f64>| match (x, y) {
+                    (Some(x), Some(y)) => y > x,
+                    (Some(_), None) => true,
+                    (None, None) => true,
+                    (None, Some(_)) => false,
+                };
+                assert!(
+                    grows(a.mass, b.mass) && grows(a.height, b.height),
+                    "{}",
+                    facility.id
+                );
+                assert!(grows(a.width, b.width), "{}", facility.id);
+                assert!(grows(a.parts.map(f64::from), b.parts.map(f64::from)));
+            }
+        }
+        let pad = facilities.iter().find(|f| f.id == "launch_pad").unwrap();
+        let first = pad.levels[0].mass.unwrap();
+        assert!(fits <= first && first < too_big, "{realistic}: {first}");
+    }
 }

@@ -376,6 +376,27 @@
         widget: "column",
         class: "editor_panel",
         children: [
+          // A career's money and science (osp_game::tree_screen), and its facilities, each with its
+          // level, what it allows and the next level's upgrade (osp_game::career).
+          {
+            widget: "column",
+            visible: "career.active",
+            children: [
+              { widget: "setting_row", class: "editor_stat", label: "Funds", children: [{ widget: "label", class: "menu_row_value", text: "{career.funds}" }] },
+              { widget: "setting_row", class: "editor_stat", label: "Science", children: [{ widget: "label", class: "menu_row_value", text: "{career.science}" }] },
+              {
+                widget: "column",
+                repeat: "career.facilities",
+                children: [
+                  { widget: "setting_row", class: "editor_stat", label: "{item.name}", children: [{ widget: "label", class: "menu_row_value", text: "{item.level}" }] },
+                  { widget: "label", class: "menu_subtitle", text: "{item.limits}" },
+                  { widget: "button", class: "btn btn_wide", visible: "item.has_next", text: "Upgrade for {item.price}: {item.next}", action: "career.upgrade:{item.id}" },
+                ],
+              },
+              { widget: "label", class: "menu_subtitle", visible: "career.notice", text: "{career.notice}" },
+              { widget: "menu_divider" },
+            ],
+          },
           {
             widget: "column",
             visible: "!editor.has_vessel",

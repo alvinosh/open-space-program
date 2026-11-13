@@ -11,9 +11,15 @@
 // most at `peak`, falling to 1/e by `latitude` degrees off it, and none below `floor` radii up,
 // where the air takes them; `surface` is what the ground gives off, on it. Rough figures: low orbit
 // comes to about 0.3 mSv a day through a capsule's walls, the heart of the inner belt a hundred.
+//
+// `science`: where experiments' situations change over a body (`flying_high`, `space_high`, m), and
+// `values`: what a whole set done in each situation over it is worth, times its experiment's `value`
+// (1 where not given). Low over the Earth is worth least, and the further and harder to reach, the
+// more: a first flight earns enough for a node or two, the Moon and the planets far more.
 [
   {
     id: "Sun",
+    science: { values: { space_low: 10, space_high: 3 } },
     gm: 1.32712440018e+20,
     radius: 695700000,
     rotation: {
@@ -28,6 +34,7 @@
   },
   {
     id: "Mercury",
+    science: { values: { landed: 12, space_low: 8, space_high: 6 } },
     albedo: 0.088,
     parent: "Sun",
     gm: 2.2032e+13,
@@ -50,6 +57,7 @@
   },
   {
     id: "Venus",
+    science: { values: { landed: 12, flying_low: 10, flying_high: 8, space_low: 7, space_high: 6 } },
     albedo: 0.76,
     parent: "Sun",
     gm: 3.24859e+14,
@@ -109,7 +117,11 @@
     id: "Earth",
     albedo: 0.306,
     // Experiments are flying high above 18 km, and in space high above 2000 km, where low orbits end.
-    science: { flying_high: 18000, space_high: 2000000 },
+    science: {
+      flying_high: 18000,
+      space_high: 2000000,
+      values: { landed: 0.25, splashed: 0.35, flying_low: 0.6, flying_high: 0.8, space_low: 1, space_high: 1.4 },
+    },
     radiation: {
       magnetosphere: 0.7,
       floor: 0.1,
@@ -190,6 +202,7 @@
   },
   {
     id: "Moon",
+    science: { values: { landed: 5, space_low: 3.5, space_high: 2.5 } },
     albedo: 0.11,
     radiation: { surface: 0.01 },
     parent: "Earth",
@@ -213,6 +226,7 @@
   },
   {
     id: "Mars",
+    science: { values: { landed: 10, flying_low: 8, flying_high: 7, space_low: 6, space_high: 5 } },
     albedo: 0.25,
     radiation: { surface: 0.005 },
     parent: "Sun",
@@ -268,6 +282,7 @@
   },
   {
     id: "Jupiter",
+    science: { values: { flying_low: 15, flying_high: 12, space_low: 10, space_high: 8 } },
     albedo: 0.503,
     radiation: {
       magnetosphere: 0.9,

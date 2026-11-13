@@ -12,7 +12,7 @@
   {
     id: "realistic",
     name: "Realistic",
-    description: "Real propellants, real engines and avionics and their limits, crews who need air, water and food and take radiation, the real parts and historical rockets.",
-    mods: ["realistic_engines", "realistic_fuels", "realistic_avionics", "realistic_life_support", "realistic_radiation", "realism"],
+    description: "Real propellants, real engines and avionics and their limits, crews who need air, water and food and take radiation, data sent home at the speed of the link, the real parts and historical rockets.",
+    mods: ["realistic_engines", "realistic_fuels", "realistic_avionics", "realistic_life_support", "realistic_radiation", "realistic_comms", "realism"],
   },
 ]

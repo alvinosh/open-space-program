@@ -6,6 +6,7 @@
     name: "Realistic",
     description: "RP-1's tree: from sounding rockets in the 1940s to what flies today and what may fly next, by year.",
     roots: ["start", "unlockParts"],
+    funds: 500000,
     layout: "years",
   },
 ]

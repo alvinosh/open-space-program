@@ -76,8 +76,9 @@ pub struct BodyDef {
     pub science: BodyScienceDef,
 }
 
-/// Where an experiment's situation changes over a body, m above its sea level. A size it does not
-/// give is worked out ([`crate::body::Body::flying_high`], [`crate::body::Body::space_high`]).
+/// Where an experiment's situation changes over a body, m above its sea level, and what science
+/// done there is worth. A size it does not give is worked out ([`crate::body::Body::flying_high`],
+/// [`crate::body::Body::space_high`]).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BodyScienceDef {
@@ -87,6 +88,59 @@ pub struct BodyScienceDef {
     /// In space above this is in space high.
     #[serde(default)]
     pub space_high: Option<f64>,
+    /// What a whole set done in each situation over it is worth, times its experiment's `value`.
+    #[serde(default)]
+    pub values: SituationValues,
+}
+
+/// A figure for each situation ([`crate::science::Situation`]), 1 where it is not given.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SituationValues {
+    #[serde(default = "one_value")]
+    pub landed: f64,
+    #[serde(default = "one_value")]
+    pub splashed: f64,
+    #[serde(default = "one_value")]
+    pub flying_low: f64,
+    #[serde(default = "one_value")]
+    pub flying_high: f64,
+    #[serde(default = "one_value")]
+    pub space_low: f64,
+    #[serde(default = "one_value")]
+    pub space_high: f64,
+}
+
+fn one_value() -> f64 {
+    1.0
+}
+
+impl Default for SituationValues {
+    fn default() -> Self {
+        Self {
+            landed: 1.0,
+            splashed: 1.0,
+            flying_low: 1.0,
+            flying_high: 1.0,
+            space_low: 1.0,
+            space_high: 1.0,
+        }
+    }
+}
+
+impl SituationValues {
+    /// Its figure for `situation`.
+    pub fn of(&self, situation: crate::science::Situation) -> f64 {
+        use crate::science::Situation::*;
+        match situation {
+            Landed => self.landed,
+            Splashed => self.splashed,
+            FlyingLow => self.flying_low,
+            FlyingHigh => self.flying_high,
+            SpaceLow => self.space_low,
+            SpaceHigh => self.space_high,
+        }
+    }
 }
 
 /// The radiation a body brings. Rates are what an unshielded person takes, mSv/h.
@@ -206,6 +260,10 @@ pub struct RulesDef {
     pub radiation: Option<String>,
     /// The record of `tech_trees` a science game unlocks parts on.
     pub tech_tree: Option<String>,
+    /// Data goes home at the rate a link carries, slower further away and shared through relays.
+    /// Without this, all of a vessel's data goes at once whenever it has a link.
+    #[serde(default)]
+    pub data_rates: bool,
 }
 
 impl Default for RulesDef {
@@ -216,6 +274,7 @@ impl Default for RulesDef {
             life_support: Some("realistic".to_owned()),
             radiation: Some("realistic".to_owned()),
             tech_tree: Some("rp1".to_owned()),
+            data_rates: true,
         }
     }
 }
@@ -539,8 +598,6 @@ pub struct ExperimentDef {
     pub id: String,
     #[serde(default)]
     pub name: String,
-    #[serde(default)]
-    pub description: String,
     /// Seconds it takes to collect a whole set in one place, running all the time.
     pub duration: f64,
     /// Bytes a whole set comes to, for a measurement.
@@ -606,19 +663,25 @@ pub struct InstrumentDef {
     pub id: String,
     #[serde(default)]
     pub name: String,
-    #[serde(default)]
-    pub description: String,
     /// The `experiments` it runs.
     pub experiments: Vec<String>,
     /// kg.
     pub mass: f64,
     /// Its box, m: across, deep, and out from what it is on.
     pub size: [f64; 3],
+    /// How many whole sets of each of its experiments it keeps on a drive of its own, data and
+    /// samples, until they are moved or sent.
+    #[serde(default = "one_set")]
+    pub holds: f64,
     /// Linear RGB.
     #[serde(default = "instrument_color")]
     pub color: [f64; 3],
     #[serde(flatten)]
     pub catalog: CatalogInfo,
+}
+
+fn one_set() -> f64 {
+    1.0
 }
 
 fn instrument_color() -> [f64; 3] {
@@ -1037,13 +1100,35 @@ pub struct PodDef {
     /// rules' life support. None: it has no life support.
     #[serde(default)]
     pub supplies: f64,
+    /// Its drive, for what experiments make: data and samples to bring home. A pod with seats and
+    /// none has [`POD_DRIVE_PER_SEAT`] for each seat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drive: Option<crate::component::DriveDef>,
     #[serde(flatten)]
     pub catalog: CatalogInfo,
 }
 
+/// The drive a pod has for each seat when its record gives it none: 2 MB of data and 5 kg of
+/// samples.
+pub const POD_DRIVE_PER_SEAT: crate::component::DriveDef = crate::component::DriveDef {
+    data: 2e6,
+    samples: 5.0,
+};
+
 impl PodDef {
     pub fn top_diameter(&self) -> f64 {
         self.top_diameter.unwrap_or(self.diameter / 3.0)
+    }
+
+    /// Its drive, if it has one: its own, or [`POD_DRIVE_PER_SEAT`] for each seat.
+    pub fn drive(&self) -> Option<crate::component::DriveDef> {
+        let seats = f64::from(self.crew);
+        self.drive.or_else(|| {
+            (self.crew > 0).then_some(crate::component::DriveDef {
+                data: POD_DRIVE_PER_SEAT.data * seats,
+                samples: POD_DRIVE_PER_SEAT.samples * seats,
+            })
+        })
     }
 }
 
@@ -1907,6 +1992,82 @@ pub struct TechTreeDef {
     /// How it is drawn.
     #[serde(default)]
     pub layout: TreeLayout,
+    /// The funds a career on it starts with.
+    #[serde(default)]
+    pub funds: f64,
+}
+
+/// A facility a career launches or builds with (collection `facilities`), upgraded a level at a time
+/// with money ([`crate::career::Career::upgrade`]). A sandbox has none of its limits.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FacilityDef {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// What it allows at each level, the first what a career starts with.
+    pub levels: Vec<FacilityLevelDef>,
+}
+
+impl FacilityDef {
+    /// What the player reads.
+    pub fn title(&self) -> &str {
+        if self.name.is_empty() {
+            &self.id
+        } else {
+            &self.name
+        }
+    }
+}
+
+/// What a facility allows at one level, and what reaching it costs. A limit it does not give it
+/// does not set.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FacilityLevelDef {
+    /// Funds to upgrade to it.
+    #[serde(default)]
+    pub price: f64,
+    /// The most a rocket may weigh as it leaves the pad, kg.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mass: Option<f64>,
+    /// The tallest craft that can be built, m (a plane's length).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<f64>,
+    /// The widest, m.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    /// The most parts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parts: Option<u32>,
+}
+
+impl FacilityLevelDef {
+    /// Its limits as the player reads them: "180 t", "50 m tall, 10 m wide, 100 parts".
+    pub fn describe(&self) -> String {
+        let mut out = Vec::new();
+        if let Some(kg) = self.mass {
+            out.push(format!("{} t", crate::career::money(kg / 1000.0)));
+        }
+        if let Some(m) = self.height {
+            out.push(format!("{m:.0} m tall"));
+        }
+        if let Some(m) = self.width {
+            out.push(format!("{m:.0} m wide"));
+        }
+        if let Some(parts) = self.parts {
+            out.push(format!("{parts} parts"));
+        } else if self.height.is_some() || self.width.is_some() {
+            out.push("any number of parts".into());
+        }
+        if out.is_empty() {
+            "no limits".into()
+        } else {
+            out.join(", ")
+        }
+    }
 }
 
 /// How a tech tree is drawn.

@@ -6,13 +6,15 @@
 //! each step ([`System::situate`]) and steps no further than to where that changes, or to where it
 //! finishes a set ([`System::next_event`]).
 //!
-//! What it has collected stays on it, by subject, until drives (T273) and sending (T274) take it.
+//! What it makes goes onto the drives its part is wired to as it makes it ([`super::Drive`]), and it
+//! pauses while they have no room. What it has collected of each subject it remembers, so it does
+//! not do the same place twice.
 
 use std::{any::Any, collections::BTreeMap};
 
 use serde::{Deserialize, Serialize};
 
-use super::{Power, Reading, System};
+use super::{Held, Power, Reading, System, Writing, Written};
 use crate::{
     component::Component,
     data::ExperimentDef,
@@ -48,8 +50,19 @@ pub struct Experiment {
     /// It collected over the last step.
     #[serde(default)]
     running: bool,
+    /// The drives it is wired to have room for what it makes.
+    #[serde(default = "yes")]
+    room: bool,
+    /// What it has made since the drives last took it: its subject, amount (B, or kg of a sample)
+    /// and what a whole set of it is worth.
+    #[serde(default)]
+    made: Option<(String, f64, f64)>,
     #[serde(default)]
     said: Option<String>,
+}
+
+fn yes() -> bool {
+    true
 }
 
 pub(super) fn of(component: &Component, _part: &Part) -> Option<Box<dyn System>> {
@@ -68,8 +81,20 @@ impl Experiment {
             powered: false,
             collected: BTreeMap::new(),
             running: false,
+            room: true,
+            made: None,
             said: None,
         }
+    }
+
+    /// What a whole set comes to: bytes, or kg of a sample.
+    pub fn whole(&self) -> f64 {
+        self.def.sample.unwrap_or(self.def.size)
+    }
+
+    /// The science a whole set where it is now is worth.
+    pub fn worth_here(&self) -> f64 {
+        self.def.value * self.place.as_ref().map_or(1.0, |p| p.value)
     }
 
     /// Whether it works at `place`.
@@ -91,12 +116,17 @@ impl Experiment {
         self.collected.get(subject).copied().unwrap_or(0.0)
     }
 
-    /// It would collect if it had power: switched on, somewhere it works, with more to collect.
-    fn wants_to_run(&self) -> bool {
+    /// It has more to collect where it is: switched on, somewhere it works, not done there.
+    fn has_work(&self) -> bool {
         self.on
             && self
                 .subject_here()
                 .is_some_and(|here| self.share(&here) < WHOLE)
+    }
+
+    /// It would collect if it had power: it has work and room for what it makes.
+    fn wants_to_run(&self) -> bool {
+        self.has_work() && self.room
     }
 
     fn needs_power(&self) -> bool {
@@ -129,6 +159,8 @@ impl Experiment {
         let share = self.subject_here().map_or(0.0, |s| self.share(&s));
         if share >= WHOLE {
             format!("{name}: done {here}")
+        } else if !self.room {
+            format!("{name}: no room on the drives")
         } else if self.wants_to_run() && !self.runs() {
             format!("{name}: no power")
         } else {
@@ -187,6 +219,12 @@ impl System for Experiment {
                 unit: "%",
             },
             Reading {
+                id: "worth",
+                label: "A set here is worth",
+                value: self.worth_here(),
+                unit: "science",
+            },
+            Reading {
                 id: "sets",
                 label: "Whole sets",
                 value: whole as f64,
@@ -209,12 +247,20 @@ impl System for Experiment {
         let Some(here) = self.subject_here() else {
             return;
         };
-        let share = self.collected.entry(here).or_insert(0.0);
+        let whole = self.whole();
+        let share = self.collected.entry(here.clone()).or_insert(0.0);
+        let before = *share;
         *share = (*share + dt / self.def.duration).min(1.0);
         if *share >= WHOLE {
             *share = 1.0;
             let place = self.place.as_ref().map(Place::describe).unwrap_or_default();
             self.said = Some(format!("{}: a whole set {place}", self.def.title()));
+        }
+        let amount = (*share - before) * whole;
+        let worth = self.worth_here();
+        match &mut self.made {
+            Some((subject, made, _)) if *subject == here => *made += amount,
+            _ => self.made = Some((here, amount, worth)),
         }
     }
 
@@ -244,6 +290,44 @@ impl System for Experiment {
     fn situate(&mut self, place: &Place) {
         if self.place.as_ref() != Some(place) {
             self.place = Some(place.clone());
+        }
+    }
+
+    fn writes(&self) -> Option<Writing> {
+        Some(Writing {
+            sample: self.def.sample.is_some(),
+            rate: if self.runs() {
+                self.whole() / self.def.duration
+            } else {
+                0.0
+            },
+        })
+    }
+
+    fn room(&mut self, room: bool) {
+        self.room = room;
+    }
+
+    fn written(&mut self) -> Option<Written> {
+        let (subject, amount, worth) = self.made.take().filter(|(_, amount, _)| *amount > 0.0)?;
+        Some(Written {
+            subject,
+            held: Held {
+                amount,
+                whole: self.whole(),
+                sample: self.def.sample.is_some(),
+                worth,
+            },
+        })
+    }
+
+    fn unwritten(&mut self, subject: &str, amount: f64) {
+        let whole = self.whole();
+        if let Some(share) = self.collected.get_mut(subject) {
+            *share = (*share - amount / whole).max(0.0);
+            if *share < WHOLE {
+                self.said = None;
+            }
         }
     }
 
@@ -301,7 +385,8 @@ mod tests {
     };
 
     /// A probe with an experiment that only works in space low, one that works anywhere in space,
-    /// both taking `duration` s and no power, on an orbit over the Earth from `low` to `high` m up.
+    /// both taking `duration` s and no power, and a drive with room for all they make, on an orbit
+    /// over the Earth from `low` to `high` m up.
     fn probe(low: f64, high: f64, duration: f64) -> Vessel {
         let mut catalog = catalog();
         catalog.experiments = records(&format!(
@@ -314,7 +399,8 @@ mod tests {
             r#"{ id: "x", name: "", parts: [{ id: "probe",
                 shape: { box: { size: [0.5, 0.5, 0.5] } }, structure: { mass: 50 },
                 components: [{ experiment: { experiment: "low" } },
-                             { experiment: { experiment: "space" } }] }] }"#,
+                             { experiment: { experiment: "space" } },
+                             { drive: { data: 1e9 } }] }] }"#,
         )
         .remove(0);
         let start = OrbitStartDef {
@@ -424,6 +510,7 @@ mod tests {
             body: "Earth".into(),
             situation,
             sunlit,
+            value: 1.0,
         };
         assert_eq!(e.status(), "Temperature: waiting");
         e.situate(&place(Situation::SpaceLow, true));

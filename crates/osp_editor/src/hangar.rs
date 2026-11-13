@@ -19,7 +19,9 @@
 //!
 //! A game always has a vessel in it. With the last one destroyed, here or from the menu's Vessels
 //! screen (`vessel.destroy:<id>`, asked once), the hangar is what is left: going back from it leaves
-//! the game for the title screen, as there is nothing to go back to.
+//! the game for the title screen, as there is nothing to go back to. A vessel that is down on a world
+//! with a launch site can be recovered (`vessel.recover:<id>`, asked once): what its drives hold
+//! comes home, and if it was the one being flown the hangar opens, Back from it flying another.
 //!
 //! What is on show is a real vessel (`Vessel::on_display`), the one the player flies for now, so
 //! the vessel renderer draws it and the staging window edits it as they do in flight. It stands far
@@ -60,7 +62,6 @@ use osp_game::{
     FrameSet,
     camera::{CameraRig, MainCamera, update_camera},
     career::CareerTree,
-    tree_screen::{TreeScreen, tree_actions},
     content::{GameContent, PlayerMods, catalog},
     controls::InputLocked,
     dialog::{Dialog, Question},
@@ -69,6 +70,7 @@ use osp_game::{
     menu::{Menu, go_to_title, menu_actions},
     saves::Saves,
     sim::{Sim, SimRestarted, TimeWarp},
+    tree_screen::{TreeScreen, tree_actions},
 };
 
 use crate::{
@@ -1148,6 +1150,44 @@ pub(crate) fn editor_actions(
                     None,
                 );
             }
+            // Brought home with what its drives hold. Another stays where it is; the one being flown
+            // goes, and the hangar opens for the next, from which Back flies another if there is one.
+            "vessel.recover" if editor.0.is_none() => {
+                let registry = &content.0.registry;
+                let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
+                let id = action.arg().and_then(|id| id.parse().ok()).map(VesselId);
+                let Some(id) = id.filter(|&id| sim.universe.recoverable(id, &all)) else {
+                    warn!("no vessel that can be recovered in `{}`", action.0);
+                    continue;
+                };
+                let flown = id == sim.active_id();
+                let next = next_to_fly(&sim, &[id]);
+                let notice = (sim.universe.recover_vessel(id))
+                    .map(|recovered| recovered.notice())
+                    .unwrap_or_default();
+                info!("{notice}");
+                if !flown {
+                    menu.notice = notice;
+                    continue;
+                }
+                open_hangar(
+                    &mut commands,
+                    &mut editor,
+                    &mut menu,
+                    &mut sim,
+                    &mut rig,
+                    &mut ui,
+                    &mut ambient,
+                    (&mut meshes, &mut materials, &mut images),
+                    &all,
+                    next,
+                );
+                if let Some(showing) = editor.0.as_mut() {
+                    showing.notice = notice;
+                    // Back flies another vessel than the one it came from.
+                    showing.flown_changed = true;
+                }
+            }
             "game.new" | "editor.open" if editor.0.is_none() => {
                 let registry = &content.0.registry;
                 let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
@@ -1329,6 +1369,8 @@ pub(crate) fn editor_actions(
                 let vessel = sim.universe.vessel(showing.vessel);
                 let sequences = vessel.map(|v| v.propulsion.sequences.clone());
                 let catalog = catalog(registry, &mut Vec::new());
+                // What the facilities hold it to, as it stands.
+                let size = sim.universe.craft_size(showing.vessel).unwrap_or_default();
                 // A career builds only what it has unlocked; a new one is carried into the game
                 // it starts.
                 let starting = (menu.new_game && menu.career)
@@ -1345,6 +1387,14 @@ pub(crate) fn editor_actions(
                     if !locked.is_empty() {
                         showing.notice =
                             format!("Still locked in the tech tree: {}", locked.join(", "));
+                        continue;
+                    }
+                }
+                // And only what its facilities take: the pad's mass, the builder's size.
+                if let Some(of) = building {
+                    let over = of.refuses(&career.facilities, &size, showing.place == Place::Pad);
+                    if !over.is_empty() {
+                        showing.notice = format!("Too big to launch. {}", over.join(". "));
                         continue;
                     }
                 }

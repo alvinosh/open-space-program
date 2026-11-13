@@ -19,7 +19,7 @@ Every generated record has a `source` field with the file it came from. The text
 | [RealFuels](https://github.com/NathanKell/ModularFuelSystem) | ialdabaoth, NathanKell, taniwha, Starwaster, blowfish | CC BY-SA | `resources`, `tank_types`, `batteries` |
 | [ROCapsules](https://github.com/KSP-RO/ROCapsules) | pap1723 and KSP-RO | CC BY-SA | `pods` |
 | [ROSolar](https://github.com/KSP-RO/ROSolar) | pap1723 and KSP-RO | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) | `solar_panels` |
-| [RP-1](https://github.com/KSP-RO/RP-1) | RP-1 contributors | [CC BY-NC-SA 4.0](licenses/CC-BY-NC-SA-4.0.md), [its notice](licenses/RP-1.md) | `tech_nodes`, `avionics`, the dates on engines and pods (`year`, `tech`, `dated_by`) |
+| [RP-1](https://github.com/KSP-RO/RP-1) | RP-1 contributors | [CC BY-NC-SA 4.0](licenses/CC-BY-NC-SA-4.0.md), [its notice](licenses/RP-1.md) | `tech_nodes`, `avionics`, the dates on engines and pods (`year`, `tech`, `dated_by`), the science figures in `patches/science.json5` (experiments, and where each body's situations change and what science there is worth) |
 | [TestFlight](https://github.com/KSP-RO/TestFlight) | Agathorn and KSP-RO | CC BY-NC-SA 4.0 | the model the `reliability` figures follow |
 | [Bluedog Design Bureau](https://github.com/CobaltWolf/Bluedog-Design-Bureau) | CobaltWolf, Jso, Zorg, Invaderchaos | CC BY-NC-SA 4.0 | some `pods` |
 | [Community Resource Pack](https://github.com/UmbraSpaceIndustries/CommunityResourcePack) | RoverDude | CC BY-NC-SA 4.0 | `resources` |

@@ -1,0 +1,11 @@
+// The ranges' own tracking stations, one at each historical launch site that has no station of the
+// base game in sight: what a sounding rocket's telemetry is received by. Small dishes and receivers
+// of their day; the Cape has Merritt Island's. Not from RP-1: placed by hand at each range.
+[
+  { id: "white_sands_range", name: "White Sands range", body: "Earth", latitude: 32.39, longitude: -106.48, dish: 3, noise: 300 },
+  { id: "peenemunde_range", name: "Peenemünde range", body: "Earth", latitude: 54.17, longitude: 13.79, dish: 3, noise: 300 },
+  { id: "baikonur_range", name: "Baikonur range", body: "Earth", latitude: 45.92, longitude: 63.34, dish: 3, noise: 300 },
+  { id: "wallops_range", name: "Wallops range", body: "Earth", latitude: 37.85, longitude: -75.47, dish: 3, noise: 300 },
+  { id: "vandenberg_range", name: "Vandenberg range", body: "Earth", latitude: 34.76, longitude: -120.62, dish: 3, noise: 300 },
+  { id: "kourou_range", name: "Kourou range", body: "Earth", latitude: 5.24, longitude: -52.77, dish: 3, noise: 300 },
+]

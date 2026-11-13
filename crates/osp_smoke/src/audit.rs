@@ -111,6 +111,11 @@ pub fn inspect(w: &mut World) -> Audit {
                 Component::Experiment { def, .. } => {
                     runs.push(format!("experiment: {}", def.title()))
                 }
+                Component::Drive(d) => runs.push(format!(
+                    "drive: {:.0} kB, {:.1} kg of samples",
+                    d.data / 1e3,
+                    d.samples
+                )),
                 Component::LifeSupport(_) => runs.push("life support".to_owned()),
                 Component::Process(unit) => runs.push(format!("process: {}", unit.def.id)),
             }

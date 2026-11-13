@@ -241,6 +241,7 @@ impl World {
             Universe::new_game(&system, Vec::new(), &sites, &catalog, craft_of, &scenario).unwrap();
         let stations: Vec<GroundStationDef> = registry.all("ground_stations", &mut diagnostics);
         universe.set_stations(&stations);
+        universe.data_rates = catalog.rules.data_rates;
         universe
             .colliders
             .set_files(Arc::new(content.file_reader()));

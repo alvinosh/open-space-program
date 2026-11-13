@@ -28,7 +28,7 @@ use crate::{
     dialog::Dialog,
     editing::{EditorStatus, LastLaunch},
     saves::{SaveEntry, Saves, ago, now},
-    sim::{DEFAULT_SCENARIO, Sim, SimRestarted, TimeWarp},
+    sim::{DEFAULT_SCENARIO, Sim, SimRestarted, TimeWarp, WorldData},
     tree_screen::TreeScreen,
     ui_data::format_date,
 };
@@ -171,8 +171,9 @@ fn whereabouts(vessel: &Vessel, sim: &Sim) -> String {
     }
 }
 
-/// `menu.vessels` (id, name, where, flying, state): what there is to fly in the game in progress.
-fn vessel_list(sim: &Sim, menu: &Menu) -> Vec<UiRecord> {
+/// `menu.vessels` (id, name, where, flying, state, can_recover): what there is to fly in the game in
+/// progress, and which of it is down where it can be brought home.
+fn vessel_list(sim: &Sim, menu: &Menu, world: &WorldData) -> Vec<UiRecord> {
     if !menu.playing {
         return Vec::new();
     }
@@ -180,12 +181,14 @@ fn vessel_list(sim: &Sim, menu: &Menu) -> Vec<UiRecord> {
         .filter(|vessel| !vessel.is_debris())
         .map(|vessel| {
             let flying = vessel.id() == sim.active_id();
+            let recover = sim.universe.recoverable(vessel.id(), &world.sites);
             record([
                 ("id", vessel.id().0.into()),
                 ("name", vessel.name.as_str().into()),
                 ("where", whereabouts(vessel, sim).into()),
                 ("flying", flying.into()),
                 ("state", if flying { "Flying now" } else { "" }.into()),
+                ("can_recover", recover.into()),
             ])
         })
         .collect()
@@ -254,8 +257,9 @@ fn save_list(saves: &Saves, mode_of: &ModeOf) -> Vec<UiRecord> {
 
 /// `menu.screen`, `menu.playing`, `menu.new_game`, `menu.career`, `menu.tutorials`, `menu.vessels`,
 /// `menu.vessel_line`, `menu.saves`, `menu.has_saves`, `menu.can_continue`, `menu.continue_line`,
-/// `menu.save_name`, `menu.next_save`, `menu.game_line`, `menu.notice`, `menu.can_revert` and
-/// `menu.revert_line`. See
+/// `menu.save_name`, `menu.next_save`, `menu.game_line`, `menu.notice`, `menu.can_revert`,
+/// `menu.revert_line`, and `menu.can_recover` and `menu.flown_name` (the vessel being flown is down
+/// where it can be brought home, outside a tutorial). See
 /// `docs/modding.md`.
 fn publish_menu(
     content: Res<GameContent>,
@@ -264,6 +268,7 @@ fn publish_menu(
     saves: Res<Saves>,
     sim: Res<Sim>,
     last_launch: Res<LastLaunch>,
+    world: Res<WorldData>,
     mut data: ResMut<UiData>,
 ) {
     if content.is_changed() {
@@ -289,7 +294,13 @@ fn publish_menu(
         data.set("menu.playing", menu.playing);
         data.set("menu.new_game", menu.new_game);
         data.set("menu.career", menu.career);
-        let vessels = vessel_list(&sim, &menu);
+        let vessels = vessel_list(&sim, &menu, &world);
+        let flown = sim.active_vessel();
+        let recover = menu.playing
+            && sim.universe.tutorial.is_none()
+            && sim.universe.recoverable(flown.id(), &world.sites);
+        data.set("menu.can_recover", recover);
+        data.set("menu.flown_name", flown.name.as_str());
         let line = match vessels.len() {
             1 => "1 vessel".to_owned(),
             count => format!("{count} vessels"),

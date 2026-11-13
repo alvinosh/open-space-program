@@ -36,7 +36,7 @@ use crate::{
     shell::Shell,
     staging::{Action, Activation, SectionActivation, Sequences},
     structure::{FinSet, Tank},
-    systems::{Avionics, Crew, Systems},
+    systems::{Avionics, Crew, Parachute, Systems},
 };
 
 #[derive(Debug, Error)]
@@ -778,7 +778,19 @@ impl Propulsion {
                 };
                 Sequences::parse(list, parse).map_err(CraftError::BadSequence)?
             }
-            None => Sequences::default_for(&propulsion.sections, |a| propulsion.section_parts(a)),
+            None => {
+                let defaults =
+                    Sequences::default_for(&propulsion.sections, |a| propulsion.section_parts(a));
+                // Last, the parachutes are armed: each opens by itself once low enough.
+                let chutes: Vec<Activation> = (propulsion.systems.all::<Parachute>())
+                    .map(|(part, _)| Activation::new(part, crate::systems::ARM))
+                    .collect();
+                let mut list = defaults.list().to_vec();
+                if !chutes.is_empty() {
+                    list.push(chutes);
+                }
+                Sequences::new(list)
+            }
         };
         let mut triggers = Vec::new();
         for def in &def.triggers {

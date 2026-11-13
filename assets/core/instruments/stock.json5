@@ -1,12 +1,15 @@
 // Scientific instruments (osp_sim::palette, group Science): parts that carry `experiments`, put on
 // a craft's side like an antenna. `mass` in kg; `size` the box, m: across, deep, and out from what
-// it is on.
+// it is on. `holds`: whole sets of each of its experiments it keeps on a drive of its own (1 if not
+// given). What an experiment makes goes to the biggest drive it is wired to with room, a capsule's
+// or a probe core's before its own.
 [
   {
     id: "thermometer",
     name: "Thermometer",
     description: "Reads the temperature wherever it goes. The first thing a sounding rocket carries.",
     experiments: ["temperature"],
+    holds: 3, // up, through the air and into space on one sounding rocket
     mass: 1,
     size: [0.06, 0.05, 0.14],
   },
@@ -15,6 +18,7 @@
     name: "Barometer",
     description: "Reads the air pressure, down to the near nothing of space.",
     experiments: ["pressure"],
+    holds: 3,
     mass: 1,
     size: [0.09, 0.06, 0.09],
     color: [0.55, 0.6, 0.66],

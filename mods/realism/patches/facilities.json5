@@ -1,0 +1,21 @@
+// The Realistic game's facilities, by the real rockets: a first pad for the V-2 and its kin (13 t,
+// 14 m), then Redstones and Thors, then Atlases, Titans and the R-7, then the Saturn IB and Proton,
+// then the Saturn V and N1 (2,950 t, 111 m), then what is bigger. Not RP-1's: it limits rockets by
+// its launch complexes' own figures, which this game does not have.
+[
+  { op: "set", collection: "facilities", target: "launch_pad", path: "levels", value: [
+    { mass: 15000 },
+    { price: 300000, mass: 60000 },
+    { price: 1000000, mass: 350000 },
+    { price: 3000000, mass: 800000 },
+    { price: 8000000, mass: 3200000 },
+    { price: 20000000, mass: 6000000 },
+  ] },
+  { op: "set", collection: "facilities", target: "builder", path: "levels", value: [
+    { height: 20, width: 5, parts: 50 },
+    { price: 200000, height: 35, width: 8, parts: 120 },
+    { price: 700000, height: 55, width: 12, parts: 300 },
+    { price: 2000000, height: 75, width: 20, parts: 600 },
+    { price: 6000000, height: 125, width: 30 },
+  ] },
+]

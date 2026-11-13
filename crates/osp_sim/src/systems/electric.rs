@@ -403,6 +403,9 @@ pub struct Antenna {
     /// It passes on other vessels' signals.
     #[serde(default)]
     pub relay: bool,
+    /// It only sends: no commands come in through it ([`crate::component::AntennaDef::telemetry`]).
+    #[serde(default)]
+    pub telemetry: bool,
     /// The player has shut it down.
     #[serde(default)]
     pub shut: bool,
@@ -491,7 +494,8 @@ pub(super) fn antenna(component: &Component, _part: &Part) -> Option<Box<dyn Sys
             data_rate: def.data_rate,
         },
         on: true,
-        relay: def.relay,
+        relay: def.relay && !def.telemetry,
+        telemetry: def.telemetry,
         shut: false,
         holding: def.diameter * DISH_DRAW_PER_M,
     }))

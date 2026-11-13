@@ -14,12 +14,7 @@
 //! | `manifest.confirm`, `manifest.cancel` | Answer the question asked |
 
 use bevy::prelude::*;
-use osp_sim::{
-    body::BodyId,
-    orbit::StateVector,
-    rendezvous::Target,
-    vessel::{Situation, Vessel, VesselId},
-};
+use osp_sim::{body::BodyId, orbit::StateVector, rendezvous::Target, vessel::VesselId};
 use osp_ui::{UiAction, UiData, UiRecord, record};
 
 use crate::{
@@ -62,14 +57,6 @@ impl Default for ManifestUi {
 enum Confirm {
     Remove(VesselId),
     ClearDebris,
-}
-
-/// Landed on a world with a launch site, where it can be fetched.
-fn recoverable(vessel: &Vessel, sim: &Sim, world: &WorldData) -> bool {
-    let system = &sim.universe.system;
-    let body = &system.body(vessel.parent()).name;
-    vessel.situation(system, sim.render_time) == Situation::Landed
-        && world.sites.iter().any(|s| &s.body == body)
 }
 
 fn manifest_actions(
@@ -128,14 +115,15 @@ fn manifest_actions(
                         let Some(vessel) = sim.universe.vessel(id) else {
                             continue;
                         };
-                        let verb = if recoverable(vessel, &sim, &world) {
-                            "Recovered"
+                        if sim.universe.recoverable(id, &world.sites) {
+                            // What its drives hold has come home.
+                            let recovered = sim.universe.recover_vessel(id);
+                            recovered.map(|r| r.notice()).unwrap_or_default()
                         } else {
-                            "Destroyed"
-                        };
-                        let notice = format!("{verb} {}", vessel.name);
-                        sim.universe.remove_vessel(id);
-                        notice
+                            let notice = format!("Destroyed {}", vessel.name);
+                            sim.universe.remove_vessel(id);
+                            notice
+                        }
                     }
                     Some(Confirm::ClearDebris) => match sim.universe.clear_debris() {
                         1 => "Cleared 1 piece of debris".to_owned(),
@@ -230,7 +218,7 @@ fn publish_manifest(
         let body = system.body(other.parent());
         let orbit = (!other.is_landed()).then(|| other.orbit(system, now));
         let (distance, speed) = relative(other.parent(), other.state_at(system, now));
-        let recover = !is_active && recoverable(other, &sim, &world);
+        let recover = !is_active && sim.universe.recoverable(other.id(), &world.sites);
         let confirming = ui.confirm == Some(Confirm::Remove(id));
         let kind = if other.is_debris() {
             "debris"

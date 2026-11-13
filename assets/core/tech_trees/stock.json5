@@ -1,11 +1,12 @@
 // The trees a science game unlocks parts on: the `tech_nodes` reached from `roots`, which a new
 // science game starts with. The rules name the one a game uses (`tech_tree`); the Realism mod adds
-// RP-1's.
+// RP-1's. `funds`: the money a career on it starts with.
 [
   {
     id: "casual",
     name: "Casual",
     description: "From a first capsule to the biggest engines, in seven steps.",
     roots: ["first_steps"],
+    funds: 50000,
   },
 ]

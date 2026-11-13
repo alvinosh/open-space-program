@@ -16,7 +16,9 @@
   { op: "set", collection: "rules", target: "game", path: "tech_tree", value: "rp1" },
 
   // Placements, by node.
-  { op: "merge", collection: "tech_nodes", target: "start", value: { parts: ["tank", "structural", "nose_cone", "decoupler", "fin", "fuel_line", "instrument:thermometer", "instrument:barometer", "instrument:camera"] } },
+  // A sounding rocket's telemetry unit sends its readings home, as RP-1's Science-Core does; its
+  // parachute brings back the camera's film.
+  { op: "merge", collection: "tech_nodes", target: "start", value: { parts: ["tank", "structural", "nose_cone", "decoupler", "fin", "fuel_line", "parachute", "telemetry", "instrument:thermometer", "instrument:barometer", "instrument:camera"] } },
   { op: "merge", collection: "tech_nodes", target: "scienceSatellite", value: { parts: ["instrument:magnetometer"] } },
   { op: "merge", collection: "tech_nodes", target: "surfaceScience", value: { parts: ["instrument:surface_sampler"] } },
   { op: "merge", collection: "tech_nodes", target: "rocketryTesting", value: { parts: ["engine:A-1", "engine:A-3A"] } },

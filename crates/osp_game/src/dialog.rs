@@ -6,7 +6,9 @@
 //!
 //! - `ask.leave:<action>` does the action, asking first to save a game that would lose something:
 //!   Save and continue, Don't save, Cancel.
-//! - `ask.delete_save:<file>` and `ask.destroy:<vessel>` ask whether to. `ask.overwrite:<file>`
+//! - `ask.delete_save:<file>` and `ask.destroy:<vessel>` ask whether to, and `ask.recover:<vessel>`
+//!   (the one being flown with no vessel named) whether to bring it home (`vessel.recover:<id>`, the
+//!   editor's, which knows where it goes then). `ask.overwrite:<file>`
 //!   saves over `file` at once if it is this game's save, and asks first if it is another's. `ask.clear` and
 //!   `ask.revert:<launch|hangar>` are the editor's (see `editor`), which knows what stands in the way
 //!   and what was launched.
@@ -89,6 +91,23 @@ impl Question {
                 Answer {
                     label: yes,
                     look: Look::Danger,
+                    then: Then::Fire(then),
+                },
+                cancel(),
+            ],
+        }
+    }
+
+    /// Whether to do something the player may want to think twice about: `yes` fires `then`, or
+    /// Cancel.
+    pub fn confirm(title: String, text: &str, yes: &'static str, then: String) -> Self {
+        Self {
+            title,
+            text: text.to_owned(),
+            answers: vec![
+                Answer {
+                    label: yes,
+                    look: Look::Primary,
                     then: Then::Fire(then),
                 },
                 cancel(),
@@ -220,6 +239,28 @@ fn dialog_actions(
                     "A destroyed vessel cannot be brought back.",
                     "Destroy",
                     format!("vessel.destroy:{}", vessel.id().0),
+                ));
+            }
+            "ask.recover" => {
+                // No vessel named: the one being flown.
+                let id = match action.arg() {
+                    Some(id) => id.parse().ok().map(VesselId),
+                    None => Some(sim.active_id()),
+                };
+                let Some(vessel) = id.and_then(|id| sim.universe.vessel(id)) else {
+                    warn!("no vessel to recover in `{}`", action.0);
+                    continue;
+                };
+                let text = if vessel.id() == sim.active_id() {
+                    "It is brought home with what its drives hold, and the hangar opens for the next one."
+                } else {
+                    "It is brought home with what its drives hold."
+                };
+                dialog.ask(Question::confirm(
+                    format!("Recover {}?", vessel.name),
+                    text,
+                    "Recover",
+                    format!("vessel.recover:{}", vessel.id().0),
                 ));
             }
             "dialog.answer" => {

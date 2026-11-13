@@ -1,6 +1,7 @@
 // RP-1's experiments and science situations, in place of the base game's quick ones
 // (RP-1/GameData/RP-1/Science: Experiments/*.cfg for each experiment's data, time, power and value,
-// BodyScienceParams.cfg for where each body's situations change). Film from a camera is a sample
+// BodyScienceParams.cfg for where each body's situations change and what a set done in each is
+// worth, its DataValues; a situation it does not give stays at 1). Film from a camera is a sample
 // that has to come home, as it was on the V-2s.
 [
   { op: "merge", collection: "experiments", target: "temperature", value: { duration: 600, size: 75, power: 1, value: 4 } },
@@ -10,8 +11,19 @@
   { op: "merge", collection: "experiments", target: "photography", value: { duration: 600, size: 0, sample: 2, power: 5, value: 5 } },
   { op: "merge", collection: "experiments", target: "surface_sample", value: { duration: 300, sample: 0.08, power: 20, value: 6 } },
 
-  { op: "merge", collection: "bodies", target: "Earth", value: { science: { flying_high: 40000, space_high: 35786000 } } },
-  { op: "merge", collection: "bodies", target: "Mars", value: { science: { flying_high: 50000, space_high: 3000000 } } },
-  { op: "merge", collection: "bodies", target: "Venus", value: { science: { flying_high: 50000, space_high: 6000000 } } },
-  { op: "merge", collection: "bodies", target: "Mercury", value: { science: { space_high: 2500000 } } },
+  { op: "merge", collection: "bodies", target: "Earth", value: { science: { flying_high: 40000, space_high: 35786000,
+    values: { landed: 1, splashed: 1, flying_low: 1, flying_high: 0.6, space_low: 1, space_high: 1.25 } } } },
+  { op: "merge", collection: "bodies", target: "Moon", value: { science: {
+    values: { landed: 3, splashed: 1, flying_low: 1, flying_high: 1, space_low: 2, space_high: 1.5 } } } },
+  { op: "merge", collection: "bodies", target: "Mars", value: { science: { flying_high: 50000, space_high: 3000000,
+    values: { landed: 7, splashed: 1, flying_low: 7, flying_high: 6, space_low: 3, space_high: 3 } } } },
+  { op: "merge", collection: "bodies", target: "Venus", value: { science: { flying_high: 50000, space_high: 6000000,
+    values: { landed: 8, splashed: 1, flying_low: 12, flying_high: 7, space_low: 3, space_high: 3 } } } },
+  { op: "merge", collection: "bodies", target: "Mercury", value: { science: { space_high: 2500000,
+    values: { landed: 40, splashed: 1, flying_low: 29, flying_high: 21, space_low: 4, space_high: 4 } } } },
+  { op: "merge", collection: "bodies", target: "Jupiter", value: { science: { flying_high: 1000000, space_high: 70000000,
+    values: { landed: 40, splashed: 1, flying_low: 24, flying_high: 15, space_low: 10, space_high: 6 } } } },
+  // RP-1 gives the Sun none.
+  { op: "merge", collection: "bodies", target: "Sun", value: { science: {
+    values: { landed: 1, splashed: 1, flying_low: 1, flying_high: 1, space_low: 1, space_high: 1 } } } },
 ]

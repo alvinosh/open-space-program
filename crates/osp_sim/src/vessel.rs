@@ -278,6 +278,10 @@ pub struct Vessel {
     /// It has come down on water and floats there.
     #[serde(default)]
     afloat: bool,
+    /// Science its data has earned by radio since its drives last had none to send, to tell the
+    /// player when they are clear.
+    #[serde(default)]
+    pub(crate) sent_science: f64,
     /// How the air's heat falls on its parts.
     #[serde(skip)]
     heat_hull: HeatHull,
@@ -374,6 +378,7 @@ impl Vessel {
             propellant_settled: false,
             guidance: Guidance::Off,
             afloat: false,
+            sent_science: 0.0,
             heat_hull: HeatHull::default(),
             destroyed: false,
             debris: false,
@@ -1508,10 +1513,12 @@ impl Vessel {
         let body = system.body(self.parent);
         let altitude = self.state_at(system, time).position.length() - body.radius;
         let landed = self.is_landed() || self.wheels_down;
+        let situation = crate::science::Situation::of(body, altitude, landed, self.is_afloat());
         crate::science::Place {
             body: body.name.clone(),
-            situation: crate::science::Situation::of(body, altitude, landed, self.is_afloat()),
+            situation,
             sunlit: environment.sunlit >= 0.5,
+            value: body.science.values.of(situation),
         }
     }
 
@@ -1583,10 +1590,16 @@ impl Vessel {
     pub fn commandable(&self) -> bool {
         let systems = &self.propulsion.systems;
         let crew = systems.all::<Crew>().any(|(_, crew)| crew.aboard > 0);
-        let antennas = systems.all::<Antenna>().next().is_some();
+        let hears = self.hears_commands();
         let probe = systems.all::<Avionics>().any(|(_, unit)| unit.needs_link);
-        let reached_by_radio = antennas || (probe && self.propulsion.needs_a_radio());
-        crew || self.link.is_some() || !reached_by_radio
+        let reached_by_radio = hears || (probe && self.propulsion.needs_a_radio());
+        crew || (self.link.is_some() && hears) || !reached_by_radio
+    }
+
+    /// Whether it has an antenna that hears commands. Telemetry only sends: a vessel with nothing
+    /// else does not wait on its link to be flown, and a probe core cannot be reached through it.
+    fn hears_commands(&self) -> bool {
+        (self.propulsion.systems.all::<Antenna>()).any(|(_, antenna)| !antenna.telemetry)
     }
 
     /// Send a burn up: it joins the plan once the signal has got there, or at once for a crew;
@@ -1597,7 +1610,7 @@ impl Vessel {
             self.plan.add(burn);
             return true;
         }
-        let Some(link) = &self.link else {
+        let Some(link) = self.link.as_ref().filter(|_| self.hears_commands()) else {
             return false;
         };
         self.uplink.push((time.add_seconds(link.delay), burn));

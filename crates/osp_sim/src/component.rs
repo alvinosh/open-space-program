@@ -350,6 +350,7 @@ pub enum ComponentDef {
     Process(ProcessComponentDef),
     FuelLine(FuelLineDef),
     Experiment(ExperimentComponentDef),
+    Drive(DriveDef),
 }
 
 /// A scientific instrument's experiment: an `experiments` record, run where it works.
@@ -361,6 +362,33 @@ pub struct ExperimentComponentDef {
     /// Running from the start, wherever it works.
     #[serde(default = "yes")]
     pub on: bool,
+}
+
+/// Where a part keeps what experiments make: a drive for their data and room for their samples.
+/// The experiments on the parts it is wired to write to it (see [`crate::systems::Drive`]).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DriveDef {
+    /// Bytes of data it holds.
+    #[serde(default)]
+    pub data: f64,
+    /// kg of samples it holds.
+    #[serde(default)]
+    pub samples: f64,
+}
+
+impl DriveDef {
+    /// What is wrong with it, if anything.
+    pub fn problem(&self) -> Option<String> {
+        let room = |v: f64| v.is_finite() && v >= 0.0;
+        if !(room(self.data) && room(self.samples)) {
+            Some("a drive's room is a figure, nothing or more".into())
+        } else if self.data == 0.0 && self.samples == 0.0 {
+            Some("a drive has room for data or samples".into())
+        } else {
+            None
+        }
+    }
 }
 
 /// A line that carries propellant one way, from what the part is on to the part `to` (by its id),
@@ -403,6 +431,21 @@ pub struct ParachuteDef {
     /// How long it takes to fill, s.
     #[serde(default = "default_opening_time")]
     pub opening_time: f64,
+}
+
+impl ParachuteDef {
+    /// A canopy `diameter` m across that opens below `deploy_altitude` m and stays on, with the
+    /// usual drag, strength and opening time.
+    pub fn new(diameter: f64, deploy_altitude: f64) -> Self {
+        Self {
+            diameter,
+            drag: default_canopy_drag(),
+            deploy_altitude,
+            cut_altitude: 0.0,
+            max_pressure: default_canopy_pressure(),
+            opening_time: default_opening_time(),
+        }
+    }
 }
 
 fn default_canopy_drag() -> f64 {
@@ -631,6 +674,10 @@ pub struct AntennaDef {
     /// It passes on other vessels' signals to the ground.
     #[serde(default, skip_serializing_if = "is_false")]
     pub relay: bool,
+    /// It only sends what the vessel's drives hold, as a sounding rocket's telemetry does: it
+    /// hears no commands and passes nothing on, so a vessel does not wait on its link to be flown.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub telemetry: bool,
 }
 
 /// Guidance and control electronics: with power, it controls a vessel of up to its
@@ -973,6 +1020,7 @@ pub enum Component {
         def: crate::data::ExperimentDef,
         on: bool,
     },
+    Drive(DriveDef),
 }
 
 /// A coat on a part's walls, as built.
@@ -1367,6 +1415,12 @@ impl PartDef {
                         on: def.on,
                     }
                 }
+                ComponentDef::Drive(def) => {
+                    if let Some(problem) = def.problem() {
+                        return Err(bad(problem));
+                    }
+                    Component::Drive(*def)
+                }
                 ComponentDef::Process(def) => {
                     let record = (catalog.processes.iter())
                         .find(|p| p.id == def.process)
@@ -1627,6 +1681,9 @@ impl PartDef {
                     ..LifeSupportDef::default()
                 }));
             }
+        }
+        if let Some(drive) = def.drive() {
+            components.push(ComponentDef::Drive(drive));
         }
         if def.electric_charge > 0.0 {
             components.push(ComponentDef::Battery(BatteryPackDef {

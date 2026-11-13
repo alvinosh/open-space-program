@@ -1,7 +1,9 @@
 // Crew pods. A pod sits at the top of its stage (`pod: "<id>"`); its mass (with crew and
 // consumables, kg) counts as structure. `diameter` is the base, `height` the whole pod (m),
 // `top_diameter` the top (the air sees the pod as a frustum). `supplies`: days of what its crew
-// need, in its lockers, under whatever life support the game has.
+// need, in its lockers, under whatever life support the game has. `drive`: room for what
+// experiments make, `{ data: <bytes>, samples: <kg> }`; 2 MB and 5 kg a seat if not given.
+// `electric_charge`: kJ in its batteries (Mercury flew on about 13.5 kWh, 48,600 kJ).
 // Models are glTF, origin at the centre of the base, nose up.
 [
   {
@@ -13,6 +15,7 @@
     top_diameter: 0.73,
     model: "models/pods/c1.glb",
     supplies: 14, // days
+    electric_charge: 36000, // 10 kWh
   },
   {
     id: "C-4 Capsule", // four people, Dragon/Orion class
@@ -23,5 +26,6 @@
     top_diameter: 1.1,
     model: "models/pods/c4.glb",
     supplies: 30, // days
+    electric_charge: 72000, // 20 kWh
   },
 ]

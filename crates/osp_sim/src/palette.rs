@@ -538,9 +538,12 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
                     "shape": { "ring": { "diameter": 0.6, "height": 0.2, "thickness": 0.3 } },
                     "model": { "path": "models/systems/probe_core.glb" },
                     "structure": { "mass": 30.0 },
-                    "components": [{ "avionics": {
-                        "controlled_mass": 20000.0, "interplanetary": true, "needs_link": true,
-                    } }],
+                    "components": [
+                        { "avionics": {
+                            "controlled_mass": 20000.0, "interplanetary": true, "needs_link": true,
+                        } },
+                        { "drive": { "data": 2e6 } },
+                    ],
                 }),
                 None,
             ),
@@ -581,6 +584,56 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
                 None,
             ),
             "100 W",
+        ),
+        (
+            entry(
+                "parachute",
+                "Parachute",
+                Group::Systems,
+                "Opens by itself once armed and low enough, the last thing staged. Size the canopy \
+                 for what it brings down: a one-seat capsule wants about 24 m, a sounding \
+                 rocket's nose a few",
+                json!({
+                    "id": "", "name": "Parachute",
+                    "procedural": { "parachute": { "diameter": 24.0, "deploy_altitude": 3000.0 } },
+                    "nodes": [{
+                        "name": "bottom",
+                        "position": [0.0, 0.0, 0.0],
+                        "direction": [0.0, 0.0, -1.0],
+                        "size": 0.4,
+                    }],
+                    "paint": { "color": [0.85, 0.45, 0.15], "finish": "paint" },
+                }),
+                Some(("bottom", 0.0)),
+            ),
+            "24 m",
+        ),
+        (
+            entry(
+                "telemetry",
+                "Telemetry unit",
+                Group::Systems,
+                "A sounding rocket's transmitter on its own battery: it sends what the instruments \
+                 read to the ground, nearby, and hears no commands",
+                json!({
+                    "id": "", "name": "Telemetry unit",
+                    "shape": { "box": { "size": [0.2, 0.14, 0.18] } },
+                    "structure": { "mass": 10.0 },
+                    "components": [
+                        { "antenna": { "power": 1.0, "data_rate": 512.0, "telemetry": true } },
+                        { "battery": { "charge": 40.0 } },
+                    ],
+                    "nodes": [{
+                        "name": "bottom",
+                        "position": [0.0, 0.0, 0.0],
+                        "direction": [0.0, 0.0, -1.0],
+                        "size": 0.2,
+                    }],
+                    "paint": { "color": [0.35, 0.38, 0.42], "finish": "metal" },
+                }),
+                Some(("bottom", 0.0)),
+            ),
+            "512 bit/s",
         ),
         (
             entry(
@@ -1021,7 +1074,9 @@ pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
             stem: "reaction_wheel".into(),
         }))
         .collect();
-    let mut science: Vec<Entry> = catalog.instruments.iter().map(instrument).collect();
+    let mut science: Vec<Entry> = (catalog.instruments.iter())
+        .map(|def| instrument(def, catalog))
+        .collect();
     for list in [&mut pods, &mut engines, &mut control, &mut science] {
         list.sort_by_key(|entry| entry.name.to_lowercase());
         out.append(list);
@@ -1030,22 +1085,34 @@ pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
 }
 
 /// A scientific instrument's entry: a box of its size and mass carrying its experiments, put on a
-/// side by its bottom like an antenna.
-fn instrument(def: &crate::data::InstrumentDef) -> Entry {
+/// side by its bottom like an antenna, with a drive of its own for the sets it holds of them.
+fn instrument(def: &crate::data::InstrumentDef, catalog: &PartCatalog) -> Entry {
     let name = if def.name.is_empty() {
         def.id.clone()
     } else {
         def.name.clone()
     };
-    let experiments: Vec<serde_json::Value> = (def.experiments.iter())
+    let mut experiments: Vec<serde_json::Value> = (def.experiments.iter())
         .map(|id| json!({ "experiment": { "experiment": id } }))
         .collect();
+    let (mut data, mut samples) = (0.0, 0.0);
+    for record in
+        (def.experiments.iter()).filter_map(|id| catalog.experiments.iter().find(|e| &e.id == id))
+    {
+        match record.sample {
+            Some(kg) => samples += def.holds * kg,
+            None => data += def.holds * record.size,
+        }
+    }
+    if data > 0.0 || samples > 0.0 {
+        experiments.push(json!({ "drive": { "data": data, "samples": samples } }));
+    }
     Entry {
         id: format!("instrument:{}", def.id),
         name: name.clone(),
         group: Group::Science,
         detail: mass(def.mass),
-        about: def.description.clone(),
+        about: def.catalog.description.clone().unwrap_or_default(),
         width: None,
         propellant: None,
         part: part(json!({

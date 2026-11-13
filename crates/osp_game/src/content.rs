@@ -357,6 +357,7 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
         .map_err(|e| e.to_string())?;
     let stations = registry.all::<GroundStationDef>("ground_stations", &mut diagnostics);
     universe.set_stations(&stations);
+    universe.data_rates = catalog.rules.data_rates;
     // What vessels collide with is what is drawn, models included.
     universe
         .colliders
@@ -632,6 +633,7 @@ mod tests {
             "realistic_avionics",
             "realistic_life_support",
             "realistic_radiation",
+            "realistic_comms",
             "realism",
         ] {
             assert!(mode("realistic").mods.iter().any(|m| m == id), "{id}");

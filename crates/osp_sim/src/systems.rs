@@ -13,6 +13,7 @@
 mod battery;
 mod cabin;
 mod crew;
+mod drive;
 mod electric;
 mod experiment;
 mod leg;
@@ -29,6 +30,7 @@ pub use self::{
     battery::Battery,
     cabin::{Cabin, FILL, LET_DOWN, Stowed},
     crew::{BOARD, Crew, Person, SUITS_OFF, SUITS_ON, Stage},
+    drive::{DELETE_DATA, DUMP_SAMPLES, Drive, Held, TAKE_DATA},
     electric::{ANTENNA_OFF, ANTENNA_ON, Antenna, Avionics, FuelCell, Load, Rtg, SolarArray},
     experiment::{EXPERIMENT_PRIORITY, Experiment, START_EXPERIMENT, STOP_EXPERIMENT},
     leg::{DEPLOY_LEG, Leg},
@@ -42,7 +44,7 @@ use crate::{
     environment::Environment,
     parts::{Part, PartId, PartTree},
     radiation::Radiation,
-    science::Place,
+    science::{Place, Returned},
     staging::Action,
 };
 
@@ -243,6 +245,32 @@ pub trait System: SavedState + Debug + Send + Sync {
     /// Tell it where its part is, before a step.
     fn situate(&mut self, _place: &Place) {}
 
+    /// What it puts on the drives it is wired to, if it makes anything to keep: samples or data, and
+    /// how much a second it is making now.
+    fn writes(&self) -> Option<Writing> {
+        None
+    }
+
+    /// Tell it whether the drives it is wired to have room for what it [`Self::writes`].
+    fn room(&mut self, _room: bool) {}
+
+    /// What it has made since it was last asked, to keep on a drive.
+    fn written(&mut self) -> Option<Written> {
+        None
+    }
+
+    /// `amount` of what it made of `subject` found no room: it has not made it after all.
+    fn unwritten(&mut self, _subject: &str, _amount: f64) {}
+
+    /// Its drive, if it is one.
+    fn drive(&self) -> Option<&Drive> {
+        None
+    }
+
+    fn drive_mut(&mut self) -> Option<&mut Drive> {
+        None
+    }
+
     /// Seconds until it needs attention if the tanks go on giving it these shares of what it
     /// [`Self::wants`], as they would now: people going short reach their next stage.
     fn next_event_given(&self, _shares: &[f64]) -> Option<f64> {
@@ -336,6 +364,22 @@ impl Exchange {
             ..Self::default()
         }
     }
+}
+
+/// What a system makes to keep on a drive, now ([`System::writes`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Writing {
+    /// Samples (kg) rather than data (B).
+    pub sample: bool,
+    /// How much a second it is making now, nothing if it is not running.
+    pub rate: f64,
+}
+
+/// What a system made over a step ([`System::written`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Written {
+    pub subject: String,
+    pub held: Held,
 }
 
 /// A cabin's air as it is now.
@@ -483,6 +527,12 @@ pub const KINDS: &[Kind] = &[
         load: load::<Experiment>,
     },
     Kind {
+        of: drive::of,
+        actions: &[TAKE_DATA, DELETE_DATA, DUMP_SAMPLES],
+        name: "drive",
+        load: load::<Drive>,
+    },
+    Kind {
         of: leg::of,
         actions: &[leg::DEPLOY_LEG],
         name: "leg",
@@ -507,6 +557,13 @@ pub const KINDS: &[Kind] = &[
         load: load::<Thermal>,
     },
 ];
+
+/// Count `sets` of `subject`, worth `worth` a set, in `to`.
+fn add_to(to: &mut BTreeMap<String, Returned>, subject: &str, sets: f64, worth: f64) {
+    let returned = to.entry(subject.to_owned()).or_default();
+    returned.sets += sets;
+    returned.worth = returned.worth.max(worth);
+}
 
 /// How readily heat crosses a joint, W/K: a small part on a big one comes down to it in minutes.
 const JOINT_CONDUCTANCE: f64 = 100.0;
@@ -592,6 +649,7 @@ impl Systems {
                 self.parts.contains_key(part) && self.parts.contains_key(parent)
             })
             .collect();
+        self.allot_room();
     }
 
     /// The systems on `part`.
@@ -655,7 +713,232 @@ impl Systems {
         let system = systems
             .iter_mut()
             .find(|s| s.actions().iter().any(|a| a.kind == action.kind))?;
-        system.act(action)
+        let said = if action.kind == TAKE_DATA.kind {
+            self.gather(part)
+        } else {
+            system.act(action)
+        };
+        self.allot_room();
+        said
+    }
+
+    /// Every drive, with its part.
+    pub fn drives(&self) -> impl Iterator<Item = (PartId, &Drive)> + '_ {
+        (self.parts.iter())
+            .flat_map(|(&part, on)| on.iter().filter_map(move |s| Some((part, s.drive()?))))
+    }
+
+    /// What the drives hold, by subject: whole sets of each, data and samples, and what a set is
+    /// worth.
+    pub fn held(&self) -> BTreeMap<String, Returned> {
+        let mut out = BTreeMap::new();
+        for (_, drive) in self.drives() {
+            for (subject, held) in &drive.held {
+                add_to(&mut out, subject, held.sets(), held.worth);
+            }
+        }
+        out
+    }
+
+    /// Bytes of data on the drives that can be sent (no samples).
+    pub fn sendable(&self) -> f64 {
+        (self.drives())
+            .flat_map(|(_, d)| d.sendable())
+            .fold(0.0, |all, (_, held)| all + held.amount)
+    }
+
+    /// Send up to `bytes` of the drives' data home, drive by drive and subject by subject: the whole
+    /// sets of each subject that went, and what a set is worth.
+    pub fn send(&mut self, bytes: f64) -> BTreeMap<String, Returned> {
+        let mut left = bytes;
+        let mut sent = BTreeMap::new();
+        for systems in self.parts.values_mut() {
+            for drive in systems.iter_mut().filter_map(|s| s.drive_mut()) {
+                let files: Vec<(String, Held)> = (drive.sendable())
+                    .map(|(subject, held)| (subject.to_owned(), *held))
+                    .collect();
+                for (subject, held) in files {
+                    if left <= 0.0 {
+                        break;
+                    }
+                    let taken = drive.take(&subject, left);
+                    left -= taken;
+                    add_to(&mut sent, &subject, taken / held.whole, held.worth);
+                }
+            }
+        }
+        if !sent.is_empty() {
+            self.allot_room();
+        }
+        sent
+    }
+
+    /// The network `part` is on.
+    fn network_of(&self, part: PartId) -> Option<&Vec<PartId>> {
+        self.networks.iter().find(|n| n.contains(&part))
+    }
+
+    /// The drives on `network` with room for samples or data, the biggest first, as (part, index
+    /// among its part's systems).
+    fn drives_on(&self, network: &[PartId], sample: bool) -> Vec<(PartId, usize)> {
+        let mut drives: Vec<(PartId, usize, f64)> = (network.iter())
+            .flat_map(|&part| {
+                (self.on(part).iter().enumerate()).filter_map(move |(index, s)| {
+                    let room = s.drive()?.capacity(sample);
+                    (room > 0.0).then_some((part, index, room))
+                })
+            })
+            .collect();
+        drives.sort_by(|a, b| b.2.total_cmp(&a.2).then(a.0.cmp(&b.0)));
+        drives
+            .into_iter()
+            .map(|(part, index, _)| (part, index))
+            .collect()
+    }
+
+    /// The room left on `network`'s drives for samples or data, and the room they have in all.
+    fn free_on(&self, network: &[PartId], sample: bool) -> (f64, f64) {
+        (self.drives_on(network, sample).into_iter())
+            .filter_map(|(part, index)| self.on(part)[index].drive())
+            .fold((0.0, 0.0), |(free, all), d| {
+                (free + d.free(sample), all + d.capacity(sample))
+            })
+    }
+
+    /// Whether anything on the vessel makes something to keep on a drive.
+    fn writers(&self) -> bool {
+        self.parts.values().flatten().any(|s| s.writes().is_some())
+    }
+
+    /// Tell everything that writes to drives whether the drives it is wired to have room for it.
+    fn allot_room(&mut self) {
+        if !self.writers() {
+            return;
+        }
+        for k in 0..self.networks.len() {
+            let network = std::mem::take(&mut self.networks[k]);
+            let room = |sample| {
+                let (free, all) = self.free_on(&network, sample);
+                !drive::negligible(free, all)
+            };
+            let (data, samples) = (room(false), room(true));
+            for part in &network {
+                for system in self.parts.get_mut(part).into_iter().flatten() {
+                    if let Some(writing) = system.writes() {
+                        system.room(if writing.sample { samples } else { data });
+                    }
+                }
+            }
+            self.networks[k] = network;
+        }
+    }
+
+    /// Put what each writer made over the last step on the drives it is wired to, the biggest
+    /// first; what finds no room it has not made.
+    fn keep_written(&mut self) {
+        if !self.writers() {
+            return;
+        }
+        for k in 0..self.networks.len() {
+            let network = std::mem::take(&mut self.networks[k]);
+            for &part in &network {
+                for index in 0..self.on(part).len() {
+                    let Some(written) = self.on_mut(part)[index].written() else {
+                        continue;
+                    };
+                    let mut left = written.held.amount;
+                    for (to, at) in self.drives_on(&network, written.held.sample) {
+                        if left <= 0.0 {
+                            break;
+                        }
+                        let drive = self.on_mut(to)[at].drive_mut().expect("a drive");
+                        left = drive.put(
+                            &written.subject,
+                            Held {
+                                amount: left,
+                                ..written.held
+                            },
+                        );
+                    }
+                    if left > 0.0 {
+                        self.on_mut(part)[index].unwritten(&written.subject, left);
+                    }
+                }
+            }
+            self.networks[k] = network;
+        }
+    }
+
+    /// Seconds until the drives of a network fill up with what is being written to them now.
+    fn first_full(&self) -> Option<f64> {
+        if !self.writers() {
+            return None;
+        }
+        let mut first: Option<f64> = None;
+        for network in &self.networks {
+            for sample in [false, true] {
+                let rate: f64 = (network.iter())
+                    .flat_map(|&part| self.on(part))
+                    .filter_map(|s| s.writes())
+                    .filter(|w| w.sample == sample)
+                    .map(|w| w.rate)
+                    .sum();
+                let (free, all) = self.free_on(network, sample);
+                if rate > 0.0 && !drive::negligible(free, all) {
+                    let seconds = free / rate;
+                    first = Some(first.map_or(seconds, |f| f.min(seconds)));
+                }
+            }
+        }
+        first
+    }
+
+    /// Bring what the other drives `part`'s drive is wired to hold onto it, as much as fits: what
+    /// to tell the player.
+    fn gather(&mut self, part: PartId) -> Option<String> {
+        let network = self.network_of(part)?.clone();
+        let at = self.on(part).iter().position(|s| s.drive().is_some())?;
+        let (mut data, mut samples) = (0.0, 0.0);
+        for &from in network.iter().filter(|&&p| p != part) {
+            for index in 0..self.on(from).len() {
+                let Some(source) = self.on(from)[index].drive() else {
+                    continue;
+                };
+                let files: Vec<(String, Held)> =
+                    source.held.iter().map(|(s, h)| (s.clone(), *h)).collect();
+                for (subject, held) in files {
+                    let target = self.on(part)[at].drive().expect("a drive");
+                    let moving = held.amount.min(target.free(held.sample));
+                    if moving <= 0.0 {
+                        continue;
+                    }
+                    let source = self.on_mut(from)[index].drive_mut().expect("a drive");
+                    let taken = source.take(&subject, moving);
+                    let target = self.on_mut(part)[at].drive_mut().expect("a drive");
+                    target.put(
+                        &subject,
+                        Held {
+                            amount: taken,
+                            ..held
+                        },
+                    );
+                    if held.sample {
+                        samples += taken;
+                    } else {
+                        data += taken;
+                    }
+                }
+            }
+        }
+        Some(match (data > 0.0, samples > 0.0) {
+            (false, false) => "No data to move here".to_owned(),
+            (true, false) => format!("Moved {:.1} kB of data here", data / 1e3),
+            (false, true) => format!("Moved {samples:.2} kg of samples here"),
+            (true, true) => format!(
+                "Moved {:.1} kB of data and {samples:.2} kg of samples here",
+                data / 1e3
+            ),
+        })
     }
 
     /// One tick of flight for every system. `heat` is what falls on each part; what is left of a
@@ -795,6 +1078,7 @@ impl Systems {
     /// `supplied`: the vessel stands at a launch site on its ground support, which powers every
     /// load and keeps the stores full, so its fuel cells stand idle.
     pub fn step(&mut self, environment: &Environment, dt: f64, supplied: bool) {
+        self.allot_room();
         for k in 0..self.networks.len() {
             let network = std::mem::take(&mut self.networks[k]);
             if supplied {
@@ -807,6 +1091,8 @@ impl Systems {
         for system in self.parts.values_mut().flatten() {
             system.step(dt);
         }
+        self.keep_written();
+        self.allot_room();
         if environment.exposure != Radiation::NONE {
             for system in self.parts.values_mut().flatten() {
                 system.irradiate(&environment.exposure, environment.air_column);
@@ -960,7 +1246,7 @@ impl Systems {
         let run_out = (!supplied)
             .then(|| self.first_run_out(environment))
             .flatten();
-        own.chain(run_out).reduce(f64::min)
+        own.chain(run_out).chain(self.first_full()).reduce(f64::min)
     }
 
     /// Seconds until the first of the power networks runs out, with what each draws now.

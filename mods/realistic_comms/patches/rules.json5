@@ -1,0 +1,3 @@
+[
+  { op: "set", collection: "rules", target: "game", path: "data_rates", value: true, pass: "first" },
+]

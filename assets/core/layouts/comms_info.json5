@@ -1,5 +1,7 @@
-// Communications: the link to the ground, how much it has to spare and how late a word arrives.
-// `vessel.link` says whether there is one; a vessel with no radio shows that instead.
+// Communications: the link to the ground, how much it has to spare and how late a word arrives, and
+// the experiments' data waiting to go home. `vessel.link` says whether there is one; a vessel with
+// no radio shows that instead. The data rate shows only where data goes at the link's rate
+// (`vessel.shows_rate`, in a Realistic game with a link); otherwise it all goes at once with a link.
 {
   id: "comms_info",
   visible: false,
@@ -23,9 +25,12 @@
           { widget: "label", class: "dim", visible: "vessel.is_relay", text: "This vessel relays others' signals" },
           { widget: "label", class: "dim", visible: "!vessel.link", text: "No link" },
           { widget: "row", class: "kv", visible: "vessel.link_next", children: [{ widget: "label", class: "key", text: "Changes in" }, { widget: "label", text: "{vessel.link_next|fixed:0} s" }] },
+          { widget: "row", class: "kv", visible: "vessel.shows_rate", children: [{ widget: "label", class: "key", text: "Data rate" }, { widget: "label", text: "{vessel.link_rate|fixed:0} bit/s" }] },
+          { widget: "row", class: "kv", visible: "vessel.data_sent_in", children: [{ widget: "label", class: "key", text: "Sent in" }, { widget: "label", text: "{vessel.data_sent_in|duration}" }] },
           { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "Commands" }, { widget: "label", visible: "vessel.commandable", text: "Answered" }, { widget: "label", visible: "!vessel.commandable", text: "No link, no crew" }] },
         ],
       },
+      { widget: "row", class: "kv", visible: "vessel.has_data", children: [{ widget: "label", class: "key", text: "Data to send" }, { widget: "label", text: "{vessel.data_waiting|fixed:2} kB" }] },
     ],
   },
 }

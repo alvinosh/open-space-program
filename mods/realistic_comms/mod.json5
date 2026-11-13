@@ -1,0 +1,10 @@
+// Data sent home as fast as the link carries it: slower further from the ground, slower through a
+// weak relay, and shared by everyone sending through the same one.
+{
+  id: "realistic_comms",
+  name: "Realistic Communications",
+  version: "0.1.0",
+  authors: ["Open Space Program"],
+  description: "Experiments' data goes home at the rate the link carries, slower the further away it is and shared through relays. A big set takes hours.",
+  dependencies: ["core"],
+}

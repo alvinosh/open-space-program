@@ -167,6 +167,13 @@ pub struct GoalDef {
     /// The condition has to hold this long without a break, s.
     #[serde(default)]
     pub hold: f64,
+    /// Funds it pays a career when it is met.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub reward: f64,
+}
+
+fn is_zero(value: &f64) -> bool {
+    *value == 0.0
 }
 
 /// What the player has done, for the results screen and for conditions that look back.
@@ -908,6 +915,37 @@ pub(crate) mod tests {
         goal.advance(&view, dt, elapsed)
     }
 
+    /// In a career, a goal pays its reward into the funds the moment it is met, and only then; and
+    /// the funds come back from a save.
+    #[test]
+    fn a_met_goal_pays_its_reward_into_a_career_once() {
+        let mut universe = in_orbit();
+        universe.mission = Some(mission(
+            r#"goals: [
+                { id: "up", text: "Be up", when: { type: "Altitude", min: 100000 }, reward: 5000 },
+                { id: "higher", text: "Go higher", when: { type: "Altitude", min: 1e9 }, reward: 1e6 },
+            ]"#,
+            &universe,
+        ));
+        universe.career = Some(crate::career::Career {
+            tree: "t".into(),
+            science: 0.0,
+            funds: 1000.0,
+            facilities: Default::default(),
+            unlocked: Default::default(),
+            returned: Default::default(),
+        });
+        let funds = |u: &Universe| u.career.as_ref().unwrap().funds;
+        for _ in 0..3 {
+            let next = universe.time().add_seconds(60.0);
+            universe.advance_rails(next);
+            assert_eq!(funds(&universe), 6000.0);
+        }
+        let saved = rmp_serde::to_vec_named(&universe.career).unwrap();
+        let back: Option<crate::career::Career> = rmp_serde::from_slice(&saved).unwrap();
+        assert_eq!(back.map(|c| c.funds), Some(6000.0));
+    }
+
     #[test]
     fn a_goal_held_for_a_time_starts_over_when_it_lets_go() {
         let (high, low) = (in_orbit(), on_the_pad());
@@ -920,6 +958,7 @@ pub(crate) mod tests {
                     max: None,
                 },
                 hold: 1.0,
+                reward: 0.0,
             },
             met_at: None,
             held: 0.0,

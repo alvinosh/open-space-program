@@ -1,8 +1,10 @@
 // Esc with a game in progress. Going back from here resumes. The vessels come first, then the game.
 // In a tutorial only what makes sense in one shows. Mods add rows to `#pause_items.children`. What
 // leaves the game goes through `ask.leave`, which asks to save first if that would lose anything.
-// Reverting shows after a launch in this game and asks first (`ask.revert`). A career's tech tree
-// opens over the menu (`tree.open`).
+// Reverting shows after a launch in this game and asks first (`ask.revert`). Recover vessel shows
+// while the one being flown is down on a world with a launch site (`menu.can_recover`) and asks first
+// (`ask.recover`): it comes home and the hangar opens. A career's tech tree opens over the menu
+// (`tree.open`).
 {
   id: "menu_pause",
   group: "menu",
@@ -19,6 +21,7 @@
       { widget: "menu_divider" },
       { widget: "menu_row", text: "Vessels", meta: "{menu.vessel_line}", action: "menu.open:vessels", visible: "!tutorial.active" },
       { widget: "menu_row", text: "Fly a new vessel", action: "editor.open", visible: "!tutorial.active" },
+      { widget: "menu_row", text: "Recover vessel", meta: "{menu.flown_name}", action: "ask.recover", visible: "menu.can_recover" },
       { widget: "menu_row", text: "Revert to launch", meta: "{menu.revert_line}", action: "ask.revert:launch", visible: "menu.can_revert" },
       { widget: "menu_row", text: "Revert to hangar", action: "ask.revert:hangar", visible: "menu.can_revert" },
       { widget: "menu_row", text: "Tech tree", meta: "{career.science} science", action: "tree.open", visible: "career.active" },

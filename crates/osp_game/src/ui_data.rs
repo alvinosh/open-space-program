@@ -254,6 +254,18 @@ fn publish_flight(
     data.set("vessel.link_margin", link.map_or(0.0, |l| l.margin));
     data.set("vessel.link_delay", link.map_or(0.0, |l| l.delay));
     data.set("vessel.link_hops", link.map_or(0, |l| l.hops));
+    // Experiments' data waiting on its drives, and how fast it goes home.
+    let waiting = vessel.propulsion.systems.sendable();
+    let rates = sim.universe.data_rates;
+    let rate = link.map_or(0.0, |l| l.rate);
+    data.set("vessel.data_waiting", waiting / 1e3);
+    data.set("vessel.has_data", waiting > 0.0);
+    data.set("vessel.shows_rate", rates && link.is_some());
+    data.set("vessel.link_rate", rate);
+    data.set(
+        "vessel.data_sent_in",
+        (rates && rate > 0.0 && waiting > 0.0).then(|| waiting * 8.0 / rate),
+    );
     data.set("vessel.is_relay", vessel.relay_radio().is_some());
     let rcs_fuel = vessel
         .propulsion

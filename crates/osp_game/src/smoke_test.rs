@@ -209,6 +209,8 @@ impl Plugin for SmokeTestPlugin {
                 CAREER_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_SCIENCE").is_some() {
                 SCIENCE_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_FACILITIES").is_some() {
+                FACILITIES_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_CAREER_REALISTIC").is_some() {
                 CAREER_REALISTIC_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_SAVE_MODS").is_some() {
@@ -1778,8 +1780,9 @@ const CAREER_SCRIPT: &[(f64, Action)] = &[
 ];
 
 /// `OSP_CAPTURE_SCIENCE=1`: a capsule with a thermometer and a barometer on its side, from the
-/// parts list's Science tab, launched; on the pad they collect their readings, landed on Earth, and
-/// say so in their windows.
+/// parts list's Science tab, and a parachute on its nose, launched; on the pad they collect their readings, landed on Earth, and
+/// say so in their windows, and the capsule's window shows them on its drive, waiting to go home.
+/// Then it is recovered from the pause menu, and the hangar opens saying what came home.
 const SCIENCE_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
@@ -1812,15 +1815,80 @@ const SCIENCE_SCRIPT: &[(f64, Action)] = &[
     (9.7, Action::Press(MouseButton::Left)),
     (9.8, Action::Release(MouseButton::Left)),
     (10.7, Action::ExpectPartCount(4)),
-    (10.8, Action::ClearPointer),
-    (11.6, Action::Capture("science_on_craft.png")),
-    (11.7, Action::Ui("editor.launch")),
-    (16.0, Action::PartWindow("Thermometer")),
-    (17.0, Action::Capture("science_running.png")),
+    // The parts list's parachute on its nose, armed last when it flies.
+    (10.8, Action::Ui("editor.group:systems")),
+    (10.9, Action::Ui("editor.add:parachute")),
+    (11.2, Action::EditorPointAtNode("pod", "top")),
+    (11.9, Action::Capture("science_chute_preview.png")),
+    (12.0, Action::Press(MouseButton::Left)),
+    (12.1, Action::Release(MouseButton::Left)),
+    (13.0, Action::ExpectPartCount(5)),
+    (13.1, Action::ClearPointer),
+    (14.0, Action::Capture("science_on_craft.png")),
+    (14.1, Action::Ui("editor.launch")),
+    (18.4, Action::PartWindow("Thermometer")),
+    (19.4, Action::Capture("science_running.png")),
     // On rails, crew aboard: a whole set of ten minutes in a few seconds.
-    (17.1, Action::Warp(5)),
-    (32.0, Action::Capture("science_done.png")),
-    (32.1, Action::Exit),
+    (19.5, Action::Warp(5)),
+    (34.4, Action::Capture("science_done.png")),
+    // What they made is on the capsule's drive, the biggest they are wired to.
+    (34.5, Action::PartWindow("C-1 Capsule")),
+    (35.4, Action::Capture("science_drive.png")),
+    // With no radio aboard, it waits there to be brought home.
+    (35.5, Action::Ui("ui.toggle:comms_info")),
+    (36.4, Action::Capture("science_comms.png")),
+    // Down on the Earth: recovered from the pause menu, asked first, and the hangar opens.
+    (36.5, Action::Ui("ui.toggle:comms_info")),
+    // Esc closes the part windows first, then opens the menu.
+    (36.6, Action::Ui("game.menu")),
+    (36.8, Action::Ui("game.menu")),
+    (37.4, Action::ExpectScreen("pause")),
+    (37.5, Action::ExpectData("menu.can_recover")),
+    (37.6, Action::Capture("science_recover_menu.png")),
+    (37.7, Action::Ui("ask.recover")),
+    (38.4, Action::Capture("science_recover_asked.png")),
+    (38.5, Action::Ui("dialog.answer:0")),
+    (39.9, Action::ExpectEditor(Some(""))),
+    (40.0, Action::Capture("science_recovered.png")),
+    (40.6, Action::Exit),
+];
+
+/// `OSP_CAPTURE_FACILITIES=1` (with `OSP_USER_DIR=<empty folder>`): a new Casual career's editor
+/// shows its funds and facilities. A 30 m tank is too heavy for the first pad and is not launched,
+/// saying by how much; with funds the pad is upgraded, and then it launches.
+const FACILITIES_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::Ui("game.exit")),
+    (2.0, Action::ExpectScreen("title")),
+    (2.1, Action::Ui("menu.open:new_game")),
+    (2.2, Action::ExpectScreen("new_game")),
+    (2.3, Action::Ui("mods.mode:casual")),
+    (2.5, Action::UiPointAt("game.kind:career")),
+    (2.6, Action::UiPress(PointerButton::Primary)),
+    (2.65, Action::UiRelease(PointerButton::Primary)),
+    (2.8, Action::ExpectData("menu.career")),
+    (3.3, Action::Ui("ask.leave:game.new")),
+    (8.0, Action::ExpectEditor(Some(""))),
+    (8.5, Action::Capture("facilities_hangar.png")),
+    (8.6, Action::Ui("editor.new")),
+    (9.0, Action::Unlock),
+    (9.1, Action::Ui("editor.group:tanks")),
+    (9.2, Action::Ui("editor.add:tank")),
+    (9.9, Action::ExpectPartCount(1)),
+    (10.0, Action::Ui("editor.pick:tank")),
+    (10.3, Action::Ui("editor.set:length:30")),
+    (10.8, Action::ExpectField("tank", "length", "30")),
+    (10.9, Action::Ui("editor.launch")),
+    (11.4, Action::ExpectData("editor.notice")),
+    (12.2, Action::Capture("facilities_too_heavy.png")),
+    (12.3, Action::Ui("debug.funds:100000")),
+    (12.4, Action::Ui("career.upgrade:launch_pad")),
+    (13.2, Action::Capture("facilities_upgraded.png")),
+    (13.3, Action::Ui("editor.launch")),
+    (16.0, Action::ExpectEditor(None)),
+    (16.5, Action::Capture("facilities_launched.png")),
+    (17.0, Action::Exit),
 ];
 
 /// A new Realistic career: a new tank is as wide as a V-2 and of an early tank type, and the later

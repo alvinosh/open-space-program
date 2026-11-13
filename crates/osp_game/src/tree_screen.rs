@@ -13,6 +13,7 @@
 //! Esc), `tree.pick:<node>`, `tree.unlock` (the picked node), `tree.zoom:<in|out|fit>` (the buttons
 //! in the corner), and `debug.science:<amount>`, which
 //! gives the career science to try the tree with. Data: `career.active`, `career.science`,
+//! `career.funds` (whole, with commas between the thousands),
 //! `tree.picked`, `tree.notice`, and the picked node's `tree.node.*`.
 
 use std::collections::BTreeSet;
@@ -458,14 +459,25 @@ fn publish_tree(
     menu: Res<Menu>,
     sim: Res<Sim>,
     mut data: ResMut<UiData>,
-    mut published: Local<Option<(Option<String>, Option<BTreeSet<String>>, u64, String, bool)>>,
+    mut published: Local<
+        Option<(
+            Option<String>,
+            Option<BTreeSet<String>>,
+            u64,
+            u64,
+            String,
+            bool,
+        )>,
+    >,
 ) {
     let unlocked = career.unlocked(&menu, &sim);
     let have = career.current(&menu, &sim).map_or(0.0, |c| c.science);
+    let funds = career.current(&menu, &sim).map_or(0.0, |c| c.funds);
     let now = (
         screen.picked.clone(),
         unlocked.clone(),
         have.to_bits(),
+        funds.to_bits(),
         screen.notice.clone(),
         career.tree.is_some(),
     );
@@ -476,6 +488,7 @@ fn publish_tree(
     let active = career.tree.is_some() && unlocked.is_some();
     data.set("career.active", active);
     data.set("career.science", science(have));
+    data.set("career.funds", osp_sim::career::money(funds));
     data.set("tree.notice", screen.notice.as_str());
     let (Some(tree), Some(unlocked)) = (career.tree.as_ref(), unlocked) else {
         data.set("tree.node.picked", false);

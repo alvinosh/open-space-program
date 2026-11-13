@@ -6,7 +6,9 @@
 // The casual game's is one supply; the Realistic Life Support mod's is air, water and food.
 // `radiation`: the record of `radiation` people take dose by (null: radiation does nothing); the
 // Realistic Radiation mod sets it. `tech_tree`: the record of `tech_trees` a science game unlocks
-// parts on; the Realism mod sets RP-1's.
+// parts on; the Realism mod sets RP-1's. `data_rates`: experiments' data goes home at the rate a
+// link carries, slower further away and shared through relays (the Realistic Communications mod);
+// off, all of a vessel's data goes at once whenever it has a link.
 [
-  { id: "game", avionics: false, life_support: "casual", radiation: null, tech_tree: "casual" },
+  { id: "game", avionics: false, life_support: "casual", radiation: null, tech_tree: "casual", data_rates: false },
 ]

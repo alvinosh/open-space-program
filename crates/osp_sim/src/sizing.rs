@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     component::{
         AntennaDef, AvionicsUnitDef, BatteryPackDef, ComponentDef, DecouplerDef, DockingPortDef,
-        FuelCellDef, PortKind, RtgDef, SolarArrayDef, SolidMotorDef, StorageDef, StructureDef,
+        FuelCellDef, ParachuteDef, PortKind, RtgDef, SolarArrayDef, SolidMotorDef, StorageDef,
+        StructureDef,
     },
     constants::G0,
     data::{BatteryDef, PartCatalog},
@@ -51,6 +52,7 @@ pub enum ProceduralDef {
     Decoupler(DecouplerRequirement),
     DockingPort(DockingPortRequirement),
     SeparationMotor(SeparationMotorRequirement),
+    Parachute(ParachuteRequirement),
 }
 
 /// What a sizer makes of a requirement: a part's shape, what it is made of and what it does.
@@ -74,6 +76,7 @@ impl ProceduralDef {
             Self::Decoupler(requirement) => requirement.size(),
             Self::DockingPort(requirement) => requirement.size(),
             Self::SeparationMotor(requirement) => requirement.size(catalog),
+            Self::Parachute(requirement) => requirement.size(),
         }
     }
 
@@ -89,6 +92,7 @@ impl ProceduralDef {
             Self::Decoupler(_) => DecouplerRequirement::FIELDS,
             Self::DockingPort(_) => DockingPortRequirement::FIELDS,
             Self::SeparationMotor(_) => SeparationMotorRequirement::FIELDS,
+            Self::Parachute(_) => ParachuteRequirement::FIELDS,
         }
     }
 }
@@ -447,7 +451,74 @@ impl AntennaRequirement {
                 power: self.power,
                 data_rate: self.data_rate,
                 relay: self.relay,
+                telemetry: false,
             })],
+        })
+    }
+}
+
+/// A parachute: a canopy so wide that opens below so high, packed in a drum.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParachuteRequirement {
+    /// The canopy, m.
+    pub diameter: f64,
+    /// It opens below this, m.
+    pub deploy_altitude: f64,
+}
+
+/// What a square metre of canopy weighs with its share of lines and risers, kg/m², and the mortar
+/// and fittings, kg: an Apollo main, 25.4 m across, came to about 61 kg.
+const CANOPY_KG_PER_M2: f64 = 0.115;
+const CHUTE_FITTINGS_KG: f64 = 2.0;
+/// How tight a canopy packs, kg/m³, into a drum this much taller than wide.
+const PACKED_DENSITY: f64 = 600.0;
+const PACK_HEIGHT: f64 = 0.6;
+
+impl ParachuteRequirement {
+    pub const FIELDS: &'static [Field] = &[
+        Field {
+            id: "diameter",
+            label: "Canopy",
+            unit: "m",
+            range: [1.0, 40.0],
+            default: 24.0,
+        },
+        Field {
+            id: "deploy_altitude",
+            label: "Opens below",
+            unit: "m",
+            range: [500.0, 10_000.0],
+            default: 3000.0,
+        },
+    ];
+
+    /// Its pack: a drum as big as the canopy packs into, weighing what the canopy and its fittings
+    /// do.
+    fn size(&self) -> Result<Design, String> {
+        let ok = |v: f64| v.is_finite() && v > 0.0;
+        if !(ok(self.diameter) && ok(self.deploy_altitude)) {
+            return Err(format!(
+                "a parachute has a canopy and opens somewhere, not {} m opening below {} m",
+                self.diameter, self.deploy_altitude
+            ));
+        }
+        let mass = PI * (self.diameter / 2.0).powi(2) * CANOPY_KG_PER_M2 + CHUTE_FITTINGS_KG;
+        let width = (mass / PACKED_DENSITY / (PI / 4.0 * PACK_HEIGHT)).cbrt();
+        Ok(Design {
+            shape: ShapeDef::Ring(RingDef {
+                diameter: width,
+                height: PACK_HEIGHT * width,
+                thickness: width / 2.0,
+            }),
+            structure: StructureDef {
+                mass: Some(mass),
+                ..StructureDef::default()
+            },
+            components: vec![ComponentDef::Parachute(ParachuteDef::new(
+                self.diameter,
+                self.deploy_altitude,
+            ))],
         })
     }
 }
@@ -920,5 +991,37 @@ mod tests {
         let field = &def.fields()[0];
         assert_eq!((field.id, field.unit), ("energy", "kJ"));
         assert!(field.range[0] < field.default && field.default < field.range[1]);
+    }
+
+    /// An Apollo main, 25.4 m across, packed at about 61 kg; and the parts list's 24 m canopy brings
+    /// a one-seat capsule down at sea level slower than a landing it survives (10 m/s).
+    #[test]
+    fn a_parachute_weighs_what_a_real_one_does_and_brings_a_capsule_down_softly() {
+        let apollo = ParachuteRequirement {
+            diameter: 25.4,
+            deploy_altitude: 3000.0,
+        };
+        let mass = apollo.size().unwrap().structure.mass.unwrap();
+        assert!((mass - 61.0).abs() < 0.15 * 61.0, "{mass}");
+        let default = ParachuteRequirement {
+            diameter: 24.0,
+            deploy_altitude: 3000.0,
+        };
+        let design = default.size().unwrap();
+        let ComponentDef::Parachute(chute) = &design.components[0] else {
+            panic!("a parachute")
+        };
+        let capsule = 1350.0 + design.structure.mass.unwrap();
+        let area = PI * (chute.diameter / 2.0).powi(2);
+        let falls = (2.0 * capsule * G0 / (1.225 * chute.drag * area)).sqrt();
+        assert!(falls < 10.0, "{falls} m/s");
+        assert!(
+            ParachuteRequirement {
+                diameter: 0.0,
+                deploy_altitude: 3000.0
+            }
+            .size()
+            .is_err()
+        );
     }
 }

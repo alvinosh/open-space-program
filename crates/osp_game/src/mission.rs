@@ -48,12 +48,13 @@ fn publish_mission(
             .insert(GOALS.into(), sim.universe.mission.is_some());
         ui.layouts.insert(RESULTS.into(), false);
     }
+    let paid = sim.universe.career.is_some();
     let Some(mission) = sim.universe.mission.as_mut() else {
         data.set("mission.active", false);
         return;
     };
     for event in mission.take_events() {
-        let news = news(&event, mission.goals());
+        let news = news(&event, mission.goals(), paid);
         if news.ends {
             ui.layouts.insert(RESULTS.into(), true);
         }
@@ -76,12 +77,22 @@ struct News {
     bad: bool,
 }
 
-fn news(event: &MissionEvent, goals: &[Goal]) -> News {
+/// What the player is told of `event`; in a career (`paid`) a goal met says the reward it paid.
+fn news(event: &MissionEvent, goals: &[Goal], paid: bool) -> News {
     match event {
-        MissionEvent::GoalMet(i) => News {
-            text: format!("Goal complete: {}", goals[*i].def.text),
-            ..News::default()
-        },
+        MissionEvent::GoalMet(i) => {
+            let def = &goals[*i].def;
+            let text = if paid && def.reward > 0.0 {
+                let reward = osp_sim::career::money(def.reward);
+                format!("Goal complete: {} (+{reward} funds)", def.text)
+            } else {
+                format!("Goal complete: {}", def.text)
+            };
+            News {
+                text,
+                ..News::default()
+            }
+        }
         MissionEvent::Passed => News {
             text: "Mission passed".into(),
             ends: true,
@@ -162,6 +173,7 @@ mod tests {
                 text: text.into(),
                 when: Condition::Destroyed,
                 hold: 0.0,
+                reward: 0.0,
             },
             met_at: None,
             held: 0.0,
@@ -171,17 +183,25 @@ mod tests {
     #[test]
     fn a_goal_met_is_good_news_and_does_not_end_the_mission() {
         let goals = [goal("Leave the pad"), goal("Reach orbit")];
-        let news = news(&MissionEvent::GoalMet(1), &goals);
+        let news = news(&MissionEvent::GoalMet(1), &goals, false);
         assert_eq!(news.text, "Goal complete: Reach orbit");
         assert!(!news.ends && !news.bad);
+        let mut paying = goals.clone();
+        paying[1].def.reward = 12_500.0;
+        let news = super::news(&MissionEvent::GoalMet(1), &paying, true);
+        assert_eq!(news.text, "Goal complete: Reach orbit (+12,500 funds)");
     }
 
     #[test]
     fn passing_and_failing_end_the_mission_and_only_failing_is_bad_news() {
-        let passed = news(&MissionEvent::Passed, &[]);
+        let passed = news(&MissionEvent::Passed, &[], false);
         assert_eq!(passed.text, "Mission passed");
         assert!(passed.ends && !passed.bad);
-        let failed = news(&MissionEvent::Failed("The rocket was lost".into()), &[]);
+        let failed = news(
+            &MissionEvent::Failed("The rocket was lost".into()),
+            &[],
+            false,
+        );
         assert_eq!(failed.text, "Mission failed: The rocket was lost");
         assert!(failed.ends && failed.bad);
     }
