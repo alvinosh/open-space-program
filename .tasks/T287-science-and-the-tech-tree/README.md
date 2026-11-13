@@ -16,8 +16,10 @@ experiments that take hours. A new game can still start with every part, as a sa
 2. T289 career games: science and unlocks kept per save, the parts list shows what is unlocked (done).
 3. T292 tank sizes and tank types unlocked by the tree (done).
 4. T290 the tech tree screen (done).
-5. T272 instruments and experiments (done); T273 drives and samples; T274 sending data.
-6. T284 science earned by experiment, place and body, less each time.
+5. T272 instruments and experiments (done); T273 drives and samples (done); T274 sending data
+   (done); T304 recovering the vessel being flown (done).
+6. T284 science earned by experiment, place and body, less each time (done); T305 a first flight
+   can bring its science home (a parachute and a telemetry unit in both first nodes; done).
 7. T293 career money; T294 launch pad and builder levels; T295 contracts.
 8. T291 a smoke test that plays a career, first launch to first unlock and upgrade, in both modes.
 9. T301 a smoke test that plays a whole career to the Moon, in both modes.

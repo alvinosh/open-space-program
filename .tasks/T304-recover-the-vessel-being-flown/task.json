@@ -1,0 +1,22 @@
+{
+  "id": "T304",
+  "title": "Recover the vessel being flown once it is down",
+  "kind": "feature",
+  "status": "done",
+  "area": "science",
+  "size": "S",
+  "parent": "T287",
+  "depends_on": [
+    "T273"
+  ],
+  "refs": [
+    "crates/osp_sim/src/universe.rs (Universe::recover_vessel)",
+    "crates/osp_game/src/manifest.rs (recoverable)",
+    "T103"
+  ],
+  "created": "2026-11-13",
+  "updated": "2026-11-13",
+  "done": "2026-11-13",
+  "milestone": "M3",
+  "priority": 57.08
+}

@@ -9,7 +9,8 @@
   "depends_on": [
     "T284",
     "T290",
-    "T294"
+    "T294",
+    "T305"
   ],
   "refs": [
     "crates/osp_smoke"
