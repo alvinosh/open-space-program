@@ -101,20 +101,41 @@ impl Finish {
     }
 }
 
+/// Bindless where the GPU can (Bevy falls back to a bind group per material elsewhere), so
+/// every part's finish shares one bind group and the parts are drawn together instead of a
+/// draw batch per material. The finish and paint layers go to the shader as one block
+/// ([`FinishData`]): in a uniform at binding 50, or bindless in an array at 101, indexed
+/// through the table at 100 (StandardMaterial's own table is at 0, its slots 0 to 30).
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
+#[data(50, FinishData, binding_array(101))]
+#[bindless(index_table(range(50..53), binding(100)))]
 pub struct VesselFinish {
     /// x: finish, y and z: oxide film thickness range for heat tint, nm; w: 1 where the
     /// mesh's surface coordinates are metres along it, with tangents.
-    #[uniform(100)]
     params: Vec4,
     /// Paint layers over the surface (see [`crate::paint_layers`]).
-    #[uniform(101)]
     #[reflect(ignore)]
     layers: VesselLayers,
     /// The lettering and pictures among the layers, premultiplied linear colour.
-    #[texture(102)]
-    #[sampler(103)]
+    #[texture(51)]
+    #[sampler(52)]
     decals: Option<Handle<Image>>,
+}
+
+/// What `shaders/vessel.wesl` reads of a [`VesselFinish`] (its `VesselFinish` struct).
+#[derive(Clone, Copy, Debug, Default, ShaderType)]
+pub struct FinishData {
+    params: Vec4,
+    layers: VesselLayers,
+}
+
+impl From<&VesselFinish> for FinishData {
+    fn from(finish: &VesselFinish) -> Self {
+        Self {
+            params: finish.params,
+            layers: finish.layers,
+        }
+    }
 }
 
 /// Most paint layers one material holds.

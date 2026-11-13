@@ -21,17 +21,21 @@ use std::{
     fmt::Write as _,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU32, Ordering},
     },
     time::{Duration, Instant},
 };
 
 use bevy::{
+    core_pipeline::{core_3d::Opaque3d, prepass::Opaque3dPrepass},
     diagnostic::DiagnosticsStore,
+    pbr::Shadow,
     prelude::*,
     render::{
         Render, RenderApp, RenderSystems,
+        render_phase::{BinnedPhaseItem, ViewBinnedRenderPhases},
+        render_resource::{CachedPipelineState, PipelineCache, PipelineDescriptor},
         renderer::{RenderAdapterInfo, RenderGraph, RenderGraphSystems},
         view::prepare_windows,
     },
@@ -52,11 +56,25 @@ pub struct ProfilerPlugin;
 impl Plugin for ProfilerPlugin {
     fn build(&self, app: &mut App) {
         let shared = RenderTimes::default();
+        let batch_sets = BatchSets::default();
+        let pipelines = PipelinesMade::default();
+        let report = std::env::var_os("OSP_PROFILE").map(PathBuf::from);
         #[cfg(all(feature = "profile", not(target_os = "macos")))]
         app.add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin);
+        if report.is_some()
+            && let Some(render_app) = app.get_sub_app_mut(RenderApp)
+        {
+            render_app
+                .insert_resource(pipelines.clone())
+                .init_resource::<PipelinesListed>()
+                .add_systems(Render, watch_pipelines.in_set(RenderSystems::Cleanup));
+        }
         app.insert_resource(shared.clone())
+            .insert_resource(batch_sets.clone())
+            .insert_resource(pipelines)
+            .init_resource::<LoadedAt>()
             .insert_resource(Profile {
-                report: std::env::var_os("OSP_PROFILE").map(PathBuf::from),
+                report,
                 ..default()
             })
             .init_resource::<MeshTriangles>()
@@ -79,6 +97,8 @@ impl Plugin for ProfilerPlugin {
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .insert_resource(shared)
+                .insert_resource(batch_sets)
+                .add_systems(Render, count_batch_sets.in_set(RenderSystems::Cleanup))
                 .init_resource::<RenderClock>()
                 .add_systems(
                     Render,
@@ -126,6 +146,99 @@ impl RenderTimes {
 
     fn load(&self, which: usize) -> f32 {
         self.0[which].load(Ordering::Relaxed) as f32 / 1000.0
+    }
+}
+
+/// Batch sets in the 3D views' phases (opaque, depth prepass, shadow), over every view. Each is
+/// one draw or more, and Bevy writes buffers for each every frame: materials that can't share a
+/// bind group make one each.
+#[derive(Resource, Clone, Default)]
+struct BatchSets(Arc<[AtomicU32; 3]>);
+
+fn count_batch_sets(
+    opaque: Option<Res<ViewBinnedRenderPhases<Opaque3d>>>,
+    prepass: Option<Res<ViewBinnedRenderPhases<Opaque3dPrepass>>>,
+    shadow: Option<Res<ViewBinnedRenderPhases<Shadow>>>,
+    sets: Res<BatchSets>,
+) {
+    fn count<P: BinnedPhaseItem>(phases: Option<Res<ViewBinnedRenderPhases<P>>>) -> u32 {
+        phases.map_or(0, |phases| {
+            phases
+                .values()
+                .map(|phase| {
+                    phase.multidrawable_meshes.len()
+                        + phase.batchable_meshes.len()
+                        + phase.unbatchable_meshes.len()
+                })
+                .sum::<usize>() as u32
+        })
+    }
+    for (i, n) in [count(opaque), count(prepass), count(shadow)]
+        .into_iter()
+        .enumerate()
+    {
+        sets.0[i].store(n, Ordering::Relaxed);
+    }
+}
+
+/// When loading ended, seconds since startup: the report leaves out the frames before. The first
+/// second by default; the renderer's shader warm-up sets it to `None` while it runs, then to when
+/// it ended.
+#[derive(Resource)]
+pub struct LoadedAt(pub Option<f32>);
+
+impl Default for LoadedAt {
+    fn default() -> Self {
+        Self(Some(1.0))
+    }
+}
+
+impl LoadedAt {
+    fn after(&self, at: f32) -> bool {
+        self.0.is_some_and(|loaded| at > loaded)
+    }
+}
+
+/// Pipelines (the GPU's compiled shader programs) as Bevy finishes creating them: when, and a
+/// name. On macOS Bevy creates them on the render thread and waits, so each one
+/// made mid-game is a stall, and a long one with a cold driver cache (`OSP_PROFILE` lists them).
+#[derive(Resource, Clone, Default)]
+struct PipelinesMade(Arc<Mutex<Vec<(Instant, String)>>>);
+
+/// Which of the cache's pipelines were already listed, by index.
+#[derive(Resource, Default)]
+struct PipelinesListed(Vec<bool>);
+
+fn watch_pipelines(
+    cache: Res<PipelineCache>,
+    mut listed: ResMut<PipelinesListed>,
+    made: Res<PipelinesMade>,
+) {
+    let at = Instant::now();
+    for (i, pipeline) in cache.pipelines().enumerate() {
+        if listed.0.len() <= i {
+            listed.0.resize(i + 1, false);
+        }
+        if listed.0[i] || !matches!(pipeline.state, CachedPipelineState::Ok(_)) {
+            continue;
+        }
+        listed.0[i] = true;
+        let (label, shader) = match &pipeline.descriptor {
+            PipelineDescriptor::RenderPipelineDescriptor(d) => (
+                &d.label,
+                d.fragment.as_ref().map_or(&d.vertex.shader, |f| &f.shader),
+            ),
+            PipelineDescriptor::ComputePipelineDescriptor(d) => (&d.label, &d.shader),
+            PipelineDescriptor::MeshPipelineDescriptor(d) => (
+                &d.label,
+                d.fragment.as_ref().map_or(&d.mesh.shader, |f| &f.shader),
+            ),
+        };
+        let mut name = label.as_deref().unwrap_or("unlabelled").to_owned();
+        if let Some(path) = shader.path() {
+            let _ = write!(name, " ({path})");
+        }
+        made.0.lock().unwrap().push((at, name));
     }
 }
 
@@ -205,6 +318,8 @@ struct Counts {
     /// cascade they reach).
     visible_triangles: u64,
     lights: u32,
+    /// Opaque, depth prepass, shadow (see [`BatchSets`]).
+    batch_sets: [u32; 3],
 }
 
 /// Triangles per mesh, counted when each is added or changed: meshes kept only in the
@@ -242,7 +357,12 @@ fn begin_main(mut profile: ResMut<Profile>) {
     profile.main_start = Some(Instant::now());
 }
 
-fn end_frame(time: Res<Time<Real>>, times: Res<RenderTimes>, mut profile: ResMut<Profile>) {
+fn end_frame(
+    time: Res<Time<Real>>,
+    times: Res<RenderTimes>,
+    mut profile: ResMut<Profile>,
+    loaded: Res<LoadedAt>,
+) {
     let main = profile
         .main_start
         .map_or(0.0, |start| start.elapsed().as_secs_f32() * 1000.0);
@@ -258,7 +378,9 @@ fn end_frame(time: Res<Time<Real>>, times: Res<RenderTimes>, mut profile: ResMut
     }
     profile.window.push(sample);
     #[cfg(feature = "profile")]
-    spans::end_frame(sample.at, sample.main);
+    spans::end_frame(sample.at, sample.main, loaded.after(sample.at));
+    #[cfg(not(feature = "profile"))]
+    let _ = loaded;
 }
 
 /// Means over a set of frames, ms.
@@ -311,7 +433,7 @@ fn publish(
     adapter: Option<Res<RenderAdapterInfo>>,
     entities: Query<()>,
     meshes: Query<(&Mesh3d, &ViewVisibility)>,
-    triangles: Res<MeshTriangles>,
+    (triangles, batch_sets): (Res<MeshTriangles>, Res<BatchSets>),
     lights: Query<(), Or<(With<PointLight>, With<SpotLight>, With<DirectionalLight>)>>,
 ) {
     profile.since_publish += time.delta_secs_f64();
@@ -331,6 +453,7 @@ fn publish(
             .map(|&n| u64::from(n))
             .sum(),
         lights: lights.iter().len() as u32,
+        batch_sets: [0, 1, 2].map(|i| batch_sets.0[i].load(Ordering::Relaxed)),
     };
     profile.counts = counts;
 
@@ -462,14 +585,15 @@ fn write_report(
     adapter: Option<Res<RenderAdapterInfo>>,
     window: Option<Single<&Window>>,
     (output, images): (Res<ViewOutput>, Res<Assets<Image>>),
+    (pipelines, loaded, time): (Res<PipelinesMade>, Res<LoadedAt>, Res<Time<Real>>),
 ) {
     let Some(path) = &profile.report else { return };
-    // The first second is loading: shaders compile and the ground streams in.
+    // Leave out loading: shaders compile and the ground streams in.
     let frames: Vec<FrameSample> = profile
         .frames
         .iter()
         .copied()
-        .filter(|f| f.at > 1.0)
+        .filter(|f| loaded.after(f.at))
         .collect();
     let mut out = String::new();
     let duration = frames.last().map_or(0.0, |f| f.at) - frames.first().map_or(0.0, |f| f.at);
@@ -513,12 +637,15 @@ fn write_report(
             "no (build with --features profile)"
         }
     );
-    let _ = writeln!(
-        out,
-        "{} frames over {:.1} s, after the first second\n",
-        frames.len(),
-        duration
-    );
+    let _ = match loaded.0 {
+        Some(at) => writeln!(
+            out,
+            "{} frames over {:.1} s, after loading ({at:.1} s)\n",
+            frames.len(),
+            duration
+        ),
+        None => writeln!(out, "Still loading at exit\n"),
+    };
 
     let summary = Summary::of(&frames);
     let mut sorted: Vec<f32> = frames.iter().map(|f| f.frame).collect();
@@ -591,15 +718,47 @@ fn write_report(
         );
     }
 
+    // Pipelines made after loading, in the frames that made them (one stall each on macOS), on
+    // the frames' clock.
+    let made: Vec<(f32, String)> = {
+        let first = time.first_update().unwrap_or_else(Instant::now);
+        let made = pipelines.0.lock().unwrap();
+        made.iter()
+            .map(|(at, name)| {
+                (
+                    at.saturating_duration_since(first).as_secs_f32(),
+                    name.clone(),
+                )
+            })
+            .collect()
+    };
+    let late: Vec<&(f32, String)> = made.iter().filter(|(at, _)| loaded.after(*at)).collect();
+    let _ = writeln!(
+        out,
+        "\n## Pipelines created after loading: {} of {}\n",
+        late.len(),
+        made.len()
+    );
+    for group in late.chunk_by(|a, b| b.0 - a.0 < 0.05) {
+        let _ = writeln!(out, "t {:>7.2} s  {}", group[0].0, group.len());
+        for (_, name) in group {
+            let _ = writeln!(out, "    {name}");
+        }
+    }
+
     let counts = profile.counts;
     let _ = writeln!(
         out,
-        "\n## World (at exit)\n\nentities {}, meshes {} ({} visible, {} triangles), lights {}",
+        "\n## World (at exit)\n\nentities {}, meshes {} ({} visible, {} triangles), lights {}\n\
+         batch sets: opaque {}, depth prepass {}, shadow {}",
         counts.entities,
         counts.meshes,
         counts.visible_meshes,
         counts.visible_triangles,
-        counts.lights
+        counts.lights,
+        counts.batch_sets[0],
+        counts.batch_sets[1],
+        counts.batch_sets[2]
     );
 
     if !profile.passes.is_empty() {
@@ -732,10 +891,10 @@ pub mod spans {
     /// Fold the frame's times into the window and the run, and keep the frame's slowest
     /// systems if its main thread (`main_ms`) was among the slowest. Render-world systems
     /// run alongside, a frame behind, so they land in the frame they finished in.
-    pub fn end_frame(at: f32, main_ms: f32) {
+    pub fn end_frame(at: f32, main_ms: f32, loaded: bool) {
         let mut table = TABLE.lock().unwrap();
         let slowest_kept = table.hitches.last().map_or(0.0, |h| h.1);
-        if at > 1.0 && (table.hitches.len() < HITCHES || main_ms > slowest_kept) {
+        if loaded && (table.hitches.len() < HITCHES || main_ms > slowest_kept) {
             let mut systems: Vec<(usize, u64)> = table
                 .entries
                 .iter()

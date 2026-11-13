@@ -1,13 +1,15 @@
 //! The planet surface material: standard PBR extended with per-chunk data textures
-//! (`shaders/terrain.wesl`).
+//! (`shaders/terrain.wesl`). One per body and page of chunk layers (see `terrain_layers`), so a
+//! body's chunks are drawn together.
 
 use bevy::{
     asset::embedded_asset,
     mesh::MeshVertexBufferLayoutRef,
     pbr::{ExtendedMaterial, MaterialExtension, MaterialExtensionKey, MaterialExtensionPipeline},
     prelude::*,
-    render::render_resource::{
-        AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
+    render::{
+        render_resource::{AsBindGroup, RenderPipelineDescriptor, SpecializedMeshPipelineError},
+        storage::ShaderBuffer,
     },
     shader::{ShaderDefVal, ShaderRef, load_shader_library},
 };
@@ -33,8 +35,8 @@ impl Plugin for TerrainMaterialPlugin {
     }
 }
 
-/// The reflected sky's steps and whether clouds shade the ground, on every chunk (new chunks get
-/// them when they spawn).
+/// The reflected sky's steps and whether clouds shade the ground, on every chunk's material (new
+/// materials get them when they are made).
 fn apply_effects_setting(
     settings: Res<GraphicsSettings>,
     mut materials: ResMut<Assets<TerrainMaterial>>,
@@ -44,51 +46,41 @@ fn apply_effects_setting(
     // Only the ones that differ: `iter_mut` would mark every chunk's material modified.
     let stale: Vec<_> = materials
         .iter()
-        .filter(|(_, m)| {
-            m.extension.params.quality.x != steps || (m.extension.clouds.z > 0.0) != clouds
-        })
+        .filter(|(_, m)| m.extension.quality.x != steps || (m.extension.clouds.z > 0.0) != clouds)
         .map(|(id, _)| id)
         .collect();
     for id in stale {
         if let Some(mut material) = materials.get_mut(id) {
-            material.extension.params.quality.x = steps;
+            material.extension.quality.x = steps;
             material.extension.clouds.z = f32::from(u8::from(clouds));
             material.extension.clouds.y = material.extension.clouds.z * material.extension.clouds.w;
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, ShaderType, Reflect)]
-pub struct TerrainParams {
-    /// xyz: planet centre in chunk-local coordinates; w: mean radius.
-    pub planet: Vec4,
-    /// xyz: chunk centre in body-fixed axes modulo `planet::DETAIL_PERIOD`.
-    pub detail_origin: Vec4,
-    /// x: chunk level, y: colour data level, z: cover data level, w: 1 if the body has air.
-    pub levels: Vec4,
-    /// x: ray-marching steps for the sky reflected in water (`atmosphere::view_steps`).
-    pub quality: Vec4,
-}
-
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
 pub struct TerrainExtension {
+    /// x: ray-marching steps for the sky reflected in water (`atmosphere::view_steps`).
     #[uniform(100)]
-    pub params: TerrainParams,
-    /// sRGB imagery.
-    #[texture(101)]
+    pub quality: Vec4,
+    /// sRGB imagery, a layer per chunk (`terrain_layers`), as are the next three.
+    #[texture(101, dimension = "2d_array")]
     #[sampler(102)]
     pub color: Handle<Image>,
     /// Normal (east, north), elevation (m), water fraction.
-    #[texture(103)]
+    #[texture(103, dimension = "2d_array")]
     #[sampler(104)]
     pub surface: Handle<Image>,
     /// Land-cover class per sample.
-    #[texture(105, sample_type = "u_int")]
+    #[texture(105, dimension = "2d_array", sample_type = "u_int")]
     pub cover: Handle<Image>,
     /// Night lights, finer than the rest, as they are all that shows at night (`planet`).
-    #[texture(106)]
+    #[texture(106, dimension = "2d_array")]
     #[sampler(107)]
     pub lights: Handle<Image>,
+    /// Every chunk's `terrain_layers::ChunkData`, at its mesh's tag.
+    #[storage(108, read_only)]
+    pub chunks: Handle<ShaderBuffer>,
     /// The body's air (`atmosphere::BodyAir`, as `shaders/atmosphere.wesl` binds it).
     #[texture(110)]
     #[sampler(111)]

@@ -11,9 +11,11 @@ import bevy_pbr::render::{
     pbr_fragment::pbr_input_from_standard_material,
     forward_io::{VertexOutput, FragmentOutput},
     pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
+    mesh_bindings::mesh,
     mesh_view_bindings::view,
     mesh_functions::get_world_from_local,
 };
+import bevy_render::bindless::{bindless_samplers_filtering, bindless_textures_2d};
 
 struct VesselParams {
     /// x: finish (below); y, z: oxide film thickness range for heat tint, nm; w: 1 where
@@ -36,10 +38,66 @@ struct VesselLayers {
     data: array<vec4<f32>, 64>,
 };
 
-@group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> params: VesselParams;
-@group(constants::MATERIAL_BIND_GROUP) @binding(101) var<uniform> layers: VesselLayers;
-@group(constants::MATERIAL_BIND_GROUP) @binding(102) var decals: texture_2d<f32>;
-@group(constants::MATERIAL_BIND_GROUP) @binding(103) var decal_sampler: sampler;
+/// A material's finish and paint layers, as one block (`FinishData`).
+struct VesselFinish {
+    params: VesselParams,
+    layers: VesselLayers,
+};
+
+// Bindless (see `VesselFinish` in `crate::vessel_material`), every material's block is in one
+// array and its picture among all of them, found through the index table; else they are
+// bound for each material.
+@if(BINDLESS) {
+struct VesselFinishIndices {
+    finish: u32,        // 50
+    decals: u32,        // 51
+    decal_sampler: u32, // 52
+};
+@group(constants::MATERIAL_BIND_GROUP) @binding(100) var<storage> finish_indices: array<VesselFinishIndices>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(101) var<storage> finishes: array<VesselFinish>;
+}
+@else {
+@group(constants::MATERIAL_BIND_GROUP) @binding(50) var<uniform> material_finish: VesselFinish;
+@group(constants::MATERIAL_BIND_GROUP) @binding(51) var decals: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(52) var decal_sampler: sampler;
+}
+
+/// This fragment's material in the bindless index table (set first thing in `fragment`).
+var<private> slot: u32;
+
+fn params() -> VesselParams {
+    @if(BINDLESS)
+    return finishes[finish_indices[slot].finish].params;
+    @else
+    return material_finish.params;
+}
+
+fn layer_count() -> u32 {
+    @if(BINDLESS)
+    return u32(finishes[finish_indices[slot].finish].layers.count.x);
+    @else
+    return u32(material_finish.layers.count.x);
+}
+
+fn layer(k: u32) -> vec4<f32> {
+    @if(BINDLESS)
+    return finishes[finish_indices[slot].finish].layers.data[k];
+    @else
+    return material_finish.layers.data[k];
+}
+
+fn decal(uv: vec2<f32>, ddx: vec2<f32>, ddy: vec2<f32>) -> vec4<f32> {
+    @if(BINDLESS)
+    return textureSampleGrad(
+        bindless_textures_2d[finish_indices[slot].decals],
+        bindless_samplers_filtering[finish_indices[slot].decal_sampler],
+        uv,
+        ddx,
+        ddy,
+    );
+    @else
+    return textureSampleGrad(decals, decal_sampler, uv, ddx, ddy);
+}
 
 const PAINT: u32 = 0u;
 const COMPOSITE: u32 = 1u;
@@ -209,7 +267,8 @@ fn heat_tint(p: vec3<f32>, footprint: f32, cos_view: f32) -> Detail {
     let heat = exp(min(p.y, 0.0) / 1.2);
     let rings = 0.08 * sin(p.y * 2.0 * PI / 0.3 + 0.8 * patches);
     let share = clamp(heat + 0.15 * patches + rings, 0.0, 1.0);
-    let thickness = mix(params.finish.y, params.finish.z, share);
+    let finish = params().finish;
+    let thickness = mix(finish.y, finish.z, share);
     d.tint *= thin_film(thickness, cos_view);
     return d;
 }
@@ -285,6 +344,8 @@ fn within(x: f32, low: f32, high: f32, w: f32) -> f32 {
 
 @fragment
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
+    slot = mesh[in.instance_index].material_and_lightmap_bind_group_slot & 0xffffu;
+    let finish_params = params().finish;
     var pbr_input = pbr_input_from_standard_material(in, is_front);
 
     // The part's axes without its scale, so the detail is in metres on scaled models too.
@@ -306,7 +367,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     s.along = vec3<f32>(0.0, 1.0, 0.0);
     @if(VERTEX_UVS_A) {
         @if(VERTEX_TANGENTS) {
-            if params.finish.w > 0.5 {
+            if finish_params.w > 0.5 {
                 let normal = n * axes;
                 let tangent = normalize(in.world_tangent.xyz * axes);
                 s.uv = in.uv;
@@ -326,17 +387,17 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let wa = max((abs(da.x) + abs(da.y)) * turn, 1e-5);
     let wh = max(fwidth(height), 1e-5);
     var color = pbr_input.material.base_color.rgb;
-    var finish = u32(params.finish.x);
+    var finish = u32(finish_params.x);
     var metallic = pbr_input.material.metallic;
     var roughness = pbr_input.material.perceptual_roughness;
     var clearcoat = pbr_input.material.clearcoat;
     var relief = vec3<f32>(0.0);
-    let count = u32(layers.count.x);
+    let count = layer_count();
     for (var i = 0u; i < count; i++) {
-        let a = layers.data[4u * i];
-        let b = layers.data[4u * i + 1u];
-        let c = layers.data[4u * i + 2u];
-        let e = layers.data[4u * i + 3u];
+        let a = layer(4u * i);
+        let b = layer(4u * i + 1u);
+        let c = layer(4u * i + 2u);
+        let e = layer(4u * i + 3u);
         let kind = u32(a.x);
         // A decal's place: metres round from its middle and up from it, as its picture's
         // coordinates (sampled whatever the kind, to keep the derivatives in step).
@@ -347,7 +408,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
             st = vec2<f32>(0.5 - y / c.z, 0.5 - x / c.w);
         }
         let uv = e.xy + clamp(st, vec2<f32>(0.0), vec2<f32>(1.0)) * e.zw;
-        let texel = textureSampleGrad(decals, decal_sampler, uv, dpdx(e.xy + st * e.zw), dpdy(e.xy + st * e.zw));
+        let texel = decal(uv, dpdx(e.xy + st * e.zw), dpdy(e.xy + st * e.zw));
         var cover = 0.0;
         switch kind {
             case BAND: { cover = within(height, c.x, c.y, wh); }

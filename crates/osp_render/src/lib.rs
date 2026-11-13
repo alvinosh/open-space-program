@@ -26,10 +26,12 @@ mod plume;
 mod sky_light;
 mod stars;
 mod surface;
+mod terrain_layers;
 mod terrain_material;
 mod trees;
 mod vessel_material;
 mod vessel_render;
+pub mod warmup;
 
 use bevy::prelude::*;
 // What is read from the game, under the same paths it has there.
@@ -40,6 +42,7 @@ pub struct RenderPlugin;
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
+            warmup::WarmupPlugin,
             planet::PlanetPlugin,
             graphics,
             trees::TreesPlugin,
@@ -61,7 +64,10 @@ fn graphics(app: &mut App) {
         return;
     }
     app.add_plugins((
-        terrain_material::TerrainMaterialPlugin,
+        (
+            terrain_material::TerrainMaterialPlugin,
+            terrain_layers::TerrainLayersPlugin,
+        ),
         (
             atmosphere::AtmospherePlugin,
             clouds::CloudsPlugin,

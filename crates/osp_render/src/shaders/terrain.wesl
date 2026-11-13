@@ -1,4 +1,5 @@
-// Planet surface. Extends the standard PBR material with per-chunk data textures:
+// Planet surface. Extends the standard PBR material with per-chunk data textures, a layer each
+// of arrays that all a body's chunks share (`crate::terrain_layers`):
 //
 // - colour: satellite imagery (rgb, sRGB)
 // - lights: night lights, finer than the rest, with mip levels
@@ -15,32 +16,36 @@ import bevy_pbr::render::{
     forward_io::{VertexOutput, FragmentOutput},
     pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
     mesh_view_bindings::{view, lights},
-    mesh_functions::{get_world_from_local, get_local_from_world},
+    mesh_functions::{get_world_from_local, get_local_from_world, get_tag},
 };
 import osp_render::shaders::atmosphere::{
     air, clouds, cloud_shadow, lut_sampler, scatter, sky_irradiance, sun_transmittance, weather,
     light_transmittance, luminance, sphere_hits, CLOUD_THROUGH, PI,
 };
 
-struct TerrainParams {
+/// A chunk's own data (`ChunkData` in `crate::terrain_layers`), at its mesh's tag. Its textures
+/// are a layer of each of the arrays its material binds.
+struct Chunk {
     /// xyz: planet centre in chunk-local coordinates; w: mean radius.
     planet: vec4<f32>,
     /// xyz: chunk centre in body-fixed axes modulo DETAIL_PERIOD.
     detail_origin: vec4<f32>,
     /// x: chunk level, y: colour data level, z: cover data level, w: 1 if the body has air.
     levels: vec4<f32>,
-    /// x: ray-marching steps for the sky reflected in water.
-    quality: vec4<f32>,
+    /// x: its layer in the textures; y: 1 if it has night lights.
+    layer: vec4<u32>,
 };
 
-@group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> params: TerrainParams;
-@group(constants::MATERIAL_BIND_GROUP) @binding(101) var color_texture: texture_2d<f32>;
+/// x: ray-marching steps for the sky reflected in water.
+@group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> quality: vec4<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(101) var color_texture: texture_2d_array<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(102) var color_sampler: sampler;
-@group(constants::MATERIAL_BIND_GROUP) @binding(103) var surface_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(103) var surface_texture: texture_2d_array<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(104) var surface_sampler: sampler;
-@group(constants::MATERIAL_BIND_GROUP) @binding(105) var cover_texture: texture_2d<u32>;
-@group(constants::MATERIAL_BIND_GROUP) @binding(106) var lights_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(105) var cover_texture: texture_2d_array<u32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(106) var lights_texture: texture_2d_array<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(107) var lights_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(108) var<storage, read> chunks: array<Chunk>;
 /// Slope of the waves, its square, and foam, per cascade (see `crate::ocean`).
 @group(constants::MATERIAL_BIND_GROUP) @binding(120) var waves_texture: texture_2d_array<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(121) var waves_sampler: sampler;
@@ -239,10 +244,12 @@ fn add_plane(
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     var pbr_input = pbr_input_from_standard_material(in, is_front);
 
+    let chunk = chunks[get_tag(in.instance_index)];
+    let layer = chunk.layer.x;
     let world_from_local = get_world_from_local(in.instance_index);
     let local_from_world = get_local_from_world(in.instance_index);
-    let planet_center = (world_from_local * vec4<f32>(params.planet.xyz, 1.0)).xyz;
-    let radius = params.planet.w;
+    let planet_center = (world_from_local * vec4<f32>(chunk.planet.xyz, 1.0)).xyz;
+    let radius = chunk.planet.w;
     let position = in.world_position.xyz;
     let camera = view.world_position;
     let distance_to_camera = distance(position, camera);
@@ -260,14 +267,19 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     // Data textures. Samples are grid-registered: sample k sits at uv = k / CELLS.
     let uv = clamp(in.uv, vec2<f32>(0.0), vec2<f32>(1.0));
     let texcoord = (uv * CELLS + 0.5) / (CELLS + 1.0);
-    let color = textureSample(color_texture, color_sampler, texcoord);
-    let surface = textureSample(surface_texture, surface_sampler, texcoord);
-    // Its texels fill the chunk from edge to edge, unlike the rest.
-    let lights_map = textureSample(lights_texture, lights_sampler, uv).r;
+    let color = textureSample(color_texture, color_sampler, texcoord, layer);
+    let surface = textureSample(surface_texture, surface_sampler, texcoord, layer);
+    // Its texels fill the chunk from edge to edge, unlike the rest. A dark chunk's layer holds
+    // whatever was there before.
+    let lights_map = select(
+        0.0,
+        textureSample(lights_texture, lights_sampler, uv, layer).r,
+        chunk.layer.y != 0u,
+    );
 
     // Procedural detail in body-fixed coordinates.
     let local = (local_from_world * vec4<f32>(position, 1.0)).xyz;
-    let p = params.detail_origin.xyz + local;
+    let p = chunk.detail_origin.xyz + local;
     let d = distance_to_camera;
     let near = 1.0 - smoothstep(300.0, 6000.0, d);
     // Size of a pixel on the ground, m.
@@ -289,10 +301,10 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let f = clamp(st - cell + jitter, vec2<f32>(0.0), vec2<f32>(1.0));
     let base = vec2<i32>(cell);
     let classes = vec4<u32>(
-        textureLoad(cover_texture, base, 0).r,
-        textureLoad(cover_texture, base + vec2<i32>(1, 0), 0).r,
-        textureLoad(cover_texture, base + vec2<i32>(0, 1), 0).r,
-        textureLoad(cover_texture, base + vec2<i32>(1, 1), 0).r,
+        textureLoad(cover_texture, base, layer, 0).r,
+        textureLoad(cover_texture, base + vec2<i32>(1, 0), layer, 0).r,
+        textureLoad(cover_texture, base + vec2<i32>(0, 1), layer, 0).r,
+        textureLoad(cover_texture, base + vec2<i32>(1, 1), layer, 0).r,
     );
     let weights = vec4<f32>((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
     var palette = vec4<f32>(0.0);
@@ -312,8 +324,8 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     // blocks.
     let imagery = color.rgb;
     let cover_keeps_up = max(
-        1.0 - smoothstep(0.5, 2.5, params.levels.x - params.levels.z),
-        smoothstep(9.0, 10.5, params.levels.z),
+        1.0 - smoothstep(0.5, 2.5, chunk.levels.x - chunk.levels.z),
+        smoothstep(9.0, 10.5, chunk.levels.z),
     );
     let classes_show = (1.0 - smoothstep(8.0, 80.0, footprint)) * cover_keeps_up;
     var land = mix(imagery, palette.rgb, classes_show);
@@ -351,7 +363,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     pbr_input.material.reflectance = vec3<f32>(mix(0.5, 0.35, water));
 
     let sun = lights.directional_lights[0].direction_to_light;
-    let has_air = params.levels.w > 0.5;
+    let has_air = chunk.levels.w > 0.5;
     let from_center = position - planet_center;
     var sun_color = lights.directional_lights[0].color.rgb;
     // Sunlight through the air here, and the share that clouds take out of the beam.
@@ -411,7 +423,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
         let exit = sphere_hits(origin, reflected, air.shape.y).y;
         let sky = scatter(
             origin, reflected, 0.0, max(exit, 0.0), sun, sun_color,
-            min(i32(params.quality.x), REFLECTION_STEPS),
+            min(i32(quality.x), REFLECTION_STEPS),
         );
         var reflected_light = sky.inscatter;
         // The clouds in it, as the ground sees them: the map at the height they mostly are.

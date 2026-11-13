@@ -20,13 +20,12 @@ use std::{f64::consts::FRAC_PI_2, sync::Arc};
 
 use bevy::{
     asset::RenderAssetUsages,
-    image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor},
     light::NotShadowCaster,
     math::{DQuat, DVec3},
     mesh::{Indices, PrimitiveTopology},
     platform::collections::{HashMap, HashSet},
     prelude::*,
-    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
+    render::storage::ShaderBuffer,
     tasks::{AsyncComputeTaskPool, Task, block_on, poll_once},
 };
 use half::f16;
@@ -43,7 +42,9 @@ use crate::{
     settings::{GraphicsSettings, Quality},
     sim::{Sim, WorldData},
     surface::Surface,
-    terrain_material::{TerrainExtension, TerrainMaterial, TerrainParams},
+    terrain_layers::{ChunkData, ChunkLayers, ChunkTexels, LIGHTS_SIDE},
+    terrain_material::{TerrainExtension, TerrainMaterial},
+    warmup::Warmup,
 };
 
 /// Quads per chunk edge. Each quad spans `TILE_CELLS / CHUNK_RESOLUTION` texture cells.
@@ -53,7 +54,7 @@ const STRIDE: usize = TILE_CELLS / CHUNK_RESOLUTION;
 /// detail). Each level then has about 40 chunks around the camera.
 const SPLIT_DISTANCE: f64 = 2.0;
 /// How many levels finer than a chunk its night lights go, data permitting.
-const LIGHTS_DEEPER: u8 = 1;
+pub(crate) const LIGHTS_DEEPER: u8 = 1;
 /// Night lights no brighter than this count as dark, 0..255.
 const DARK_LIGHTS: u8 = 2;
 /// Ground seen edge-on splits as if farther, up to twice as far at this sine of the
@@ -242,25 +243,51 @@ fn update_lod(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     // The full graphics' (see `Ground`), or the dev version's.
-    (mut materials, airs, waves): (
+    (mut materials, airs, waves, mut layers, mut buffers): (
         Option<ResMut<Assets<TerrainMaterial>>>,
         Option<Res<BodyAirs>>,
         Option<Res<OceanMaps>>,
+        Option<ResMut<ChunkLayers>>,
+        Option<ResMut<Assets<ShaderBuffer>>>,
     ),
     facets: Option<Res<dev_graphics::Ground>>,
     settings: Res<GraphicsSettings>,
     mut visibility: Query<&mut Visibility, With<PlanetChunk>>,
+    warmup: Option<ResMut<Warmup>>,
 ) {
     if frame.origin_body.is_none() {
         return;
     }
-    let mut ground = match (facets, materials.as_deref_mut(), airs, waves) {
+    // Loading waits for the ground, so its pipelines are made then.
+    if let Some(mut warmup) = warmup
+        && warmup.loading()
+        && planets.iter().any(|p| {
+            p.chunks
+                .values()
+                .any(|s| !matches!(s, ChunkState::Ready(_, age) if *age >= SETTLE_FRAMES))
+        })
+    {
+        warmup.hold();
+    }
+    let ground = (
+        facets,
+        materials.as_deref_mut(),
+        airs,
+        waves,
+        layers.as_deref_mut(),
+        buffers.as_deref_mut(),
+    );
+    let mut ground = match ground {
         (Some(facets), ..) => Ground::Facets(facets.0.clone()),
-        (None, Some(materials), Some(airs), Some(waves)) => Ground::Full {
-            materials,
-            airs,
-            waves: waves.0.clone(),
-        },
+        (None, Some(materials), Some(airs), Some(waves), Some(layers), Some(buffers)) => {
+            Ground::Full {
+                materials,
+                airs,
+                waves: waves.0.clone(),
+                layers,
+                buffers,
+            }
+        }
         // Not set up yet.
         _ => return,
     };
@@ -296,14 +323,15 @@ fn update_lod(
                         materials,
                         airs,
                         waves,
+                        layers,
+                        buffers,
                     },
                 ) => built.spawn(
                     &mut commands,
                     planet.body,
                     (airs.bindings(planet.body), waves.clone(), &settings),
-                    &mut meshes,
-                    &mut images,
-                    materials,
+                    (&mut meshes, &mut images),
+                    (materials, layers, buffers),
                 ),
                 (Built::Facets(mesh, center), Ground::Facets(material)) => commands
                     .spawn((
@@ -480,6 +508,9 @@ enum Ground<'a> {
         materials: &'a mut Assets<TerrainMaterial>,
         airs: Res<'a, BodyAirs>,
         waves: Handle<Image>,
+        layers: &'a mut ChunkLayers,
+        /// Where the chunks' data is (`ChunkLayers::chunks`).
+        buffers: &'a mut Assets<ShaderBuffer>,
     },
     Facets(Handle<StandardMaterial>),
 }
@@ -494,26 +525,34 @@ enum Built {
 /// A chunk built on a worker thread, ready to become assets.
 struct BuiltChunk {
     mesh: Mesh,
-    color: Image,
-    surface: Image,
-    cover: Image,
-    lights: Image,
+    texels: ChunkTexels,
     center: DVec3,
-    params: TerrainParams,
+    /// Without its layer, which it takes when it spawns.
+    data: ChunkData,
 }
 
 impl BuiltChunk {
     fn spawn(
-        mut self,
+        self,
         commands: &mut Commands,
         body: BodyId,
         (air, waves, settings): (AirBindings, Handle<Image>, &GraphicsSettings),
-        meshes: &mut Assets<Mesh>,
-        images: &mut Assets<Image>,
-        materials: &mut Assets<TerrainMaterial>,
+        (meshes, images): (&mut Assets<Mesh>, &mut Assets<Image>),
+        (materials, layers, buffers): (
+            &mut Assets<TerrainMaterial>,
+            &mut ChunkLayers,
+            &mut Assets<ShaderBuffer>,
+        ),
     ) -> Entity {
-        self.params.quality.x = crate::atmosphere::view_steps(settings.effects) as f32;
-        let material = materials.add(TerrainMaterial {
+        let layer = layers.take(images, buffers);
+        let data = ChunkData {
+            layer: layer.layer,
+            lights: self.texels.lights.is_some(),
+            ..self.data
+        };
+        layers.write(layer, data, self.texels, buffers);
+        let chunks = layers.chunks.clone();
+        let material = layers.material(layer.page, body, materials, |page| TerrainMaterial {
             base: StandardMaterial {
                 base_color: Color::WHITE,
                 perceptual_roughness: 0.9,
@@ -522,11 +561,17 @@ impl BuiltChunk {
                 ..default()
             },
             extension: TerrainExtension {
-                params: self.params,
-                color: images.add(self.color),
-                surface: images.add(self.surface),
-                cover: images.add(self.cover),
-                lights: images.add(self.lights),
+                quality: Vec4::new(
+                    crate::atmosphere::view_steps(settings.effects) as f32,
+                    0.0,
+                    0.0,
+                    0.0,
+                ),
+                color: page.color,
+                surface: page.surface,
+                cover: page.cover,
+                lights: page.lights,
+                chunks,
                 transmittance: air.transmittance,
                 multiple: air.multiple,
                 irradiance: air.irradiance,
@@ -555,6 +600,8 @@ impl BuiltChunk {
                 },
                 Mesh3d(meshes.add(self.mesh)),
                 MeshMaterial3d(material),
+                layer,
+                layer.tag(),
                 Transform::default(),
                 Visibility::Hidden,
                 NotShadowCaster,
@@ -563,65 +610,41 @@ impl BuiltChunk {
     }
 }
 
-fn data_image(format: TextureFormat, data: Vec<u8>, filtered: bool) -> Image {
-    let size = TILE_SAMPLES as u32;
-    let mut image = Image::new(
-        Extent3d {
-            width: size,
-            height: size,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        format,
-        RenderAssetUsages::RENDER_WORLD,
-    );
-    let filter = if filtered {
-        ImageFilterMode::Linear
-    } else {
-        ImageFilterMode::Nearest
-    };
-    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-        address_mode_u: ImageAddressMode::ClampToEdge,
-        address_mode_v: ImageAddressMode::ClampToEdge,
-        mag_filter: filter,
-        min_filter: filter,
-        ..default()
-    });
-    image
-}
-
-/// A chunk's night lights. Unlike the rest of its textures these go finer than the chunk: far off, a
-/// chunk has kilometres to a sample, and a bright town on black ground shows that where a day's
-/// imagery would not. Filtered down with distance, as they are all that shows at night and would
-/// sparkle. Most of the world is dark, and takes a texel.
-fn lights_image(data: Option<&Dataset>, key: TileKey) -> Image {
+/// A chunk's night lights, [`LIGHTS_SIDE`] a side with every mip level, or `None` where it is
+/// dark. Unlike the rest of its textures these go finer than the chunk: far off, a chunk has
+/// kilometres to a sample, and a bright town on black ground shows that where a day's imagery
+/// would not. Where the data goes no finer, the lights are interpolated up to that size.
+fn lights_texels(data: Option<&Dataset>, key: TileKey) -> Option<Vec<u8>> {
     let lit = |texels: &Vec<u8>| texels.iter().any(|&v| v > DARK_LIGHTS);
     let (side, texels) = data
         .and_then(|data| data.finer_bytes(Layer::Lights, 0, key, LIGHTS_DEEPER))
-        .filter(|(_, texels)| lit(texels))
-        .unwrap_or((1, vec![0]));
-    let (levels, texels) = with_mip_levels(side, texels);
-    let mut image = Image::default();
-    image.texture_descriptor.size = Extent3d {
-        width: side as u32,
-        height: side as u32,
-        depth_or_array_layers: 1,
+        .filter(|(_, texels)| lit(texels))?;
+    let texels = if side == LIGHTS_SIDE {
+        texels
+    } else {
+        upsample(side, &texels, LIGHTS_SIDE)
     };
-    image.texture_descriptor.format = TextureFormat::R8Unorm;
-    image.texture_descriptor.mip_level_count = levels;
-    image.data = Some(texels);
-    image.asset_usage = RenderAssetUsages::RENDER_WORLD;
-    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-        address_mode_u: ImageAddressMode::ClampToEdge,
-        address_mode_v: ImageAddressMode::ClampToEdge,
-        mag_filter: ImageFilterMode::Linear,
-        min_filter: ImageFilterMode::Linear,
-        mipmap_filter: ImageFilterMode::Linear,
-        anisotropy_clamp: 16,
-        ..default()
-    });
-    image
+    Some(with_mip_levels(LIGHTS_SIDE, texels).1)
+}
+
+/// `texels`, `side` a side, interpolated to `to` a side, as bilinear filtering would sample them
+/// at the finer texels' centres.
+fn upsample(side: usize, texels: &[u8], to: usize) -> Vec<u8> {
+    let scale = side as f32 / to as f32;
+    let at = |x: usize, y: usize| f32::from(texels[y.min(side - 1) * side + x.min(side - 1)]);
+    let mut out = Vec::with_capacity(to * to);
+    for j in 0..to {
+        let v = ((j as f32 + 0.5) * scale - 0.5).max(0.0);
+        let (y, fy) = (v.floor() as usize, v.fract());
+        for i in 0..to {
+            let u = ((i as f32 + 0.5) * scale - 0.5).max(0.0);
+            let (x, fx) = (u.floor() as usize, u.fract());
+            let top = at(x, y) * (1.0 - fx) + at(x + 1, y) * fx;
+            let bottom = at(x, y + 1) * (1.0 - fx) + at(x + 1, y + 1) * fx;
+            out.push((top * (1.0 - fy) + bottom * fy).round() as u8);
+        }
+    }
+    out
 }
 
 /// `level` of `side` by `side` texels, a power of two, with every level below it, each the average of
@@ -808,7 +831,7 @@ fn build_chunk(surface: &Surface, key: TileKey) -> BuiltChunk {
     let wrap = |v: f64| v.rem_euclid(DETAIL_PERIOD) as f32;
     let data_level =
         |view: &Option<osp_terrain::TileView>| view.as_ref().map_or(0.0, |v| v.data_level() as f32);
-    let params = TerrainParams {
+    let chunk_data = ChunkData {
         planet: to_render(-center).extend(radius as f32),
         detail_origin: Vec4::new(wrap(detail.x), wrap(detail.y), wrap(detail.z), 0.0),
         levels: Vec4::new(
@@ -817,17 +840,18 @@ fn build_chunk(surface: &Surface, key: TileKey) -> BuiltChunk {
             data_level(&cover_view),
             if surface.has_air { 1.0 } else { 0.0 },
         ),
-        // Set when the chunk spawns.
-        quality: Vec4::ZERO,
+        ..default()
     };
     BuiltChunk {
         mesh,
-        color: data_image(TextureFormat::Rgba8UnormSrgb, color, true),
-        surface: data_image(TextureFormat::Rgba16Float, surface_texels, true),
-        cover: data_image(TextureFormat::R8Uint, cover, false),
-        lights: lights_image(data, key),
+        texels: ChunkTexels {
+            color,
+            surface: surface_texels,
+            cover,
+            lights: lights_texels(data, key),
+        },
         center,
-        params,
+        data: chunk_data,
     }
 }
 
@@ -880,5 +904,15 @@ mod tests {
         assert_eq!(all[20], 15);
         // A dark chunk is one texel.
         assert_eq!(with_mip_levels(1, vec![0]), (1, vec![0]));
+    }
+
+    #[test]
+    fn lights_short_of_the_layers_size_are_interpolated_up_to_it() {
+        // Flat stays flat.
+        assert_eq!(upsample(2, &[50; 4], 4), vec![50; 16]);
+        // A step from 0 to 100 across: the outer texels keep the coarse ones' values, the inner
+        // ones are a quarter of the way in from each side, as bilinear filtering would give.
+        let row = &upsample(2, &[0, 100, 0, 100], 4)[..4];
+        assert_eq!(row, [0, 25, 75, 100]);
     }
 }

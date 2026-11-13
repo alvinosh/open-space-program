@@ -4810,6 +4810,7 @@ version = "0.1.0"
 dependencies = [
  "ab_glyph",
  "bevy",
+ "bytemuck",
  "half",
  "osp_game",
  "osp_mods",
