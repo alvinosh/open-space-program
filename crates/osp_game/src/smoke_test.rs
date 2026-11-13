@@ -211,6 +211,12 @@ impl Plugin for SmokeTestPlugin {
                 SCIENCE_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_FACILITIES").is_some() {
                 FACILITIES_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_CLUSTER").is_some() {
+                CLUSTER_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_EDITOR_FIT").is_some() {
+                EDITOR_FIT_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_EDITOR_LOOSE").is_some() {
+                EDITOR_LOOSE_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_CAREER_REALISTIC").is_some() {
                 CAREER_REALISTIC_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_SAVE_MODS").is_some() {
@@ -433,7 +439,8 @@ pub enum Action {
     /// Put the view's scripted pointer here, px from the top left.
     PointerAt(f32, f32),
     /// Put the view's scripted pointer on the ring of this free node of this part of the craft in
-    /// the editor, as drawn last.
+    /// the editor, as drawn last; with something in hand, where its own node that would go on the
+    /// ring is on it, as a player brings it (it goes on when its node comes near, not the pointer).
     EditorPointAtNode(&'static str, &'static str),
     /// Put the view's scripted pointer on this surface of this part of the craft in the editor, at
     /// these coordinates (u round it, v along it).
@@ -442,6 +449,12 @@ pub enum Action {
     ExpectPartCount(usize),
     /// Put the view's scripted pointer on the middle of this part of the craft in the editor.
     EditorPointAtPart(&'static str),
+    /// Put the view's scripted pointer on the middle of this group of parts left about the
+    /// editor's hangar, off the craft (`osp_sim::builder::Loose`), by its index.
+    EditorPointAtLoose(usize),
+    /// Stop the capture with a failure unless this many groups of parts are left about the
+    /// editor's hangar, off the craft.
+    ExpectLoose(usize),
     /// Stop the capture with a failure unless this field (`osp_sim::properties`) of this part of
     /// the craft in the editor is this: a number, a choice's id, `true` or `false`, or text.
     ExpectField(&'static str, &'static str, &'static str),
@@ -486,6 +499,8 @@ impl Action {
                 | Self::EditorPointAtSurface(..)
                 | Self::ExpectPartCount(..)
                 | Self::EditorPointAtPart(..)
+                | Self::EditorPointAtLoose(..)
+                | Self::ExpectLoose(..)
                 | Self::ExpectField(..)
                 | Self::ExpectPicked(..)
                 | Self::EditorPointAtHandle(..)
@@ -773,7 +788,8 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
 
 /// `OSP_CAPTURE_EDITOR_CRAFT=1`: what the craft itself can do in the editor. A tank as the root is
 /// carried up off the floor by dragging it, and another goes under it; four decouplers go round the
-/// lower one's side with radial symmetry, a tank on one's free node stands upright beside the core
+/// lower one's side with radial symmetry, half as wide as it, a tank as wide on one's free node
+/// stands upright beside the core
 /// and goes on all four, and a nose cone on one booster goes on all four; the root is turned with
 /// its ring, taking the whole craft with it, and undone. Esc would leave and lose the rocket, so it
 /// asks first, and Cancel keeps it; so do another craft from the list, and a new plane in its
@@ -840,11 +856,14 @@ const EDITOR_CRAFT_SCRIPT: &[(f64, Action)] = &[
     (12.1, Action::Release(MouseButton::Left)),
     (12.8, Action::ExpectPartCount(10)),
     (12.85, Action::ExpectHeldBy("tank_3", "held_side")),
+    // Half as wide as the core, as its decoupler is.
+    (12.87, Action::ExpectField("tank_3", "diameter", "1")),
     (12.9, Action::Ui("editor.add:nose_cone")),
     (13.0, Action::EditorPointAtNode("tank_3", "top")),
     (13.9, Action::Press(MouseButton::Left)),
     (14.0, Action::Release(MouseButton::Left)),
     (14.7, Action::ExpectPartCount(14)),
+    (14.75, Action::ExpectField("nose_cone", "bottom_diameter", "1")),
     (14.8, Action::ClearPointer),
     (14.9, Action::Capture("craft_boosters.png")),
     // The root turned a quarter turn about +X by its ring: everything goes with it.
@@ -899,6 +918,7 @@ const EDITOR_CRAFT_SCRIPT: &[(f64, Action)] = &[
     (21.3, Action::Ui("editor.group:aero")),
     (21.4, Action::Ui("editor.add:tank")),
     (21.6, Action::EditorPointAtNode("pod", "bottom")),
+    (22.2, Action::Capture("plane_tank_preview.png")),
     (22.3, Action::Press(MouseButton::Left)),
     (22.4, Action::Release(MouseButton::Left)),
     (23.0, Action::ExpectPartCount(2)),
@@ -1889,6 +1909,193 @@ const FACILITIES_SCRIPT: &[(f64, Action)] = &[
     (16.0, Action::ExpectEditor(None)),
     (16.5, Action::Capture("facilities_launched.png")),
     (17.0, Action::Exit),
+];
+
+/// `OSP_CAPTURE_CLUSTER=1`: four K-0s go under one tank in one placement, with symmetry 4, by
+/// pointing at the tank's bottom from below; undo takes all four off and redo puts them back; the
+/// capsule on top flies on them.
+const CLUSTER_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.new")),
+    (2.0, Action::Unlock),
+    (2.1, Action::Ui("editor.group:pods")),
+    (2.2, Action::Ui("editor.add:pod:C-1 Capsule")),
+    (3.0, Action::ExpectPartCount(1)),
+    (3.1, Action::Ui("editor.add:tank")),
+    (3.4, Action::EditorPointAtNode("pod", "bottom")),
+    (4.2, Action::Press(MouseButton::Left)),
+    (4.3, Action::Release(MouseButton::Left)),
+    (5.2, Action::ExpectPartCount(2)),
+    (5.3, Action::Ui("editor.pick:tank")),
+    (5.6, Action::Ui("editor.set:length:2.5")),
+    (6.0, Action::ClearPointer),
+    (6.1, Action::Ui("editor.symmetry")),
+    (6.2, Action::Ui("editor.symmetry")),
+    (6.3, Action::Ui("editor.symmetry")),
+    (6.4, Action::ExpectData("editor.symmetry == x4")),
+    (6.5, Action::Ui("editor.group:engines")),
+    (6.6, Action::Ui("editor.add:engine:K-0")),
+    // From below, the tank's bottom: one engine pointed at it, three more round its axis.
+    (6.7, Action::EditorLook(0.0, -260.0, 0.0)),
+    (
+        7.5,
+        Action::EditorPointAtSurface("tank", "aft_dome", 0.0, 0.45),
+    ),
+    (8.3, Action::Capture("cluster_preview.png")),
+    (8.4, Action::Press(MouseButton::Left)),
+    (8.5, Action::Release(MouseButton::Left)),
+    (9.4, Action::ExpectPartCount(6)),
+    (9.5, Action::ClearPointer),
+    (10.3, Action::Capture("cluster_below.png")),
+    (10.4, Action::EditorLook(0.0, 260.0, 0.0)),
+    (11.2, Action::Capture("cluster_on_craft.png")),
+    (11.3, Action::Ui("editor.undo")),
+    (12.0, Action::ExpectPartCount(2)),
+    (12.1, Action::Capture("cluster_undone.png")),
+    (12.2, Action::Ui("editor.redo")),
+    (13.0, Action::ExpectPartCount(6)),
+    (13.1, Action::Ui("editor.launch")),
+    (17.0, Action::ExpectEditor(None)),
+    (17.1, Action::Ui("vessel.throttle_full")),
+    (17.15, Action::Ui("vessel.sas_toggle")),
+    (17.2, Action::Ui("vessel.stage")),
+    (19.0, Action::Capture("cluster_liftoff.png")),
+    (30.0, Action::ExpectData("vessel.thrust")),
+    (30.1, Action::Capture("cluster_flying.png")),
+    (31.0, Action::Exit),
+];
+
+/// `OSP_CAPTURE_EDITOR_FIT=1`: new parts sized for what they go on, built from the engine up. A
+/// tank put on a K-1 Booster's mount is sized to feed it for a first stage's burn, not as narrow as
+/// the nozzle; a tube on the tank is as wide as it at both ends; two tanks beside it, with symmetry,
+/// are half as wide as it.
+const EDITOR_FIT_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.new")),
+    (2.0, Action::Unlock),
+    (2.1, Action::Ui("editor.group:engines")),
+    (2.2, Action::Ui("editor.add:engine:K-1 Booster")),
+    (3.0, Action::ExpectPartCount(1)),
+    (3.1, Action::Ui("editor.add:tank")),
+    (3.4, Action::EditorPointAtNode("engine", "top")),
+    (4.2, Action::Capture("fit_tank_preview.png")),
+    (4.3, Action::Press(MouseButton::Left)),
+    (4.4, Action::Release(MouseButton::Left)),
+    (5.2, Action::ExpectPartCount(2)),
+    (5.3, Action::ExpectField("tank", "diameter", "2.8")),
+    (5.35, Action::ExpectField("tank", "length", "8.1")),
+    (5.4, Action::ExpectField("tank", "contents", "kerolox")),
+    (5.5, Action::ClearPointer),
+    (5.55, Action::EditorLook(0.0, 0.0, -7.0)),
+    (5.6, Action::Capture("fit_tank_on_engine.png")),
+    (5.7, Action::Ui("editor.group:structure")),
+    (5.8, Action::Ui("editor.add:structural")),
+    (6.1, Action::EditorPointAtNode("tank", "top")),
+    (6.9, Action::Press(MouseButton::Left)),
+    (7.0, Action::Release(MouseButton::Left)),
+    (7.8, Action::ExpectPartCount(3)),
+    (7.9, Action::ExpectField("structural", "bottom_diameter", "2.8")),
+    (7.95, Action::ExpectField("structural", "top_diameter", "2.8")),
+    (8.0, Action::ClearPointer),
+    (8.1, Action::Ui("editor.symmetry")),
+    (8.2, Action::ExpectData("editor.symmetry == x2")),
+    (8.3, Action::Ui("editor.group:tanks")),
+    (8.4, Action::Ui("editor.add:tank")),
+    (
+        8.7,
+        Action::EditorPointAtSurface("tank", "barrel", 0.0, 0.5),
+    ),
+    (9.5, Action::Capture("fit_boosters_preview.png")),
+    (9.6, Action::Press(MouseButton::Left)),
+    (9.7, Action::Release(MouseButton::Left)),
+    (10.5, Action::ExpectPartCount(5)),
+    (10.6, Action::ExpectField("tank_2", "diameter", "1.4")),
+    (10.7, Action::ClearPointer),
+    (11.5, Action::Capture("fit_boosters.png")),
+    (12.0, Action::Exit),
+];
+
+/// `OSP_CAPTURE_EDITOR_LOOSE=1`: parts taken off the craft stay in the hangar until thrown away.
+/// Four fins round a tank under a capsule; one dragged off out into the hangar takes its copies
+/// off and is left there, see-through; dragged back onto the tank it goes on four round again;
+/// undone, it is loose again; dragged onto the parts list it is thrown away; undo and redo go back
+/// and forth over that.
+const EDITOR_LOOSE_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.new")),
+    (1.5, Action::Ui("editor.new")),
+    (2.0, Action::Unlock),
+    (2.1, Action::Ui("editor.group:pods")),
+    (2.2, Action::Ui("editor.add:pod:C-1 Capsule")),
+    (3.0, Action::ExpectPartCount(1)),
+    (3.1, Action::Ui("editor.add:tank")),
+    (3.4, Action::EditorPointAtNode("pod", "bottom")),
+    (4.2, Action::Press(MouseButton::Left)),
+    (4.3, Action::Release(MouseButton::Left)),
+    (5.2, Action::ExpectPartCount(2)),
+    (5.3, Action::ClearPointer),
+    (5.4, Action::Ui("editor.symmetry")),
+    (5.5, Action::Ui("editor.symmetry")),
+    (5.6, Action::Ui("editor.symmetry")),
+    (5.7, Action::ExpectData("editor.symmetry == x4")),
+    (5.8, Action::Ui("editor.group:aero")),
+    (5.9, Action::Ui("editor.add:fin")),
+    (
+        6.2,
+        Action::EditorPointAtSurface("tank", "barrel", 0.625, 0.12),
+    ),
+    (7.0, Action::Press(MouseButton::Left)),
+    (7.1, Action::Release(MouseButton::Left)),
+    (7.8, Action::ExpectPartCount(6)),
+    (7.9, Action::ClearPointer),
+    (8.0, Action::Capture("loose_craft.png")),
+    // Dragged off out into the hangar: left there, see-through, its copies gone.
+    (8.1, Action::EditorPointAtPart("fin")),
+    (8.4, Action::Press(MouseButton::Left)),
+    (8.5, Action::PointerBy(0.0, -40.0)),
+    (8.7, Action::PointerAt(1100.0, 300.0)),
+    (9.3, Action::ExpectData("editor.holding")),
+    (9.4, Action::Capture("loose_dragging.png")),
+    (9.5, Action::Release(MouseButton::Left)),
+    (10.1, Action::ExpectPartCount(2)),
+    (10.15, Action::ExpectLoose(1)),
+    (10.2, Action::ClearPointer),
+    (10.8, Action::Capture("loose_left.png")),
+    // Taken from where it was left and put back on the tank, four round.
+    (10.9, Action::EditorPointAtLoose(0)),
+    (11.1, Action::Press(MouseButton::Left)),
+    (11.2, Action::PointerBy(0.0, -40.0)),
+    (
+        11.4,
+        Action::EditorPointAtSurface("tank", "barrel", 0.625, 0.3),
+    ),
+    (12.2, Action::Capture("loose_back_preview.png")),
+    (12.3, Action::Release(MouseButton::Left)),
+    (13.0, Action::ExpectPartCount(6)),
+    (13.05, Action::ExpectLoose(0)),
+    (13.1, Action::ClearPointer),
+    (13.6, Action::Capture("loose_back_on.png")),
+    (13.7, Action::Ui("editor.undo")),
+    (14.3, Action::ExpectPartCount(2)),
+    (14.35, Action::ExpectLoose(1)),
+    // Dragged onto the parts list: thrown away.
+    (14.4, Action::EditorPointAtLoose(0)),
+    (14.6, Action::Press(MouseButton::Left)),
+    (14.7, Action::PointerBy(0.0, -40.0)),
+    (14.9, Action::PointerAt(180.0, 450.0)),
+    (15.5, Action::Capture("loose_over_list.png")),
+    (15.6, Action::Release(MouseButton::Left)),
+    (16.2, Action::ExpectLoose(0)),
+    (16.25, Action::ExpectPartCount(2)),
+    (16.3, Action::ClearPointer),
+    (16.4, Action::Ui("editor.undo")),
+    (16.9, Action::ExpectLoose(1)),
+    (17.0, Action::Ui("editor.redo")),
+    (17.5, Action::ExpectLoose(0)),
+    (17.6, Action::Capture("loose_thrown.png")),
+    (18.0, Action::Exit),
 ];
 
 /// A new Realistic career: a new tank is as wide as a V-2 and of an early tank type, and the later
@@ -3246,6 +3453,7 @@ fn run_script(
             | Action::EditorPointAtNode(..)
             | Action::EditorPointAtSurface(..)
             | Action::EditorPointAtPart(..)
+            | Action::EditorPointAtLoose(..)
     );
     match action {
         // What only the editor can look at, which it does as soon as this has run.
@@ -3258,6 +3466,8 @@ fn run_script(
         | Action::EditorPointAtSurface(..)
         | Action::ExpectPartCount(..)
         | Action::EditorPointAtPart(..)
+        | Action::EditorPointAtLoose(..)
+        | Action::ExpectLoose(..)
         | Action::ExpectField(..)
         | Action::ExpectPicked(..)
         | Action::EditorPointAtHandle(..)

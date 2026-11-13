@@ -7,20 +7,16 @@
 //! ([`Propellant`]).
 //!
 //! An entry is a part to copy ([`Entry::part`], with no id: the editor names it). A procedural one
-//! is [`fit`] to what it goes on, so a tank put under a 3 m tank is 3 m across and a fin is sized
-//! for the hull it stands on. What goes on a surface says by which of its own nodes, and how far it
+//! is fitted to what it goes on ([`crate::fitting`]), so a tank put under a 3 m tank is 3 m across,
+//! one on an engine feeds it, and a fin is sized for the hull it stands on. What goes on a surface says by which of its own nodes, and how far it
 //! is turned about the joint so that it stands the right way up ([`Entry::surface`]).
 
 use serde_json::json;
 
 use crate::{
     comms,
-    component::ComponentDef,
     craft::Craft,
     data::{CatalogInfo, CraftDef, CraftPartDef, PartCatalog},
-    geometry::preset::{AirfoilDef, ShapeDef},
-    shaping,
-    sizing::ProceduralDef,
 };
 
 /// Where an entry is listed: by what it does.
@@ -1133,55 +1129,10 @@ fn instrument(def: &crate::data::InstrumentDef, catalog: &PartCatalog) -> Entry 
     }
 }
 
-/// `part`, a palette entry's procedural part, sized for what it goes on, `width` across: the node
-/// it is held at, or the hull it stands on. A part from a catalogue record stays as it is.
-pub fn fit(part: &mut CraftPartDef, width: f64) {
-    if !(width.is_finite() && width > 0.0) {
-        return;
-    }
-    if let Some(ProceduralDef::Decoupler(decoupler)) = &mut part.procedural {
-        decoupler.diameter = width;
-        return;
-    }
-    // A fuel line is a small fitting, however big the tank it is on.
-    if (part.components.iter()).any(|c| matches!(c, ComponentDef::FuelLine(_))) {
-        return;
-    }
-    let stand_alone = part.template.is_none() && part.procedural.is_none();
-    let Some(shape) = part.shape.as_mut().filter(|_| stand_alone) else {
-        return;
-    };
-    let sizes: Vec<(&str, f64)> = match shape {
-        // Longer first, so its domes have room for the width.
-        ShapeDef::CylinderTank(_) => vec![("length", 3.0 * width), ("diameter", width)],
-        ShapeDef::Shell(d) if d.sections.last().and_then(|s| s.top_diameter) == Some(0.0) => {
-            vec![("length", 1.5 * width), ("bottom_diameter", width)]
-        }
-        ShapeDef::Shell(_) => vec![("length", 0.5 * width), ("bottom_diameter", width)],
-        // On a hull `width` across: big enough to keep a short rocket pointing into the air.
-        ShapeDef::Wing(d) if matches!(d.airfoil, AirfoilDef::Plate { .. }) => vec![
-            ("root_chord", 1.2 * width),
-            ("tip_chord", 0.5 * width),
-            ("span", 0.8 * width),
-            ("sweep", 0.6 * width),
-        ],
-        ShapeDef::Wing(_) => vec![
-            ("root_chord", 1.5 * width),
-            ("tip_chord", 0.6 * width),
-            ("span", 2.0 * width),
-            ("sweep", 0.6 * width),
-        ],
-        _ => Vec::new(),
-    };
-    for (size, value) in sizes {
-        // Sizes that a shape does not take are left as they are.
-        let _ = shaping::resize(part, size, value);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geometry::preset::ShapeDef;
 
     fn catalog() -> PartCatalog {
         crate::vessel::tests::catalog()
@@ -1226,38 +1177,6 @@ mod tests {
         assert_eq!(ids.len(), all.len(), "ids are unique");
     }
 
-    #[test]
-    fn a_procedural_part_takes_the_width_it_goes_on() {
-        let all = entries(&catalog());
-        let fitted = |id: &str, width: f64| {
-            let mut part = all.iter().find(|e| e.id == id).unwrap().part.clone();
-            fit(&mut part, width);
-            part
-        };
-        let sizes = |part: &CraftPartDef| -> Vec<(&'static str, f64)> {
-            shaping::part_sizes(part)
-                .iter()
-                .map(|s| (s.name, s.value))
-                .collect()
-        };
-        assert_eq!(
-            sizes(&fitted("tank", 3.0)),
-            [("length", 9.0), ("diameter", 3.0)]
-        );
-        assert!(sizes(&fitted("nose_cone", 3.0)).contains(&("bottom_diameter", 3.0)));
-        let decoupler = fitted("decoupler", 3.0);
-        assert!(
-            matches!(&decoupler.procedural, Some(ProceduralDef::Decoupler(d)) if d.diameter == 3.0)
-        );
-        let fin = sizes(&fitted("fin", 2.0));
-        assert!(fin.contains(&("span", 1.6)) && fin.contains(&("root_chord", 2.4)));
-        // A catalogue part stays as it was.
-        let engine = all.iter().find(|e| e.group == Group::Engines).unwrap();
-        let mut copy = engine.part.clone();
-        fit(&mut copy, 9.0);
-        assert_eq!(copy, engine.part);
-    }
-
     /// A 4 m tank standing up, with `entry` held on its barrel's side facing +X, by the node and
     /// turn the palette gives: where that part sits.
     fn on_the_side(entry: &str) -> crate::assembly::Pose {
@@ -1278,6 +1197,7 @@ mod tests {
             v: 0.5,
             side: Default::default(),
             standoff: 0.0,
+            axial: false,
         });
         let def = CraftDef {
             id: "test".into(),

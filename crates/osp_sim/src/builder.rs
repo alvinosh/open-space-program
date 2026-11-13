@@ -30,6 +30,7 @@ use crate::{
     component::{BuiltPart, Component, ComponentDef, storage::StorageDef},
     craft::Craft,
     data::{CraftDef, CraftPartDef, PartCatalog, SurfaceAtDef, TankTypeDef},
+    fitting,
     geometry::{
         Node,
         preset::{NodeDef, ShapeDef},
@@ -289,13 +290,34 @@ impl Allowed {
     }
 }
 
+/// Parts taken off the craft and left about the editor, not part of it, as KSP leaves detached
+/// parts: a part and all it held, the first holding the rest as they were held on the craft, the
+/// first held by nothing (its `by`, `at` and `roll` say how it was held). `at` is where their
+/// middle is, in the craft's frame from its root, m. They are not built, launched or saved with
+/// the craft; they can be put on again or thrown away.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Loose {
+    pub parts: Vec<CraftPartDef>,
+    pub at: DVec3,
+}
+
+/// What an operation can be undone back to: the draft and what was loose about it.
+#[derive(Debug, Clone)]
+struct Snapshot {
+    draft: CraftDef,
+    loose: Vec<Loose>,
+}
+
 /// A draft craft and the operations on it. Each operation is checked against the parts in
 /// `catalog`, which it is given each time, so a builder can be kept while the content changes.
+/// Parts taken off and left about ([`Loose`]) go back and forth with undo and redo as the draft
+/// does.
 #[derive(Debug, Clone)]
 pub struct Builder {
     draft: CraftDef,
-    undo: Vec<CraftDef>,
-    redo: Vec<CraftDef>,
+    loose: Vec<Loose>,
+    undo: Vec<Snapshot>,
+    redo: Vec<Snapshot>,
     allowed: Allowed,
 }
 
@@ -317,6 +339,7 @@ impl Builder {
     pub fn of(draft: CraftDef) -> Self {
         Self {
             draft,
+            loose: Vec::new(),
             undo: Vec::new(),
             redo: Vec::new(),
             allowed: Allowed::default(),
@@ -345,6 +368,12 @@ impl Builder {
 
     pub fn draft(&self) -> &CraftDef {
         &self.draft
+    }
+
+    /// The parts taken off the craft and left about the editor, each group in the order it came
+    /// off.
+    pub fn loose(&self) -> &[Loose] {
+        &self.loose
     }
 
     pub fn into_draft(self) -> CraftDef {
@@ -377,17 +406,42 @@ impl Builder {
         also: &BTreeSet<String>,
         edit: impl FnOnce(&mut CraftDef) -> Result<(), Refusal>,
     ) -> Result<Change, Refusal> {
+        self.edit_both(catalog, also, |draft, _| edit(draft))
+    }
+
+    /// [`Self::edit_checking`], with what is loose about the craft to change as well.
+    fn edit_both(
+        &mut self,
+        catalog: &PartCatalog,
+        also: &BTreeSet<String>,
+        edit: impl FnOnce(&mut CraftDef, &mut Vec<Loose>) -> Result<(), Refusal>,
+    ) -> Result<Change, Refusal> {
         let mut next = self.draft.clone();
-        edit(&mut next)?;
+        let mut loose = self.loose.clone();
+        edit(&mut next, &mut loose)?;
         let change = Change::between(&self.draft, &next);
         if !next.parts.is_empty() {
             let touched: BTreeSet<&str> =
                 (change.touched().chain(also)).map(String::as_str).collect();
             check(&next, catalog, &Vec::from_iter(touched))?;
         }
-        self.undo.push(std::mem::replace(&mut self.draft, next));
+        let before = Snapshot {
+            draft: std::mem::replace(&mut self.draft, next),
+            loose: std::mem::replace(&mut self.loose, loose),
+        };
+        self.undo.push(before);
         self.redo.clear();
         Ok(change)
+    }
+
+    /// Keep `next` as the draft, the one it replaces to go back to.
+    fn log(&mut self, next: CraftDef) {
+        let before = Snapshot {
+            draft: std::mem::replace(&mut self.draft, next),
+            loose: self.loose.clone(),
+        };
+        self.undo.push(before);
+        self.redo.clear();
     }
 
     /// Put `part` where `place` says, or as the root if there is none yet.
@@ -719,8 +773,7 @@ impl Builder {
         }
         let change = Change::between(&self.draft, &next);
         if !change.changed.is_empty() {
-            self.undo.push(std::mem::replace(&mut self.draft, next));
-            self.redo.clear();
+            self.log(next);
         }
         Ok(change)
     }
@@ -762,8 +815,7 @@ impl Builder {
         }
         let change = Change::between(&self.draft, &next);
         if !change.changed.is_empty() {
-            self.undo.push(std::mem::replace(&mut self.draft, next));
-            self.redo.clear();
+            self.log(next);
         }
         Ok(change)
     }
@@ -819,10 +871,100 @@ impl Builder {
         Craft::build(&next, catalog).map_err(|e| Refusal::new(Rule::Join, e.to_string()))?;
         let change = Change::between(&self.draft, &next);
         if !change.changed.is_empty() {
-            self.undo.push(std::mem::replace(&mut self.draft, next));
-            self.redo.clear();
+            self.log(next);
         }
         Ok(change)
+    }
+
+    /// Take `ids` off the craft, each with everything held by it, as [`Builder::remove_all`]
+    /// does, but leave `kept` (one of them) and what it holds about the editor at `at`, loose
+    /// ([`Loose`]): a part dragged off the craft, whose copies by symmetry go. One change.
+    pub fn detach(
+        &mut self,
+        catalog: &PartCatalog,
+        ids: &BTreeSet<String>,
+        kept: &str,
+        at: DVec3,
+    ) -> Result<Change, Refusal> {
+        if root(&self.draft) == Some(kept) {
+            return Err(Refusal::new(
+                Rule::Part,
+                format!("`{kept}` is the root: it holds the craft"),
+            ));
+        }
+        let group = held_by(&self.draft, kept)?;
+        let mut parts: Vec<CraftPartDef> = (self.draft.parts.iter())
+            .filter(|p| group.contains(&p.id))
+            .cloned()
+            .collect();
+        // The part first: it holds the rest.
+        parts.sort_by_key(|p| p.id != kept);
+        parts[0].on = None;
+        let mut ids = ids.clone();
+        ids.insert(kept.to_owned());
+        let next = removed(&self.draft, &ids)?;
+        self.edit_both(catalog, &BTreeSet::new(), |draft, loose| {
+            *draft = next;
+            loose.push(Loose { parts, at });
+            Ok(())
+        })
+    }
+
+    /// Put the loose group `index` on the craft: `parts` (the group as [`fit_in`] names it) at
+    /// each of `places`, as [`Builder::put_set`] does, the group no longer loose. One change.
+    /// Also the ids of the parts at each place, top first.
+    pub fn put_loose(
+        &mut self,
+        catalog: &PartCatalog,
+        index: usize,
+        parts: &[CraftPartDef],
+        places: &[(Place, bool)],
+    ) -> Result<(Change, Vec<String>), Refusal> {
+        if index >= self.loose.len() {
+            return Err(Refusal::new(Rule::Part, "there is no such loose part"));
+        }
+        let (mut next, tops) = put_set(&self.draft, parts, places, &BTreeSet::new())?;
+        let mut carried = BTreeSet::new();
+        for top in &tops {
+            carried.extend(held_by(&next, top)?);
+        }
+        let put: Vec<String> = carried.iter().cloned().collect();
+        carried.extend(properties::fill_from_engines(&mut next, catalog, &put));
+        let change = self.edit_both(catalog, &carried, |draft, loose| {
+            *draft = next;
+            loose.remove(index);
+            Ok(())
+        })?;
+        Ok((change, tops))
+    }
+
+    /// Leave the loose group `index` somewhere else about the editor, its middle at `at`.
+    pub fn move_loose(&mut self, index: usize, at: DVec3) -> Result<(), Refusal> {
+        self.change_loose(|loose| loose.get_mut(index).map(|group| group.at = at).is_some())
+    }
+
+    /// Throw the loose group `index` away.
+    pub fn throw_loose(&mut self, index: usize) -> Result<(), Refusal> {
+        self.change_loose(|loose| (index < loose.len()).then(|| loose.remove(index)).is_some())
+    }
+
+    /// Change what is loose about the craft, the craft as it is: one change, if `change` finds
+    /// what it changes.
+    fn change_loose(
+        &mut self,
+        change: impl FnOnce(&mut Vec<Loose>) -> bool,
+    ) -> Result<(), Refusal> {
+        let mut loose = self.loose.clone();
+        if !change(&mut loose) {
+            return Err(Refusal::new(Rule::Part, "there is no such loose part"));
+        }
+        let before = Snapshot {
+            draft: self.draft.clone(),
+            loose: std::mem::replace(&mut self.loose, loose),
+        };
+        self.undo.push(before);
+        self.redo.clear();
+        Ok(())
     }
 
     /// Go back one operation; `false` if there is none to go back over.
@@ -830,7 +972,8 @@ impl Builder {
         let Some(before) = self.undo.pop() else {
             return false;
         };
-        self.redo.push(std::mem::replace(&mut self.draft, before));
+        let now = self.restore(before);
+        self.redo.push(now);
         true
     }
 
@@ -839,8 +982,17 @@ impl Builder {
         let Some(after) = self.redo.pop() else {
             return false;
         };
-        self.undo.push(std::mem::replace(&mut self.draft, after));
+        let now = self.restore(after);
+        self.undo.push(now);
         true
+    }
+
+    /// Go to `snapshot`, giving back what there was.
+    fn restore(&mut self, snapshot: Snapshot) -> Snapshot {
+        Snapshot {
+            draft: std::mem::replace(&mut self.draft, snapshot.draft),
+            loose: std::mem::replace(&mut self.loose, snapshot.loose),
+        }
     }
 }
 
@@ -940,6 +1092,41 @@ pub fn put_set(
         }
     }
     Ok((next, tops))
+}
+
+/// `parts`, a loose group (a part first, then what it holds), ready to go on `draft` again: each
+/// part whose id `draft` now has takes a new one, and what it holds follows it.
+pub fn fit_in(draft: &CraftDef, parts: &[CraftPartDef]) -> Vec<CraftPartDef> {
+    let mut taken: CraftDef = draft.clone();
+    let mut names = std::collections::BTreeMap::new();
+    for part in parts {
+        if taken.parts.iter().any(|p| p.id == part.id) {
+            let id = fresh_id(&taken, &part.id);
+            names.insert(part.id.clone(), id);
+        }
+        let mut stand_in = part.clone();
+        stand_in.id = names
+            .get(&part.id)
+            .cloned()
+            .unwrap_or_else(|| part.id.clone());
+        taken.parts.push(stand_in);
+    }
+    (parts.iter())
+        .map(|part| {
+            let mut part = part.clone();
+            if let Some(id) = names.get(&part.id) {
+                part.id = id.clone();
+            }
+            part.on = (part.on.as_ref()).map(|on| match on.split_once('.') {
+                Some((held, connector)) => match names.get(held) {
+                    Some(renamed) => format!("{renamed}.{connector}"),
+                    None => on.clone(),
+                },
+                None => on.clone(),
+            });
+            part
+        })
+        .collect()
 }
 
 /// `draft` without the parts `ids`, each with everything held by it, and out of what its
@@ -1728,7 +1915,9 @@ pub fn check(def: &CraftDef, catalog: &PartCatalog, touched: &[&str]) -> Result<
 }
 
 /// A part's node must not be much bigger than the node that holds it. A surface takes any size,
-/// and what has no size (a point, like the tip of a nose) holds and is held by anything.
+/// and what has no size (a point, like the tip of a nose) holds and is held by anything. So does an
+/// engine's front, a thrust structure: a tank on an engine is as good as the engine under the tank,
+/// whichever of the two holds the other.
 fn check_nodes(
     craft: &Craft,
     parent: usize,
@@ -1743,7 +1932,7 @@ fn check_nodes(
     let (Some(holds), Some(held)) = (size(parent, near), size(index, far)) else {
         return Ok(());
     };
-    if holds > 0.0 && held > NODE_RATIO * holds {
+    if holds > 0.0 && held > NODE_RATIO * holds && !fitting::engine_front(craft, parent, near) {
         return Err(Refusal::new(
             Rule::Node,
             format!(
@@ -1856,7 +2045,7 @@ mod tests {
     fn entry(id: &str, catalog: &PartCatalog) -> CraftPartDef {
         let all = palette::entries(catalog);
         let mut part = all.iter().find(|e| e.id == id).unwrap().part.clone();
-        palette::fit(&mut part, 2.0);
+        crate::fitting::fit(&mut part, &crate::fitting::Against::node(2.0), catalog);
         part
     }
 
@@ -1888,6 +2077,7 @@ mod tests {
                 v: 0.5,
                 side: Side::Front,
                 standoff: 0.0,
+                axial: false,
             },
         );
         place.roll = roll;
@@ -2208,6 +2398,7 @@ mod tests {
             v: 0.5,
             side: Side::Front,
             standoff: 0.0,
+            axial: false,
         };
         let mount = Mount::Surface {
             surface: "barrel".into(),
@@ -2215,6 +2406,7 @@ mod tests {
             u: at.u,
             v: at.v,
             standoff: 0.0,
+            axial: false,
         };
         let mut place = Place::surface("lower.barrel", SIDE, at);
         place.roll = upright_roll(&craft, lower, &mount, &node, DVec3::Z).unwrap();
@@ -2248,6 +2440,170 @@ mod tests {
             .unwrap();
         let engine = crate::parts::PartId(index as u32);
         assert!(propulsion.reachable(engine, "Kerosene") > 0.0);
+    }
+
+    /// A fin set dragged off is left about as one loose fin, its copies gone; it goes back on
+    /// four times round, is moved and thrown away, and undo and redo walk back through each step.
+    #[test]
+    fn parts_taken_off_stay_loose_until_put_back_or_thrown_away() {
+        let catalog = catalog();
+        let mut builder = stack(&catalog);
+        let full = builder.draft().clone();
+        let fins: BTreeSet<String> = (full.parts.iter())
+            .filter(|p| p.id.starts_with("fin"))
+            .map(|p| p.id.clone())
+            .collect();
+        assert_eq!(fins.len(), 4);
+        let kept = fins.iter().next().unwrap().clone();
+        let at = DVec3::new(3.0, 0.0, 1.0);
+        builder.detach(&catalog, &fins, &kept, at).unwrap();
+        assert_eq!(builder.draft().parts.len(), full.parts.len() - 4);
+        let loose = builder.loose().to_vec();
+        assert_eq!(loose.len(), 1);
+        assert_eq!(loose[0].at, at);
+        assert_eq!(loose[0].parts.len(), 1);
+        assert_eq!(loose[0].parts[0].id, kept);
+        assert!(loose[0].parts[0].on.is_none());
+        // The root holds the craft: it cannot be left about.
+        let root = BTreeSet::from(["top".to_owned()]);
+        assert!(builder.detach(&catalog, &root, "top", at).is_err());
+
+        assert!(builder.undo());
+        assert_eq!(builder.draft().parts, full.parts);
+        assert!(builder.loose().is_empty());
+        assert!(builder.redo());
+        assert_eq!(builder.loose(), loose.as_slice());
+
+        // A new part has taken the loose fin's id since: it goes back on under a new one.
+        let mut other = entry("fin", &catalog);
+        other.id = kept.clone();
+        let (by, roll) = palette::entries(&catalog)
+            .into_iter()
+            .find(|e| e.id == "fin")
+            .unwrap()
+            .surface
+            .unwrap();
+        let place_at = |u: f64| {
+            let mut place = Place::surface(
+                "lower.barrel",
+                by.clone(),
+                SurfaceAtDef {
+                    u,
+                    v: 0.5,
+                    side: Side::Front,
+                    standoff: 0.0,
+                    axial: false,
+                },
+            );
+            place.roll = roll;
+            place
+        };
+        builder
+            .place(&catalog, other, Some(place_at(0.125)))
+            .unwrap();
+        let group = fit_in(builder.draft(), &builder.loose()[0].parts);
+        assert_ne!(group[0].id, kept);
+        let places: Vec<(Place, bool)> = (0..4)
+            .map(|k| (place_at(0.25 * f64::from(k)), false))
+            .collect();
+        let before = builder.draft().parts.len();
+        builder.put_loose(&catalog, 0, &group, &places).unwrap();
+        assert_eq!(builder.draft().parts.len(), before + 4);
+        assert!(builder.loose().is_empty());
+        assert!(builder.undo());
+        assert_eq!(builder.loose(), loose.as_slice());
+
+        builder.move_loose(0, DVec3::new(-2.0, 0.0, 0.0)).unwrap();
+        assert_eq!(builder.loose()[0].at, DVec3::new(-2.0, 0.0, 0.0));
+        builder.throw_loose(0).unwrap();
+        assert!(builder.loose().is_empty());
+        assert!(builder.undo());
+        assert!(builder.undo());
+        assert_eq!(builder.loose(), loose.as_slice());
+        assert!(builder.throw_loose(3).is_err());
+    }
+
+    /// Built from the engine up, a tank much wider than the engine goes on its front, as the engine
+    /// goes under the tank built the other way; a part much wider than a probe core's node still
+    /// may not hang from it.
+    #[test]
+    fn an_engine_s_front_holds_a_tank_of_any_width() {
+        let catalog = catalog();
+        let mut builder = Builder::new("test");
+        let mut engine = entry("engine:K-0", &catalog);
+        engine.id = "engine".into();
+        builder.place(&catalog, engine, None).unwrap();
+        let mut tank = entry("tank", &catalog);
+        tank.id = "tank".into();
+        let on = Place::node("engine.top", "bottom");
+        builder.place(&catalog, tank, Some(on)).unwrap();
+
+        let mut builder = Builder::new("test");
+        let mut core = entry("probe_core", &catalog);
+        core.id = "core".into();
+        builder.place(&catalog, core, None).unwrap();
+        let mut tank = entry("tank", &catalog);
+        tank.id = "tank".into();
+        let under = Place::node("core.bottom", "top");
+        let hung = builder.place(&catalog, tank, Some(under));
+        assert_eq!(hung.map_err(|r| r.rule), Err(Rule::Node));
+    }
+
+    /// Four engines put under a tank's domed end in one go, along its axis round it: they stand
+    /// upright side by side at one height, the tank feeds them, and one undo takes all four off.
+    #[test]
+    fn four_engines_go_under_a_tanks_end_along_its_axis() {
+        let catalog = catalog();
+        let mut builder = stack(&catalog);
+        let parts = builder.draft().parts.len();
+        let mut engine = entry("engine:K-0", &catalog);
+        engine.id = "cluster".into();
+        let places: Vec<(Place, bool)> = (0..4)
+            .map(|k| {
+                let at = SurfaceAtDef {
+                    u: f64::from(k) * 0.25,
+                    v: 0.4,
+                    side: Side::Front,
+                    standoff: 0.0,
+                    axial: true,
+                };
+                (Place::surface("lower.aft_dome", "top", at), false)
+            })
+            .collect();
+        let (_, tops) = builder
+            .put_set(&catalog, &[engine], &places, &BTreeSet::new())
+            .unwrap();
+        assert_eq!(tops.len(), 4);
+        let draft = builder.draft().clone();
+        assert_eq!(draft.parts.len(), parts + 4);
+        let craft = Craft::build(&draft, &catalog).unwrap();
+        let poses = craft.assembly.poses();
+        let mut heights = Vec::new();
+        let mut spots = Vec::new();
+        for id in &tops {
+            let pose = poses[craft.find(id).unwrap()];
+            // Upright: its nozzle down the craft's axis.
+            let up = pose.rotation * DVec3::Z;
+            assert!(up.dot(DVec3::Z) > 0.999, "{id}: {up}");
+            heights.push(pose.position.z);
+            spots.push(pose.position.truncate());
+        }
+        assert!(
+            heights.iter().all(|h| (h - heights[0]).abs() < 1e-6),
+            "{heights:?}"
+        );
+        // Apart, round the axis.
+        let r = spots[0].length();
+        assert!(r > 0.1 && spots.iter().all(|s| (s.length() - r).abs() < 1e-6));
+        assert!(spots[0].distance(spots[1]) > 0.25, "{spots:?}");
+        let propulsion = crate::propulsion::Propulsion::from_craft(&draft, &catalog).unwrap();
+        for id in &tops {
+            let index = draft.parts.iter().position(|p| &p.id == id).unwrap();
+            let engine = crate::parts::PartId(index as u32);
+            assert!(propulsion.reachable(engine, "Kerosene") > 0.0, "{id}");
+        }
+        assert!(builder.undo());
+        assert_eq!(builder.draft().parts.len(), parts);
     }
 
     #[test]
@@ -2363,6 +2719,7 @@ mod tests {
             v: 0.5,
             side: Side::Front,
             standoff: 0.0,
+            axial: false,
         };
         let mut first = Place::surface("lower.barrel", "held_side", at(0.0));
         first.roll = 90.0;
@@ -2441,6 +2798,7 @@ mod tests {
             v: 0.5,
             side: Side::Front,
             standoff: 0.0,
+            axial: false,
         };
         let mount = Mount::Surface {
             surface: "barrel".into(),
@@ -2448,6 +2806,7 @@ mod tests {
             u: at.u,
             v: at.v,
             standoff: 0.0,
+            axial: false,
         };
         let roll = upright_roll(&craft, lower, &mount, &node, DVec3::Z).unwrap();
         let mut place = Place::surface("lower.barrel", SIDE, at);

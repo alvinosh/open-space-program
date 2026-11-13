@@ -2,7 +2,7 @@
   "id": "T297",
   "title": "Parts taken off the craft stay in the hangar, see-through, until put back or thrown away",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "editor",
   "size": "M",
   "parent": "T221",
@@ -13,8 +13,8 @@
     "T242"
   ],
   "created": "2026-11-12",
-  "updated": "2026-11-12",
-  "done": null,
+  "updated": "2026-11-13",
+  "done": "2026-11-13",
   "milestone": "M3",
   "priority": 61.2432
 }

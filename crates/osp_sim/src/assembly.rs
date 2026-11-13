@@ -123,13 +123,17 @@ pub enum Mount {
     /// At one of its nodes.
     Node(String),
     /// On a surface, `u` and `v` (each 0 to 1) its coordinates there (see
-    /// [`Geometry::surface_point`]), `standoff` metres out along its normal.
+    /// [`Geometry::surface_point`]), `standoff` metres out along its normal. `axial`: what it
+    /// holds faces along the part's own axis, out of the end the surface faces, not along the
+    /// normal.
     Surface {
         surface: String,
         side: Side,
         u: f64,
         v: f64,
         standoff: f64,
+        #[serde(default)]
+        axial: bool,
     },
 }
 
@@ -271,6 +275,7 @@ impl AssemblyPart {
                 u,
                 v,
                 standoff,
+                axial,
             } => {
                 let p = self.geometry.surface_point(surface, *u, *v)?;
                 let normal = match side {
@@ -280,8 +285,14 @@ impl AssemblyPart {
                 if !normal.is_normalized() {
                     return None;
                 }
-                let rotation = facing(normal, &[p.along_u, p.along_v]);
-                Some(Pose::new(p.position + normal * *standoff, rotation))
+                // Along the axis, out of the end it faces; square to the surface otherwise.
+                let out = if *axial {
+                    DVec3::Z * normal.z.signum()
+                } else {
+                    normal
+                };
+                let rotation = facing(out, &[p.along_u, p.along_v]);
+                Some(Pose::new(p.position + out * *standoff, rotation))
             }
         }
     }

@@ -2,7 +2,7 @@
   "id": "T300",
   "title": "Several engines under one tank",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "editor",
   "size": "M",
   "parent": "T221",
@@ -12,8 +12,8 @@
     "crates/osp_sim/src/builder.rs (put_set)"
   ],
   "created": "2026-11-12",
-  "updated": "2026-11-12",
-  "done": null,
+  "updated": "2026-11-13",
+  "done": "2026-11-13",
   "milestone": "M3",
   "priority": 61.2438
 }

@@ -11,15 +11,19 @@
 //! camera stops. Cells are kept after their part stops being wanted until one is needed for
 //! another, the longest unwanted first.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use bevy::{
     app::{HierarchyPropagatePlugin, Propagate},
+    asset::UntypedAssetId,
     camera::{Exposure, RenderTarget, ScalingMode, primitives::Aabb, visibility::RenderLayers},
-    light::AmbientLight,
+    light::{AmbientLight, NotShadowCaster},
     math::DVec3,
     prelude::*,
     render::{
@@ -29,7 +33,7 @@ use bevy::{
     },
     world_serialization::WorldInstance,
 };
-use osp_game::part_pictures::{PartInHand, PartPictures};
+use osp_game::part_pictures::{LooseParts, PartInHand, PartPictures, ShowsLoose};
 use osp_sim::{
     craft::Craft,
     data::{CraftDef, CraftPartDef, PartCatalog},
@@ -74,7 +78,14 @@ impl Plugin for PartPicturesPlugin {
             .add_systems(Startup, spawn_grid)
             .add_systems(
                 Update,
-                (take_wanted, frame_cells, run_camera, draw_part_in_hand)
+                (
+                    take_wanted,
+                    frame_cells,
+                    run_camera,
+                    draw_part_in_hand,
+                    draw_loose_parts,
+                    see_through_loose,
+                )
                     .chain()
                     .in_set(FrameSet::Render),
             );
@@ -522,7 +533,7 @@ struct InHand {
 #[allow(clippy::too_many_arguments)]
 fn draw_part_in_hand(
     mut commands: Commands,
-    hand: Res<PartInHand>,
+    mut hand: ResMut<PartInHand>,
     grid: Res<Grid>,
     content: Res<GameContent>,
     assets: Res<AssetServer>,
@@ -583,10 +594,29 @@ fn draw_part_in_hand(
     let Ok((mut transform, mut visibility, at)) = roots.get_mut(root) else {
         return;
     };
+    // Found whether it is shown or not: the editor works out where its nodes are from it.
+    let middle = drawn_middle(root, at, &children, &drawn);
+    hand.set_middle(middle);
     let Some((point, rotation)) = hand.place() else {
         visibility.set_if_neq(Visibility::Hidden);
         return;
     };
+    let Some(middle) = middle else {
+        return;
+    };
+    transform.translation = point - rotation * middle;
+    transform.rotation = rotation;
+    visibility.set_if_neq(Visibility::Inherited);
+}
+
+/// The middle of what is drawn under `root` (placed at `at`), in `root`'s frame: of its drawn
+/// bounds, worked out afresh, as a model comes in after the meshes. None while nothing is drawn.
+fn drawn_middle(
+    root: Entity,
+    at: &GlobalTransform,
+    children: &Query<&Children>,
+    drawn: &Query<(&Aabb, &GlobalTransform)>,
+) -> Option<Vec3> {
     let into_root = at.affine().inverse();
     let (mut low, mut high) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
     for (aabb, place) in (children.iter_descendants(root)).filter_map(|e| drawn.get(e).ok()) {
@@ -603,12 +633,144 @@ fn draw_part_in_hand(
             high = high.max(seen);
         }
     }
-    if !low.is_finite() {
+    low.is_finite().then(|| (low + high) / 2.0)
+}
+
+/// How opaque a loose part is drawn: see-through, as KSP draws parts taken off the craft.
+const LOOSE_ALPHA: f32 = 0.35;
+
+/// What is drawn of the loose groups: the parts drawn, and each group's root.
+#[derive(Default)]
+struct LooseDrawn {
+    parts: Vec<Vec<CraftPartDef>>,
+    roots: Vec<Entity>,
+}
+
+/// A mesh of a loose group, in its see-through material.
+#[derive(Component)]
+struct SeeThrough;
+
+/// Draw the parts left about the editor's hangar ([`LooseParts`]) as the hangar draws its parts,
+/// each group with its middle where it was asked to be; drawn again when any of them changes.
+#[allow(clippy::too_many_arguments)]
+fn draw_loose_parts(
+    mut commands: Commands,
+    loose: Res<LooseParts>,
+    grid: Res<Grid>,
+    content: Res<GameContent>,
+    assets: Res<AssetServer>,
+    mut looks: ResMut<Looks>,
+    (mut meshes, mut materials, mut images): (
+        ResMut<Assets<Mesh>>,
+        ResMut<Assets<VesselMaterial>>,
+        ResMut<Assets<Image>>,
+    ),
+    children: Query<&Children>,
+    mut roots: Query<(&mut Transform, &mut Visibility, &GlobalTransform)>,
+    drawn: Query<(&Aabb, &GlobalTransform)>,
+    mut shown: Local<LooseDrawn>,
+) {
+    let wanted: Vec<Vec<CraftPartDef>> = (loose.groups().iter())
+        .map(|(parts, _)| parts.clone())
+        .collect();
+    if wanted != shown.parts || content.is_changed() {
+        for root in shown.roots.drain(..) {
+            commands.entity(root).try_despawn();
+        }
+        shown.parts = wanted;
+        let parts = catalog(&content.0.registry, &mut Vec::new());
+        let file = |path: &str| (content.0.resolve_file(path)).and_then(|f| std::fs::read(f).ok());
+        let model = |relative: &str| {
+            let path = mod_asset_path(&content.0, relative)?;
+            Some(WorldAssetRoot(
+                assets.load(GltfAssetLabel::Scene(0).from_asset(path)),
+            ))
+        };
+        let mut pen = Pen {
+            looks: &mut looks,
+            meshes: &mut meshes,
+            canvas: Canvas {
+                materials: &mut materials,
+                images: &mut images,
+                file: &file,
+            },
+            engine: &grid.engine,
+            model: &model,
+        };
+        let mut roots = Vec::new();
+        for (index, group) in shown.parts.iter().enumerate() {
+            let root = commands
+                .spawn((Transform::default(), Visibility::Hidden, ShowsLoose(index)))
+                .id();
+            match built(group, &parts) {
+                Ok(tree) => draw(&mut commands, root, &tree, &mut pen),
+                Err(e) => warn!("cannot draw a loose part: {e}"),
+            }
+            roots.push(root);
+        }
+        shown.roots = roots;
         return;
     }
-    transform.translation = point - rotation * ((low + high) / 2.0);
-    transform.rotation = rotation;
-    visibility.set_if_neq(Visibility::Inherited);
+    for (index, &root) in shown.roots.iter().enumerate() {
+        let Ok((mut transform, mut visibility, at)) = roots.get_mut(root) else {
+            continue;
+        };
+        let place = loose.groups().get(index).and_then(|(_, place)| *place);
+        let Some((point, rotation)) = place else {
+            visibility.set_if_neq(Visibility::Hidden);
+            continue;
+        };
+        let Some(middle) = drawn_middle(root, at, &children, &drawn) else {
+            continue;
+        };
+        transform.translation = point - rotation * middle;
+        transform.rotation = rotation;
+        visibility.set_if_neq(Visibility::Inherited);
+    }
+}
+
+/// Draw the meshes of loose groups see-through: each in a copy of its own material, faded, that
+/// casts no shadow. A model's materials come in after it, so this looks every frame.
+#[allow(clippy::type_complexity)]
+fn see_through_loose(
+    mut commands: Commands,
+    roots: Query<Entity, With<ShowsLoose>>,
+    children: Query<&Children>,
+    vessel: Query<&MeshMaterial3d<VesselMaterial>>,
+    standard: Query<&MeshMaterial3d<StandardMaterial>, Without<SeeThrough>>,
+    vessel_materials: Res<Assets<VesselMaterial>>,
+    mut standard_materials: ResMut<Assets<StandardMaterial>>,
+    mut made: Local<HashMap<UntypedAssetId, Handle<StandardMaterial>>>,
+) {
+    for root in &roots {
+        for mesh in children.iter_descendants(root) {
+            let source = if let Ok(material) = vessel.get(mesh) {
+                let base = vessel_materials.get(&material.0).map(|m| m.base.clone());
+                base.map(|base| (material.0.id().untyped(), base))
+            } else if let Ok(material) = standard.get(mesh) {
+                let base = standard_materials.get(&material.0).cloned();
+                base.map(|base| (material.0.id().untyped(), base))
+            } else {
+                None
+            };
+            let Some((id, base)) = source else {
+                continue;
+            };
+            let faded = made
+                .entry(id)
+                .or_insert_with(|| {
+                    let mut faded = base;
+                    faded.base_color.set_alpha(LOOSE_ALPHA);
+                    faded.alpha_mode = AlphaMode::Blend;
+                    standard_materials.add(faded)
+                })
+                .clone();
+            commands
+                .entity(mesh)
+                .remove::<MeshMaterial3d<VesselMaterial>>()
+                .insert((MeshMaterial3d(faded), SeeThrough, NotShadowCaster));
+        }
+    }
 }
 
 /// Draw while a picture is on screen and one is unfinished; finish what has been drawn, settled,

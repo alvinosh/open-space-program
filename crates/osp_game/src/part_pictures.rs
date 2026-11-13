@@ -18,6 +18,7 @@ use osp_sim::data::CraftPartDef;
 pub struct PartInHand {
     parts: Vec<CraftPartDef>,
     place: Option<(Vec3, Quat)>,
+    middle: Option<Vec3>,
 }
 
 impl PartInHand {
@@ -26,8 +27,23 @@ impl PartInHand {
     pub fn set(&mut self, parts: Vec<CraftPartDef>, place: Option<(Vec3, Quat)>) {
         if parts != self.parts {
             self.parts = parts;
+            self.middle = None;
         }
         self.place = place;
+    }
+
+    /// Where the renderer finds the middle of what it draws, from the first part's place in the
+    /// drawing (the frame `osp_render` draws them in, as the hangar's), m: what is put at the point.
+    /// None until it has drawn them.
+    pub fn middle(&self) -> Option<Vec3> {
+        self.middle
+    }
+
+    /// Said by the renderer, as it draws them.
+    pub fn set_middle(&mut self, middle: Option<Vec3>) {
+        if middle != self.middle {
+            self.middle = middle;
+        }
     }
 
     pub fn parts(&self) -> &[CraftPartDef] {
@@ -38,6 +54,32 @@ impl PartInHand {
         self.place
     }
 }
+
+/// Parts taken off the craft in the editor and left about the hangar (`osp_sim::builder::Loose`),
+/// drawn by the renderer see-through, as the hangar draws its parts. Each group is its parts, the
+/// first holding the rest, and where its middle is drawn and how it is turned; one with no place
+/// is not drawn (it is in hand). A group's drawing carries [`ShowsLoose`] with its index, so the
+/// editor can tell what the pointer is on.
+#[derive(Resource, Default)]
+pub struct LooseParts {
+    groups: Vec<(Vec<CraftPartDef>, Option<(Vec3, Quat)>)>,
+}
+
+impl LooseParts {
+    pub fn set(&mut self, groups: Vec<(Vec<CraftPartDef>, Option<(Vec3, Quat)>)>) {
+        if groups != self.groups {
+            self.groups = groups;
+        }
+    }
+
+    pub fn groups(&self) -> &[(Vec<CraftPartDef>, Option<(Vec3, Quat)>)] {
+        &self.groups
+    }
+}
+
+/// On the drawing of loose group `.0` of [`LooseParts`].
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShowsLoose(pub usize);
 
 #[derive(Resource, Default)]
 pub struct PartPictures {

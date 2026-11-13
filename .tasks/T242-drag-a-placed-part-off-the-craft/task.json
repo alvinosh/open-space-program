@@ -2,7 +2,7 @@
   "id": "T242",
   "title": "Drag a placed part off the craft",
   "kind": "bug",
-  "status": "in_progress",
+  "status": "done",
   "area": "editor",
   "size": "S",
   "parent": "T002",
@@ -11,8 +11,8 @@
     "crates/osp_editor/src/building.rs (grab, put_now)"
   ],
   "created": "2026-11-07",
-  "updated": "2026-11-07",
-  "done": null,
+  "updated": "2026-11-13",
+  "done": "2026-11-13",
   "milestone": "M3",
   "priority": 61.2402
 }

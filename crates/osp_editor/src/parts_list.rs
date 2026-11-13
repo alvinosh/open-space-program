@@ -1,6 +1,7 @@
 //! The parts list in the editor's rail, as KSP's: the palette's entries (`osp_sim::palette`) as a
-//! grid of pictures under tabs by what they do (`editor.group:<group>`), or those a search finds in
-//! every tab (`editor.search:<text>`), narrowed by how wide they are (`editor.size:<size>`) and by
+//! grid of pictures beside tabs down the rail's edge by what they do (`editor.group:<group>`), or
+//! those a search finds in every tab (`editor.search:<text>`), narrowed by how wide they are
+//! (`editor.size:<size>`) and by
 //! what they burn (`editor.propellant:<kind>`); `any` takes either filter off, as a click on the
 //! choice that is on does. A part with no width or propellant of its own, as the procedural ones
 //! that take what they go on, is never filtered out. The pictures are the renderer's

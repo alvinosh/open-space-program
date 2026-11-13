@@ -1512,7 +1512,8 @@ pub struct AssemblyDef {
 
 /// Where on a surface a joint holds: `u` around it and `v` along it, each 0 to 1 (see
 /// `Geometry::surface_point`), on its `front` (outside) or `back` (inside, in a container),
-/// `standoff` metres off it.
+/// `standoff` metres off it. `axial`: what it holds stands along the holder's axis, out of the end
+/// the surface is on, rather than square to the surface: an engine under a domed tank end.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SurfaceAtDef {
@@ -1522,6 +1523,8 @@ pub struct SurfaceAtDef {
     pub side: Side,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub standoff: f64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub axial: bool,
 }
 
 fn bottom() -> String {

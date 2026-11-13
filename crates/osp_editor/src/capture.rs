@@ -179,6 +179,27 @@ fn take(action: Action, looking: &Looking) -> Result<Option<Vec2>, String> {
                 at.ok_or_else(|| format!("`{part}` is not on screen"))?,
             ));
         }
+        Action::EditorPointAtLoose(index) => {
+            let at = (editor.builder())
+                .and_then(|b| b.loose().get(index))
+                .and_then(|group| {
+                    let frame = VesselFrame::of(looking.sim, looking.frame, editor.vessel()?)?;
+                    let (camera, transform) = looking.camera;
+                    let view = frame.view_point(group.at);
+                    camera
+                        .world_to_viewport(&GlobalTransform::from(*transform), view)
+                        .ok()
+                });
+            return Ok(Some(
+                at.ok_or_else(|| format!("loose group {index} is not on screen"))?,
+            ));
+        }
+        Action::ExpectLoose(wanted) => {
+            let found = editor.builder().map_or(0, |b| b.loose().len());
+            if found != wanted {
+                return Err(format!("{found} loose groups, wanted {wanted}"));
+            }
+        }
         Action::ExpectField(part, field, wanted) => {
             let draft = editor.builder().map(|b| b.draft());
             let found = draft.and_then(|d| field_value(d, part, field, looking.content));
@@ -196,7 +217,7 @@ fn take(action: Action, looking: &Looking) -> Result<Option<Vec2>, String> {
             }
         }
         Action::EditorPointAtNode(part, node) => {
-            let at = placing.node_on_screen(part, node);
+            let at = placing.bring_to_node(part, node);
             return Ok(Some(
                 at.ok_or_else(|| format!("no ring on `{part}.{node}`"))?,
             ));

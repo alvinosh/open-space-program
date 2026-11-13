@@ -1096,7 +1096,7 @@ fn switched(shape: &ShapeDef, kind: &str) -> ShapeDef {
 /// Fill `part` with the mix of `mixes` called `id`, or empty it for `none`. A tank type that cannot
 /// hold the mix gives way to the first that can; an empty tank is structure, and gets a wall if it
 /// had none.
-fn set_contents(
+pub(crate) fn set_contents(
     part: &mut CraftPartDef,
     id: &str,
     mixes: &[Mix],
@@ -1150,7 +1150,7 @@ fn set_contents(
 }
 
 /// `part` built by itself.
-fn alone(
+pub(crate) fn alone(
     part: &CraftPartDef,
     catalog: &PartCatalog,
 ) -> Result<Craft, crate::propulsion::CraftError> {

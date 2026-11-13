@@ -243,6 +243,17 @@ impl ViewPointer<'_, '_> {
         }
         self.window.cursor_position()
     }
+
+    /// Where the mouse is (logical pixels), over the UI or not, unless input is locked.
+    pub fn anywhere(&self) -> Option<Vec2> {
+        if self.scripted.0.is_some() {
+            return self.scripted.0;
+        }
+        if self.locked.0 {
+            return None;
+        }
+        self.window.cursor_position()
+    }
 }
 
 /// The point of the line through `points` (projected to `screen`) nearest `cursor` on

@@ -35,6 +35,7 @@ fn surface(part: usize, name: &str, u: f64, v: f64) -> End {
             u,
             v,
             standoff: 0.0,
+            axial: false,
         },
     }
 }

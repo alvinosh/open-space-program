@@ -503,6 +503,7 @@ fn mount(holder: &AssemblyPart, name: &str, part: &CraftPartDef) -> Result<Mount
             u: at.u,
             v: at.v,
             standoff: at.standoff,
+            axial: at.axial,
         });
     }
     Err(bad(format!(

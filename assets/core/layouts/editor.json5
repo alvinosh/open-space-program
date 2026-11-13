@@ -39,6 +39,9 @@
 // `editor.pointed_detail` (its figures) and `editor.pointed_about`, show under the grid.
 // `editor.add:<id>` takes one in hand, and a tile dragged out (`palette:<id>`) takes it to go
 // where it is let go (`osp_editor::building`); `editor.has_parts` says whether the craft has any.
+// A part dragged off the craft and let go out in the hangar stays there see-through, off the
+// craft, to be put on again; let go over the parts list (`editor_parts_rail`) it is thrown away.
+// `editor.loose` says how many such groups are about.
 // As data `editor.symmetry` reads the radial count (`1`, `x4`), and as an action it steps it;
 // `editor.mirror` says whether mirror symmetry is on instead, and `editor.symmetry_mode` switches.
 // `editor.snap` steps how far a turn goes in a step, which the data `editor.snap` reads (`15°`).
@@ -88,23 +91,17 @@
           },
         ],
       },
-      // The parts a craft is built from (osp_editor::parts_list): a search, tabs, the filters, a
-      // grid of pictures that scrolls, and what the pointer is on under it.
+      // The parts a craft is built from (osp_editor::parts_list): the tabs by what they do down the
+      // left edge, and beside them a search, the filters, a grid of pictures that scrolls, and what
+      // the pointer is on under it.
       {
-        widget: "column",
+        widget: "row",
+        id: "editor_parts_rail",
         class: "menu_rail editor_rail editor_parts",
         visible: "editor.rail == parts",
         children: [
           {
-            widget: "row",
-            class: "editor_search_row",
-            children: [
-              { widget: "image", class: "editor_search_icon", image: "icons/editor/search.svg" },
-              { widget: "input", class: "editor_search", text: "{editor.search_shown}", action: "editor.search:$text" },
-            ],
-          },
-          {
-            widget: "row",
+            widget: "column",
             class: "editor_tabs",
             children: [
               {
@@ -142,67 +139,81 @@
             ],
           },
           {
-            widget: "row",
-            class: "editor_filter",
-            visible: "editor.sizes_shown",
-            children: [
-              { widget: "image", class: "editor_filter_icon", image: "icons/editor/width.svg", tooltip: "Width" },
-              {
-                widget: "row",
-                class: "choice editor_chips",
-                repeat: "editor.sizes",
-                children: [
-                  { widget: "button", class: "choice_item editor_chip", text: "{item.label}", action: "{item.action}", active: "item.on" },
-                ],
-              },
-            ],
-          },
-          {
-            widget: "row",
-            class: "editor_filter",
-            visible: "editor.propellants_shown",
-            children: [
-              { widget: "image", class: "editor_filter_icon", image: "icons/editor/propellant.svg", tooltip: "What it burns" },
-              {
-                widget: "row",
-                class: "choice editor_chips",
-                repeat: "editor.propellants",
-                children: [
-                  { widget: "button", class: "choice_item editor_chip", text: "{item.label}", action: "{item.action}", active: "item.on" },
-                ],
-              },
-            ],
-          },
-          {
             widget: "column",
-            class: "menu_body editor_parts_body",
+            class: "editor_parts_main",
             children: [
               {
                 widget: "row",
-                class: "editor_grid",
-                repeat: "editor.palette",
+                class: "editor_search_row",
                 children: [
+                  { widget: "image", class: "editor_search_icon", image: "icons/editor/search.svg" },
+                  { widget: "input", class: "editor_search", text: "{editor.search_shown}", action: "editor.search:$text" },
+                ],
+              },
+              {
+                widget: "row",
+                class: "editor_filter",
+                visible: "editor.sizes_shown",
+                children: [
+                  { widget: "image", class: "editor_filter_icon", image: "icons/editor/width.svg", tooltip: "Width" },
                   {
-                    widget: "button", class: "btn editor_tile", action: "editor.add:{item.id}", drag: "palette:{item.id}", hover: "part:{item.id}", active: "item.held",
+                    widget: "row",
+                    class: "choice editor_chips",
+                    repeat: "editor.sizes",
                     children: [
-                      { widget: "part_picture", class: "editor_tile_picture", part: "{item.id}" },
-                      { widget: "label", class: "editor_tile_name", text: "{item.name}" },
+                      { widget: "button", class: "choice_item editor_chip", text: "{item.label}", action: "{item.action}", active: "item.on" },
                     ],
                   },
                 ],
               },
-              { widget: "label", class: "menu_subtitle editor_parts_more", text: "{editor.palette_more}", visible: "editor.palette_more" },
-              { widget: "label", class: "menu_subtitle editor_parts_more", text: "{editor.locked}", visible: "editor.locked" },
-            ],
-          },
-          {
-            widget: "column",
-            class: "editor_card",
-            children: [
-              { widget: "label", class: "editor_card_name", text: "{editor.pointed_name}", visible: "editor.pointed" },
-              { widget: "label", class: "editor_card_detail", text: "{editor.pointed_detail}", visible: "editor.pointed" },
-              { widget: "label", class: "editor_card_about", text: "{editor.pointed_about}", visible: "editor.pointed_about" },
-              { widget: "label", class: "editor_card_about", text: "Point at a part for its figures. Click it, or drag it out, to take it.", visible: "!editor.pointed" },
+              {
+                widget: "row",
+                class: "editor_filter",
+                visible: "editor.propellants_shown",
+                children: [
+                  { widget: "image", class: "editor_filter_icon", image: "icons/editor/propellant.svg", tooltip: "What it burns" },
+                  {
+                    widget: "row",
+                    class: "choice editor_chips",
+                    repeat: "editor.propellants",
+                    children: [
+                      { widget: "button", class: "choice_item editor_chip", text: "{item.label}", action: "{item.action}", active: "item.on" },
+                    ],
+                  },
+                ],
+              },
+              {
+                widget: "column",
+                class: "menu_body editor_parts_body",
+                children: [
+                  {
+                    widget: "row",
+                    class: "editor_grid",
+                    repeat: "editor.palette",
+                    children: [
+                      {
+                        widget: "button", class: "btn editor_tile", action: "editor.add:{item.id}", drag: "palette:{item.id}", hover: "part:{item.id}", active: "item.held",
+                        children: [
+                          { widget: "part_picture", class: "editor_tile_picture", part: "{item.id}" },
+                          { widget: "label", class: "editor_tile_name", text: "{item.name}" },
+                        ],
+                      },
+                    ],
+                  },
+                  { widget: "label", class: "menu_subtitle editor_parts_more", text: "{editor.palette_more}", visible: "editor.palette_more" },
+                  { widget: "label", class: "menu_subtitle editor_parts_more", text: "{editor.locked}", visible: "editor.locked" },
+                ],
+              },
+              {
+                widget: "column",
+                class: "editor_card",
+                children: [
+                  { widget: "label", class: "editor_card_name", text: "{editor.pointed_name}", visible: "editor.pointed" },
+                  { widget: "label", class: "editor_card_detail", text: "{editor.pointed_detail}", visible: "editor.pointed" },
+                  { widget: "label", class: "editor_card_about", text: "{editor.pointed_about}", visible: "editor.pointed_about" },
+                  { widget: "label", class: "editor_card_about", text: "Point at a part for its figures. Click it, or drag it out, to take it.", visible: "!editor.pointed" },
+                ],
+              },
             ],
           },
         ],

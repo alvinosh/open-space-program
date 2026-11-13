@@ -79,6 +79,7 @@ impl Plugin for GamePlugin {
         .add_plugins((content::ContentPlugin, career::CareerPlugin))
         .init_resource::<part_pictures::PartPictures>()
         .init_resource::<part_pictures::PartInHand>()
+        .init_resource::<part_pictures::LooseParts>()
         .add_plugins((
             settings::SettingsPlugin,
             profiler::ProfilerPlugin,

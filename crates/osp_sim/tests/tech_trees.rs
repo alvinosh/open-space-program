@@ -203,7 +203,7 @@ fn realistic_tanks_widen_and_get_better_with_materials() {
         .find(|e| e.id == "tank")
         .unwrap()
         .part;
-    osp_sim::palette::fit(&mut tank, 3.0);
+    osp_sim::fitting::fit(&mut tank, &osp_sim::fitting::Against::node(3.0), &catalog);
     allowed.bring_within(&mut tank, &catalog);
     assert_eq!(allowed.refuses(&tank), None);
     for node in [

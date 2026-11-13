@@ -328,7 +328,7 @@
     // Made of the menu's parts: the list on a narrower rail, the launch on a panel like it on the
     // other side, and the hangar between them, which takes the pointer.
     editor_root: { position: "absolute", left: 0, top: 0, width: "100%", height: "100%", direction: "row", z_index: 40 },
-    editor_rail: { width: 340, padding: [97, 16, 32, 36] },
+    editor_rail: { width: 368, padding: [97, 16, 32, 36] },
     // Always there, over the rail while that is out and on the hangar when it is not.
     editor_bar: { position: "absolute", left: 36, top: 45, gap: 8 },
     editor_back: { align_self: "center", margin: [0, 0, 0, 2] },
@@ -390,16 +390,26 @@
     editor_notice: { margin: [0, 12, 8, 12] },
     editor_hint: { margin: [0, 12, 12, 12] },
     choice_wide: { width: "auto", margin: [4, 12] },
-    // The parts list (osp_editor::parts_list): a search behind its icon; tabs that are icons, lit
-    // teal; the filters, each a groove of chips behind an icon that wraps; a grid of tiles, three
-    // across, each a picture of its part over its name, that scrolls; and under it what the
-    // pointer is on.
-    editor_parts: { padding: [97, 16, 24, 36] },
+    // The parts list (osp_editor::parts_list): tabs that are icons down the rail's left edge, the
+    // one shown lit teal with a bar on its left; beside them a search behind its icon; the filters,
+    // each a groove of chips behind an icon that wraps; a grid of tiles, three across, each a
+    // picture of its part over its name, that scrolls; and under it what the pointer is on. The
+    // rails are as wide as the tabs and three tiles beside them.
+    editor_parts: { padding: [97, 16, 24, 12], gap: 12 },
+    editor_parts_main: { grow: 1, shrink: 1, min_width: 0, min_height: 0, align_self: "stretch" },
     editor_search_row: { gap: 8, margin: [0, 0, 8, 0] },
     editor_search_icon: { width: 18, height: 18, shrink: 0, color: "$text_dim" },
     editor_search: { grow: 1, shrink: 1, min_width: 0, height: 30 },
-    editor_tabs: { gap: 2, margin: [0, 0, 8, 0] },
-    editor_tab: { width: 44, height: 40, margin: 0, padding: 0 },
+    editor_tabs: { gap: 2, shrink: 0, align_self: "start" },
+    editor_tab: {
+      width: 40,
+      height: 40,
+      margin: 0,
+      padding: 0,
+      border: [0, 0, 0, 2],
+      hover_background: "$control_hover",
+      active_background: "$selected",
+    },
     editor_tab_icon: { width: 22, height: 22, color: "$text_dim", active_color: "$accent" },
     editor_filter: { gap: 8, margin: [0, 0, 6, 0], align_items: "start" },
     editor_filter_icon: { width: 16, height: 16, shrink: 0, margin: [6, 0, 0, 0], color: "$text_dim" },

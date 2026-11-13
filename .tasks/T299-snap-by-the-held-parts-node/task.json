@@ -2,7 +2,7 @@
   "id": "T299",
   "title": "A part in hand snaps when its node comes near a free node, not the pointer",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "editor",
   "size": "S",
   "parent": "T221",
@@ -11,8 +11,8 @@
     "crates/osp_editor/src/building.rs (the 'near' search, pointer within px of a ring)"
   ],
   "created": "2026-11-12",
-  "updated": "2026-11-12",
-  "done": null,
+  "updated": "2026-11-13",
+  "done": "2026-11-13",
   "milestone": "M3",
   "priority": 61.2436
 }

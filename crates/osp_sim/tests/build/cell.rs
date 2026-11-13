@@ -305,6 +305,7 @@ pub fn build(row: &Row, column: Column) -> Result<Built, Refusal> {
         v: 0.5,
         side: Side::Front,
         standoff: 0.05,
+        axial: false,
     };
     let mut parts = vec![host];
     let mut subjects: Vec<CraftPartDef> = Vec::new();

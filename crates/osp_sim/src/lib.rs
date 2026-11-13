@@ -62,6 +62,7 @@ pub mod docking;
 pub mod elliptic;
 pub mod environment;
 pub mod events;
+pub mod fitting;
 pub mod gear;
 pub mod guidance;
 pub mod heating;

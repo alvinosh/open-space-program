@@ -416,6 +416,7 @@ fn decouplers_let_go_and_containers_hold_things_inside() {
         u: 0.25,
         v: 0.4,
         standoff: 0.0,
+        axial: false,
     };
     let end = |part, mount: Mount| End { part, mount };
     let bottom = || Mount::Node("bottom".into());
