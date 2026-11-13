@@ -287,3 +287,49 @@ fn facilities_grow_level_by_level_and_start_with_the_first_rockets() {
         assert!(fits <= first && first < too_big, "{realistic}: {first}");
     }
 }
+
+/// Each mode's contracts: a new career is offered only what needs nothing done first, what is
+/// offered grows as contracts are done until every one of its tree's has been offered, and each
+/// can be taken on (its condition names bodies and sites there are).
+#[test]
+fn contracts_are_offered_in_turn_until_all_have_been() {
+    use osp_sim::{
+        career::Career,
+        contract::ContractDef,
+        data::{BodyDef, LaunchSiteDef, SystemDef},
+        system::SolarSystem,
+    };
+    for realistic in [false, true] {
+        let content = mode(realistic);
+        let registry = &content.registry;
+        let mut problems = Vec::new();
+        let defs: Vec<ContractDef> = registry.all("contracts", &mut problems);
+        assert!(problems.is_empty(), "{problems:?}");
+        let system = SolarSystem::from_def(&SystemDef {
+            bodies: registry.all::<BodyDef>("bodies", &mut problems),
+        })
+        .unwrap();
+        let sites: Vec<LaunchSiteDef> = registry.all("launch_sites", &mut problems);
+        let (tree, _) = tree(realistic);
+        let mut career = Career::new(&tree);
+        let ours: Vec<&ContractDef> = (defs.iter())
+            .filter(|d| d.tree.as_deref() == Some(tree.def.id.as_str()))
+            .collect();
+        assert!(ours.len() >= 10, "{realistic}: {}", ours.len());
+        let first = career.offers(&defs);
+        assert!(!first.is_empty() && first.iter().all(|d| d.after.is_empty()));
+        let mut seen = std::collections::BTreeSet::new();
+        while let Some(def) = career.offers(&defs).first().map(|d| (*d).clone()) {
+            assert_eq!(def.tree.as_deref(), Some(tree.def.id.as_str()));
+            seen.insert(def.id.clone());
+            career.accept(&def, &defs, &sites, &system).unwrap();
+            career.contracts.taken.clear();
+            career.contracts.done.insert(def.id.clone());
+        }
+        assert_eq!(
+            seen.len(),
+            ours.len(),
+            "{realistic}: every contract is offered in turn"
+        );
+    }
+}

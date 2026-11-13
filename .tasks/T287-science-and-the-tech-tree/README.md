@@ -20,7 +20,7 @@ experiments that take hours. A new game can still start with every part, as a sa
    (done); T304 recovering the vessel being flown (done).
 6. T284 science earned by experiment, place and body, less each time (done); T305 a first flight
    can bring its science home (a parachute and a telemetry unit in both first nodes; done).
-7. T293 career money; T294 launch pad and builder levels; T295 contracts.
+7. T293 career money; T294 launch pad and builder levels; T295 contracts (all done).
 8. T291 a smoke test that plays a career, first launch to first unlock and upgrade, in both modes.
 9. T301 a smoke test that plays a whole career to the Moon, in both modes.
 10. T275 laboratories.

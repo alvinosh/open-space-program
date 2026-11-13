@@ -322,10 +322,14 @@
             widget: "button", class: "btn editor_icon_btn", action: "editor.parts", active: "editor.rail == parts", visible: "editor.has_vessel", tooltip: "Parts: the list to build from",
             children: [{ widget: "image", class: "editor_bar_icon", image: "icons/editor/parts.svg", active: "editor.rail == parts" }],
           },
-          // A career's tech tree (osp_game::tree_screen).
+          // A career's tech tree (osp_game::tree_screen) and its contracts (osp_game::career).
           {
             widget: "button", class: "btn editor_icon_btn", action: "tree.open", visible: "career.active", tooltip: "Tech tree: unlock parts with science",
             children: [{ widget: "image", class: "editor_bar_icon", image: "icons/editor/tree.svg" }],
+          },
+          {
+            widget: "button", class: "btn editor_icon_btn", action: "ui.toggle:contracts", active: "ui.shown.contracts", visible: "career.active", tooltip: "Contracts: goals that pay",
+            children: [{ widget: "image", class: "editor_bar_icon", image: "icons/goal.svg", active: "ui.shown.contracts" }],
           },
           // What the pointer does to a picked part (osp_editor::moving).
           {

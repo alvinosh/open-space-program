@@ -1,0 +1,59 @@
+// A career's contracts (osp_game::career): those taken on (`career.taken`: each `id`, `title`,
+// `description`, `reward`, `left` seconds and `has_deadline`), dropped with `career.drop:<id>`, and
+// those offered (`career.offers`: each `id`, `title`, `description`, `reward`, `days` and
+// `has_deadline`), taken on with `career.accept:<id>`. Opened from the editor bar and the toolbar
+// in a career; in the hangar and in flight alike.
+{
+  id: "contracts",
+  visible: false,
+  root: {
+    widget: "window",
+    icon: "icons/goal.svg",
+    title: "Contracts",
+    style: { left: 360, top: 170, width: 380 },
+    children: [
+      { widget: "label", class: "caption", text: "TAKEN ON", visible: "career.has_taken" },
+      {
+        id: "taken",
+        widget: "column",
+        repeat: "career.taken",
+        children: [
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "{item.title}" }, { widget: "label", text: "{item.reward} funds" }] },
+          { widget: "label", class: "dim", text: "{item.description}" },
+          {
+            widget: "row",
+            class: "kv",
+            style: { margin: [0, 0, 6, 0] },
+            children: [
+              { widget: "label", class: "dim", visible: "item.has_deadline", text: "{item.left|duration} left" },
+              { widget: "spacer" },
+              { widget: "button", class: "step_button danger_button", text: "Drop", action: "career.drop:{item.id}" },
+            ],
+          },
+        ],
+      },
+      { widget: "label", class: "caption", text: "OFFERED" },
+      { widget: "label", class: "dim", visible: "!career.has_offers", text: "Nothing more on offer until what is taken on is done." },
+      {
+        id: "offers",
+        widget: "column",
+        repeat: "career.offers",
+        children: [
+          { widget: "row", class: "kv", children: [{ widget: "label", class: "key", text: "{item.title}" }, { widget: "label", text: "{item.reward} funds" }] },
+          { widget: "label", class: "dim", text: "{item.description}" },
+          {
+            widget: "row",
+            class: "kv",
+            style: { margin: [0, 0, 6, 0] },
+            children: [
+              { widget: "label", class: "dim", visible: "item.has_deadline", text: "{item.days} days to do it" },
+              { widget: "spacer" },
+              { widget: "button", class: "step_button", text: "Take on", action: "career.accept:{item.id}" },
+            ],
+          },
+        ],
+      },
+      { widget: "label", class: "dim", visible: "career.contract_notice", text: "{career.contract_notice}" },
+    ],
+  },
+}

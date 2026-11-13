@@ -1,0 +1,82 @@
+// Contracts a career is offered for money (osp_sim::contract): `title`, `description`, `when` (a
+// mission condition, of the vessel being flown; see docs/modding.md, Missions), `hold` (s it has to
+// hold), `reward` (funds), `days` (to meet it in from taking it on; none if not given), `after` (the
+// contracts done before it is offered) and `tree` (the tech tree whose careers are offered it). Three
+// are offered at a time, the first in this order whose `after` are done.
+//
+// The Casual game's go sounding rockets, then space and back, then orbit, then the Moon. The
+// rewards pay for the facilities each step needs (assets/core/facilities): guesses until a whole
+// career is played through (T301).
+[
+  {
+    id: "first_launch", tree: "casual", title: "First launch",
+    description: "Leave the pad and climb a kilometre.",
+    when: { type: "Altitude", min: 1000 }, reward: 8000, days: 60,
+  },
+  {
+    id: "sound_10km", tree: "casual", title: "Sound the sky to 10 km", after: ["first_launch"],
+    description: "Take a rocket above the weather, 10 km up.",
+    when: { type: "All", of: [{ type: "Visit", body: "Earth" }, { type: "Altitude", min: 10000 }] },
+    reward: 12000, days: 60,
+  },
+  {
+    id: "sound_30km", tree: "casual", title: "Sound the sky to 30 km", after: ["sound_10km"],
+    description: "Higher than any aircraft flies: 30 km.",
+    when: { type: "All", of: [{ type: "Visit", body: "Earth" }, { type: "Altitude", min: 30000 }] },
+    reward: 18000, days: 60,
+  },
+  {
+    id: "space", tree: "casual", title: "Reach space", after: ["sound_30km"],
+    description: "Pass the Kármán line, 100 km up.",
+    when: { type: "All", of: [{ type: "Visit", body: "Earth" }, { type: "Altitude", min: 100000 }] },
+    reward: 30000, days: 90,
+  },
+  {
+    id: "crew_to_space", tree: "casual", title: "A person to space and back", after: ["space"],
+    description: "Fly someone above 100 km and bring them down safely.",
+    when: { type: "All", of: [{ type: "Reached", altitude: 100000 }, { type: "Recovered", max_g: 15 }, { type: "Crew", min: 1 }] },
+    reward: 45000, days: 120,
+  },
+  {
+    id: "orbit", tree: "casual", title: "Reach orbit", after: ["space"],
+    description: "Go fast enough to stay up: an orbit of the Earth clear of the air.",
+    when: { type: "Orbit", body: "Earth", periapsis: { min: 150000 } }, reward: 90000, days: 180,
+  },
+  {
+    id: "crew_orbit", tree: "casual", title: "A crew in orbit", after: ["orbit", "crew_to_space"],
+    description: "Put someone in orbit of the Earth.",
+    when: { type: "All", of: [{ type: "Orbit", body: "Earth", periapsis: { min: 150000 } }, { type: "Crew", min: 1 }] },
+    reward: 120000, days: 180,
+  },
+  {
+    id: "high_orbit", tree: "casual", title: "A high orbit", after: ["orbit"],
+    description: "Orbit the Earth more than 2,000 km up, in space high.",
+    when: { type: "Orbit", body: "Earth", periapsis: { min: 2000000 } }, reward: 100000, days: 180,
+  },
+  {
+    id: "moon_flyby", tree: "casual", title: "Fly by the Moon", after: ["orbit"],
+    description: "Send anything into the Moon's sphere of influence.",
+    when: { type: "Visit", body: "Moon" }, reward: 300000, days: 365,
+  },
+  {
+    id: "moon_orbit", tree: "casual", title: "Orbit the Moon", after: ["moon_flyby"],
+    description: "Stay: an orbit of the Moon.",
+    when: { type: "Orbit", body: "Moon", periapsis: { min: 15000 } }, reward: 450000, days: 365,
+  },
+  {
+    id: "moon_landing", tree: "casual", title: "Land on the Moon", after: ["moon_orbit"],
+    description: "Set anything down on the Moon in one piece.",
+    when: { type: "Landed", body: "Moon" }, reward: 800000, days: 365,
+  },
+  {
+    id: "crew_moon_landing", tree: "casual", title: "People on the Moon", after: ["moon_landing", "crew_orbit"],
+    description: "Land a crew on the Moon.",
+    when: { type: "All", of: [{ type: "Landed", body: "Moon" }, { type: "Crew", min: 1 }] },
+    reward: 1200000, days: 730,
+  },
+  {
+    id: "mars_flyby", tree: "casual", title: "Fly by Mars", after: ["moon_flyby"],
+    description: "Send a probe into Mars's sphere of influence.",
+    when: { type: "Visit", body: "Mars" }, reward: 900000, days: 1095,
+  },
+]

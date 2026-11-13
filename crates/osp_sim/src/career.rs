@@ -1,8 +1,8 @@
 //! A career: a game where parts are unlocked on the tech tree with science, kept in its save. A
 //! sandbox has none, and every part. What it has unlocked is a set of the tree's nodes, the roots
 //! from the start; what that lets it build is the tree's to say ([`ScienceTree`]). It has funds
-//! too, from the tree's starting sum and the rewards of the goals it meets
-//! ([`crate::mission::GoalDef::reward`]), for what is paid with money.
+//! too, from the tree's starting sum and the rewards of the goals and contracts it meets
+//! ([`crate::mission::GoalDef::reward`], [`crate::contract`]), for what is paid with money.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     builder::Allowed,
     component::ComponentDef,
+    contract::{ContractDef, Contracts},
     data::{CraftDef, FacilityDef, PartCatalog},
     palette::{self, Entry},
     science::{self, Returned},
@@ -31,6 +32,9 @@ pub struct Career {
     /// The level of each facility it has upgraded, by id; the others are at their first.
     #[serde(default)]
     pub facilities: BTreeMap<String, usize>,
+    /// The contracts it has taken on and done.
+    #[serde(default)]
+    pub contracts: Contracts,
     /// What experiments' data and samples have reached the ground, brought home or (T274) sent: the
     /// share of a whole set of each subject ([`crate::science::subject`]), more than one if it came
     /// back more than once.
@@ -46,6 +50,7 @@ impl Career {
             science: 0.0,
             funds: tree.def.funds,
             facilities: BTreeMap::new(),
+            contracts: Contracts::default(),
             unlocked: tree.roots(),
             returned: BTreeMap::new(),
         }
@@ -69,6 +74,27 @@ impl Career {
         }
         self.funds = (self.funds - amount).max(0.0);
         Ok(())
+    }
+
+    /// The contracts of `defs` it is offered now: its tree's ([`crate::contract`]).
+    pub fn offers<'a>(&self, defs: &'a [ContractDef]) -> Vec<&'a ContractDef> {
+        let ours = |def: &&ContractDef| def.tree.as_ref().is_none_or(|tree| *tree == self.tree);
+        self.contracts.offers(defs.iter().filter(ours))
+    }
+
+    /// Take on the contract `def`, if it is offered from `defs`, with the launch sites and bodies its
+    /// condition names in `sites` and `system`: what to tell the player.
+    pub fn accept(
+        &mut self,
+        def: &ContractDef,
+        defs: &[ContractDef],
+        sites: &[crate::data::LaunchSiteDef],
+        system: &crate::system::SolarSystem,
+    ) -> Result<String, String> {
+        if !self.offers(defs).iter().any(|offered| offered.id == def.id) {
+            return Err(format!("{} is not on offer", def.title));
+        }
+        self.contracts.take_on(def, sites, system)
     }
 
     /// The level `facility` is at, from 0.

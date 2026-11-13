@@ -155,6 +155,19 @@ pub enum Condition {
     },
     /// The mission goal with this id is met. Only a tutorial step can ask this.
     Goal { id: String },
+    /// In `body`'s sphere of influence: passing by counts, as do orbiting it and landing on it.
+    Visit { body: String },
+    /// So many people aboard, alive.
+    Crew {
+        #[serde(default)]
+        min: Option<f64>,
+        #[serde(default)]
+        max: Option<f64>,
+    },
+    /// Every one of these at once.
+    All { of: Vec<Condition> },
+    /// Has been this high (m over sea level) on this flight, or since the mission began.
+    Reached { altitude: f64 },
 }
 
 /// One goal, or one way to fail.
@@ -223,7 +236,7 @@ pub struct Goal {
 }
 
 /// Where a launch site is, for `Landed`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Place {
     body: String,
     latitude: f64,
@@ -245,13 +258,20 @@ pub struct Mission {
     events: Vec<MissionEvent>,
 }
 
-/// Check what `when` names (a body, a launch site, a vessel the scenario starts, a goal) and
-/// note where the sites it needs are. `goals` are the ones a `Goal` condition may name: only a
-/// tutorial step can ask that.
+/// The vessels `scenario` starts besides the player's, by the names conditions know them by.
+pub(crate) fn others(scenario: &ScenarioDef) -> Vec<String> {
+    (scenario.others.iter())
+        .map(|o| o.name.clone().unwrap_or_else(|| o.craft.clone()))
+        .collect()
+}
+
+/// Check what `when` names (a body, a launch site, a vessel the scenario starts, one of `others`,
+/// a goal) and note where the sites it needs are. `goals` are the ones a `Goal` condition may
+/// name: only a tutorial step can ask that.
 pub(crate) fn resolve(
     id: &str,
     when: &Condition,
-    scenario: &ScenarioDef,
+    others: &[String],
     sites: &[LaunchSiteDef],
     system: &SolarSystem,
     goals: Option<&[GoalDef]>,
@@ -282,13 +302,16 @@ pub(crate) fn resolve(
                 );
             }
         }
+        Condition::Visit { body: name } => body(name)?,
+        Condition::All { of } => {
+            for when in of {
+                resolve(id, when, others, sites, system, goals, places)?;
+            }
+        }
         Condition::Near { target, .. }
         | Condition::Docked { target }
         | Condition::Undocked { target, .. } => {
-            let starts = scenario
-                .others
-                .iter()
-                .any(|o| o.name.as_ref().unwrap_or(&o.craft) == target);
+            let starts = others.iter().any(|name| name == target);
             if !starts {
                 return Err(format!(
                     "`{id}`: the scenario starts no vessel called `{target}`"
@@ -322,11 +345,12 @@ impl Mission {
             return Ok(None);
         }
         let mut places = BTreeMap::new();
+        let others = others(scenario);
         for def in scenario.goals.iter().chain(&scenario.fail) {
             resolve(
                 &def.id,
                 &def.when,
-                scenario,
+                &others,
                 sites,
                 system,
                 None,
@@ -394,7 +418,8 @@ impl Mission {
         let now = universe.time();
         let dt = now.seconds_since(self.last).max(0.0);
         self.last = now;
-        self.record(universe, vessel, events, physics, dt);
+        self.stats.elapsed = universe.time().seconds_since(self.started);
+        record(&mut self.stats, universe, vessel, events, physics, dt);
 
         let view = View {
             universe,
@@ -430,47 +455,47 @@ impl Mission {
             self.events.push(MissionEvent::Failed(reason));
         }
     }
+}
 
-    fn record(
-        &mut self,
-        universe: &Universe,
-        vessel: &Vessel,
-        events: &[SimEvent],
-        physics: bool,
-        dt: f64,
-    ) {
-        let stats = &mut self.stats;
-        stats.elapsed = universe.time().seconds_since(self.started);
-        let state = vessel.state_at(&universe.system, universe.time());
-        let body = universe.system.body(vessel.parent());
-        stats.max_altitude = stats
-            .max_altitude
-            .max(state.position.length() - body.radius);
-        if physics {
-            let flight = &vessel.flight;
-            if flight.mass > 0.0 {
-                stats.delta_v += flight.thrust / flight.mass * dt;
-            }
-            stats.peak_g = stats.peak_g.max(flight.proper_acceleration / G0);
+/// Note in `stats` what `vessel` did over the `dt` seconds up to now: a physics tick (`physics`) or a
+/// jump on rails, with `events`. Its `elapsed` is the caller's.
+pub(crate) fn record(
+    stats: &mut Stats,
+    universe: &Universe,
+    vessel: &Vessel,
+    events: &[SimEvent],
+    physics: bool,
+    dt: f64,
+) {
+    let state = vessel.state_at(&universe.system, universe.time());
+    let body = universe.system.body(vessel.parent());
+    stats.max_altitude = stats
+        .max_altitude
+        .max(state.position.length() - body.radius);
+    if physics {
+        let flight = &vessel.flight;
+        if flight.mass > 0.0 {
+            stats.delta_v += flight.thrust / flight.mass * dt;
         }
-        if vessel.situation(&universe.system, universe.time()) != Situation::Landed {
-            stats.flown = true;
-        }
-        for event in events.iter().filter(|e| e.vessel == vessel.id()) {
-            match event.event.kind {
-                VesselEventKind::Crashed { .. } => stats.crashed = true,
-                VesselEventKind::Destroyed => stats.destroyed = true,
-                VesselEventKind::Docked => stats.docked = true,
-                _ => {}
-            }
-        }
-        stats.destroyed |= vessel.is_destroyed();
+        stats.peak_g = stats.peak_g.max(flight.proper_acceleration / G0);
     }
+    if vessel.situation(&universe.system, universe.time()) != Situation::Landed {
+        stats.flown = true;
+    }
+    for event in events.iter().filter(|e| e.vessel == vessel.id()) {
+        match event.event.kind {
+            VesselEventKind::Crashed { .. } => stats.crashed = true,
+            VesselEventKind::Destroyed => stats.destroyed = true,
+            VesselEventKind::Docked => stats.docked = true,
+            _ => {}
+        }
+    }
+    stats.destroyed |= vessel.is_destroyed();
 }
 
 impl Goal {
     /// Look at the condition for `dt` more seconds; true the moment the goal is met.
-    fn advance(&mut self, view: &View, dt: f64, elapsed: f64) -> bool {
+    pub(crate) fn advance(&mut self, view: &View, dt: f64, elapsed: f64) -> bool {
         if !view.holds(&self.def.when) {
             self.held = 0.0;
             return false;
@@ -632,6 +657,13 @@ impl View<'_> {
                     .iter()
                     .any(|g| &g.def.id == id && g.met_at.is_some())
             }),
+            Condition::Visit { body: name } => &body.name == name,
+            Condition::Crew { min, max } => {
+                let aboard = self.vessel.propulsion.systems.crew_aboard();
+                Range::new(*min, *max).contains(f64::from(aboard))
+            }
+            Condition::All { of } => of.iter().all(|when| self.holds(when)),
+            Condition::Reached { altitude } => self.stats.max_altitude >= *altitude,
         }
     }
 
@@ -932,6 +964,7 @@ pub(crate) mod tests {
             science: 0.0,
             funds: 1000.0,
             facilities: Default::default(),
+            contracts: Default::default(),
             unlocked: Default::default(),
             returned: Default::default(),
         });

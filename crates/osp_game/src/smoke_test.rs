@@ -211,6 +211,8 @@ impl Plugin for SmokeTestPlugin {
                 SCIENCE_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_FACILITIES").is_some() {
                 FACILITIES_SCRIPT.to_vec()
+            } else if std::env::var_os("OSP_CAPTURE_CONTRACTS").is_some() {
+                CONTRACTS_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_CLUSTER").is_some() {
                 CLUSTER_SCRIPT.to_vec()
             } else if std::env::var_os("OSP_CAPTURE_EDITOR_FIT").is_some() {
@@ -1909,6 +1911,69 @@ const FACILITIES_SCRIPT: &[(f64, Action)] = &[
     (16.0, Action::ExpectEditor(None)),
     (16.5, Action::Capture("facilities_launched.png")),
     (17.0, Action::Exit),
+];
+
+/// `OSP_CAPTURE_CONTRACTS=1` (with `OSP_USER_DIR=<empty folder>`): a new Casual career is offered
+/// its first contract in the hangar's Contracts window and takes it on; a capsule on a small tank and
+/// a K-0 flies past a kilometre, which meets it and pays.
+const CONTRACTS_SCRIPT: &[(f64, Action)] = &[
+    (0.5, Action::MapView(false)),
+    (1.0, Action::Ui("game.menu")),
+    (1.1, Action::Ui("game.exit")),
+    (2.0, Action::ExpectScreen("title")),
+    (2.1, Action::Ui("menu.open:new_game")),
+    (2.2, Action::ExpectScreen("new_game")),
+    (2.3, Action::Ui("mods.mode:casual")),
+    (2.5, Action::UiPointAt("game.kind:career")),
+    (2.6, Action::UiPress(PointerButton::Primary)),
+    (2.65, Action::UiRelease(PointerButton::Primary)),
+    (2.8, Action::ExpectData("menu.career")),
+    (3.3, Action::Ui("ask.leave:game.new")),
+    (8.0, Action::ExpectEditor(Some(""))),
+    (8.1, Action::Ui("ui.toggle:contracts")),
+    (8.2, Action::ExpectData("career.has_offers")),
+    (8.9, Action::Capture("contracts_offered.png")),
+    (9.0, Action::Ui("career.accept:first_launch")),
+    (9.2, Action::ExpectData("career.has_taken")),
+    (9.9, Action::Capture("contracts_taken.png")),
+    (10.0, Action::Ui("ui.toggle:contracts")),
+    // A capsule on a short tank and one K-0: just enough to climb.
+    (10.1, Action::Ui("editor.new")),
+    (10.5, Action::Unlock),
+    (10.6, Action::Ui("editor.group:pods")),
+    (10.7, Action::Ui("editor.add:pod:C-1 Capsule")),
+    (11.5, Action::ExpectPartCount(1)),
+    (11.6, Action::Ui("editor.add:tank")),
+    (11.9, Action::EditorPointAtNode("pod", "bottom")),
+    (12.7, Action::Press(MouseButton::Left)),
+    (12.8, Action::Release(MouseButton::Left)),
+    (13.7, Action::ExpectPartCount(2)),
+    (13.8, Action::Ui("editor.pick:tank")),
+    (14.1, Action::Ui("editor.set:diameter:1")),
+    (14.4, Action::Ui("editor.set:length:1.2")),
+    (14.9, Action::ClearPointer),
+    (15.0, Action::Ui("editor.add:engine:K-0")),
+    (15.3, Action::EditorPointAtNode("tank", "bottom")),
+    (16.1, Action::Press(MouseButton::Left)),
+    (16.2, Action::Release(MouseButton::Left)),
+    (17.1, Action::ExpectPartCount(3)),
+    (17.2, Action::ClearPointer),
+    (18.0, Action::Capture("contracts_rocket.png")),
+    (18.1, Action::Ui("editor.launch")),
+    (22.0, Action::ExpectEditor(None)),
+    (22.1, Action::Ui("vessel.throttle_full")),
+    // SAS holds it upright on the engine's gimbal: it has no fins.
+    (22.15, Action::Ui("vessel.sas_toggle")),
+    (22.2, Action::Ui("vessel.stage")),
+    (24.0, Action::Ui("ui.toggle:contracts")),
+    (24.5, Action::Capture("contracts_climbing.png")),
+    // A kilometre up some 35 s after liftoff: met, paid and said.
+    (48.0, Action::Capture("contracts_climbing_higher.png")),
+    (61.0, Action::Capture("contracts_met.png")),
+    (66.0, Action::ExpectData("!career.has_taken")),
+    (66.1, Action::ExpectData("career.funds == 58,000")),
+    (66.2, Action::Capture("contracts_paid.png")),
+    (67.5, Action::Exit),
 ];
 
 /// `OSP_CAPTURE_CLUSTER=1`: four K-0s go under one tank in one placement, with symmetry 4, by

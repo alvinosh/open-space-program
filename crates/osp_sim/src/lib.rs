@@ -50,6 +50,7 @@ pub mod autopilot;
 pub mod body;
 pub mod builder;
 pub mod career;
+pub mod contract;
 pub mod clouds;
 pub mod comms;
 pub mod collision;

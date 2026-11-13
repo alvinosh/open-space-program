@@ -127,7 +127,7 @@ impl Tutorial {
                 resolve(
                     &at,
                     when,
-                    scenario,
+                    &crate::mission::others(scenario),
                     sites,
                     system,
                     Some(&scenario.goals),

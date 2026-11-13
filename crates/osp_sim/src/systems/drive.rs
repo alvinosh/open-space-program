@@ -421,6 +421,7 @@ mod tests {
             science: 0.0,
             funds: 0.0,
             facilities: Default::default(),
+            contracts: Default::default(),
             unlocked: Default::default(),
             returned: Default::default(),
         });

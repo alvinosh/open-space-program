@@ -1361,6 +1361,13 @@ impl Universe {
             }
             self.mission = Some(mission);
         }
+        if let Some(mut career) = self.career.take() {
+            if !career.contracts.taken.is_empty() {
+                let earned = career.contracts.observe(self, events, physics);
+                career.earn(earned);
+            }
+            self.career = Some(career);
+        }
         if let Some(mut tutorial) = self.tutorial.take() {
             tutorial.observe(self, self.mission.as_ref());
             self.tutorial = Some(tutorial);
