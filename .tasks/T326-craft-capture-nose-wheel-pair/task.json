@@ -1,0 +1,19 @@
+{
+  "id": "T326",
+  "title": "The craft capture's nose wheel goes on as a mirrored pair",
+  "kind": "bug",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_game/src/smoke_test.rs (EDITOR_CRAFT_SCRIPT)",
+    "crates/osp_editor/src/building.rs"
+  ],
+  "created": "2026-11-16",
+  "updated": "2026-11-16",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.24292
+}

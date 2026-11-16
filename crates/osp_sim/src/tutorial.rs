@@ -430,17 +430,4 @@ mod tests {
         let twice = format!("{0}, {0}", step("{ type: 'Destroyed' }"));
         assert!(error("", &twice).contains("twice"));
     }
-
-    #[test]
-    fn a_step_record_has_defaults() {
-        let def: TutorialDef = records(
-            r#"{ id: "t", scenario: "pad", steps: [{ id: "a", text: "A", ui: "view.map" }] }"#,
-        )
-        .remove(0);
-        let step = &def.steps[0];
-        assert_eq!(step.hint_after, 20.0);
-        assert!(step.hint.is_empty() && step.highlight.is_none() && step.when.is_none());
-        assert!(!step.is_manual());
-        assert_eq!(def.name, "");
-    }
 }

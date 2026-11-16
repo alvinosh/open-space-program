@@ -1308,7 +1308,6 @@ mod tests {
         data::{CraftDef, ShellDef, ShellProfile},
         propulsion::Propulsion,
         shell::Shell,
-        test_data::records,
         vessel::tests::catalog,
     };
 

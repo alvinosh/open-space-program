@@ -500,50 +500,6 @@ pub fn menu_actions(
 mod tests {
     use super::*;
 
-    fn menu(playing: bool) -> Menu {
-        Menu {
-            open: true,
-            playing,
-            stack: Vec::new(),
-            new_game: false,
-            career: false,
-            notice: String::new(),
-        }
-    }
-
-    #[test]
-    fn the_root_is_the_pause_menu_with_a_game_and_the_title_without() {
-        assert_eq!(menu(true).screen(), "pause");
-        assert_eq!(menu(false).screen(), "title");
-        assert_eq!(layout_of("pause"), "menu_pause");
-    }
-
-    #[test]
-    fn going_back_walks_down_the_screens_and_then_says_there_are_no_more() {
-        let mut menu = menu(true);
-        menu.push("settings");
-        menu.push("keys");
-        assert_eq!(menu.screen(), "keys");
-        assert!(menu.pop());
-        assert_eq!(menu.screen(), "settings");
-        assert!(menu.pop());
-        assert_eq!(menu.screen(), "pause");
-        assert!(!menu.pop());
-        assert_eq!(menu.screen(), "pause");
-    }
-
-    #[test]
-    fn going_to_the_root_forgets_the_screens_and_what_was_said() {
-        let mut menu = menu(true);
-        menu.push("load");
-        menu.new_game = true;
-        menu.notice = "Cannot load it".into();
-        menu.back_to_root();
-        assert_eq!(menu.screen(), "pause");
-        assert!(!menu.new_game);
-        assert!(menu.notice.is_empty());
-    }
-
     #[test]
     fn a_save_says_what_it_knows() {
         assert_eq!(

@@ -1108,8 +1108,10 @@ fn trim_layers(shape: &ShapeDef) -> Vec<LayerDef> {
     };
     match shape {
         ShapeDef::CylinderTank(d) => {
+            // At the domes' rims, where the barrel starts and ends.
             let dome = d.dome * d.diameter / 2.0;
-            let (low, high) = (dome + d.aft_skirt, d.length - dome - d.forward_skirt);
+            let low = dome.max(d.aft_skirt);
+            let high = low + (d.length - 2.0 * dome).max(0.0);
             let width = (0.1 * d.diameter)
                 .clamp(0.06, 0.6)
                 .min(0.2 * (high - low).max(0.0));
@@ -1600,6 +1602,17 @@ impl PartDef {
             .collect();
         if nodes.is_empty() {
             nodes.push(node("top", [0.0; 3], [0.0, 0.0, 1.0], def.exit_diameter));
+        }
+        // Under the nozzle's exit: what the next stage down hangs from, as under a KSP engine. A
+        // decoupler put there grows an interstage up round the engine ([`crate::fitting`]).
+        if !nodes.iter().any(|n| n.name == "bottom") && def.exit_diameter > 0.0 {
+            let exit = -def.nozzle_length();
+            nodes.push(node(
+                "bottom",
+                [0.0, 0.0, exit],
+                [0.0, 0.0, -1.0],
+                def.exit_diameter,
+            ));
         }
         let shape = match (&def.model, bell) {
             (Some(path), bell) => ShapeDef::Model(ModelDef {

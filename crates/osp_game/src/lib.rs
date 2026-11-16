@@ -29,6 +29,7 @@ pub mod orbit_lines;
 pub mod part_highlight;
 pub mod part_info;
 pub mod part_pictures;
+pub mod playtest;
 pub mod profiler;
 mod recorder;
 pub mod saves;
@@ -96,7 +97,7 @@ impl Plugin for GamePlugin {
                 part_highlight::PartHighlightPlugin,
             ),
             ui_data::UiDataPlugin,
-            smoke_test::SmokeTestPlugin,
+            (smoke_test::SmokeTestPlugin, playtest::PlaytestPlugin),
             (
                 menu::MenuPlugin,
                 saves::SavesPlugin,

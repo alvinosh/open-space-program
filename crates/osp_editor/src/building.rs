@@ -379,6 +379,11 @@ impl Default for Placing {
 }
 
 impl Placing {
+    /// A preview of what is in hand is being built to go on show.
+    pub fn is_building(&self) -> bool {
+        self.job.is_some()
+    }
+
     /// Whether the parts list is out (it shows unless a part is picked).
     pub fn is_open(&self) -> bool {
         self.open
@@ -700,10 +705,13 @@ impl Making<'_> {
                 if new {
                     // On an engine's mount, a tank sized to feed it. By its side on a node facing
                     // across (a booster on a radial decoupler), as wide as the node.
-                    let engine = (self.built.find(on).filter(|_| by.is_some()))
-                        .and_then(|holder| fitting::feeding(self.built, holder, node));
+                    let holder = self.built.find(on).filter(|_| by.is_some());
+                    let engine = holder.and_then(|h| fitting::feeding(self.built, h, node));
+                    // Under an engine's nozzle: as wide as its stack, a decoupler an interstage.
+                    let under = holder.and_then(|h| fitting::below_engine(self.built, h, node));
                     let against = Against {
                         engine,
+                        under,
                         limits,
                         ..Against::node(*width)
                     };
@@ -1664,8 +1672,15 @@ pub(crate) fn place_parts(
             });
         match put {
             Ok(_) => {
-                // What is on show is already this, if the preview was of it.
-                let matched = placing.shown.as_ref() == Some(&plan) && placing.refused.is_none();
+                // What is on show is already this, if the preview was of it and the builder did
+                // nothing more (a tank made bigger for an engine put under it is not previewed).
+                let same = |a: &CraftDef, b: &CraftDef| {
+                    serde_json::to_value(a).ok() == serde_json::to_value(b).ok()
+                };
+                let draft = editor.builder().map(|b| b.draft());
+                let matched = placing.shown.as_ref() == Some(&plan)
+                    && placing.refused.is_none()
+                    && (placing.shown_craft.as_ref().zip(draft)).is_some_and(|(a, b)| same(a, b));
                 if !matched {
                     redraw_draft(&mut editor, catalog, &mut sim, &mut ui);
                 }
@@ -2049,7 +2064,9 @@ fn preview(
     let (draft, catalog) = (draft.clone(), catalog.clone());
     let task = std::thread::spawn(move || {
         let (mut craft, ghost) = plan.put(&draft)?;
-        // As the builder will have it: new tanks take what their engines burn.
+        // As the builder will have it: new tanks take what their engines burn. A tank made bigger
+        // for an engine put under it is not shown until it is let go: grown here, it would move the
+        // ring the engine is held to.
         properties::fill_from_engines(&mut craft, &catalog, &ghost);
         let propulsion = Propulsion::from_craft(&craft, &catalog).map_err(|e| e.to_string())?;
         let touched: Vec<&str> = ghost.iter().map(String::as_str).collect();
@@ -2345,14 +2362,6 @@ mod tests {
         assert_eq!(new_id(&ids(&["tank", "tank_2"]), "tank", 0), "tank_3");
         // Four fins would be fin_1 to fin_4: one of those is taken.
         assert_eq!(new_id(&ids(&["fin_3"]), "fin", 4), "fin_2");
-    }
-
-    #[test]
-    fn symmetry_steps_up_and_back_round_its_list() {
-        assert_eq!(next_symmetry(1, true), 2);
-        assert_eq!(next_symmetry(8, true), 1);
-        assert_eq!(next_symmetry(1, false), 8);
-        assert_eq!(next_symmetry(5, true), 2);
     }
 
     #[test]

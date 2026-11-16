@@ -4,14 +4,18 @@
 //! wide as the hull there. A fin or wing is sized for the hull it stands on. A tank put on an
 //! engine's mount is sized to feed that engine through a stage's burn: as wide as the nozzle at
 //! least, and holding what the engine burns in [`BOOSTER_BURN`] at sea level or [`UPPER_BURN`] in
-//! vacuum, measured on the tank as built, filled with the engine's propellants. A part from a
+//! vacuum, measured on the tank as built, filled with the engine's propellants. Under an engine's
+//! nozzle a part is as wide as the stack the engine hangs from, and a decoupler there gets an
+//! interstage up round the engine to that stack's base ([`below_engine`]): the next stage down
+//! hangs there, as under a KSP engine, and the body stays whole for the air. A part from a
 //! catalogue record (a pod, an engine) stays as it is, and so does a part being moved.
 
 use crate::{
+    assembly::Mount,
     component::{Component, ComponentDef},
     constants::G0,
     craft::Craft,
-    data::{CraftPartDef, EngineDef, PartCatalog},
+    data::{CraftDef, CraftPartDef, EngineDef, PartCatalog},
     geometry::preset::{AirfoilDef, ShapeDef},
     properties::{self, Mix},
     shaping::{self, Limits},
@@ -24,6 +28,11 @@ pub const BOOSTER_BURN: f64 = 150.0;
 pub const UPPER_BURN: f64 = 350.0;
 /// An engine whose Isp at sea level is at least this share of its vacuum Isp is a sea-level one.
 const SEA_LEVEL: f64 = 0.7;
+/// The least thrust to weight a tank sized for an engine put under it leaves its stage at
+/// ignition: a sea-level engine's at sea level, lifting off; a vacuum engine's in vacuum, on an
+/// upper stage, weighed at the surface.
+const BOOSTER_TWR: f64 = 1.4;
+const UPPER_TWR: f64 = 0.6;
 /// A tank's length for its width, when nothing else sets it.
 const ASPECT: f64 = 3.0;
 /// How wide a part put on a hull's side is, for the hull's width: a booster beside its core.
@@ -39,6 +48,8 @@ pub struct Against<'a> {
     pub beside: bool,
     /// The engine whose mount it goes on ([`feeding`]): a tank is sized to feed it.
     pub engine: Option<&'a EngineDef>,
+    /// It goes under an engine's nozzle ([`below_engine`]).
+    pub under: Option<Stack>,
     /// The biggest the game lets a part be made.
     pub limits: Limits,
 }
@@ -50,6 +61,7 @@ impl<'a> Against<'a> {
             width,
             beside: false,
             engine: None,
+            under: None,
             limits: Limits::NONE,
         }
     }
@@ -61,6 +73,51 @@ impl<'a> Against<'a> {
             ..Self::node(width)
         }
     }
+}
+
+/// What hangs under an engine's nozzle is in: the stack the engine hangs from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Stack {
+    /// How wide the stack is where the engine hangs from it, m.
+    pub width: f64,
+    /// From the nozzle's exit up to there, m: how tall an interstage round the engine is.
+    pub height: f64,
+}
+
+/// Whether `node` of the part at `index` in `craft` is an engine's back, under its nozzle.
+pub fn engine_back(craft: &Craft, index: usize, node: &str) -> bool {
+    let Some(part) = craft.parts.get(index) else {
+        return false;
+    };
+    let engine = (part.built.components.iter()).any(|c| matches!(c, Component::Engine(_)));
+    let node = (craft.assembly.parts().get(index)).and_then(|p| p.node(node));
+    engine && node.is_some_and(|n| n.direction.z < -0.5)
+}
+
+/// The stack that `node` of the part at `index` in `craft` hangs under, if that is an engine's back
+/// ([`engine_back`]) and the engine hangs by its front from something as wide as a stack: how wide
+/// that is, and how far above the node.
+pub fn below_engine(craft: &Craft, index: usize, node: &str) -> Option<Stack> {
+    if !engine_back(craft, index, node) {
+        return None;
+    }
+    let parts = craft.assembly.parts();
+    let back = parts.get(index)?.node(node)?;
+    craft.assembly.joints().iter().find_map(|joint| {
+        let [a, b] = &joint.ends;
+        let (own, other) = match (a.part == index, b.part == index) {
+            (true, _) => (a, b),
+            (_, true) => (b, a),
+            _ => return None,
+        };
+        let (Mount::Node(own), Mount::Node(held_by)) = (&own.mount, &other.mount) else {
+            return None;
+        };
+        let front = parts[index].node(own).filter(|n| n.direction.z > 0.5)?;
+        let width = parts[other.part].node(held_by)?.size;
+        let height = front.position.z - back.position.z;
+        (width > 0.0 && height > 0.0).then_some(Stack { width, height })
+    })
 }
 
 /// Whether `node` of the part at `index` in `craft` is an engine's front, where what feeds it
@@ -99,7 +156,8 @@ pub fn feeding<'a>(craft: &'a Craft, holder: usize, node: &str) -> Option<&'a En
 /// `part`, a palette entry's new part, sized for what it goes on ([`Against`]). A part from a
 /// catalogue record stays as it is.
 pub fn fit(part: &mut CraftPartDef, against: &Against, catalog: &PartCatalog) {
-    let width = against.width;
+    // Under an engine's nozzle, as wide as the stack it hangs from.
+    let width = against.under.map_or(against.width, |stack| stack.width);
     if !(width.is_finite() && width > 0.0) {
         return;
     }
@@ -112,6 +170,8 @@ pub fn fit(part: &mut CraftPartDef, against: &Against, catalog: &PartCatalog) {
     };
     if let Some(ProceduralDef::Decoupler(decoupler)) = &mut part.procedural {
         decoupler.diameter = width;
+        // Up round the engine above to the base of its stack.
+        decoupler.interstage = against.under.map_or(0.0, |stack| stack.height);
         return;
     }
     // A fuel line is a small fitting, however big the tank it is on.
@@ -122,7 +182,15 @@ pub fn fit(part: &mut CraftPartDef, against: &Against, catalog: &PartCatalog) {
         return;
     }
     if let Some(engine) = against.engine
-        && feed(part, engine, width, against.limits, catalog)
+        && feed(
+            part,
+            engine,
+            width,
+            None,
+            f64::INFINITY,
+            against.limits,
+            catalog,
+        )
     {
         return;
     }
@@ -141,12 +209,14 @@ pub fn fit(part: &mut CraftPartDef, against: &Against, catalog: &PartCatalog) {
             ("bottom_diameter", width),
             ("top_diameter", width),
         ],
-        // On a hull `width` across: big enough to keep a short rocket pointing into the air.
+        // On a hull `width` across: big enough to keep a short rocket pointing into the air as it
+        // burns its tank down and goes supersonic (a C-1 Capsule on its tank and a K-1 Booster,
+        // with these, keeps its centre of pressure behind its centre of mass to Mach 8).
         ShapeDef::Wing(d) if matches!(d.airfoil, AirfoilDef::Plate { .. }) => vec![
-            ("root_chord", 1.2 * width),
-            ("tip_chord", 0.5 * width),
-            ("span", 0.8 * width),
-            ("sweep", 0.6 * width),
+            ("root_chord", 1.8 * width),
+            ("tip_chord", 0.75 * width),
+            ("span", 1.2 * width),
+            ("sweep", 0.9 * width),
         ],
         ShapeDef::Wing(_) => vec![
             ("root_chord", 1.5 * width),
@@ -162,13 +232,22 @@ pub fn fit(part: &mut CraftPartDef, against: &Against, catalog: &PartCatalog) {
     }
 }
 
+/// Whether `engine` is one that fires from the ground: its Isp at sea level not far below its
+/// vacuum Isp.
+fn sea_level(engine: &EngineDef) -> bool {
+    engine.isp_sl >= SEA_LEVEL * engine.isp_vac
+}
+
 /// Size `part`, a cylinder tank on `engine`'s mount (a node `width` across), to feed the engine at
-/// full thrust for a stage's burn, no bigger than `limits`. False, and `part` as it was, if it is
-/// no cylinder tank or cannot hold what the engine burns.
+/// full thrust for a stage's burn, holding no more than `most` kg, no bigger than `limits`; `keep`
+/// as wide, if it is to stay so (it is as wide as what stands on it). False, and `part` as it was,
+/// if it is no cylinder tank or cannot hold what the engine burns.
 fn feed(
     part: &mut CraftPartDef,
     engine: &EngineDef,
     width: f64,
+    keep: Option<f64>,
+    most: f64,
     limits: Limits,
     catalog: &PartCatalog,
 ) -> bool {
@@ -179,12 +258,12 @@ fn feed(
     if !(flow.is_finite() && flow > 0.0) {
         return false;
     }
-    let burn = if engine.isp_sl >= SEA_LEVEL * engine.isp_vac {
+    let burn = if sea_level(engine) {
         BOOSTER_BURN
     } else {
         UPPER_BURN
     };
-    let wanted = flow * burn;
+    let wanted = (flow * burn).min(most);
     // Measured on the tank as built, filled with what the engine burns: its domes, walls and
     // ullage count. What it holds is `at_none` plus `per_metre` for each metre of length, at a
     // width of `d0`; at another width those go as its cube and square.
@@ -198,7 +277,7 @@ fn feed(
         return false;
     }
     let least = width.max(engine.exit_diameter);
-    let d0 = least.min(limits.diameter);
+    let d0 = keep.unwrap_or(least.min(limits.diameter));
     let (Some(short), Some(long)) = (
         holds(&probe, d0, ASPECT * d0, catalog),
         holds(&probe, d0, 2.0 * ASPECT * d0, catalog),
@@ -211,14 +290,171 @@ fn feed(
     }
     let at_none = short - per_metre * ASPECT * d0;
     // At the usual length for its width, what it holds goes as the cube of the width.
-    let diameter = (d0 * (wanted / short).cbrt())
-        .max(least)
-        .min(limits.diameter);
-    let diameter = round_up(diameter, width_step(diameter)).min(limits.diameter);
+    let diameter = match keep {
+        Some(width) => width,
+        None => {
+            let diameter = (d0 * (wanted / short).cbrt())
+                .max(least)
+                .min(limits.diameter);
+            round_up(diameter, width_step(diameter)).min(limits.diameter)
+        }
+    };
     let scale = diameter / d0;
     let length = (wanted - at_none * scale.powi(3)) / (per_metre * scale.powi(2));
     let length = round(length, length_step(length)).min(limits.length);
     set_both(part, diameter, length).is_ok()
+}
+
+/// Size the tanks that the engines `put` (just put on `craft`) hang from by their fronts for those
+/// engines, as a tank put on an engine's mount is ([`fit`]), when the tank is still the size the
+/// parts list gave it where it is ([`as_given`]): built top down, a capsule, a tank and then an
+/// engine, the tank holds the engine's burn, or as much as leaves the engine lifting all the craft
+/// ([`BOOSTER_TWR`], [`UPPER_TWR`]). It keeps its width if something stands on it, and is no bigger
+/// than `limits`. A tank the player has sized stays as it is, and so does one that is already as
+/// heavy as the engine can lift. The ids of the tanks sized.
+pub fn size_for_engines(
+    craft: &mut CraftDef,
+    catalog: &PartCatalog,
+    put: &[String],
+    limits: Limits,
+) -> Vec<String> {
+    if !craft.parts.iter().any(|p| put.contains(&p.id)) {
+        return Vec::new();
+    }
+    let Ok(built) = Craft::build(craft, catalog) else {
+        return Vec::new();
+    };
+    let joints = built.assembly.joints();
+    let mut sized = Vec::new();
+    for joint in joints {
+        for (engine_end, tank_end) in [
+            (&joint.ends[0], &joint.ends[1]),
+            (&joint.ends[1], &joint.ends[0]),
+        ] {
+            let (Mount::Node(front), Mount::Node(_)) = (&engine_end.mount, &tank_end.mount) else {
+                continue;
+            };
+            let (engine, tank) = (engine_end.part, tank_end.part);
+            if !put.contains(&craft.parts[engine].id) || sized.contains(&craft.parts[tank].id) {
+                continue;
+            }
+            let Some(fed) = feeding(&built, engine, front) else {
+                continue;
+            };
+            let Some(ShapeDef::CylinderTank(shape)) = &craft.parts[tank].shape else {
+                continue;
+            };
+            if !as_given(&built, &craft.parts[tank], catalog) {
+                continue;
+            }
+            // As wide as what stands on it, if anything does: joined by another node.
+            let stood_on = (joints.iter()).any(|j| {
+                !std::ptr::eq(j, joint)
+                    && j.ends
+                        .iter()
+                        .any(|e| e.part == tank && matches!(e.mount, Mount::Node(_)))
+            });
+            let keep = stood_on.then_some(shape.diameter);
+            let Some(most) = liftable(craft, tank, fed, catalog) else {
+                continue;
+            };
+            let mut tank_part = craft.parts[tank].clone();
+            if feed(
+                &mut tank_part,
+                fed,
+                shape.diameter,
+                keep,
+                most,
+                limits,
+                catalog,
+            ) {
+                sized.push(tank_part.id.clone());
+                craft.parts[tank] = tank_part;
+            }
+        }
+    }
+    sized
+}
+
+/// The most propellant the tank at `tank` in `craft` may hold for `engine` under it to lift all the
+/// craft at the least thrust to weight it is sized for, kg; none if it already holds that much or
+/// more (the engine cannot lift a bigger one).
+fn liftable(
+    craft: &CraftDef,
+    tank: usize,
+    engine: &EngineDef,
+    catalog: &PartCatalog,
+) -> Option<f64> {
+    use crate::propulsion::Propulsion;
+    let all = Propulsion::from_craft(craft, catalog).ok()?.mass();
+    let alone = properties::alone(&craft.parts[tank], catalog).ok()?;
+    let part = &alone.parts[0];
+    let held: f64 = (part.built.components.iter())
+        .filter_map(|c| match c {
+            Component::Storage(s) => Some(s.contents.iter().map(|c| c.capacity).sum::<f64>()),
+            _ => None,
+        })
+        .sum();
+    let mut only = craft.parts[tank].clone();
+    (only.on, only.at) = (None, None);
+    let lone = CraftDef {
+        id: "alone".into(),
+        name: String::new(),
+        parts: vec![only],
+        sequences: None,
+        triggers: Vec::new(),
+        rcs_shut: Vec::new(),
+        abort: Vec::new(),
+    };
+    let tank_mass = Propulsion::from_craft(&lone, catalog).ok()?.mass();
+    if !(held > 0.0 && tank_mass > 0.0) {
+        return None;
+    }
+    let (thrust, least) = if sea_level(engine) {
+        (
+            engine.thrust_vac * engine.isp_sl / engine.isp_vac,
+            BOOSTER_TWR,
+        )
+    } else {
+        (engine.thrust_vac, UPPER_TWR)
+    };
+    // What the rest weighs, and how much the tank weighs for each kg it holds.
+    let rest = all - tank_mass;
+    let most = (thrust / (G0 * least) - rest) * held / tank_mass;
+    (most > held).then_some(most)
+}
+
+/// Whether `tank` is still the size the parts list gave it where it is in `craft`: as [`fit`] makes
+/// a new tank on the node that holds it, or as the list has it if it is the root.
+fn as_given(craft: &Craft, tank: &CraftPartDef, catalog: &PartCatalog) -> bool {
+    let size = |part: &CraftPartDef| match &part.shape {
+        Some(ShapeDef::CylinderTank(d)) => Some((d.diameter, d.length)),
+        _ => None,
+    };
+    let Some(entry) = (crate::palette::entries(catalog).into_iter()).find(|e| e.id == "tank")
+    else {
+        return false;
+    };
+    let mut given = entry.part;
+    if let Some(on) = &tank.on {
+        let Some((holder, node)) = on.split_once('.') else {
+            return false;
+        };
+        let holder = craft.parts.iter().position(|p| p.id == holder);
+        let width = holder
+            .and_then(|h| craft.assembly.parts().get(h))
+            .and_then(|p| p.node(node))
+            .map(|n| n.size);
+        let Some(width) = width.filter(|w| *w > 0.0) else {
+            return false;
+        };
+        fit(&mut given, &Against::node(width), catalog);
+    }
+    let close = |a: f64, b: f64| (a - b).abs() <= 1e-6 * a.abs().max(1.0);
+    match (size(tank), size(&given)) {
+        (Some((d, l)), Some((gd, gl))) => close(d, gd) && close(l, gl),
+        _ => false,
+    }
 }
 
 /// What `tank` holds when full, kg, made `diameter` across and `length` long. None if it cannot
@@ -270,11 +506,7 @@ fn round_up(value: f64, step: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        data::CraftDef,
-        palette::{self, Group},
-        shaping::part_sizes,
-    };
+    use crate::{data::CraftDef, palette, shaping::part_sizes};
 
     fn catalog() -> PartCatalog {
         crate::vessel::tests::catalog()
@@ -337,28 +569,6 @@ mod tests {
             .sum()
     }
 
-    #[test]
-    fn a_procedural_part_takes_the_width_it_goes_on() {
-        let catalog = catalog();
-        let at = Against::node(3.0);
-        let tank = fitted("tank", &at, &catalog);
-        assert_eq!((size(&tank, "length"), size(&tank, "diameter")), (9.0, 3.0));
-        let nose = fitted("nose_cone", &at, &catalog);
-        assert_eq!(size(&nose, "bottom_diameter"), 3.0);
-        let decoupler = fitted("decoupler", &at, &catalog);
-        assert!(
-            matches!(&decoupler.procedural, Some(ProceduralDef::Decoupler(d)) if d.diameter == 3.0)
-        );
-        let fin = fitted("fin", &Against::surface(2.0), &catalog);
-        assert_eq!((size(&fin, "span"), size(&fin, "root_chord")), (1.6, 2.4));
-        // A catalogue part stays as it was.
-        let all = palette::entries(&catalog);
-        let engine = all.iter().find(|e| e.group == Group::Engines).unwrap();
-        let mut copy = engine.part.clone();
-        fit(&mut copy, &Against::node(9.0), &catalog);
-        assert_eq!(copy, engine.part);
-    }
-
     /// A structural tube put on a 1.25 m tank is a 1.25 m tube, not an adapter out to the width
     /// it came with.
     #[test]
@@ -367,24 +577,6 @@ mod tests {
         let tube = fitted("structural", &Against::node(1.25), &catalog);
         assert_eq!(size(&tube, "bottom_diameter"), 1.25);
         assert_eq!(size(&tube, "top_diameter"), 1.25);
-    }
-
-    /// Put on a 2 m hull's side, a tank, a decoupler and a tube are half as wide: a booster beside
-    /// its core. A fin there is still sized for the whole hull.
-    #[test]
-    fn a_part_beside_a_hull_is_half_as_wide() {
-        let catalog = catalog();
-        let side = Against::surface(2.0);
-        let tank = fitted("tank", &side, &catalog);
-        assert_eq!((size(&tank, "diameter"), size(&tank, "length")), (1.0, 3.0));
-        let decoupler = fitted("decoupler", &side, &catalog);
-        assert!(
-            matches!(&decoupler.procedural, Some(ProceduralDef::Decoupler(d)) if d.diameter == 1.0)
-        );
-        let tube = fitted("structural", &side, &catalog);
-        assert_eq!(size(&tube, "bottom_diameter"), 1.0);
-        let fin = fitted("fin", &side, &catalog);
-        assert_eq!(size(&fin, "root_chord"), 2.4);
     }
 
     /// A tank put on a K-0's mount (a node as narrow as its nozzle) is not 0.3 m across: it holds

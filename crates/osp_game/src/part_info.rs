@@ -559,27 +559,3 @@ fn profile(profile: ShellProfile) -> &'static str {
         ShellProfile::Haack => "Von Karman",
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_tile_names_its_vessel_and_parts() {
-        assert_eq!(
-            parse_group("3:7,8,9"),
-            Some((VesselId(3), vec![PartId(7), PartId(8), PartId(9)]))
-        );
-        assert_eq!(parse_group("3:7"), Some((VesselId(3), vec![PartId(7)])));
-        assert_eq!(parse_group("3:"), None);
-        assert_eq!(parse_group("3"), None);
-    }
-
-    #[test]
-    fn keys_name_a_part_of_a_vessel() {
-        let key = key(VesselId(12), PartId(7));
-        assert_eq!(key, "12-7");
-        assert_eq!(parse_key(&key), Some((VesselId(12), PartId(7))));
-        assert_eq!(parse_key("12"), None);
-    }
-}

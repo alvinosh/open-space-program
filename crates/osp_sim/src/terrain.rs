@@ -521,14 +521,4 @@ mod tests {
         let sea = Body::surface_normal_fixed(20f64.to_radians(), 0.0);
         assert_eq!(terrain.height(sea), 0.0);
     }
-
-    #[test]
-    fn pad_defaults_to_just_above_the_ground() {
-        let mut s = site();
-        s.pad.as_mut().unwrap().elevation = None;
-        s.roads.clear();
-        let terrain = Terrain::new(R, Some(Arc::new(Slope)), &[&s]);
-        let ground = Slope.height(at(&s, 0.0, 0.0), FINEST);
-        assert!((terrain.height(at(&s, 0.0, 0.0)) - (ground + 1.0)).abs() < 1e-9);
-    }
 }

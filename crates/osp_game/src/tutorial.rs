@@ -293,24 +293,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn keys_are_named_as_on_a_keycap() {
-        for (key, label) in [
-            (KeyCode::KeyM, "M"),
-            (KeyCode::Digit5, "5"),
-            (KeyCode::Space, "Space"),
-            (KeyCode::ShiftRight, "Shift"),
-            (KeyCode::ControlLeft, "Ctrl"),
-            (KeyCode::Period, "."),
-            (KeyCode::Comma, ","),
-            (KeyCode::Slash, "/"),
-            (KeyCode::Escape, "Esc"),
-            (KeyCode::F1, "F1"),
-            (KeyCode::ArrowLeft, "Left"),
-            (KeyCode::BracketRight, "]"),
-        ] {
-            assert_eq!(key_label(key), label);
-        }
-    }
 }

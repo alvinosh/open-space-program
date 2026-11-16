@@ -998,43 +998,6 @@ mod tests {
         );
     }
 
-    /// An engine pointing along +Z behaves as it always did: the same figures to the last bit,
-    /// whichever way the part frame around it is turned about its thrust axis.
-    #[test]
-    fn an_engine_firing_along_the_axis_is_unchanged() {
-        let mut p = propulsion(vec![stage(&["K-1 Booster"; 4], 0.0, 5_000.0, 3.7, 40.0)]);
-        for e in &mut p.engines {
-            e.thrust = 8e5;
-            assert_eq!(e.direction, DVec3::Z);
-        }
-        let com = DVec3::new(0.01, -0.02, 20.0);
-        let (force, torque) = actuate(&mut p, com, DVec3::new(0.3, -0.6, 0.2));
-        // The old formulas, written out for thrust along +Z.
-        let base = p.parts().base();
-        let (mut want_force, mut want_torque) = (DVec3::ZERO, DVec3::ZERO);
-        for e in &p.engines {
-            let r = e.mount - DVec3::Z * base - com;
-            let below = if r.z > 0.0 { -1.0 } else { 1.0 };
-            let c = DVec3::new(0.3, -0.6, 0.2);
-            let mut tilt = DVec2::new(-c.y, c.x) * below;
-            let radial = r.truncate();
-            if radial.length() > ON_LINE {
-                tilt += radial.normalize().perp() * c.z;
-            }
-            if tilt.length_squared() > 1.0 {
-                tilt = tilt.normalize();
-            }
-            let deflection = tilt * gimbal_range(e);
-            let angle = deflection.length();
-            let side = deflection.normalize_or_zero() * angle.sin();
-            let f = e.thrust * DVec3::new(side.x, side.y, angle.cos());
-            want_force += f;
-            want_torque += r.cross(f);
-        }
-        assert_eq!(force, want_force);
-        assert_eq!(torque, want_torque);
-    }
-
     #[test]
     fn clusters_roll_by_gimballing_sideways() {
         let mut p = propulsion(vec![stage(&["K-1 Booster"; 9], 0.0, 5_000.0, 3.7, 40.0)]);

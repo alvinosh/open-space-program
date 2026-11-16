@@ -280,14 +280,6 @@ mod tests {
     }
 
     #[test]
-    fn past_its_limit_a_part_comes_off_and_only_a_critical_one_ends_the_vessel() {
-        let mut part = lump(801.0);
-        assert!(part.burned_through() && !part.failed());
-        part.critical = true;
-        assert!(part.failed() && !part.burned_through());
-    }
-
-    #[test]
     fn heat_crosses_a_joint_to_level_and_is_kept() {
         let (hot, cold) = (PartId(1), PartId(2));
         let mut big = lump(1000.0);

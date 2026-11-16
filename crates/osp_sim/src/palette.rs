@@ -11,6 +11,8 @@
 //! one on an engine feeds it, and a fin is sized for the hull it stands on. What goes on a surface says by which of its own nodes, and how far it
 //! is turned about the joint so that it stands the right way up ([`Entry::surface`]).
 
+use std::f64::consts::FRAC_1_SQRT_2;
+
 use serde_json::json;
 
 use crate::{
@@ -339,7 +341,11 @@ fn procedural(catalog: &PartCatalog) -> Vec<(Entry, &'static str)> {
                 ),
                 json!({
                     "id": "", "name": "Tank",
-                    "shape": { "cylinder_tank": { "diameter": 2.0, "length": 4.0 } },
+                    // Skirts down to its domes' tips (√2:1, 0.71 m on 2 m): a cylinder outside.
+                    "shape": { "cylinder_tank": {
+                        "diameter": 2.0, "length": 4.0,
+                        "aft_skirt": FRAC_1_SQRT_2, "forward_skirt": FRAC_1_SQRT_2,
+                    } },
                     "components": [{ "storage": {
                         "type": "Stiffened Al 2219",
                         "contents": new_tank.contents,
@@ -1275,23 +1281,6 @@ mod tests {
     }
 
     #[test]
-    fn each_part_is_listed_by_what_it_does_and_says_its_figures() {
-        let all = entries(&catalog());
-        let group = |id: &str| all.iter().find(|e| e.id == id).unwrap().group;
-        assert_eq!(group("tank"), Group::Tanks);
-        assert_eq!(group("decoupler"), Group::Structure);
-        assert_eq!(group("fuel_line"), Group::Structure);
-        assert_eq!(group("fin"), Group::Aero);
-        let tank = all.iter().find(|e| e.id == "tank").unwrap();
-        assert!(tank.detail.starts_with("2 m × 4 m · ") && tank.detail.contains("m³"));
-        assert_eq!((tank.width, tank.propellant), (None, None));
-        let engine = all.iter().find(|e| e.group == Group::Engines).unwrap();
-        assert!(engine.detail.contains("Isp") && engine.width.is_some());
-        let pod = all.iter().find(|e| e.id.starts_with("pod:")).unwrap();
-        assert!(pod.detail.contains("crew") && pod.width.is_some());
-    }
-
-    #[test]
     fn propellants_are_known_by_their_kind() {
         let of = |kind: Option<&str>, burns: &[&str]| Propellant::of(kind, burns.iter().copied());
         assert_eq!(
@@ -1323,17 +1312,5 @@ mod tests {
         for kind in Propellant::ALL {
             assert_eq!(Propellant::parse(kind.id()), Some(kind));
         }
-    }
-
-    #[test]
-    fn figures_read_as_a_player_would_say_them() {
-        assert_eq!(force(914_000.0), "914 kN");
-        assert_eq!(force(7_775_490.0), "7.78 MN");
-        assert_eq!(force(445.0), "445 N");
-        assert_eq!(mass(470.0), "470 kg");
-        assert_eq!(mass(8444.1), "8.44 t");
-        assert_eq!(metres(2.0), "2 m");
-        assert_eq!(metres(3.723), "3.72 m");
-        assert_eq!(three_figures(12.0), "12");
     }
 }

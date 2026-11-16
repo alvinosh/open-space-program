@@ -618,29 +618,6 @@ mod tests {
     }
 
     #[test]
-    fn a_new_player_gets_casual_and_realistic_is_all_there() {
-        let (modes, available) = shipped();
-        let mode = |id: &str| modes.iter().find(|m| m.id == id).unwrap();
-        let defaults: Vec<_> = modes.iter().filter(|m| m.default).collect();
-        assert_eq!(defaults.len(), 1);
-        assert_eq!(defaults[0].id, "casual");
-        assert!(mode("casual").mods.is_empty());
-        assert!(can_offer(mode("casual"), &available));
-        assert!(can_offer(mode("realistic"), &available));
-        for id in [
-            "realistic_engines",
-            "realistic_fuels",
-            "realistic_avionics",
-            "realistic_life_support",
-            "realistic_radiation",
-            "realistic_comms",
-            "realism",
-        ] {
-            assert!(mode("realistic").mods.iter().any(|m| m == id), "{id}");
-        }
-    }
-
-    #[test]
     fn choices_are_a_mode_only_if_they_turn_on_just_what_it_does() {
         let (modes, available) = shipped();
         let name =

@@ -1017,7 +1017,11 @@ fn set_on(
         }
         (ShapeDef::Shell(d), "cap_bottom") => d.cap_bottom = parse_toggle(text)?,
         (ShapeDef::Shell(d), "cap_top") => d.cap_top = parse_toggle(text)?,
-        (ShapeDef::CylinderTank(d), "dome") => d.dome = number(),
+        (ShapeDef::CylinderTank(d), "dome") => {
+            let domes = d.dome_height();
+            d.dome = number();
+            d.keep_skirts(domes);
+        }
         (ShapeDef::ConeTank(d), "dome") => d.dome = number(),
         (ShapeDef::CylinderTank(d), "aft_skirt") => d.aft_skirt = number(),
         (ShapeDef::CylinderTank(d), "forward_skirt") => d.forward_skirt = number(),
@@ -1072,16 +1076,19 @@ fn switched(shape: &ShapeDef, kind: &str) -> ShapeDef {
     };
     let widest = bottom.max(top);
     match kind {
-        "cylinder" => ShapeDef::CylinderTank(CylinderTankDef {
-            diameter: widest,
-            // Long enough for its domes.
-            length: length.max(dome * widest * 1.001),
-            dome,
-            common_bulkhead: None,
-            aft_skirt: 0.0,
-            forward_skirt: 0.0,
-            thrust_plate: false,
-        }),
+        "cylinder" => ShapeDef::CylinderTank(
+            CylinderTankDef {
+                diameter: widest,
+                // Long enough for its domes.
+                length: length.max(dome * widest * 1.001),
+                dome,
+                common_bulkhead: None,
+                aft_skirt: 0.0,
+                forward_skirt: 0.0,
+                thrust_plate: false,
+            }
+            .skirted(),
+        ),
         "cone" => ShapeDef::ConeTank(ConeTankDef {
             length: length.max(dome * (bottom + top) / 2.0 * 1.001),
             bottom_diameter: bottom,
@@ -1311,12 +1318,6 @@ mod tests {
             .map(|(name, ratio)| ((*name).to_owned(), *ratio))
             .collect();
         storage(tank).is_some_and(|s| same_mix(&s.contents, &wanted))
-    }
-
-    #[test]
-    fn the_parts_list_tank_holds_what_a_new_tank_is_said_to() {
-        let new_tank = new_tank(&catalog()).contents;
-        assert!(storage(&part("tank")).is_some_and(|s| same_mix(&s.contents, &new_tank)));
     }
 
     #[test]

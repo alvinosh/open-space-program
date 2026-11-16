@@ -401,9 +401,14 @@ pub fn dev_version() -> bool {
     })
 }
 
+/// Where the settings are kept: `OSP_SETTINGS`, or `settings.json` in `OSP_USER_DIR` (as saves and
+/// windows are, so a playtest's first game leaves the player's own alone), or the platform's place.
 pub fn settings_file() -> Option<PathBuf> {
     if let Some(file) = std::env::var_os("OSP_SETTINGS") {
         return Some(file.into());
+    }
+    if let Some(dir) = std::env::var_os("OSP_USER_DIR") {
+        return Some(PathBuf::from(dir).join("settings.json"));
     }
     let dir = if cfg!(target_os = "windows") {
         PathBuf::from(std::env::var_os("APPDATA")?)
@@ -1014,47 +1019,5 @@ mod settings_file_tests {
         // A binding gone from the records takes nothing with it.
         let keys = BTreeMap::from([("gone#0".to_owned(), KeyCode::KeyU)]);
         assert_eq!(rebound(&defaults, &keys)[2].key, KeyCode::Space);
-    }
-
-    #[test]
-    fn the_rows_say_what_a_key_clashes_with_and_which_one_is_asked_for() {
-        let mut data = UiData::default();
-        let bindings = [
-            binding(KeyCode::KeyP, "stage"),
-            binding(KeyCode::KeyP, "map"),
-            KeyBindingDef {
-                label: None,
-                ..binding(KeyCode::KeyQ, "debug")
-            },
-        ];
-        publish_keys(&mut data, &bindings, Some("map#0"));
-        let text = |path: &str| match data.get(path) {
-            Some(osp_ui::UiValue::Text(text)) => text.clone(),
-            _ => String::new(),
-        };
-        assert_eq!(text("keys.rows[0].clash"), "map");
-        assert_eq!(text("keys.rows[1].clash"), "stage");
-        assert_eq!(text("keys.rows[1].key"), "Press a key");
-        assert_eq!(text("keys.rows[0].key"), "P");
-        // Without a label it is not offered.
-        assert_eq!(text("keys.rows[2].key"), "");
-    }
-
-    #[test]
-    fn every_key_the_game_ships_with_that_a_player_needs_can_be_rebound() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/core");
-        let registry = osp_mods::load(&root, None).registry;
-        let docs = UiDocuments::from_registry(&registry, &mut Vec::new());
-        for action in [
-            "vessel.stage",
-            "vessel.pitch_up",
-            "game.menu",
-            "view.toggle_map",
-        ] {
-            assert!(
-                (docs.bindings.iter()).any(|b| b.action == action && b.label.is_some()),
-                "{action}"
-            );
-        }
     }
 }

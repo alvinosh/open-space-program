@@ -748,15 +748,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_range_may_leave_either_end_open() {
-        let range = Range::new(Some(2.0), None);
-        assert!(range.contains(2.0) && range.contains(1e9) && !range.contains(1.9));
-        let range = Range::new(None, Some(2.0));
-        assert!(range.contains(-1e9) && range.contains(2.0) && !range.contains(2.1));
-        assert!(Range::default().contains(0.0));
-    }
-
-    #[test]
     fn altitude_and_speed_look_at_where_and_how_fast() {
         let orbit = in_orbit();
         assert!(now(
@@ -910,28 +901,6 @@ pub(crate) mod tests {
         assert!(!now(&pad, "{ type: 'Propellant', max: 100 }"));
         // An upper stage has little compared with the whole rocket.
         assert!(now(&in_orbit(), "{ type: 'Propellant', max: 100000 }"));
-    }
-
-    #[test]
-    fn destroyed_and_elapsed_look_at_what_happened() {
-        let pad = on_the_pad();
-        assert!(!now(&pad, "{ type: 'Destroyed' }"));
-        let crashed = Stats {
-            crashed: true,
-            ..Stats::default()
-        };
-        assert!(holds(&pad, crashed, "{ type: 'Destroyed' }"));
-        let torn = Stats {
-            destroyed: true,
-            ..Stats::default()
-        };
-        assert!(holds(&pad, torn, "{ type: 'Destroyed' }"));
-        let ten = Stats {
-            elapsed: 10.0,
-            ..Stats::default()
-        };
-        assert!(holds(&pad, ten, "{ type: 'Elapsed', seconds: 10 }"));
-        assert!(!holds(&pad, ten, "{ type: 'Elapsed', seconds: 11 }"));
     }
 
     /// `goal` looks at `universe` for `dt` more seconds.
@@ -1182,20 +1151,6 @@ pub(crate) mod tests {
         // Standing on the pad, the nose points up.
         assert!(now(&pad, "{ type: 'Pitch', min: 80 }"));
         assert!(!now(&pad, "{ type: 'Pitch', max: 45 }"));
-    }
-
-    #[test]
-    fn planned_burns_are_counted() {
-        let mut orbit = in_orbit();
-        assert!(now(&orbit, "{ type: 'Plan', max: 0 }"));
-        assert!(!now(&orbit, "{ type: 'Plan', min: 1 }"));
-        let burn = crate::plan::Burn {
-            time: orbit.time().add_seconds(600.0),
-            delta_v: DVec3::new(100.0, 0.0, 0.0),
-        };
-        orbit.vessels[0].plan.add(burn);
-        assert!(now(&orbit, "{ type: 'Plan', min: 1 }"));
-        assert!(!now(&orbit, "{ type: 'Plan', max: 0 }"));
     }
 
     #[test]

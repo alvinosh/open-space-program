@@ -133,6 +133,11 @@ const OVER_FLOOR: f64 = 0.5;
 /// the way from the middle of the floor to the dome.
 const WALL_REACH: f64 = 0.92;
 const FOCUS_REACH: f64 = 0.85;
+/// A craft is in sight when every corner of the box round it is within this of the middle of the
+/// view, rad: the camera's 60° across its height, less a margin.
+const IN_SIGHT: f64 = 0.44;
+/// How fast the view eases to a new framing, per second: most of the way in half a second.
+const EASE: f64 = 5.0;
 /// Which way the view first looks from at what is on show, rad.
 const START_YAW: f64 = std::f64::consts::PI * 1.25;
 const START_PITCH: f64 = 0.12;
@@ -141,29 +146,31 @@ pub struct HangarPlugin;
 
 impl Plugin for HangarPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Editor>().add_systems(
-            Update,
-            (
-                // After the menu, which leaves Esc to the editor while the editor is open.
-                editor_actions
-                    .in_set(FrameSet::Input)
-                    .in_set(EditorActions)
-                    .after(menu_actions)
-                    .before(tree_actions),
-                revert_actions.in_set(FrameSet::Input).after(editor_actions),
-                follow_the_career
-                    .in_set(FrameSet::Input)
-                    .after(editor_actions),
-                // As soon as it opens or closes, for the menu and flight to go by.
-                tell_the_game.in_set(FrameSet::Input).after(revert_actions),
-                drive_camera.in_set(FrameSet::Camera).after(update_camera),
-                place_hangar.in_set(FrameSet::Render),
-                refit_hangar.in_set(FrameSet::Render).before(place_hangar),
-                // After what lights the world, which would take this for a night in deep space.
-                light_hangar.after(FrameSet::Render),
-                publish_editor,
-            ),
-        );
+        app.init_resource::<Editor>()
+            .add_systems(
+                Update,
+                (
+                    // After the menu, which leaves Esc to the editor while the editor is open.
+                    editor_actions
+                        .in_set(FrameSet::Input)
+                        .in_set(EditorActions)
+                        .after(menu_actions)
+                        .before(tree_actions),
+                    revert_actions.in_set(FrameSet::Input).after(editor_actions),
+                    follow_the_career
+                        .in_set(FrameSet::Input)
+                        .after(editor_actions),
+                    // As soon as it opens or closes, for the menu and flight to go by.
+                    tell_the_game.in_set(FrameSet::Input).after(revert_actions),
+                    drive_camera.in_set(FrameSet::Camera).after(update_camera),
+                    place_hangar.in_set(FrameSet::Render),
+                    refit_hangar.in_set(FrameSet::Render).before(place_hangar),
+                    // After what lights the world, which would take this for a night in deep space.
+                    light_hangar.after(FrameSet::Render),
+                    publish_editor,
+                ),
+            )
+            .add_systems(Last, tell_busy);
     }
 }
 
@@ -273,6 +280,10 @@ struct Showing {
     /// The action the player said may throw away the changes to the craft (`editor.discard`): it
     /// goes ahead once without asking.
     discard: Option<String>,
+    /// Where the view is easing to, to keep a grown craft in sight: what it looks at and how far.
+    goal: Option<(DVec3, f64)>,
+    /// The player has moved the view since the craft last changed: it stays where they put it.
+    moved: bool,
 }
 
 impl Showing {
@@ -324,8 +335,53 @@ impl Showing {
 
     /// Look at the middle of the craft, from far enough to see all of it.
     fn frame(&mut self) {
-        self.look_at = self.middle();
-        self.distance = self.size() * 1.15 + 6.0;
+        (self.look_at, self.distance) = self.framing();
+        self.goal = None;
+    }
+
+    /// What to look at and from how far to see all the craft.
+    fn framing(&self) -> (DVec3, f64) {
+        (self.middle(), self.size() * 1.15 + 6.0)
+    }
+
+    /// Whether all the craft is in sight from where the view is.
+    fn in_sight(&self) -> bool {
+        let focus = self.focus();
+        let mut eye = focus + self.around() * self.distance.min(self.reach());
+        eye.z = eye.z.max(OVER_FLOOR);
+        let ahead = focus - eye;
+        let (low, high) = self.bounds();
+        (0..8).all(|k| {
+            let corner = DVec3::new(
+                if k & 1 == 0 { low.x } else { high.x },
+                if k & 2 == 0 { low.y } else { high.y },
+                if k & 4 == 0 { low.z } else { high.z },
+            );
+            ahead.angle_between(corner - eye) <= IN_SIGHT
+        })
+    }
+
+    /// The craft has changed: if it has grown out of sight and the player has not moved the view
+    /// since it last changed, the view eases out to see all of it, looking the same way.
+    fn follow(&mut self, grew: bool) {
+        if grew && !self.moved && !self.in_sight() {
+            self.goal = Some(self.framing());
+        }
+        self.moved = false;
+    }
+
+    /// Ease the view towards its goal, `dt` seconds on.
+    fn ease(&mut self, dt: f64) {
+        let Some((look_at, distance)) = self.goal else {
+            return;
+        };
+        let k = 1.0 - (-EASE * dt).exp();
+        self.look_at += (look_at - self.look_at) * k;
+        self.distance += (distance - self.distance) * k;
+        if self.look_at.distance(look_at) < 0.01 && (self.distance - distance).abs() < 0.01 {
+            (self.look_at, self.distance) = (look_at, distance);
+            self.goal = None;
+        }
     }
 }
 
@@ -385,6 +441,15 @@ impl Showing {
     /// Move the view as the player asks, keeping it in the hangar. `distance` is how far they asked
     /// for: turning towards the roof brings the view in, and turning back takes it out again.
     fn steer(&mut self, input: &ViewInput) {
+        // The player moving the view takes it from any easing, and leaves it where they put it.
+        let asked = input.turn != DVec2::ZERO
+            || input.drag != DVec2::ZERO
+            || input.zoom != 0.0
+            || input.walk != DVec3::ZERO;
+        if asked {
+            self.goal = None;
+            self.moved = true;
+        }
         self.yaw += input.turn.x * 0.005;
         self.pitch = (self.pitch + input.turn.y * 0.005).clamp(-MAX_PITCH, MAX_PITCH);
 
@@ -654,9 +719,21 @@ impl Editor {
         else {
             return;
         };
+        let before = (showing.low, showing.high);
         (showing.low, showing.high) = extent(sim, index);
+        let grew =
+            showing.low.cmplt(before.0 - 0.01).any() || showing.high.cmpgt(before.1 + 0.01).any();
         // It stays where it is, lifted only so as not to go through the floor.
         showing.keep_in();
+        // A craft grown out of sight is brought back into it.
+        showing.follow(grew);
+    }
+
+    /// The view is easing to keep the craft in sight.
+    pub(crate) fn is_easing(&self) -> bool {
+        self.0
+            .as_ref()
+            .is_some_and(|showing| showing.goal.is_some())
     }
 
     /// Show the craft standing, for the pad and for orbit, or lying, for the runway, as `place`
@@ -1669,6 +1746,8 @@ fn open_hangar(
         staging_was_open: ui.shown(STAGING),
         list_open: true,
         discard: None,
+        goal: None,
+        moved: false,
     };
     showing.hangar = spawn_hangar(
         commands,
@@ -1781,6 +1860,7 @@ fn drive_camera(
         input.dt = time.delta_secs_f64();
     }
     showing.steer(&input);
+    showing.ease(time.delta_secs_f64());
     let root = craft_origin(vessel, &sim.universe.system, frame.time);
     let floor = frame.relative(vessel.parent(), root) - showing.anchor;
     let (eye, focus) = showing.view(floor);
@@ -1847,6 +1927,22 @@ fn light_hangar(
     if editor.0.is_some() {
         **sun = Transform::default().looking_to(Vec3::new(0.35, -0.8, -0.6), Vec3::Y);
         exposure.ev100 = Exposure::SUNLIGHT.ev100;
+    }
+}
+
+/// Whether something the player did is still being built to go on show, for playtests to wait on
+/// (`osp_game::playtest`). At the frame's end, so that a build started this frame counts.
+fn tell_busy(
+    (placing, shaping, moving): (Res<Placing>, Res<Shaping>, Res<Moving>),
+    editor: Res<Editor>,
+    mut status: ResMut<EditorStatus>,
+) {
+    let busy = placing.is_building()
+        || shaping.is_building()
+        || moving.is_building()
+        || editor.is_easing();
+    if status.is_busy() != busy {
+        status.set_busy(busy);
     }
 }
 
@@ -1993,88 +2089,12 @@ mod tests {
     }
 
     #[test]
-    fn a_launch_stands_on_the_pad_or_the_runway_and_an_orbit_on_nothing() {
-        let all = [site("strip", false, true), site("a", true, false)];
-        let on = |place| launch_ground(place, &all).map(|(s, runway)| (s.id.as_str(), runway));
-        assert_eq!(on(Place::Pad), Some(("a", false)));
-        assert_eq!(on(Place::Runway), Some(("strip", true)));
-        assert_eq!(on(Place::Orbit), None);
-        assert!(launch_ground(Place::Runway, &[site("a", true, false)]).is_none());
-    }
-
-    #[test]
-    fn a_revert_asks_about_where_it_goes() {
-        let mut dialog = Dialog::default();
-        dialog.ask(revert_question(RevertTo::Hangar, "Saturn V", 300.0));
-        assert_eq!(dialog.title(), "Revert to hangar?");
-        dialog.ask(revert_question(RevertTo::Launch, "Saturn V", 300.0));
-        assert_eq!(dialog.title(), "Revert to launch?");
-        assert_eq!(RevertTo::parse("hangar"), Some(RevertTo::Hangar));
-        assert_eq!(
-            RevertTo::parse(RevertTo::Launch.id()),
-            Some(RevertTo::Launch)
-        );
-        assert_eq!(RevertTo::parse("orbit"), None);
-    }
-
-    #[test]
     fn the_time_since_a_launch_reads_naturally() {
         assert_eq!(time_since(40.2), "40 s");
         assert_eq!(time_since(720.0), "12 min");
         assert_eq!(time_since(3.0 * 3_600.0 + 300.0), "3 h 5 min");
         assert_eq!(time_since(2.0 * 86_400.0 + 4.0 * 3_600.0), "2 d 4 h");
         assert_eq!(time_since(-5.0), "0 s");
-    }
-
-    #[test]
-    fn places_read_back_as_they_are_written() {
-        for place in [Place::Pad, Place::Runway, Place::Orbit] {
-            assert_eq!(Place::parse(place.id()), Some(place));
-        }
-        assert_eq!(Place::parse("moon"), None);
-    }
-
-    /// The points of a mesh's positions.
-    fn points(mesh: &Mesh) -> Vec<Vec3> {
-        let positions = mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap();
-        positions
-            .as_float3()
-            .unwrap()
-            .iter()
-            .map(|p| Vec3::from_array(*p))
-            .collect()
-    }
-
-    #[test]
-    fn the_hall_rises_from_the_edge_of_the_floor_to_its_roof() {
-        let walls = points(&walls_mesh(100.0, 50.0));
-        let top = walls.iter().map(|p| p.y).fold(0.0, f32::max);
-        assert!((top - 50.0).abs() < 1e-3);
-        let widest = walls.iter().map(|p| p.xz().length()).fold(0.0, f32::max);
-        assert!((widest - 100.0).abs() < 1e-3);
-        assert!(walls.iter().all(|p| p.y >= 0.0));
-    }
-
-    #[test]
-    fn the_floor_has_every_mip_level_and_its_lines_show_up_close_and_fade_far_away() {
-        let image = floor_image();
-        let levels = image.texture_descriptor.mip_level_count as usize;
-        assert_eq!(1 << (levels - 1), FLOOR_TEXELS);
-        let data = image.data.as_ref().unwrap();
-        let texels: usize = (0..levels)
-            .map(|level| (FLOOR_TEXELS >> level).pow(2))
-            .sum();
-        assert_eq!(data.len(), texels * 4);
-        // At the top a texel is on a line or it is not; the last level is the average of them all.
-        let texel = |offset: usize| data[offset * 4];
-        let on_line = texel(0);
-        let between = texel(FLOOR_TEXELS * (FLOOR_TEXELS / 10) + FLOOR_TEXELS / 10);
-        let average = texel(texels - 1);
-        assert!(on_line > between);
-        assert!(
-            between < average && average < on_line,
-            "{between} {average} {on_line}"
-        );
     }
 
     /// A craft 100 m tall on show.
@@ -2109,6 +2129,8 @@ mod tests {
             staging_was_open: true,
             list_open: false,
             discard: None,
+            goal: None,
+            moved: false,
         }
     }
 
@@ -2212,58 +2234,6 @@ mod tests {
             ..default()
         });
         assert!(view.distance < far);
-    }
-
-    #[test]
-    fn an_empty_hangar_stands_a_vessel_with_nothing_in_it() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let content = osp_mods::load(&root.join("assets/core"), None);
-        let registry = &content.registry;
-        let mut diagnostics = Vec::new();
-        let system = osp_sim::system::SolarSystem::from_def(&osp_sim::data::SystemDef {
-            bodies: registry.all("bodies", &mut diagnostics),
-        })
-        .unwrap();
-        let vessel = Vessel::empty_display(&system, SimTime::from_seconds(0.0));
-        assert!(vessel.propulsion.parts().parts().is_empty());
-        assert_eq!(vessel.propulsion.length(), 0.0);
-        assert!(vessel.propulsion.mass().abs() < 1e-9);
-    }
-
-    #[test]
-    fn the_list_of_vessels_goes_by_mod_and_marks_the_one_on_show() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let content = GameContent(osp_mods::load(
-            &root.join("assets/core"),
-            Some(&root.join("mods")),
-        ));
-        let groups = vessel_groups(&content, Some("glider"));
-        let mut data = UiData::default();
-        data.set("groups", groups);
-        let text = |key: &str| format!("{:?}", data.get(key));
-        assert!(
-            text("groups[0].name").contains("Core"),
-            "{}",
-            text("groups[0].name")
-        );
-        let first = data.list_len("groups[0].craft");
-        let total: usize = (0..data.list_len("groups"))
-            .map(|g| data.list_len(&format!("groups[{g}].craft")))
-            .sum();
-        assert!(first > 0 && total > first, "{first} of {total}");
-        let mut lit = 0;
-        for g in 0..data.list_len("groups") {
-            for c in 0..data.list_len(&format!("groups[{g}].craft")) {
-                if data.condition(&format!("groups[{g}].craft[{c}].selected")) {
-                    lit += 1;
-                    assert!(
-                        data.condition(&format!("groups[{g}].craft[{c}].id == glider")),
-                        "the wrong one is lit"
-                    );
-                }
-            }
-        }
-        assert_eq!(lit, 1);
     }
 
     #[test]

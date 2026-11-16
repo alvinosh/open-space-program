@@ -211,7 +211,11 @@ pub fn sizes(shape: &ShapeDef) -> Vec<Size> {
 pub fn set(shape: &mut ShapeDef, name: &str, value: f64) -> bool {
     match (shape, name) {
         (ShapeDef::CylinderTank(d), "length") => d.length = value,
-        (ShapeDef::CylinderTank(d), "diameter") => d.diameter = value,
+        (ShapeDef::CylinderTank(d), "diameter") => {
+            let domes = d.dome_height();
+            d.diameter = value;
+            d.keep_skirts(domes);
+        }
         (ShapeDef::ConeTank(d), "length") => d.length = value,
         (ShapeDef::ConeTank(d), "bottom_diameter") => d.bottom_diameter = value,
         (ShapeDef::ConeTank(d), "top_diameter") => d.top_diameter = value,

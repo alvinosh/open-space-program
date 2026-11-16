@@ -1,0 +1,20 @@
+{
+  "id": "T322",
+  "title": "Undo and redo on screen, and the editor's keys do not fly the rocket",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "assets/core/layouts/editor.json5",
+    "crates/osp_editor/src/shaping.rs (Ctrl+Z)",
+    "assets/core/keybindings/default.json5"
+  ],
+  "created": "2026-11-16",
+  "updated": "2026-11-16",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2427
+}

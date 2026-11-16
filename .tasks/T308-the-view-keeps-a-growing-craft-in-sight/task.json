@@ -2,7 +2,7 @@
   "id": "T308",
   "title": "The view keeps a growing craft in sight",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "editor",
   "size": "S",
   "parent": "T221",
@@ -11,8 +11,8 @@
     "crates/osp_editor/src/hangar.rs (the view)"
   ],
   "created": "2026-11-13",
-  "updated": "2026-11-13",
-  "done": null,
+  "updated": "2026-11-16",
+  "done": "2026-11-16",
   "milestone": "M3",
   "priority": 61.24377
 }

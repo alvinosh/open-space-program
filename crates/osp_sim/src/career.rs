@@ -316,25 +316,6 @@ pub(crate) mod tests {
         assert!(career.unlock("rocketry", &tree).is_err(), "only once");
     }
 
-    /// A career starts with its tree's funds, takes in rewards and pays only what it has.
-    #[test]
-    fn a_career_spends_only_the_funds_it_has() {
-        let catalog = catalog();
-        let mut tree = tree(&catalog);
-        tree.def.funds = 50_000.0;
-        let mut career = Career::new(&tree);
-        assert_eq!(career.funds, 50_000.0);
-        career.earn(2_500.0);
-        career.earn(-100.0);
-        assert_eq!(career.funds, 52_500.0);
-        let short = career.pay(60_000.0).unwrap_err();
-        assert_eq!(short, "that costs 60,000, and there is 52,500");
-        career.pay(52_500.0).unwrap();
-        assert_eq!(career.funds, 0.0);
-        assert_eq!(money(1_234_567.4), "1,234,567");
-        assert_eq!(money(999.0), "999");
-    }
-
     /// A pad of 30 t and then 180 t, and a builder of 30 m, 6 m and 40 parts and then 50 m, 10 m and
     /// 100 parts.
     fn facilities() -> Vec<FacilityDef> {

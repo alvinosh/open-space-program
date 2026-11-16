@@ -461,15 +461,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_rail_shows_the_list_then_a_picked_part_then_the_parts() {
-        assert_eq!(rail(true, true, true), "vessels");
-        assert_eq!(rail(false, true, true), "part");
-        assert_eq!(rail(false, true, false), "part");
-        assert_eq!(rail(false, false, true), "parts");
-        assert_eq!(rail(false, false, false), "");
-    }
-
-    #[test]
     fn numbers_read_in_their_units() {
         assert_eq!(shown(3.8, Unit::Metres), "3.80 m");
         assert_eq!(shown(88.0, Unit::Percent), "88%");

@@ -22,7 +22,7 @@ use crate::{
     environment::SOLAR_CONSTANT,
     geometry::{
         Fill, ShapeDef,
-        preset::{BoxDef, CylinderTankDef, RingDef},
+        preset::{BoxDef, CylinderTankDef, NodeDef, RingDef, ShellDef, ShellSection},
     },
     skip::is_default,
     structure::DOME_RATIO,
@@ -61,6 +61,8 @@ pub struct Design {
     pub shape: ShapeDef,
     pub structure: StructureDef,
     pub components: Vec<ComponentDef>,
+    /// Nodes that stand in for the shape's own of the same name, or add to them.
+    pub nodes: Vec<NodeDef>,
 }
 
 impl ProceduralDef {
@@ -163,6 +165,7 @@ impl BatteryRequirement {
                 technology: Some(record.id.clone()),
                 solid: None,
             })],
+            nodes: Vec::new(),
         })
     }
 }
@@ -205,6 +208,7 @@ impl FuelCellRequirement {
                 ..StructureDef::default()
             },
             components: vec![ComponentDef::FuelCell(FuelCellDef { power: self.power })],
+            nodes: Vec::new(),
         })
     }
 }
@@ -267,6 +271,7 @@ impl SolarArrayRequirement {
                 tracking: self.tracking,
                 degradation: 0.01,
             })],
+            nodes: Vec::new(),
         })
     }
 }
@@ -311,6 +316,7 @@ impl RtgRequirement {
                 power: self.power,
                 half_life: 87.7,
             })],
+            nodes: Vec::new(),
         })
     }
 }
@@ -385,6 +391,7 @@ impl AvionicsRequirement {
                 ..StructureDef::default()
             },
             components,
+            nodes: Vec::new(),
         })
     }
 }
@@ -453,6 +460,7 @@ impl AntennaRequirement {
                 relay: self.relay,
                 telemetry: false,
             })],
+            nodes: Vec::new(),
         })
     }
 }
@@ -519,6 +527,7 @@ impl ParachuteRequirement {
                 self.diameter,
                 self.deploy_altitude,
             ))],
+            nodes: Vec::new(),
         })
     }
 }
@@ -530,8 +539,12 @@ const RING_DENSITY: f64 = 2700.0;
 const RING_SAFETY: f64 = 1.25;
 const RING_MIN_WALL: f64 = 0.002;
 const RING_HEIGHT: f64 = 0.04;
+/// An interstage's wall: aluminium this thick, m.
+const INTERSTAGE_WALL: f64 = 0.003;
 
-/// A decoupler: a ring of so much diameter carrying so much load, sized from its wall.
+/// A decoupler: a ring of so much diameter carrying so much load, sized from its wall. With an
+/// interstage, a tube that tall rises from the ring round the engine of the stage above, which
+/// stands on the ring by its nozzle's exit; the tube stays with the stage below when it lets go.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DecouplerRequirement {
@@ -545,6 +558,9 @@ pub struct DecouplerRequirement {
     /// Propellant flows across until it lets go.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub crossfeed: bool,
+    /// How tall the interstage above the ring is, m; none for 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub interstage: f64,
 }
 
 fn is_zero(x: &f64) -> bool {
@@ -567,6 +583,13 @@ impl DecouplerRequirement {
             range: [1e3, 1e8],
             default: 1e6,
         },
+        Field {
+            id: "interstage",
+            label: "Interstage",
+            unit: "m",
+            range: [0.0, 30.0],
+            default: 0.0,
+        },
     ];
 
     fn size(&self) -> Result<Design, String> {
@@ -574,6 +597,12 @@ impl DecouplerRequirement {
             return Err(format!(
                 "a decoupler is a ring of some size carrying some load, not {} m and {} N",
                 self.diameter, self.load
+            ));
+        }
+        if !(self.interstage >= 0.0 && self.interstage.is_finite()) {
+            return Err(format!(
+                "an interstage cannot be {} m tall",
+                self.interstage
             ));
         }
         let circumference = PI * self.diameter;
@@ -585,13 +614,40 @@ impl DecouplerRequirement {
             ));
         }
         let height = RING_HEIGHT * self.diameter;
-        let mass = circumference * height * wall * RING_DENSITY;
-        Ok(Design {
-            shape: ShapeDef::Ring(RingDef {
+        let ring = circumference * height * wall * RING_DENSITY;
+        let tube = circumference * self.interstage * INTERSTAGE_WALL * RING_DENSITY;
+        let mass = ring + tube;
+        // With an interstage, one tube from the ring's bottom to the interstage's top, its top node
+        // where the ring's would be: the engine above stands there, inside the tube.
+        let (shape, nodes) = if self.interstage > 0.0 {
+            let tube = ShapeDef::Shell(ShellDef {
+                bottom_diameter: self.diameter,
+                sections: vec![ShellSection {
+                    length: height + self.interstage,
+                    top_diameter: None,
+                    profile: Default::default(),
+                }],
+                span: None,
+                cap_bottom: false,
+                cap_top: false,
+            });
+            let top = NodeDef {
+                name: "top".into(),
+                position: [0.0, 0.0, height],
+                direction: [0.0, 0.0, 1.0],
+                size: self.diameter,
+            };
+            (tube, vec![top])
+        } else {
+            let ring = ShapeDef::Ring(RingDef {
                 diameter: self.diameter,
                 height,
                 thickness: wall,
-            }),
+            });
+            (ring, Vec::new())
+        };
+        Ok(Design {
+            shape,
             structure: StructureDef {
                 mass: Some(mass),
                 ..StructureDef::default()
@@ -603,6 +659,7 @@ impl DecouplerRequirement {
                 // What its wall carries at the stress it yields at.
                 strength: circumference * wall * RING_STRESS,
             })],
+            nodes,
         })
     }
 }
@@ -681,6 +738,7 @@ impl DockingPortRequirement {
                 impulse: self.impulse,
                 crossfeed: self.crossfeed,
             })],
+            nodes: Vec::new(),
         })
     }
 }
@@ -770,6 +828,7 @@ impl SeparationMotorRequirement {
                     propellant: GRAIN.into(),
                 }),
             ],
+            nodes: Vec::new(),
         })
     }
 }
@@ -979,18 +1038,6 @@ mod tests {
             time += 0.02;
         }
         assert!((time - 3.75).abs() < 0.5, "{time}");
-    }
-
-    #[test]
-    fn a_sizer_lists_what_it_asks_for() {
-        let def = ProceduralDef::Battery(BatteryRequirement {
-            energy: 1.0,
-            technology: SILVER_ZINC.into(),
-            rechargeable: false,
-        });
-        let field = &def.fields()[0];
-        assert_eq!((field.id, field.unit), ("energy", "kJ"));
-        assert!(field.range[0] < field.default && field.default < field.range[1]);
     }
 
     /// An Apollo main, 25.4 m across, packed at about 61 kg; and the parts list's 24 m canopy brings

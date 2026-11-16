@@ -662,8 +662,9 @@ impl Builder {
     /// Put `parts` (a part first, then what it holds, held by each other) at each of `places`,
     /// taking `replacing` and what they hold off first: what the editor does with a part in hand
     /// and its symmetry. See [`put_set`]. Tanks still as the parts list gave them that the parts
-    /// put on join take what their engines burn ([`properties::fill_from_engines`]). Also the ids
-    /// of the parts at each place, top first.
+    /// put on join take what their engines burn ([`properties::fill_from_engines`]), and are made
+    /// big enough for an engine put under them ([`fitting::size_for_engines`]). Also the ids of the
+    /// parts at each place, top first.
     pub fn put_set(
         &mut self,
         catalog: &PartCatalog,
@@ -678,6 +679,8 @@ impl Builder {
         }
         let put: Vec<String> = carried.iter().cloned().collect();
         carried.extend(properties::fill_from_engines(&mut next, catalog, &put));
+        let limits = self.allowed.sizes;
+        carried.extend(fitting::size_for_engines(&mut next, catalog, &put, limits));
         let change = self.edit_checking(catalog, &carried, |draft| {
             *draft = next;
             Ok(())
@@ -1932,7 +1935,10 @@ fn check_nodes(
     let (Some(holds), Some(held)) = (size(parent, near), size(index, far)) else {
         return Ok(());
     };
-    if holds > 0.0 && held > NODE_RATIO * holds && !fitting::engine_front(craft, parent, near) {
+    // An engine's front holds what feeds it and its back the stack below, however wide.
+    let engine_end =
+        fitting::engine_front(craft, parent, near) || fitting::engine_back(craft, parent, near);
+    if holds > 0.0 && held > NODE_RATIO * holds && !engine_end {
         return Err(Refusal::new(
             Rule::Node,
             format!(

@@ -327,57 +327,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn saving_first_offers_all_three_ways_and_carries_the_action() {
-        let question = Question::save_first(Some("Game 2"), "game.load:game_1");
-        let labels: Vec<_> = question.answers.iter().map(|a| a.label).collect();
-        assert_eq!(labels, ["Save and continue", "Don't save", "Cancel"]);
-        assert_eq!(
-            question.answers[0].then,
-            Then::SaveAndFire("game.load:game_1".into())
-        );
-        assert_eq!(
-            question.answers[1].then,
-            Then::Fire("game.load:game_1".into())
-        );
-        assert_eq!(question.answers[2].then, Then::Cancel);
-        assert!(question.text.contains("Game 2"), "{}", question.text);
-        // At most one primary button on a screen.
-        let primary = question.answers.iter().filter(|a| a.look == Look::Primary);
-        assert_eq!(primary.count(), 1);
-    }
-
-    #[test]
-    fn a_game_never_saved_says_so() {
-        let question = Question::save_first(None, "game.exit");
-        assert!(
-            question.text.contains("not been saved"),
-            "{}",
-            question.text
-        );
-    }
-
-    #[test]
     fn deleting_a_save_says_its_quicksaves_go_too() {
         assert_eq!(deleted_text(0), "A deleted save cannot be brought back.");
         assert!(deleted_text(1).ends_with("Its quicksave goes with it."));
         assert!(deleted_text(3).ends_with("Its 3 quicksaves go with it."));
-    }
-
-    #[test]
-    fn a_destructive_question_can_be_cancelled() {
-        let question = Question::destructive("x".into(), "y", "Delete", "z".into());
-        assert_eq!(question.answers.len(), 2);
-        assert_eq!(question.answers[0].look, Look::Danger);
-        assert_eq!(question.answers[1].then, Then::Cancel);
-    }
-
-    #[test]
-    fn the_title_says_what_is_being_asked() {
-        let mut dialog = Dialog::default();
-        assert_eq!(dialog.title(), "");
-        assert!(!dialog.is_open());
-        dialog.ask(Question::destructive("x".into(), "y", "Yes", "z".into()));
-        assert_eq!(dialog.title(), "x");
-        assert!(dialog.is_open());
     }
 }

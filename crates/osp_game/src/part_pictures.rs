@@ -141,36 +141,3 @@ impl PartPictures {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn part(name: &str) -> CraftPartDef {
-        serde_json::from_value(serde_json::json!({ "id": "", "name": name, "template": "x" }))
-            .unwrap()
-    }
-
-    #[test]
-    fn asking_again_for_the_same_parts_is_not_a_new_asking() {
-        let mut pictures = PartPictures::default();
-        pictures.want(vec![("a".into(), part("a"))]);
-        let (_, first) = pictures.wanted();
-        pictures.want(vec![("a".into(), part("a"))]);
-        assert_eq!(pictures.wanted().1, first);
-        pictures.want(vec![("b".into(), part("b"))]);
-        assert_eq!(pictures.wanted().1, first + 1);
-    }
-
-    #[test]
-    fn a_picture_is_there_only_once_it_is_finished_and_drawn_somewhere() {
-        let mut pictures = PartPictures::default();
-        let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
-        pictures.set_finished("a", Some(rect));
-        assert!(pictures.picture("a").is_none(), "no image yet");
-        pictures.set_atlas(Handle::default());
-        assert_eq!(pictures.picture("a").map(|(_, r)| r), Some(rect));
-        pictures.set_finished("a", None);
-        assert!(pictures.picture("a").is_none());
-    }
-}

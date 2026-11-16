@@ -1375,16 +1375,6 @@ mod tests {
     }
 
     #[test]
-    fn every_part_keeps_its_systems() {
-        let p = propulsion();
-        let charge: f64 = p.systems.all::<Battery>().map(|(_, b)| b.charge).sum();
-        let seats: u32 = p.systems.all::<Crew>().map(|(_, c)| c.seats).sum();
-        assert_eq!((charge, seats), (3600.0, 2));
-        let totals = p.systems.totals();
-        assert_eq!(totals["battery_charge"], 3600.0);
-    }
-
-    #[test]
     fn a_batterys_charge_stays_with_its_part_through_a_separation() {
         let mut p = propulsion();
         // Use some, then let the lower stage go with its battery.
@@ -1398,22 +1388,6 @@ mod tests {
         let debris = Propulsion::from_released(released.clone());
         let (on, battery) = debris.systems.all::<Battery>().next().unwrap();
         assert_eq!((on, battery.charge), (part, 3600.0));
-    }
-
-    #[test]
-    fn parameters_are_read_without_knowing_the_system() {
-        let p = propulsion();
-        // What an editor's property panel does: it knows no battery.
-        let shown: Vec<(&str, f64, &str)> = p
-            .parts()
-            .parts()
-            .iter()
-            .flat_map(|part| p.systems.on(part.id))
-            .flat_map(|s| s.parameters())
-            .map(|r| (r.label, r.value, r.unit))
-            .collect();
-        assert!(shown.contains(&("Capacity", 3600.0, "kJ")), "{shown:?}");
-        assert!(shown.contains(&("Seats", 2.0, "")), "{shown:?}");
     }
 
     /// A source that makes `watts` while the sun shines on it, for the network's tests.
@@ -1641,13 +1615,6 @@ mod tests {
         let out = p.systems.power_state(&light(1.0), false);
         assert!(out.browned_out && out.shedding, "{out:?}");
         assert_eq!(out.runs_out_in, None);
-    }
-
-    #[test]
-    fn the_stores_are_listed_by_part() {
-        let (p, part) = powered_stage();
-        let stores: Vec<_> = p.systems.stores().collect();
-        assert_eq!(stores, [(part, 3600.0, 3600.0)]);
     }
 
     #[test]

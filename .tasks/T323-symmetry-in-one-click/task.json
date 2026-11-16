@@ -1,0 +1,19 @@
+{
+  "id": "T323",
+  "title": "Pick the symmetry count in one click, near where the player is working",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "assets/core/layouts/editor.json5 (editor_modes)",
+    "crates/osp_editor/src/building.rs (symmetry)"
+  ],
+  "created": "2026-11-16",
+  "updated": "2026-11-16",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2428
+}

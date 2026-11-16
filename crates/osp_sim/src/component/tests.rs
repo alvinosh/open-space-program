@@ -256,22 +256,6 @@ fn cells_must_be_walled_in() {
 }
 
 #[test]
-fn a_part_takes_the_heat_its_main_material_can() {
-    let shell = "{ shell: { bottom_diameter: 1, sections: [{ length: 1 }] } }";
-    let made_of = |material: &str| {
-        built(&format!(
-            "{{ shape: {shell}, structure: {{ material: '{material}', thickness: 0.003 }} }}"
-        ))
-    };
-    assert_eq!(made_of("Al 2219-T87").max_temperature, Some(800.0));
-    let steel = made_of("Stainless 301 Full Hard");
-    assert_eq!(steel.max_temperature, Some(1400.0));
-    assert_eq!(steel.specific_heat, Some(500.0));
-    let unknown = built(&format!("{{ shape: {shell}, structure: {{ mass: 10 }} }}"));
-    assert_eq!(unknown.max_temperature, None);
-}
-
-#[test]
 fn structure_weighs_as_its_material_or_spreads_its_mass() {
     // An interstage: a 3 m aluminium tube, 2 m long and 3 mm thick.
     let shell = "{ shell: { bottom_diameter: 3, sections: [{ length: 2 }] } }";

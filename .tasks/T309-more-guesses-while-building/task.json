@@ -2,17 +2,19 @@
   "id": "T309",
   "title": "More guesses while building: a tank's length for its stage, adapters between widths",
   "kind": "feature",
-  "status": "todo",
+  "status": "done",
   "area": "editor",
   "size": "M",
   "parent": "T221",
-  "depends_on": ["T306"],
+  "depends_on": [
+    "T306"
+  ],
   "refs": [
     "crates/osp_sim/src/fitting.rs"
   ],
   "created": "2026-11-13",
-  "updated": "2026-11-13",
-  "done": null,
+  "updated": "2026-11-16",
+  "done": "2026-11-16",
   "milestone": "M3",
   "priority": 61.24378
 }

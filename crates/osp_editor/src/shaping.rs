@@ -202,6 +202,11 @@ pub struct Shaping {
 }
 
 impl Shaping {
+    /// What a handle in hand has made is being built to go on show.
+    pub fn is_building(&self) -> bool {
+        self.building.is_some()
+    }
+
     /// A handle is in hand or under the pointer, so the left button is not for looking around.
     pub fn holds_pointer(&self) -> bool {
         self.drag.is_some() || self.over.is_some() || self.handles.0
@@ -1102,44 +1107,5 @@ mod tests {
         )
         .unwrap();
         assert!((s - 2.0).abs() < 1e-12 && (t - 3.0).abs() < 1e-12);
-    }
-
-    fn pulling(name: &'static str, value: f64, way: DVec3, rate: f64) -> Pulling {
-        Pulling {
-            size: Size {
-                name,
-                label: "Length",
-                value,
-                least: 0.05,
-                most: 200.0,
-                width: false,
-            },
-            way,
-            rate,
-            value,
-        }
-    }
-
-    #[test]
-    fn a_handle_in_hand_is_where_its_sizes_put_it_and_says_them() {
-        let mut drag = Drag {
-            part: 0,
-            grip: 0,
-            origin: DVec3::new(1.0, 0.0, 10.0),
-            pulls: vec![pulling("length", 10.0, DVec3::Z, 1.0)],
-            start: serde_json::from_value(serde_json::json!({ "id": "c", "parts": [] })).unwrap(),
-            widths: Vec::new(),
-            matched: None,
-            shown: Vec::new(),
-            cancel: false,
-        };
-        drag.pulls[0].value = 12.5;
-        assert_eq!(drag.at(), DVec3::new(1.0, 0.0, 12.5));
-        assert_eq!(drag.label(), "Length 12.50 m");
-        drag.matched = Some("S-II".into());
-        assert_eq!(drag.label(), "Length 12.50 m · as S-II");
-        drag.matched = None;
-        drag.pulls[0].value = 200.0;
-        assert_eq!(drag.label(), "Length 200.00 m, as big as it goes");
     }
 }

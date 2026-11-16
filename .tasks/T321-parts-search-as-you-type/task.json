@@ -1,0 +1,19 @@
+{
+  "id": "T321",
+  "title": "The parts search filters as you type",
+  "kind": "feature",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_ui/src/input.rs",
+    "assets/core/layouts/editor.json5 (editor.search)"
+  ],
+  "created": "2026-11-16",
+  "updated": "2026-11-16",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2426
+}

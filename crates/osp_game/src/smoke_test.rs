@@ -57,7 +57,7 @@ use crate::{
 /// on small screens).
 const CAPTURE_SIZE: (u32, u32) = (1600, 900);
 
-fn capture_size() -> (u32, u32) {
+pub(crate) fn capture_size() -> (u32, u32) {
     std::env::var("OSP_CAPTURE_SIZE")
         .ok()
         .and_then(|s| {
@@ -83,6 +83,11 @@ pub enum CaptureSet {
 /// error.
 #[derive(Message, Clone, Copy)]
 pub struct EditorStep(pub Action);
+
+/// Where a failed [`EditorStep`] says why, when something is there to read it (a playtest,
+/// `playtest`); without it, a failed step ends the capture.
+#[derive(Resource, Default)]
+pub struct EditorStepFailed(pub Option<String>);
 
 impl Plugin for SmokeTestPlugin {
     fn build(&self, app: &mut App) {
@@ -865,7 +870,10 @@ const EDITOR_CRAFT_SCRIPT: &[(f64, Action)] = &[
     (13.9, Action::Press(MouseButton::Left)),
     (14.0, Action::Release(MouseButton::Left)),
     (14.7, Action::ExpectPartCount(14)),
-    (14.75, Action::ExpectField("nose_cone", "bottom_diameter", "1")),
+    (
+        14.75,
+        Action::ExpectField("nose_cone", "bottom_diameter", "1"),
+    ),
     (14.8, Action::ClearPointer),
     (14.9, Action::Capture("craft_boosters.png")),
     // The root turned a quarter turn about +X by its ring: everything goes with it.
@@ -2061,8 +2069,14 @@ const EDITOR_FIT_SCRIPT: &[(f64, Action)] = &[
     (6.9, Action::Press(MouseButton::Left)),
     (7.0, Action::Release(MouseButton::Left)),
     (7.8, Action::ExpectPartCount(3)),
-    (7.9, Action::ExpectField("structural", "bottom_diameter", "2.8")),
-    (7.95, Action::ExpectField("structural", "top_diameter", "2.8")),
+    (
+        7.9,
+        Action::ExpectField("structural", "bottom_diameter", "2.8"),
+    ),
+    (
+        7.95,
+        Action::ExpectField("structural", "top_diameter", "2.8"),
+    ),
     (8.0, Action::ClearPointer),
     (8.1, Action::Ui("editor.symmetry")),
     (8.2, Action::ExpectData("editor.symmetry == x2")),

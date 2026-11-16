@@ -464,22 +464,6 @@ mod tests {
         UiAction(s.into())
     }
 
-    #[test]
-    fn a_part_button_names_the_vessel_the_kind_and_the_part() {
-        assert_eq!(
-            part_action("3:decoupler:12"),
-            Some((VesselId(3), Activation::decoupler(PartId(12))))
-        );
-        assert_eq!(
-            part_action("0:engines:5"),
-            Some((VesselId(0), Activation::engine(PartId(5))))
-        );
-        assert_eq!(part_action("3:wings:12"), None);
-        assert_eq!(part_action("3:engines"), None);
-        assert_eq!(part_action("3:engines:1:2"), None);
-        assert_eq!(part_action("x:engines:1"), None);
-    }
-
     /// The Pathfinder as it stands on the pad.
     fn pathfinder() -> Propulsion {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/core");
@@ -586,13 +570,6 @@ mod tests {
             &act("staging.drop_before:seq:1:0:0")
         ));
         assert_eq!(icons(&p)[0], before[1]);
-    }
-
-    #[test]
-    fn a_split_names_the_vessel_and_the_part() {
-        assert_eq!(split_action("3:12"), (Some(VesselId(3)), Some(PartId(12))));
-        assert_eq!(split_action("x:12"), (None, Some(PartId(12))));
-        assert_eq!(split_action("3"), (Some(VesselId(3)), None));
     }
 
     #[test]

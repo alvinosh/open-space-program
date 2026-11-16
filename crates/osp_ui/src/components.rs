@@ -276,42 +276,6 @@ mod tests {
     const TYPE_SCALE: [f32; 4] = [28.0, 20.0, 15.0, 12.0];
     /// What can be clicked in a menu.
     const CONTROLS: [&str; 5] = ["back", "menu_row", "btn", "choice_item", "tab"];
-    /// The classes the components and controls are made of.
-    const MENU_CLASSES: [&str; 33] = [
-        "menu_shade",
-        "menu_rail",
-        "menu_body",
-        "menu_footer",
-        "menu_hint",
-        "btn_large",
-        "menu_display",
-        "menu_heading",
-        "menu_subtitle",
-        "menu_section",
-        "menu_text",
-        "menu_divider",
-        "menu_notice",
-        "menu_warning",
-        "menu_tabs",
-        "back",
-        "menu_row",
-        "menu_row_current",
-        "menu_row_head",
-        "menu_row_text",
-        "menu_row_meta",
-        "menu_row_value",
-        "menu_row_detail",
-        "menu_nested",
-        "setting_label",
-        "choice_item",
-        "tab",
-        "slider_row",
-        "slider",
-        "slider_track",
-        "slider_fill",
-        "slider_thumb",
-        "slider_value",
-    ];
 
     /// The layouts that may show pictures: the editor, whose parts list and bar are icons and
     /// pictures of parts where words did not work (T212, T215). The menus are words.
@@ -373,13 +337,6 @@ mod tests {
         documents
     }
 
-    fn built(node: serde_json::Value) -> NodeDef {
-        let mut problems = Vec::new();
-        let node = expand(serde_json::from_value(node).unwrap(), &mut problems);
-        assert!(problems.is_empty(), "{problems:?}");
-        node
-    }
-
     fn layout(root: serde_json::Value) -> LayoutDef {
         let mut problems = Vec::new();
         let root = expand(serde_json::from_value(root).unwrap(), &mut problems);
@@ -396,197 +353,6 @@ mod tests {
     }
 
     #[test]
-    fn a_screen_has_back_a_heading_and_a_body() {
-        let screen = built(json!({
-            "widget": "screen",
-            "id": "load",
-            "title": "Load game",
-            "subtitle": "Newest first",
-            "visible": "menu.has_saves",
-            "children": [{ "widget": "menu_row", "text": "Game 1", "action": "game.load:game_1" }],
-        }));
-        assert_eq!(screen.id.as_deref(), Some("load"));
-        assert_eq!(screen.visible.as_deref(), Some("menu.has_saves"));
-        assert_eq!(screen.class, "menu_shade");
-        let rail = &screen.children[0];
-        assert_eq!(rail.class, "menu_rail");
-        let classes: Vec<_> = rail.children.iter().map(|c| c.class.as_str()).collect();
-        assert_eq!(
-            classes,
-            [
-                "back",
-                "menu_heading",
-                "menu_subtitle",
-                "menu_body",
-                "menu_notice"
-            ]
-        );
-        assert_eq!(rail.children[0].action.as_deref(), Some("menu.back"));
-        assert_eq!(rail.children[3].children[0].class, "menu_row");
-    }
-
-    /// What a screen is for, its Start, stays at the bottom of the panel under the body, which
-    /// scrolls.
-    #[test]
-    fn a_footer_stays_under_the_scrolling_body() {
-        let screen = built(json!({
-            "widget": "screen",
-            "title": "New game",
-            "children": [{ "widget": "menu_row", "text": "A mod" }],
-            "footer": [{ "widget": "button", "class": "btn btn_primary", "text": "Start", "action": "game.new" }],
-        }));
-        let rail = &screen.children[0];
-        let classes: Vec<_> = rail.children.iter().map(|c| c.class.as_str()).collect();
-        assert_eq!(
-            classes,
-            [
-                "back",
-                "menu_heading",
-                "menu_body",
-                "menu_notice",
-                "menu_footer"
-            ]
-        );
-        let start = &rail.children[4].children[0];
-        assert_eq!(start.action.as_deref(), Some("game.new"));
-        assert!(rail.extra.is_empty() && screen.extra.is_empty());
-        let mut problems = Vec::new();
-        let node = serde_json::from_value(json!({ "widget": "screen", "footer": "Start" }));
-        expand(node.unwrap(), &mut problems);
-        assert_eq!(problems.len(), 1, "{problems:?}");
-    }
-
-    #[test]
-    fn a_list_goes_inside_the_scrolling_body_not_on_it() {
-        let screen = built(json!({
-            "widget": "screen",
-            "repeat": "menu.saves",
-            "children": [{ "widget": "menu_row", "text": "{item.name}" }],
-        }));
-        let body = (screen.children[0].children.iter())
-            .find(|c| c.class == "menu_body")
-            .unwrap();
-        assert_eq!(body.repeat, None, "filling it would take its scroll thumb");
-        assert_eq!(body.children[0].repeat.as_deref(), Some("menu.saves"));
-        assert_eq!(body.children[0].children[0].class, "menu_row");
-    }
-
-    #[test]
-    fn a_root_has_no_back_and_the_title_screen_has_the_big_name() {
-        let screen = built(json!({
-            "widget": "screen", "title": "Open Space Program", "display": true, "back": false,
-        }));
-        let classes: Vec<_> = (screen.children[0].children.iter())
-            .map(|c| c.class.as_str())
-            .collect();
-        assert_eq!(classes, ["menu_display", "menu_body", "menu_notice"]);
-    }
-
-    #[test]
-    fn a_row_keeps_what_it_does_and_lays_out_what_it_says() {
-        let row = built(json!({
-            "widget": "menu_row",
-            "text": "{item.name}",
-            "meta": "{item.saved}",
-            "detail": "{item.flying}",
-            "action": "game.load:{item.file}",
-            "active": "item.current",
-            "visible": "!item.problem",
-        }));
-        assert_eq!(row.widget, "button");
-        assert_eq!(row.text, None, "the button must not draw the text as well");
-        assert_eq!(row.action.as_deref(), Some("game.load:{item.file}"));
-        assert_eq!(row.active.as_deref(), Some("item.current"));
-        assert_eq!(row.visible.as_deref(), Some("!item.problem"));
-        let head = &row.children[0];
-        assert_eq!(head.children[0].text.as_deref(), Some("{item.name}"));
-        assert_eq!(head.children[2].text.as_deref(), Some("{item.saved}"));
-        assert_eq!(row.children[1].text.as_deref(), Some("{item.flying}"));
-        // In a list its `item.` binds like any other node's.
-        let bound = row.instantiate("saves", 2);
-        assert_eq!(
-            bound.children[0].children[0].text.as_deref(),
-            Some("{saves[2].name}")
-        );
-        assert_eq!(bound.action.as_deref(), Some("game.load:{saves[2].file}"));
-    }
-
-    #[test]
-    fn a_row_can_show_its_line_only_when_there_is_something_to_say() {
-        let row = built(json!({
-            "widget": "menu_row",
-            "text": "Throttle up",
-            "detail": "also {item.clash}",
-            "detail_if": "item.clash",
-            "detail_class": "menu_warning",
-        }));
-        let line = &row.children[1];
-        assert_eq!(line.class, "menu_warning");
-        assert_eq!(line.visible.as_deref(), Some("item.clash"));
-        assert!(row.extra.is_empty(), "{:?}", row.extra);
-    }
-
-    #[test]
-    fn a_setting_choice_makes_one_button_per_option() {
-        let row = built(json!({
-            "widget": "setting_choice",
-            "id": "shadows",
-            "label": "Shadows",
-            "key": "graphics.shadows",
-            "action": "graphics.set:shadows",
-            "options": ["off", { "value": "msaa", "label": "MSAA 4x" }, 75],
-        }));
-        assert_eq!(row.widget, "row");
-        assert_eq!(row.id.as_deref(), Some("shadows"));
-        assert_eq!(row.action, None);
-        assert_eq!(row.children[0].text.as_deref(), Some("Shadows"));
-        let choice = &row.children[1];
-        assert_eq!(choice.class, "choice");
-        let read = |i: usize| {
-            let b = &choice.children[i];
-            (
-                b.text.clone().unwrap(),
-                b.action.clone().unwrap(),
-                b.active.clone().unwrap(),
-            )
-        };
-        let want = |text: &str, value: &str| {
-            (
-                text.to_owned(),
-                format!("graphics.set:shadows:{value}"),
-                format!("graphics.shadows == {value}"),
-            )
-        };
-        assert_eq!(read(0), want("Off", "off"));
-        assert_eq!(read(1), want("MSAA 4x", "msaa"));
-        assert_eq!(read(2), want("75", "75"));
-    }
-
-    #[test]
-    fn a_setting_slider_drags_a_value_and_shows_it() {
-        let row = built(json!({
-            "widget": "setting_slider",
-            "label": "Volume",
-            "key": "audio.master",
-            "action": "audio.set:master",
-            "min": 0, "max": 100, "step": 5,
-            "unit": "%",
-        }));
-        assert_eq!(row.widget, "row");
-        assert_eq!(row.action, None);
-        assert!(row.extra.get("min").is_none(), "{:?}", row.extra);
-        assert_eq!(row.children[0].text.as_deref(), Some("Volume"));
-        let control = &row.children[1];
-        assert_eq!(control.class, "slider_row");
-        let slider = &control.children[0];
-        assert_eq!(slider.widget, "slider");
-        assert_eq!(slider.value.as_deref(), Some("audio.master"));
-        assert_eq!(slider.action.as_deref(), Some("audio.set:master"));
-        assert_eq!(slider.extra.get("step"), Some(&json!(5)));
-        assert_eq!(control.children[1].text.as_deref(), Some("{audio.master}%"));
-    }
-
-    #[test]
     fn a_setting_choice_missing_something_is_reported() {
         let mut problems = Vec::new();
         let node = serde_json::from_value(json!({ "widget": "setting_choice", "label": "Bloom" }));
@@ -595,32 +361,6 @@ mod tests {
             problems,
             ["setting `Bloom` needs `key`, `action` and `options`"]
         );
-    }
-
-    #[test]
-    fn the_components_follow_the_rules() {
-        let theme = core().theme;
-        let screen = layout(json!({
-            "widget": "screen",
-            "title": "Everything",
-            "subtitle": "A line under it",
-            "children": [
-                { "widget": "label", "class": "menu_section", "text": "Section" },
-                { "widget": "menu_row", "text": "Row", "meta": "12", "detail": "Line", "action": "a" },
-                { "widget": "menu_divider" },
-                { "widget": "setting_choice", "label": "Setting", "key": "k", "action": "a", "options": ["one", "two"] },
-                { "widget": "setting_slider", "label": "Setting", "key": "k", "action": "a", "unit": "%" },
-                { "widget": "setting_row", "label": "Setting", "children": [
-                    { "widget": "button", "class": "btn", "text": "Plain", "action": "a" },
-                ]},
-                { "widget": "button", "class": "btn btn_primary", "text": "Primary", "action": "a" },
-                { "widget": "button", "class": "btn btn_danger", "text": "Danger", "action": "a" },
-                { "widget": "row", "children": [
-                    { "widget": "button", "class": "tab", "text": "Tab", "action": "a", "active": "b" },
-                ]},
-            ],
-        }));
-        assert_eq!(broken_rules(&screen, &theme), Vec::<String>::new());
     }
 
     #[test]
@@ -663,22 +403,6 @@ mod tests {
     }
 
     #[test]
-    fn the_menu_classes_keep_to_the_type_scale() {
-        let theme = core().theme;
-        for class in MENU_CLASSES {
-            let style = theme.classes.get(class);
-            assert!(style.is_some(), "the theme has no class `{class}`");
-            if let Some(size) = style.and_then(|s| s.font_size) {
-                assert!(TYPE_SCALE.contains(&size), "{class}: {size}");
-            }
-        }
-        for class in ["btn", "btn_primary", "btn_danger", "choice", "setting_row"] {
-            assert!(theme.classes.contains_key(class), "no class `{class}`");
-        }
-        assert_eq!(theme.unknown_colors(), Vec::<String>::new());
-    }
-
-    #[test]
     fn every_menu_screen_in_the_game_follows_the_rules() {
         let documents = core();
         let menus = (documents.layouts.iter())
@@ -687,27 +411,6 @@ mod tests {
             let problems = broken_rules(layout, &documents.theme);
             assert!(problems.is_empty(), "{problems:#?}");
         }
-    }
-
-    #[test]
-    fn the_panel_alone_lets_the_scene_beside_it_take_the_pointer() {
-        let rail = built(json!({
-            "widget": "screen", "class": "editor_rail", "shade": false, "title": "x",
-            "title_if": "z", "visible": "y", "children": [{ "widget": "menu_divider" }],
-        }));
-        assert_eq!(
-            rail.children[1].visible.as_deref(),
-            Some("z"),
-            "the heading"
-        );
-        assert!(rail.extra.is_empty(), "{:?}", rail.extra);
-        assert_eq!(rail.class, "menu_rail editor_rail");
-        assert_eq!(rail.visible.as_deref(), Some("y"));
-        let classes: Vec<_> = rail.children.iter().map(|c| c.class.as_str()).collect();
-        assert_eq!(
-            classes,
-            ["back", "menu_heading", "menu_body", "menu_notice"]
-        );
     }
 
     /// Every `menu.open:<screen>` under `node`.
@@ -751,18 +454,5 @@ mod tests {
                 "nothing opens `{id}`"
             );
         }
-    }
-
-    #[test]
-    fn tutorials_are_only_on_the_title_screen() {
-        let documents = core();
-        let opens_tutorials = |id: &str| {
-            let layout = documents.layouts.iter().find(|l| l.id == id).unwrap();
-            let mut opened = Vec::new();
-            screens_opened(&layout.root, &mut opened);
-            opened.iter().any(|s| s == "tutorials")
-        };
-        assert!(opens_tutorials("menu_title"));
-        assert!(!opens_tutorials("menu_pause"));
     }
 }

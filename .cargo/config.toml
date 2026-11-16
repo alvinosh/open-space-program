@@ -3,6 +3,10 @@
 # `cargo smoke saturn_v` runs one mission, `cargo smoke build` the build suite;
 # `OSP_SMOKE_OPEN=1 cargo smoke` opens the report. See docs/smoke-tests.md.
 smoke = "test -p osp_smoke -p osp_sim --test smoke --test build -- --nocapture"
+# Playtests: the game played as a person plays it, from the title screen, and measured for ease of
+# use and payoff (osp_game::playtest). `OSP_PLAYTESTS=first_rocket cargo playtest` runs one; the
+# report is target/playtest/report.html. See docs/playtests.md.
+playtest = "test -p osp --test playtest -- --nocapture"
 # A mission of the smoke tests flown in the game, to watch: `cargo smoke-watch saturn_v`.
 smoke-watch = "run -p osp -- --watch"
 # The game with the dev version's graphics: plain shading, blocky hulls, faceted planets, and

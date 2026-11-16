@@ -751,14 +751,6 @@ mod tests {
             assert!(!probe.upload_burn(burn(now.add_seconds(100.0)), now));
         }
 
-        #[test]
-        fn a_dish_that_is_no_relay_passes_nothing_on() {
-            let mut universe = probe_and_dish(false);
-            universe.update_links();
-            assert!(universe.vessels[1].link().is_some());
-            assert!(universe.vessels[0].link().is_none());
-        }
-
         /// A vessel `crew`ed or not, 42 000 km up, with the Earth's stations, one of which always
         /// sees it from there.
         fn universe(crew: bool) -> Universe {

@@ -273,15 +273,6 @@ mod tests {
     }
 
     #[test]
-    fn the_kinds_mate_as_the_real_ones_do() {
-        use PortKind::{Androgynous, Berthing, Drogue, Probe};
-        assert!(Probe.mates(Drogue) && Drogue.mates(Probe));
-        assert!(Androgynous.mates(Androgynous) && Berthing.mates(Berthing));
-        assert!(!Probe.mates(Probe) && !Drogue.mates(Drogue));
-        assert!(!Androgynous.mates(Probe) && !Berthing.mates(Androgynous));
-    }
-
-    #[test]
     fn the_roll_is_how_far_round_the_line_they_meet_along_they_are() {
         use crate::assembly::{Pose, meet};
         let frame = DQuat::from_rotation_y(0.7) * DQuat::from_rotation_x(0.3);

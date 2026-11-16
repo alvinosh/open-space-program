@@ -1,0 +1,19 @@
+{
+  "id": "T319",
+  "title": "A first game starts in Realistic mode",
+  "kind": "decision",
+  "status": "done",
+  "area": "ui",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "assets/core/layouts/menu/new_game.json5",
+    "crates/osp_game/src/settings.rs (chosen_mods)"
+  ],
+  "created": "2026-11-16",
+  "updated": "2026-11-16",
+  "done": "2026-11-16",
+  "milestone": "M3",
+  "priority": 61.2424
+}

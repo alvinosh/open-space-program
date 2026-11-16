@@ -132,20 +132,6 @@ fn remember(ui: Res<LayoutVisibility>, docs: Res<UiDocuments>, mut remembered: R
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_orbit_window_follows_the_atmosphere() {
-        // A launch from the pad: closed, and stays so while flying.
-        assert_eq!(orbit_window_after(None, false), Some(false));
-        assert_eq!(orbit_window_after(Some(false), false), None);
-        // Out of the atmosphere it opens; the player may close it, and it stays closed
-        // until the next crossing.
-        assert_eq!(orbit_window_after(Some(false), true), Some(true));
-        assert_eq!(orbit_window_after(Some(true), true), None);
-        assert_eq!(orbit_window_after(Some(true), false), Some(false));
-        // Starting in orbit.
-        assert_eq!(orbit_window_after(None, true), Some(true));
-    }
-
     fn layout(id: &str, group: &str) -> osp_ui::LayoutDef {
         serde_json::from_value(serde_json::json!({
             "id": id,

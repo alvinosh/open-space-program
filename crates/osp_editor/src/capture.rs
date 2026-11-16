@@ -13,7 +13,7 @@ use osp_game::{
     frame::RenderFrame,
     orbit_lines::ScriptedPointer,
     sim::Sim,
-    smoke_test::{Action, CaptureSet, EditorStep},
+    smoke_test::{Action, CaptureSet, EditorStep, EditorStepFailed},
 };
 use osp_sim::{
     data::CraftDef,
@@ -60,6 +60,7 @@ fn take_steps(
     (sim, frame, content): (Res<Sim>, Res<RenderFrame>, Res<GameContent>),
     camera: Single<(&Camera, &Transform), With<MainCamera>>,
     mut pointer: ResMut<ScriptedPointer>,
+    mut failed: Option<ResMut<EditorStepFailed>>,
     mut exit: MessageWriter<AppExit>,
 ) {
     for &EditorStep(action) in steps.read() {
@@ -81,10 +82,13 @@ fn take_steps(
         match take(action, &looking) {
             Ok(Some(at)) => pointer.0 = Some(at),
             Ok(None) => {}
-            Err(e) => {
-                error!("smoke test: {e}");
-                exit.write(AppExit::error());
-            }
+            Err(e) => match failed.as_deref_mut() {
+                Some(failed) => failed.0 = Some(e),
+                None => {
+                    error!("smoke test: {e}");
+                    exit.write(AppExit::error());
+                }
+            },
         }
     }
 }

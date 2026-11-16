@@ -4752,6 +4752,7 @@ dependencies = [
  "osp_sim",
  "osp_smoke",
  "osp_ui",
+ "serde_json",
 ]
 
 [[package]]

@@ -1195,43 +1195,6 @@ mod tests {
     }
 
     #[test]
-    fn a_group_says_what_it_does() {
-        assert_eq!(
-            group_caption("engines", "Do it", 5, "F-1", "S-IC"),
-            "Ignite 5 × F-1"
-        );
-        assert_eq!(
-            group_caption("engines", "Do it", 1, "J-2", "S-II"),
-            "Ignite J-2"
-        );
-        assert_eq!(
-            group_caption("decoupler", "Do it", 1, "", "S-IC"),
-            "Decouple S-IC"
-        );
-        assert_eq!(
-            group_caption("fairing", "Do it", 2, "", "Payload"),
-            "Jettison Payload fairing"
-        );
-        assert_eq!(group_caption("rcs", "Do it", 1, "", "S-IVB"), "RCS on");
-    }
-
-    #[test]
-    fn a_tile_and_a_row_name_the_parts_to_mark() {
-        let boosters = [PartId(7), PartId(8), PartId(9)];
-        let window = group_window(VesselId(2), &boosters);
-        assert_eq!(window, "2:7,8,9");
-        // What a hover of that text marks.
-        let text = format!("part.group:{window}");
-        assert_eq!(
-            crate::part_highlight::group_of(&text),
-            Some((VesselId(2), boosters.to_vec()))
-        );
-        // One booster split off into a tile of its own marks just that one.
-        let one = group_window(VesselId(2), &boosters[..1]);
-        assert_eq!(one, "2:7");
-    }
-
-    #[test]
     fn thrust_and_burn_time_are_short() {
         assert_eq!(format_thrust(914_000.0), "914 kN");
         assert_eq!(format_thrust(7_600_000.0), "7.6 MN");

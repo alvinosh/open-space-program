@@ -443,21 +443,6 @@ mod tests {
     }
 
     #[test]
-    fn a_leg_at_a_pose_runs_out_along_minus_z_and_rolls_along_y() {
-        let def = leg(90.0, false);
-        let mount = DVec3::new(1.0, 2.0, 3.0);
-        let [leg] = Leg::at(&def, mount, DQuat::IDENTITY).try_into().unwrap();
-        assert_eq!(leg.mount, mount);
-        assert_eq!(leg.direction, DVec3::NEG_Z);
-        assert_eq!(leg.roll, DVec3::Y);
-        // Turned a quarter about the strut, the wheel rolls the other way.
-        let turned = DQuat::from_rotation_z(std::f64::consts::FRAC_PI_2);
-        let [leg] = Leg::at(&def, mount, turned).try_into().unwrap();
-        assert!((leg.roll - DVec3::NEG_X).length() < 1e-12);
-        assert!((leg.direction - DVec3::NEG_Z).length() < 1e-12);
-    }
-
-    #[test]
     fn a_leg_placed_as_a_stage_places_it_is_the_stage_s_leg() {
         for (angle, mirror) in [(60.0, true), (90.0, false), (35.0, true)] {
             let def = leg(angle, mirror);

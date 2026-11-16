@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playtest report</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0e1116; --panel: #161b22; --panel2: #1c232c; --line: #2a333f; --text: #e6edf3; --dim: #8b98a7;
+  --good: #3fb27f; --bad: #f0616d; --warn: #e0a43a; --accent: #2fb7b0;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f5f7fa; --panel: #ffffff; --panel2: #eef2f6; --line: #d5dce4; --text: #18202a; --dim: #5b6877;
+    --good: #1f8a5b; --bad: #d1303f; --warn: #b87a12; --accent: #12857f;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 80px; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+h2 { font-size: 20px; margin: 48px 0 4px; }
+h3 { font-size: 15px; margin: 24px 0 8px; }
+.dim { color: var(--dim); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.tile b { display: block; font-size: 22px; line-height: 1.2; }
+.tile span { font-size: 12px; color: var(--dim); }
+.tile.bad { border-color: var(--bad); } .tile.warn { border-color: var(--warn); } .tile.good { border-color: var(--good); }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; text-transform: uppercase; border-radius: 99px; padding: 1px 9px; color: #fff; }
+.pill.good { background: var(--good); } .pill.bad { background: var(--bad); } .pill.warn { background: var(--warn); }
+.banner { background: color-mix(in srgb, var(--bad) 14%, var(--panel)); border: 1px solid var(--bad); border-radius: 8px; padding: 10px 14px; margin-top: 12px; }
+.goals { display: flex; flex-wrap: wrap; gap: 0; margin-top: 8px; }
+.goal { flex: 1 1 160px; border-left: 3px solid var(--accent); padding: 4px 12px; }
+.goal b { display: block; }
+.goal span { font-size: 12.5px; color: var(--dim); }
+ul.hopes { list-style: none; padding: 0; margin: 0; }
+ul.hopes li { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--dim); font-weight: 600; font-size: 12px; position: sticky; top: 0; background: var(--bg); }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.flag td { background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.scroll { overflow-x: auto; }
+.pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.pics figure { margin: 0; }
+.pics img { width: 100%; border-radius: 6px; border: 1px solid var(--line); display: block; }
+.pics figcaption { font-size: 12px; color: var(--dim); }
+.bar { display: inline-block; height: 8px; background: var(--accent); border-radius: 4px; vertical-align: middle; }
+details summary { cursor: pointer; color: var(--accent); margin: 16px 0 8px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Playtest report</h1>
+<p class="dim">The game played as a person plays it, from the title screen: only clicks, drags and keys on what is on screen, checked against what the screen shows.
+Person times are estimates (keystroke-level model with Fitts's law): rough, made to compare runs and to show which steps cost most.
+Hopes are what a player wants out of it; a letdown is not a failure, it is a fun problem.</p>
+<div id="all"></div>
+</main>
+<script id="data" type="application/json">/*DATA*/null</script>
+<script>
+const D = JSON.parse(document.getElementById("data").textContent) || [];
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v; else if (k === "html") e.innerHTML = v; else e.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+};
+const n0 = x => x == null ? "–" : Math.round(x).toLocaleString();
+const n1 = x => x == null ? "–" : x.toFixed(1);
+const pct = x => x == null ? "–" : Math.round(x * 100) + "%";
+const tile = (value, label, state) => el("div", { class: "tile " + (state || "") }, el("b", {}, value), el("span", {}, label));
+const all = document.getElementById("all");
+
+for (const r of D) {
+  const s = r.summary, f = r.frames;
+  const letdowns = r.hopes.filter(h => !h.met);
+  const stuck = r.passed ? ["good", "played through"] : r.stuck_until ? ["warn", "stuck, known: " + r.stuck_until] : ["bad", "stuck"];
+  all.append(el("h2", {}, r.name, " ", el("span", { class: "pill " + stuck[0] }, stuck[1]),
+    letdowns.length ? el("span", { class: "pill warn", style: "margin-left:6px" }, letdowns.length + " letdown" + (letdowns.length > 1 ? "s" : "")) : null));
+  all.append(el("p", { class: "dim" }, r.about));
+  if (r.failure) all.append(el("div", { class: "banner" }, el("b", {}, "The player got stuck"), r.failure.step != null ? " at step " + r.failure.step : "", ": ", r.failure.reason));
+
+  // Pace: the goals.
+  if (r.goals.length) {
+    all.append(el("h3", {}, "Pace"));
+    all.append(el("div", { class: "goals" }, r.goals.map(g =>
+      el("div", { class: "goal" }, el("b", {}, g.name), el("span", {}, `${n1(g.person_s)} s for a person · ${g.inputs} inputs · ${n1(g.real_s)} s played`)))));
+  }
+
+  // Usability.
+  all.append(el("h3", {}, "Ease of use"));
+  all.append(el("div", { class: "tiles" },
+    tile(s.inputs, `inputs: ${s.clicks} clicks, ${s.drags} drags, ${s.keys} keys`),
+    tile(n0(s.person_s) + " s", "a person's time, estimated"),
+    tile(n0(s.pointer_travel_px) + " px", "pointer travel"),
+    tile(s.dead.length, "inputs that did nothing seen", s.dead.length ? "bad" : "good"),
+    tile(pct(s.answered_100ms), "answered within 0.1 s", s.answered_100ms < 0.9 ? "warn" : "good"),
+    tile(s.slowest_preview ? n0(s.slowest_preview[1]) + " ms" : "–", "slowest preview" + (s.slowest_preview ? `, step ${s.slowest_preview[0]}` : ""), s.slowest_preview && s.slowest_preview[1] > 100 ? "warn" : ""),
+    tile(s.small_targets.length, "targets under 24 px", s.small_targets.length ? "warn" : "good"),
+    tile(s.notices.length, "times the game said no or why"),
+    tile(n0(f.max_ms) + " ms", `worst frame (p95 ${n0(f.p95_ms)} ms)`, f.max_ms > 100 ? "bad" : f.max_ms > 50 ? "warn" : "good"),
+    tile(f.over_100ms, "stalls over 100 ms", f.over_100ms ? "bad" : "good"),
+  ));
+  if (s.notices.length) all.append(el("ul", { class: "hopes" }, s.notices.map(([i, t]) => el("li", {}, `Step ${i}: `, el("i", {}, t)))));
+
+  // Fun: hopes and what the player got.
+  if (r.hopes.length || r.measures.length) {
+    all.append(el("h3", {}, "Payoff"));
+    all.append(el("ul", { class: "hopes" }, r.hopes.map(h => el("li", {},
+      el("span", { class: "pill " + (h.met ? "good" : "warn") }, h.met ? "met" : "letdown"), " ", h.why, " ",
+      el("span", { class: "dim mono" }, h.condition), h.met ? "" : el("div", { class: "dim" }, `stopped ${n1(h.broke_at)} s in: ${h.found}`)))));
+    if (r.measures.length) all.append(el("div", { class: "scroll" }, el("table", {},
+      el("tr", {}, el("th", {}, "Measure"), el("th", { class: "n" }, "lowest"), el("th", { class: "n" }, "highest"), el("th", { class: "n" }, "last")),
+      r.measures.map(m => el("tr", {}, el("td", {}, m.label), el("td", { class: "n" }, n1(m.lowest)), el("td", { class: "n" }, n1(m.highest)), el("td", { class: "n" }, n1(m.last)))))));
+  }
+
+  // Steps.
+  const maxP = Math.max(...r.steps.map(x => x.person_s), 1);
+  const steps = r.steps.filter(x => x.kind !== "look");
+  all.append(el("h3", {}, "Steps"));
+  all.append(el("div", { class: "scroll" }, el("table", {},
+    el("tr", {}, ["#", "what", "pointer px / target px (bits)", "person s", "answer ms", "preview ms", "worst frame ms", "what it changed"].map(h => el("th", {}, h))),
+    steps.map(x => el("tr", { class: (x.dead || x.worst_frame_ms > 100) ? "flag" : "" },
+      el("td", { class: "n" }, x.index),
+      el("td", { class: "mono" }, x.play, x.dead ? el("div", { class: "pill bad" }, "did nothing") : null, x.notice ? el("div", { class: "dim" }, x.notice) : null),
+      el("td", { class: "n" }, x.pointings.map(p => `${n0(p.distance)} / ${n0(p.width)} (${n1(p.bits)})`).join(" → ") || "keys: " + x.keys),
+      el("td", { class: "n" }, el("span", { class: "bar", style: `width:${Math.round(40 * x.person_s / maxP)}px` }), " ", n1(x.person_s)),
+      el("td", { class: "n" }, n0(x.answer_ms)),
+      el("td", { class: "n" }, n0(x.preview_ms)),
+      el("td", { class: "n" }, n0(x.worst_frame_ms)),
+      el("td", { class: "dim" }, (x.changed.length ? x.changed : x.actions).join(", ")))))));
+
+  if (r.pictures.length) {
+    all.append(el("details", { open: "" }, el("summary", {}, "Pictures"),
+      el("div", { class: "pics" }, r.pictures.map(p => el("figure", {}, el("a", { href: `${r.name}/${p}` }, el("img", { src: `${r.name}/${p}`, loading: "lazy" })), el("figcaption", {}, p))))));
+  }
+}
+if (!D.length) all.append(el("p", {}, "No playtests ran."));
+</script>
+</body>
+</html>

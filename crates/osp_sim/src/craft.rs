@@ -379,7 +379,10 @@ fn build_part(part: &CraftPartDef, catalog: &PartCatalog) -> Result<CraftPart, C
             shape: drawn(design.shape, part),
             structure: design.structure,
             components: design.components,
-            nodes: part.nodes.clone(),
+            nodes: (design.nodes.into_iter())
+                .filter(|n| !part.nodes.iter().any(|own| own.name == n.name))
+                .chain(part.nodes.iter().cloned())
+                .collect(),
             paint: part.paint.clone(),
         };
         def.components.extend(part.components.iter().cloned());

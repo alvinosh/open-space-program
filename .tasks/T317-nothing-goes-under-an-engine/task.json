@@ -1,0 +1,20 @@
+{
+  "id": "T317",
+  "title": "Nothing goes under an engine, so stages cannot be stacked",
+  "kind": "bug",
+  "status": "done",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_game/src/playtest/plays.rs (TWO_STAGES)",
+    "assets/core/engines/stock.json5",
+    "assets/core/craft/pathfinder.json5"
+  ],
+  "created": "2026-11-16",
+  "updated": "2026-11-16",
+  "done": "2026-11-16",
+  "milestone": "M3",
+  "priority": 61.2422
+}

@@ -71,6 +71,34 @@ pub struct CylinderTankDef {
     pub thrust_plate: bool,
 }
 
+impl CylinderTankDef {
+    /// How tall each dome is, m.
+    pub fn dome_height(&self) -> f64 {
+        self.dome * self.diameter / 2.0
+    }
+
+    /// With skirts down to the tips of its domes, as a stage's tank has: a plain cylinder outside,
+    /// so a part stacked on it meets its rim and no dome is left bare in the air.
+    pub fn skirted(mut self) -> Self {
+        let height = self.dome_height();
+        self.aft_skirt = height;
+        self.forward_skirt = height;
+        self
+    }
+
+    /// Its domes were `before` m tall until its width or their shape changed: a skirt that reached
+    /// its dome's tip still does, and reaches as far past it as it did; one that stopped short of it
+    /// stays as it was.
+    pub fn keep_skirts(&mut self, before: f64) {
+        let now = self.dome_height();
+        for skirt in [&mut self.aft_skirt, &mut self.forward_skirt] {
+            if *skirt > 0.0 && *skirt >= before - 1e-9 * before.max(1.0) {
+                *skirt = (*skirt + now - before).max(0.0);
+            }
+        }
+    }
+}
+
 /// A frustum closed by domes, or by a point where a diameter is 0.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

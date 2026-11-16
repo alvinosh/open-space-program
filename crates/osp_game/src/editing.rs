@@ -27,9 +27,20 @@ pub struct EditorActions;
 pub struct EditorStatus {
     /// What the craft on show weighs by, m/s², while the editor is open.
     open: Option<f64>,
+    /// A craft is being built on a thread to go on show (a preview, a size or a move): what the
+    /// player sees has yet to answer what they did. Playtests wait for it (`playtest`).
+    busy: bool,
 }
 
 impl EditorStatus {
+    pub fn is_busy(&self) -> bool {
+        self.busy
+    }
+
+    pub fn set_busy(&mut self, busy: bool) {
+        self.busy = busy;
+    }
+
     pub fn is_open(&self) -> bool {
         self.open.is_some()
     }

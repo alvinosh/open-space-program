@@ -232,6 +232,11 @@ impl Default for Moving {
 }
 
 impl Moving {
+    /// What a handle in hand has made is being built to go on show.
+    pub fn is_building(&self) -> bool {
+        self.building.is_some()
+    }
+
     pub fn tool(&self) -> Tool {
         self.tool
     }

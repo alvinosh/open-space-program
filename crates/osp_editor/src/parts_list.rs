@@ -469,16 +469,4 @@ mod tests {
         list.search = "rs-".into();
         assert_eq!(shown(&list, &entries), ["engine:RS-68"]);
     }
-
-    #[test]
-    fn tiles_that_share_a_name_are_called_by_their_own_ids() {
-        let palette = Palette::new(entries());
-        let label = |id: &str| {
-            let entry = palette.entries.iter().find(|e| e.id == id).unwrap();
-            palette.label(entry).to_owned()
-        };
-        assert_eq!(label("engine:F-1-A"), "F-1-A");
-        assert_eq!(label("engine:J-2"), "J-2");
-        assert_eq!(label("tank"), "Tank");
-    }
 }

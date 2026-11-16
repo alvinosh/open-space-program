@@ -131,7 +131,11 @@ impl Decodable for FlightSound {
 }
 
 fn start(mut commands: Commands, mut sounds: ResMut<Assets<FlightSound>>, mix: Res<FlightMix>) {
-    if std::env::var_os("OSP_CAPTURE").is_some() {
+    // Scripted captures and playtests play nothing: they run while the player works.
+    if ["OSP_CAPTURE", "OSP_PLAYTEST"]
+        .iter()
+        .any(|v| std::env::var_os(v).is_some())
+    {
         return;
     }
     // Decoding takes a moment, and the game has nothing to play in the first one.

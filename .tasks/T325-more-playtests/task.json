@@ -1,0 +1,22 @@
+{
+  "id": "T325",
+  "title": "More playtests: a plane, a career's first hour, a rendezvous",
+  "kind": "test",
+  "status": "todo",
+  "area": "test",
+  "size": "M",
+  "parent": null,
+  "depends_on": [
+    "T316"
+  ],
+  "refs": [
+    "crates/osp_game/src/playtest/plays.rs",
+    "T291",
+    "T301"
+  ],
+  "created": "2026-11-16",
+  "updated": "2026-11-16",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.24291
+}
