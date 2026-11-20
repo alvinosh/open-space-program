@@ -473,8 +473,10 @@ impl Builder {
         })
     }
 
-    /// Take `id` away, with everything held by it, and out of what its sequences do.
+    /// Take `id` away, with the parts put on with it by symmetry ([`alike`]) and everything held
+    /// by them, and out of what its sequences do.
     pub fn remove(&mut self, catalog: &PartCatalog, id: &str) -> Result<Change, Refusal> {
+        let set = self.set_of(id);
         self.edit(catalog, |draft| {
             let gone = held_by(draft, id)?;
             if gone.len() < draft.parts.len() && root(draft) == Some(id) {
@@ -483,10 +485,16 @@ impl Builder {
                     format!("`{id}` is the root: reroot before taking it away"),
                 ));
             }
-            draft.parts.retain(|p| !gone.contains(&p.id));
-            forget(draft, &gone);
+            *draft = removed(draft, &set.into_iter().collect())?;
             Ok(())
         })
+    }
+
+    /// `id` and the parts put on with it by symmetry ([`alike`]): what an edit of it changes.
+    pub fn set_of(&self, id: &str) -> Vec<String> {
+        let mut set = vec![id.to_owned()];
+        set.extend(alike(&self.draft, id).into_iter().map(|(copy, _)| copy));
+        set
     }
 
     /// Take every part of `ids` away, each with everything held by it, as one change: a part
@@ -728,7 +736,8 @@ impl Builder {
             let renamed = |part: &str| format!("{part}{suffix}");
             let mut copies = Vec::new();
             for part in draft.parts.iter().filter(|p| ids.contains(&p.id)) {
-                let mut copy = reflected(part, if part.id == id { plane } else { 0.0 });
+                let plane = if part.id == id { plane } else { 0.0 };
+                let mut copy = reflected(part, plane, holder_in(&draft.parts, part));
                 copy.id = renamed(&part.id);
                 if part.id != id {
                     copy.on = (copy.on.as_ref()).map(|on| match on.split_once('.') {
@@ -753,24 +762,27 @@ impl Builder {
     }
 
     /// Change sizes of `id`'s shape (see [`shaping`]), each `(name, value)`, kept within what the
-    /// shape allows, with what is mounted on it carried along: one operation, however many sizes. A
-    /// part that already broke a rule before is only held to building: what is checked is what the
-    /// change does.
+    /// shape allows, with what is mounted on it carried along: one operation, however many sizes.
+    /// The parts put on with it by symmetry change with it ([`copies_follow`]). A part that already
+    /// broke a rule before is only held to building: what is checked is what the change does.
     pub fn resize(
         &mut self,
         catalog: &PartCatalog,
         id: &str,
         sizes: &[(&str, f64)],
     ) -> Result<Change, Refusal> {
-        let kept = check(&self.draft, catalog, &[id]).is_ok();
+        let set = self.set_of(id);
+        let set: Vec<&str> = set.iter().map(String::as_str).collect();
+        let kept = check(&self.draft, catalog, &set).is_ok();
         let mut next = self.draft.clone();
         let part = part_mut(&mut next, id)?;
         for &(size, value) in sizes {
             shaping::resize(part, size, value).map_err(|e| Refusal::new(Rule::Part, e))?;
         }
+        copies_follow(&self.draft, &mut next, id);
         self.allows(&next, id)?;
         if kept {
-            check(&next, catalog, &[id])?;
+            check(&next, catalog, &set)?;
         } else {
             Craft::build(&next, catalog).map_err(|e| Refusal::new(Rule::Join, e.to_string()))?;
         }
@@ -783,7 +795,8 @@ impl Builder {
 
     /// Set field `field` of `id` (see [`properties`]) from `text`, as the part window does: a size,
     /// its shape, what its tank holds (what the engines it feeds burn), its material, a sizer's
-    /// requirement. Checked as [`Builder::resize`] is: only for what the change does.
+    /// requirement. The parts put on with it by symmetry change with it ([`copies_follow`]).
+    /// Checked as [`Builder::resize`] is: only for what the change does.
     pub fn set_field(
         &mut self,
         catalog: &PartCatalog,
@@ -791,7 +804,11 @@ impl Builder {
         field: &str,
         text: &str,
     ) -> Result<Change, Refusal> {
-        let kept = check(&self.draft, catalog, &[id]).is_ok();
+        let set = self.set_of(id);
+        let kept = {
+            let set: Vec<&str> = set.iter().map(String::as_str).collect();
+            check(&self.draft, catalog, &set).is_ok()
+        };
         let mixes = properties::mixes(&self.draft, catalog, id);
         let mut next = self.draft.clone();
         let part = part_mut(&mut next, id)?;
@@ -805,14 +822,16 @@ impl Builder {
         if field != "tank_type" && storages(part).any(|s| !had.contains(&s.tank_type)) {
             self.allowed.allowed_tank_types(part, catalog);
         }
+        copies_follow(&self.draft, &mut next, id);
         // Another configuration of an engine may burn something else: tanks as the parts list gave
         // them follow it, as they follow an engine put on.
         if field == "configuration" {
-            properties::fill_from_engines(&mut next, catalog, &[id.to_owned()]);
+            properties::fill_from_engines(&mut next, catalog, &set);
         }
         self.allows(&next, id)?;
         if kept {
-            check(&next, catalog, &[id])?;
+            let set: Vec<&str> = set.iter().map(String::as_str).collect();
+            check(&next, catalog, &set)?;
         } else {
             Craft::build(&next, catalog).map_err(|e| Refusal::new(Rule::Join, e.to_string()))?;
         }
@@ -1072,7 +1091,8 @@ pub fn put_set(
             }
             names.insert(part.id.clone(), id.clone());
             let mut copy = if *mirrored {
-                reflected(part, 0.0)
+                // The one put on first takes its place's turn below; what it holds, its own.
+                reflected(part, 0.0, holder_in(parts, part))
             } else {
                 part.clone()
             };
@@ -1403,7 +1423,8 @@ fn counterparts(draft: &CraftDef, id: &str, depth: usize) -> Vec<(String, bool)>
         }
         p
     };
-    let (same, mirror) = (key(part), key(&reflected(part, 0.0)));
+    let mirror = reflected(part, 0.0, holder_in(&draft.parts, part));
+    let (same, mirror) = (key(part), key(&mirror));
     (draft.parts.iter())
         .filter(|p| p.id != id)
         .filter_map(|p| {
@@ -1425,6 +1446,59 @@ fn counterparts(draft: &CraftDef, id: &str, depth: usize) -> Vec<(String, bool)>
             }
         })
         .collect()
+}
+
+/// `next`, in which `id` was changed from how it is in `draft`, with the parts put on with it by
+/// symmetry in `draft` ([`alike`]) changed the same way: each made again from it, as its mirror
+/// image where it is one, keeping what makes it that copy: its id, what holds it, how far round
+/// its surface it is, what its fuel lines feed, and its name unless the change was to the name.
+/// What is done to one of a set is done to them all. Also the ids of the copies it changed.
+pub fn copies_follow(draft: &CraftDef, next: &mut CraftDef, id: &str) -> Vec<String> {
+    let find = |def: &CraftDef| def.parts.iter().find(|p| p.id == id).cloned();
+    let (Some(before), Some(after)) = (find(draft), find(next)) else {
+        return Vec::new();
+    };
+    let renamed = before.name != after.name;
+    let feeds = |part: &CraftPartDef| -> Vec<String> {
+        (part.components.iter())
+            .filter_map(|c| match c {
+                ComponentDef::FuelLine(line) => Some(line.to.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    let mut changed = Vec::new();
+    for (copy, mirrored) in alike(draft, id) {
+        let Some(part) = next.parts.iter_mut().find(|p| p.id == copy) else {
+            continue;
+        };
+        let mut made = if mirrored {
+            reflected(&after, 0.0, holder_in(&draft.parts, &after))
+        } else {
+            after.clone()
+        };
+        made.id.clone_from(&part.id);
+        made.on.clone_from(&part.on);
+        if !renamed {
+            made.name.clone_from(&part.name);
+        }
+        if let (Some(at), Some(own)) = (&mut made.at, part.at) {
+            at.u = own.u;
+        }
+        let mut own_feeds = feeds(part).into_iter();
+        for component in &mut made.components {
+            if let ComponentDef::FuelLine(line) = component
+                && let Some(to) = own_feeds.next()
+            {
+                line.to = to;
+            }
+        }
+        if *part != made {
+            *part = made;
+            changed.push(copy);
+        }
+    }
+    changed
 }
 
 /// How far a part held at a node may be slid off it: the point it is held at has to stay this near
@@ -1613,7 +1687,7 @@ fn held_anew(
     let roll = wrapped((roll.to_degrees() * 1e6).round() / 1e6);
     let mut next = draft.clone();
     let alike = alike(draft, id);
-    let write = |part: &mut CraftPartDef, mirrored: bool| {
+    let write = |part: &mut CraftPartDef, mirrored: bool, roll: f64| {
         let flip = |v: DVec3| {
             if mirrored {
                 DVec3::new(-v.x, v.y, v.z)
@@ -1629,21 +1703,25 @@ fn held_anew(
             size: held.size,
         });
         part.by = held.name.clone();
-        part.roll = if mirrored { wrapped(-roll) } else { roll };
+        part.roll = roll;
     };
-    write(part_mut(&mut next, id)?, false);
+    write(part_mut(&mut next, id)?, false, roll);
+    let one = part_mut(&mut next, id)?.clone();
+    let image_roll = mirrored_roll(&one, holder_in(&next.parts, &one));
     let mut moved = vec![id.to_owned()];
     for (other, mirrored) in alike {
-        write(part_mut(&mut next, &other)?, mirrored);
+        let roll = if mirrored { image_roll } else { roll };
+        write(part_mut(&mut next, &other)?, mirrored, roll);
         moved.push(other);
     }
     Ok((next, moved))
 }
 
-/// `part` reflected across a plane through the axis of what holds it, at turn `plane`: its shape
-/// mirrored (a catalogue record is its own mirror image) and held at the reflected place. Twice
-/// is the part as it was.
-pub fn reflected(part: &CraftPartDef, plane: f64) -> CraftPartDef {
+/// `part` (held by `holder`, if that is to hand) reflected across a plane through the axis of what
+/// holds it, at turn `plane`: its shape mirrored (a catalogue record is its own mirror image) and
+/// held at the reflected place, turned the other way about its joint ([`mirrored_roll`]). Twice is
+/// the part as it was.
+pub fn reflected(part: &CraftPartDef, plane: f64, holder: Option<&CraftPartDef>) -> CraftPartDef {
     let mut copy = part.clone();
     copy.shape = copy.shape.map(|shape| match shape {
         ShapeDef::Mirrored(inner) => *inner,
@@ -1653,13 +1731,54 @@ pub fn reflected(part: &CraftPartDef, plane: f64) -> CraftPartDef {
         u: (2.0 * plane - at.u).rem_euclid(1.0),
         ..at
     });
-    copy.roll = wrapped(-copy.roll);
+    copy.roll = mirrored_roll(part, holder);
     // Its own nodes are in its frame, which is reflected with its shape.
     for node in &mut copy.nodes {
         node.position[0] = -node.position[0];
         node.direction[0] = -node.direction[0];
     }
     copy
+}
+
+/// How far the mirror image of `part`, as it is held (by `holder`, if that is to hand), is turned
+/// about its joint, degrees: the other way round, and further by how much the frame of each node
+/// at the joint turns when reflected ([`crate::assembly::mirror_twist`]). Without that a wing held
+/// by its root, a node along its span, would come out turned over: its sweep forwards and its
+/// lifting side down. A catalogue record's own nodes are not to hand, so are taken to need none.
+pub fn mirrored_roll(part: &CraftPartDef, holder: Option<&CraftPartDef>) -> f64 {
+    let far = node_direction(part, &part.by);
+    // On a surface the image's place on it is the reflection of the original's, so only a node
+    // the part is held at turns.
+    let near = match (
+        &part.at,
+        part.on.as_deref().and_then(|on| on.split_once('.')),
+    ) {
+        (None, Some((_, connector))) => holder.and_then(|h| node_direction(h, connector)),
+        _ => None,
+    };
+    let twist: f64 = [far, near]
+        .into_iter()
+        .flatten()
+        .map(crate::assembly::mirror_twist)
+        .sum();
+    wrapped(-part.roll - (twist.to_degrees() * 1e6).round() / 1e6)
+}
+
+/// What holds `part`, of `parts`.
+fn holder_in<'p>(parts: &'p [CraftPartDef], part: &CraftPartDef) -> Option<&'p CraftPartDef> {
+    let (holder, _) = part.on.as_deref()?.split_once('.')?;
+    parts.iter().find(|p| p.id == holder)
+}
+
+/// The way `part`'s node `name` faces, in its frame, from its own nodes or its shape's.
+fn node_direction(part: &CraftPartDef, name: &str) -> Option<DVec3> {
+    if let Some(node) = part.nodes.iter().find(|n| n.name == name) {
+        return Some(DVec3::from(node.direction));
+    }
+    let geometry = part.shape.as_ref()?.build().ok()?;
+    (geometry.nodes.iter())
+        .find(|n| n.name == name)
+        .map(|n| n.direction)
 }
 
 /// Degrees in (-180, 180].
@@ -2251,12 +2370,13 @@ mod tests {
     #[test]
     fn a_mirror_image_slides_and_turns_as_the_mirror_of_the_original() {
         let catalog = catalog();
-        let mut builder = stack(&catalog);
-        for fin in ["fin_2", "fin_3", "fin_4"] {
-            builder.remove(&catalog, fin).unwrap();
-        }
-        // The first fin a little round from +X, and its mirror across the XZ plane.
+        let builder = stack(&catalog);
+        // One fin of the four: the others go with any part of the set taken off.
         let mut draft = builder.draft().clone();
+        draft
+            .parts
+            .retain(|p| !["fin_2", "fin_3", "fin_4"].contains(&p.id.as_str()));
+        // The first fin a little round from +X, and its mirror across the XZ plane.
         part_mut(&mut draft, "fin_1")
             .unwrap()
             .at
@@ -2729,8 +2849,10 @@ mod tests {
         };
         let mut first = Place::surface("lower.barrel", "held_side", at(0.0));
         first.roll = 90.0;
+        // Held by a node along its X, the mirror image turns a half turn further than the other
+        // way round, which here is the same way.
         let mut second = Place::surface("lower.barrel", "held_side", at(0.5));
-        second.roll = -90.0;
+        second.roll = 90.0;
         let (change, tops) = builder
             .put_set(
                 &catalog,
@@ -2759,14 +2881,12 @@ mod tests {
             alike(builder.draft(), "nose"),
             [("nose_2".to_owned(), true)]
         );
-        // The cones stand on opposite sides of the axis, at the same height.
+        // The cones are each other's reflection across the craft's middle plane: X to -X, not
+        // half way round the axis, which would put X and Y both the other way.
         let all = poses(&builder, &catalog);
         let (a, b) = (pose(&all, "nose"), pose(&all, "nose_2"));
-        assert!((a.position.z - b.position.z).abs() < 1e-6);
-        assert!(near(
-            a.position.truncate().extend(0.0),
-            -b.position.truncate().extend(0.0)
-        ));
+        assert!(near(a.position, b.position * DVec3::new(-1.0, 1.0, 1.0)));
+        assert!(a.position.y.abs() > 0.1, "{a:?}");
         // Put back elsewhere as one, the copies taken off with what they hold.
         let replacing = BTreeSet::from(["booster".to_owned(), "booster_2".to_owned()]);
         let subtree: Vec<CraftPartDef> = (builder.draft().parts.iter())
@@ -2838,5 +2958,120 @@ mod tests {
         // Half way round from +X, on the plane itself, there is none.
         let on_plane = SurfaceAtDef { u: 0.25, ..at };
         assert_eq!(mirrored_u(&craft, lower, "barrel", on_plane), None);
+    }
+
+    /// `part` put on the lower tank's barrel at `u` by `by` turned `roll`, and its mirror image
+    /// as the editor puts it: at the reflected place, turned the other way, reflected. Every point
+    /// of the one, reflected across the craft's middle plane, is the same point of the other.
+    fn mirrored_pair_is_one_reflection(mut part: CraftPartDef, by: &str, roll: f64, u: f64) {
+        let catalog = catalog();
+        let builder = stack(&catalog);
+        let craft = Craft::build(builder.draft(), &catalog).unwrap();
+        let lower = craft.find("lower").unwrap();
+        part.id = "held".into();
+        let at = SurfaceAtDef {
+            u,
+            v: 0.5,
+            side: Side::Front,
+            standoff: 0.0,
+            axial: false,
+        };
+        let mut place = Place::surface("lower.barrel", by, at);
+        place.roll = roll;
+        let mut image = place.clone();
+        let mut placed = part.clone();
+        place.write(&mut placed);
+        image.roll = mirrored_roll(
+            &placed,
+            builder.draft().parts.iter().find(|p| p.id == "lower"),
+        );
+        image.at = Some(SurfaceAtDef {
+            u: mirrored_u(&craft, lower, "barrel", at).unwrap(),
+            ..at
+        });
+        let mut placed = builder.clone();
+        let (_, tops) = placed
+            .put_set(
+                &catalog,
+                std::slice::from_ref(&part),
+                &[(place, false), (image, true)],
+                &BTreeSet::new(),
+            )
+            .unwrap();
+        let all = poses(&placed, &catalog);
+        let [one, other] = [0, 1].map(|k| pose(&all, &tops[k]));
+        let reflect = |v: DVec3| DVec3::new(-v.x, v.y, v.z);
+        for p in [
+            DVec3::ZERO,
+            DVec3::X,
+            DVec3::Y,
+            DVec3::Z,
+            DVec3::new(0.2, -0.4, 1.0),
+        ] {
+            let (a, b) = (reflect(one.point(p)), other.point(reflect(p)));
+            assert!(near(a, b), "{by} at {u}, {p:?}: {a:?} against {b:?}");
+        }
+    }
+
+    #[test]
+    fn a_mirror_image_put_on_by_the_editor_is_the_reflection_of_the_original() {
+        let catalog = catalog();
+        for id in ["fin", "wing", "wheel"] {
+            let all = palette::entries(&catalog);
+            let (by, roll) = (all.iter().find(|e| e.id == id).unwrap().surface.clone()).unwrap();
+            for u in [0.0, 0.1, 0.4] {
+                mirrored_pair_is_one_reflection(entry(id, &catalog), &by, roll + 20.0, u);
+            }
+        }
+        // A tank put on by its side, stood upright.
+        let mut booster = entry("tank", &catalog);
+        let node = side_node(&alone(&booster, &catalog).unwrap());
+        booster.nodes.push(node);
+        for u in [0.0, 0.1, 0.4] {
+            mirrored_pair_is_one_reflection(booster.clone(), SIDE, 30.0, u);
+        }
+    }
+
+    #[test]
+    fn a_wing_mirrored_with_what_is_on_its_tip_is_the_reflection_of_both() {
+        let catalog = catalog();
+        let mut builder = stack(&catalog);
+        let mut wing = entry("wing", &catalog);
+        wing.id = "wing".into();
+        let mut place = Place::surface(
+            "lower.barrel",
+            "root",
+            SurfaceAtDef {
+                u: 0.1,
+                v: 0.5,
+                side: Side::Front,
+                standoff: 0.0,
+                axial: false,
+            },
+        );
+        place.roll = 15.0;
+        builder.place(&catalog, wing, Some(place)).unwrap();
+        // Something on the tip, a node along the wing's span, turned about it.
+        let mut cone = entry("nose_cone", &catalog);
+        cone.id = "cone".into();
+        let mut tip = Place::node("wing.tip", "bottom");
+        tip.roll = 40.0;
+        builder.place(&catalog, cone, Some(tip)).unwrap();
+        builder.mirror(&catalog, "wing", 0.0, "_m").unwrap();
+        let all = poses(&builder, &catalog);
+        // Across the plane through the axis and u = 0 (+X): Y to -Y.
+        let reflect = |v: DVec3| DVec3::new(v.x, -v.y, v.z);
+        let flip = |v: DVec3| DVec3::new(-v.x, v.y, v.z);
+        for id in ["wing", "cone"] {
+            let (one, other) = (pose(&all, id), pose(&all, &format!("{id}_m")));
+            for p in [DVec3::X, DVec3::Y, DVec3::Z, DVec3::new(0.2, -0.4, 1.0)] {
+                let (a, b) = (reflect(one.point(p)), other.point(flip(p)));
+                assert!(near(a, b), "{id} {p:?}: {a:?} against {b:?}");
+            }
+        }
+        assert_eq!(
+            alike(builder.draft(), "cone"),
+            [("cone_m".to_owned(), true)]
+        );
     }
 }

@@ -198,6 +198,10 @@ pub struct Universe {
     /// The career this is, if it is one: what it has unlocked and has to spend. A sandbox has none
     /// (see [`crate::career`]).
     pub career: Option<Career>,
+    /// A vessel only on show, standing in for a place to look at (the space centre's view), and
+    /// the vessel in focus before it: not part of the game, so a save leaves it out and keeps the
+    /// one before it in focus (see [`Universe::put_on_show`]).
+    on_show: Option<(VesselId, Option<VesselId>)>,
     time: SimTime,
     next_id: u64,
 }
@@ -270,6 +274,7 @@ impl Universe {
             captures: Vec::new(),
             alarms: AlarmClock::default(),
             career: None,
+            on_show: None,
             time,
             next_id: 0,
         };
@@ -356,7 +361,50 @@ impl Universe {
     }
 
     /// Take a vessel out of the game; whoever targeted it loses the target.
+    /// Put `vessel` in the game only to be looked from, in focus, in place of any put on show
+    /// before: it is not part of the game, so a save leaves it out ([`Universe::snapshot`]) and
+    /// keeps the vessel in focus before it. Its id.
+    pub fn put_on_show(&mut self, vessel: Vessel) -> VesselId {
+        let behind = match self.on_show.take() {
+            Some((shown, behind)) => {
+                self.remove_vessel(shown);
+                behind
+            }
+            None => self.focus,
+        };
+        let id = self.add_vessel(vessel);
+        self.on_show = Some((id, behind));
+        self.focus = Some(id);
+        id
+    }
+
+    /// Take the vessel on show away, if there is one: the vessel in focus before it is in focus
+    /// again, unless another has been put in focus since.
+    pub fn take_off_show(&mut self) {
+        let Some((shown, behind)) = self.on_show.take() else {
+            return;
+        };
+        self.remove_vessel(shown);
+        if self.focus == Some(shown) {
+            self.focus = behind.filter(|&id| self.vessel(id).is_some());
+        }
+    }
+
+    /// The vessel on show, and the vessel in focus before it.
+    pub fn on_show(&self) -> Option<(VesselId, Option<VesselId>)> {
+        self.on_show
+    }
+
+    /// The vessels of the game: every one but the one on show.
+    pub fn in_game(&self) -> impl Iterator<Item = &Vessel> {
+        let shown = self.on_show.map(|(id, _)| id);
+        self.vessels.iter().filter(move |v| Some(v.id()) != shown)
+    }
+
     pub fn remove_vessel(&mut self, id: VesselId) {
+        if self.on_show.is_some_and(|(shown, _)| shown == id) {
+            self.on_show = None;
+        }
         self.vessels.retain(|v| v.id() != id);
         for vessel in &mut self.vessels {
             if vessel.target.and_then(Target::vessel) == Some(id) {
@@ -954,6 +1002,7 @@ impl Universe {
         let mission =
             Mission::new(scenario, sites, &self.system).map_err(UniverseError::Mission)?;
         self.vessels.clear();
+        self.on_show = None;
         self.clear_of.clear();
         self.contacts.clear();
         self.captures.clear();
@@ -1005,6 +1054,7 @@ impl Universe {
         vessel.propulsion.require_control_under(&catalog.rules);
         if new_game.is_some() {
             self.vessels.clear();
+            self.on_show = None;
             self.clear_of.clear();
             self.contacts.clear();
             self.contacts.clear();
@@ -1026,13 +1076,18 @@ impl Universe {
 
     /// Everything that happens here, for saving.
     pub fn snapshot(&self) -> Snapshot {
+        // What is only on show is not part of the game.
+        let focus = match self.on_show {
+            Some((shown, behind)) if self.focus == Some(shown) => behind,
+            _ => self.focus,
+        };
         Snapshot {
             bodies: self.body_names(),
             time: self.time,
             next_id: self.next_id,
             link_ticks: self.link_ticks,
-            vessels: self.vessels.clone(),
-            focus: self.focus,
+            vessels: self.in_game().cloned().collect(),
+            focus,
             mission: self.mission.clone(),
             tutorial: self.tutorial.clone(),
             clear_of: self.clear_of.clone(),
@@ -1055,6 +1110,7 @@ impl Universe {
         self.next_id = snapshot.next_id;
         self.link_ticks = snapshot.link_ticks;
         self.vessels = snapshot.vessels;
+        self.on_show = None;
         self.focus = snapshot.focus;
         self.mission = snapshot.mission;
         self.tutorial = snapshot.tutorial;

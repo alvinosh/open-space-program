@@ -1,7 +1,7 @@
 // A career's contracts (osp_game::career): those taken on (`career.taken`: each `id`, `title`,
 // `description`, `reward`, `left` seconds and `has_deadline`), dropped with `career.drop:<id>`, and
 // those offered (`career.offers`: each `id`, `title`, `description`, `reward`, `days` and
-// `has_deadline`), taken on with `career.accept:<id>`. Opened from the editor bar and the toolbar
+// `has_deadline`), taken on with `career.accept:<id>`. Opened from the toolbar
 // in a career; in the hangar and in flight alike.
 {
   id: "contracts",

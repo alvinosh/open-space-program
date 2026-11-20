@@ -328,6 +328,8 @@
     // Made of the menu's parts: the list on a narrower rail, the launch on a panel like it on the
     // other side, and the hangar between them, which takes the pointer.
     editor_root: { position: "absolute", left: 0, top: 0, width: "100%", height: "100%", direction: "row", z_index: 40 },
+    // The space centre's panel on the left, the view beside it taking the pointer.
+    centre_root: { position: "absolute", left: 0, top: 0, width: "100%", height: "100%", direction: "row", z_index: 40 },
     editor_rail: { width: 368, padding: [97, 16, 32, 36] },
     // Always there, over the rail while that is out and on the hangar when it is not.
     editor_bar: { position: "absolute", left: 36, top: 45, gap: 8 },

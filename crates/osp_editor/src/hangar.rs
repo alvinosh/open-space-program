@@ -1,10 +1,11 @@
-//! The hangar: where a vessel is chosen, built and looked over before it flies. New game (`game.new`) and
-//! Fly a new vessel (`editor.open`) come here with the hangar empty. The player picks a craft from
+//! The hangar: where a vessel is chosen, built and looked over before it flies. The space centre's
+//! Vehicle Assembly and Hangar (`editor.open:pad`, `editor.open:runway`) come here with the hangar
+//! empty, to launch from the pad or the runway (`osp_game::space_centre`). The player picks a craft from
 //! the list (`editor.show:<id>`), which then gets out of the way and comes back with `editor.list`.
 //! They walk round it, pick another if they like, change its staging with the same window as in
 //! flight, then launch it from the pad, the runway or orbit (`editor.launch`). A pad or runway with
 //! a vessel on it takes no launch until that is cleared (`editor.clear`, asked once). Back or Esc
-//! goes back to the menu with the game as it was. Building is in the crate's other modules.
+//! goes back to the space centre with the game as it was. Building is in the crate's other modules.
 //!
 //! Nothing the player did to the craft on show is thrown away without asking: while it has changes
 //! since it was put on show, putting another on show, New rocket or New plane, Back and Esc ask
@@ -17,11 +18,10 @@
 //! here with the same craft, staging and place, as if it had never gone (`ask.revert:<to>` asks
 //! first). Saves are not touched, so what was saved since can still be loaded.
 //!
-//! A game always has a vessel in it. With the last one destroyed, here or from the menu's Vessels
-//! screen (`vessel.destroy:<id>`, asked once), the hangar is what is left: going back from it leaves
-//! the game for the title screen, as there is nothing to go back to. A vessel that is down on a world
+//! With the last vessel destroyed, here or from the menu's Vessels screen (`vessel.destroy:<id>`,
+//! asked once), the space centre is what is left, to build the next. A vessel that is down on a world
 //! with a launch site can be recovered (`vessel.recover:<id>`, asked once): what its drives hold
-//! comes home, and if it was the one being flown the hangar opens, Back from it flying another.
+//! comes home, and if it was the one being flown the space centre opens, another to fly from there.
 //!
 //! What is on show is a real vessel (`Vessel::on_display`), the one the player flies for now, so
 //! the vessel renderer draws it and the staging window edits it as they do in flight. It stands far
@@ -70,6 +70,7 @@ use osp_game::{
     menu::{Menu, go_to_title, menu_actions},
     saves::Saves,
     sim::{Sim, SimRestarted, TimeWarp},
+    space_centre::SpaceCentre,
     tree_screen::{TreeScreen, tree_actions},
 };
 
@@ -249,8 +250,6 @@ struct Showing {
     vessel: VesselId,
     /// The vessel to go back to flying; none once there is nothing left to fly.
     flown: Option<VesselId>,
-    /// The vessel to go back to is not the one the player left: the camera finds it afresh.
-    flown_changed: bool,
     /// The box round the craft as it stands, from its root, sim axes.
     low: DVec3,
     high: DVec3,
@@ -979,7 +978,8 @@ fn named(ids: &[VesselId], sim: &Sim) -> String {
 
 /// A vessel to fly other than these and what is on show: debris is not one.
 fn next_to_fly(sim: &Sim, except: &[VesselId]) -> Option<VesselId> {
-    (sim.universe.vessels.iter())
+    // Not what the space centre's view stands in.
+    (sim.universe.in_game())
         .filter(|vessel| !vessel.is_debris() && !except.contains(&vessel.id()))
         .map(Vessel::id)
         .next()
@@ -1176,7 +1176,7 @@ pub(crate) fn editor_actions(
         ResMut<Placing>,
         ResMut<Moving>,
     ),
-    mut last_launch: ResMut<LastLaunch>,
+    (mut last_launch, mut centre): (ResMut<LastLaunch>, ResMut<SpaceCentre>),
 ) {
     for action in actions.read() {
         match action.name() {
@@ -1212,20 +1212,12 @@ pub(crate) fn editor_actions(
                     continue;
                 }
                 sim.universe.remove_vessel(id);
-                let registry = &content.0.registry;
-                let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
-                open_hangar(
-                    &mut commands,
-                    &mut editor,
-                    &mut menu,
-                    &mut sim,
-                    &mut rig,
-                    &mut ui,
-                    &mut ambient,
-                    (&mut meshes, &mut materials, &mut images),
-                    &all,
-                    None,
-                );
+                // Nothing left to fly: the space centre, to build the next.
+                sim.universe.focus = None;
+                menu.back_to_root();
+                menu.show(false, &mut sim, &mut ui);
+                to_space_centre(&mut centre, &mut sim, &mut rig, &mut ui, &content);
+                centre.tell(format!("Destroyed {name}"));
             }
             // Brought home with what its drives hold. Another stays where it is; the one being flown
             // goes, and the hangar opens for the next, from which Back flies another if there is one.
@@ -1247,28 +1239,23 @@ pub(crate) fn editor_actions(
                     menu.notice = notice;
                     continue;
                 }
-                open_hangar(
-                    &mut commands,
-                    &mut editor,
-                    &mut menu,
-                    &mut sim,
-                    &mut rig,
-                    &mut ui,
-                    &mut ambient,
-                    (&mut meshes, &mut materials, &mut images),
-                    &all,
-                    next,
-                );
-                if let Some(showing) = editor.0.as_mut() {
-                    showing.notice = notice;
-                    // Back flies another vessel than the one it came from.
-                    showing.flown_changed = true;
-                }
+                // The one flown came home: the space centre, from which the next goes up.
+                sim.universe.focus = next;
+                menu.back_to_root();
+                menu.show(false, &mut sim, &mut ui);
+                to_space_centre(&mut centre, &mut sim, &mut rig, &mut ui, &content);
+                centre.tell(notice);
             }
-            "game.new" | "editor.open" if editor.0.is_none() => {
+            // From the space centre's Vehicle Assembly (`pad`) or Hangar (`runway`), which closes.
+            "editor.open" if editor.0.is_none() => {
                 let registry = &content.0.registry;
                 let all = registry.all::<LaunchSiteDef>("launch_sites", &mut Vec::new());
-                let flown = Some(sim.active_id());
+                let flown = if centre.is_open() {
+                    centre.behind(&sim)
+                } else {
+                    Some(sim.active_id())
+                };
+                centre.close(&mut sim, &mut rig, &mut ui);
                 open_hangar(
                     &mut commands,
                     &mut editor,
@@ -1281,6 +1268,10 @@ pub(crate) fn editor_actions(
                     &all,
                     flown,
                 );
+                let place = action.arg().and_then(Place::parse).unwrap_or(Place::Pad);
+                if let Some(showing) = editor.0.as_mut() {
+                    showing.place = place;
+                }
             }
             // Sent by an action that would throw away changes to the craft (Editor::asks_first).
             "editor.ask_discard" => {
@@ -1327,7 +1318,6 @@ pub(crate) fn editor_actions(
                 }
                 if showing.flown.is_some_and(|flown| ids.contains(&flown)) {
                     showing.flown = next_to_fly(&sim, &[showing.vessel]);
-                    showing.flown_changed = true;
                 }
                 showing.notice.clear();
             }
@@ -1396,28 +1386,35 @@ pub(crate) fn editor_actions(
                     continue;
                 };
                 close(&showing, &mut commands, &mut rig, &mut ui, &mut ambient);
-                menu.new_game = false;
-                let Some(flown) = showing.flown else {
-                    // Nothing left to fly, so nothing to go back to.
-                    go_to_title(
-                        &mut menu,
-                        &mut sim,
-                        &mut warp,
-                        &mut rig,
-                        &mut ui,
-                        &mut saves,
-                        &mut last_launch,
-                        &content,
-                        &mut restarted,
-                    );
-                    continue;
-                };
-                sim.universe.focus = Some(flown);
+                // Back to the space centre, the game it is in as it was: a new game still to start
+                // with its first launch, or the vessel it was on still to fly from there.
+                let flown = showing
+                    .flown
+                    .filter(|&id| sim.universe.vessel(id).is_some());
                 sim.universe.remove_vessel(showing.vessel);
-                if showing.flown_changed {
-                    rig.frame(sim.active_vessel().propulsion.length());
+                sim.universe.focus = flown;
+                if to_space_centre(&mut centre, &mut sim, &mut rig, &mut ui, &content) {
+                    continue;
                 }
-                menu.show(true, &mut sim, &mut ui);
+                // Without one, to the menu it came from.
+                if let Some(flown) = flown {
+                    sim.universe.focus = Some(flown);
+                    menu.show(true, &mut sim, &mut ui);
+                    continue;
+                }
+                // Nothing left to fly, so nothing to go back to.
+                menu.new_game = false;
+                go_to_title(
+                    &mut menu,
+                    &mut sim,
+                    &mut warp,
+                    &mut rig,
+                    &mut ui,
+                    &mut saves,
+                    &mut last_launch,
+                    &content,
+                    &mut restarted,
+                );
             }
             "editor.launch" => {
                 let Some(showing) = editor.0.as_mut() else {
@@ -1683,8 +1680,6 @@ fn revert_actions(
         let Some(showing) = editor.0.as_mut() else {
             continue;
         };
-        // The camera was on what is gone.
-        showing.flown_changed = true;
         put_on_show(
             showing,
             point.craft.clone(),
@@ -1728,7 +1723,6 @@ fn open_hangar(
         craft: None,
         vessel,
         flown,
-        flown_changed: false,
         low,
         high,
         anchor: DVec3::ZERO,
@@ -1771,6 +1765,24 @@ fn open_hangar(
     ui.layouts.insert(STAGING.into(), false);
     ui.docks.insert(STAGING.into(), STAGING_DOCK.into());
     editor.0 = Some(showing);
+}
+
+/// Open the space centre, the vessel in focus the one to fly from there; whether it opened. A game
+/// without one is told why.
+fn to_space_centre(
+    centre: &mut SpaceCentre,
+    sim: &mut Sim,
+    rig: &mut CameraRig,
+    ui: &mut LayoutVisibility,
+    content: &GameContent,
+) -> bool {
+    match centre.open(sim, rig, ui, content) {
+        Ok(()) => true,
+        Err(e) => {
+            error!("cannot open the space centre: {e}");
+            false
+        }
+    }
 }
 
 /// What the editor changed for the time it was open goes back.
@@ -2111,7 +2123,6 @@ mod tests {
             })),
             vessel: VesselId(0),
             flown: Some(VesselId(0)),
-            flown_changed: false,
             low: DVec3::new(-5.0, -5.0, -2.0),
             high: DVec3::new(5.0, 5.0, 98.0),
             anchor: DVec3::new(0.0, 0.0, 2.0),

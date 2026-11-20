@@ -13,8 +13,9 @@ fn realistic_lists_one_engine_a_family() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let content = osp_mods::load(&root.join("assets/core"), Some(&root.join("mods")));
     let catalog = record::catalog(&content.registry);
+    // The engine records' entries: not the solid booster, which is a part of its own.
     let engines: Vec<_> = (palette::entries(&catalog).into_iter())
-        .filter(|e| e.group == Group::Engines)
+        .filter(|e| e.group == Group::Engines && e.id.starts_with("engine:"))
         .collect();
     let families: BTreeSet<&str> = (catalog.engines.iter())
         .filter_map(|e| catalog.family_of(&e.id).map(|f| f.id.as_str()))

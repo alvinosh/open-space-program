@@ -27,7 +27,7 @@ use bevy::{
     input::{
         ButtonState,
         keyboard::{Key, KeyboardInput, NativeKey, NativeKeyCode},
-        mouse::{MouseScrollUnit, MouseWheel},
+        mouse::{MouseMotion, MouseScrollUnit, MouseWheel},
         touch::TouchPhase,
     },
     picking::{
@@ -51,6 +51,7 @@ use crate::{
     camera::ViewOutput,
     editing::{EditorStatus, LastLaunch},
     orbit_lines::ScriptedPointer,
+    space_centre::SpaceCentre,
     smoke_test::{Action, CaptureSet, EditorStep, EditorStepFailed, capture_size},
 };
 use report::{Report, StepRecord};
@@ -74,6 +75,8 @@ pub enum Spot {
     By(f32, f32),
     /// This share of the screen across and down: somewhere with nothing on it.
     Screen(f32, f32),
+    /// In the space centre's view: this building, by id, where its front is drawn.
+    Building(&'static str),
 }
 
 /// One thing a player does, or looks for.
@@ -145,6 +148,9 @@ const WATCHED: &[&str] = &[
     "editor.mass",
     "editor.place",
     "editor.loose",
+    "centre.open",
+    "centre.pointed",
+    "centre.notice",
     "ui.shown.editor",
     "vessel.name",
     "vessel.throttle",
@@ -402,6 +408,8 @@ impl Runner {
         self.mouse = to;
         pointer.0 = Some(to);
         input.pointer(&self.target, to, PointerAction::Move { delta });
+        // As a mouse does: the view turns by how far it went (a drag on nothing).
+        input.motion.write(MouseMotion { delta });
     }
 }
 
@@ -411,6 +419,7 @@ struct Input<'w> {
     pointer: MessageWriter<'w, PointerInput>,
     keys: MessageWriter<'w, KeyboardInput>,
     wheel: MessageWriter<'w, MouseWheel>,
+    motion: MessageWriter<'w, MouseMotion>,
     buttons: ResMut<'w, ButtonInput<MouseButton>>,
 }
 
@@ -607,7 +616,7 @@ fn run(
     mut actions: MessageReader<UiAction>,
     mut editor_steps: MessageWriter<EditorStep>,
     mut editor_failed: ResMut<EditorStepFailed>,
-    last_launch: Res<LastLaunch>,
+    (last_launch, centre): (Res<LastLaunch>, Res<SpaceCentre>),
     mut exit: MessageWriter<AppExit>,
 ) {
     let now = time.elapsed_secs_f64();
@@ -747,6 +756,19 @@ fn run(
                     runner.aim = Some(Aim {
                         at: Vec2::new(x, y) * runner.screen,
                         width: 200.0,
+                        entity: None,
+                    });
+                    (true, true)
+                }
+                Spot::Building(id) => {
+                    let Some(at) = centre.spot(id) else {
+                        runner.fail(format!("the space centre shows no `{id}`"), &mut commands);
+                        return;
+                    };
+                    // A building is drawn at least this big.
+                    runner.aim = Some(Aim {
+                        at,
+                        width: 60.0,
                         entity: None,
                     });
                     (true, true)

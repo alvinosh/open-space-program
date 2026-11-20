@@ -583,6 +583,25 @@ impl Vessel {
         )
     }
 
+    /// Nothing, standing on `body`'s ground at `base` (body-fixed, m), upright: a vessel with no
+    /// parts to look about a place from, as the space centre's view does
+    /// ([`crate::universe::Universe::put_on_show`]).
+    pub fn empty_on_ground(system: &SolarSystem, body: BodyId, base: DVec3, time: SimTime) -> Self {
+        let up = base.normalize_or(DVec3::Z);
+        let attitude = DQuat::from_rotation_arc(DVec3::Z, up);
+        let orientation = system.body(body).orientation(time) * attitude;
+        let mut vessel = Self::assemble(
+            String::new(),
+            Propulsion::empty(),
+            body,
+            Motion::Landed { base, attitude },
+            orientation,
+            time,
+        );
+        vessel.ground_support = true;
+        vessel
+    }
+
     /// Far over the star's pole, out of everything's way.
     fn display_spot(system: &SolarSystem, time: SimTime) -> (BodyId, Motion) {
         let parent = system.root();

@@ -1,5 +1,5 @@
 // The tech tree of a career (osp_game::tree_screen), over everything: a panel with the picked node
-// and the tree beside it. `tree.open` opens it (the editor bar, the pause menu), `tree.close`, Esc or
+// and the tree beside it. `tree.open` opens it (the space centre's Research, the pause menu), `tree.close`, Esc or
 // Back close it. The tree itself is the `tech_tree` widget: cards that pick a node
 // (`tree.pick:<node>`), drag to look round, the wheel to zoom. The panel shows `tree.node.*` and
 // unlocks the picked node with `tree.unlock`, from the footer, where it always shows.

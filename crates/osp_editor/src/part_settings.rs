@@ -18,6 +18,7 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use bevy::prelude::*;
 use osp_sim::{
+    builder,
     data::{CraftPartDef, PartCatalog},
     properties::{self, Mix, Unit, Value},
 };
@@ -70,6 +71,7 @@ fn shown(value: f64, unit: Unit) -> String {
         Unit::Degrees => format!("{value:.1}°"),
         Unit::G => format!("{value:.1} g"),
         Unit::Ratio => format!("{value:.2}"),
+        Unit::Kilonewtons => format!("{value:.0} kN"),
         Unit::Other(unit) => {
             let a = value.abs();
             if a >= 1e6 {
@@ -341,6 +343,7 @@ fn publish_part_settings(
             String,
             Vec<(String, u64)>,
             Option<BTreeSet<String>>,
+            usize,
         )>,
     >,
 ) {
@@ -376,6 +379,8 @@ fn publish_part_settings(
     };
     let dragged = shaping.drag_values();
     let unlocked = career.unlocked(&menu, &sim);
+    // One of a set put on by symmetry: what is set here is set on them all.
+    let copies = (part.as_ref().zip(draft)).map_or(0, |(p, d)| builder::alike(d, &p.id).len());
     let now = (
         part.clone(),
         mixes.clone(),
@@ -385,6 +390,7 @@ fn publish_part_settings(
             .map(|(name, value)| ((*name).to_owned(), value.to_bits()))
             .collect(),
         unlocked.clone(),
+        copies,
     );
     if published.as_ref() == Some(&now) && !content.is_changed() {
         return;
@@ -398,6 +404,11 @@ fn publish_part_settings(
         return;
     };
     let name = part.name.clone().unwrap_or_else(|| part.id.clone());
+    let name = if copies > 0 {
+        format!("{name} x{}", copies + 1)
+    } else {
+        name
+    };
     data.set("editor.part.name", name);
     // In a career, an engine is offered in the configurations it has unlocked, and a tank in
     // the types.

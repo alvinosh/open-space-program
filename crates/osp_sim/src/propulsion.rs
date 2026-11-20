@@ -277,7 +277,7 @@ fn curve_at(curve: &[[f64; 2]], left: f64) -> f64 {
 
 /// The share of full flow a burn along `curve` averages: one over the mean of one over
 /// the share across the propellant, so a steady burn at it lasts as long.
-fn mean_share(curve: &[[f64; 2]]) -> f64 {
+pub fn mean_share(curve: &[[f64; 2]]) -> f64 {
     // From empty to full, keeping the order of points at the same share (a step).
     let mut points: Vec<[f64; 2]> = curve.to_vec();
     if points

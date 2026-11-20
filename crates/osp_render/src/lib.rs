@@ -24,6 +24,7 @@ mod planet;
 mod plasma;
 mod plume;
 mod sky_light;
+mod space_centre;
 mod stars;
 mod surface;
 mod terrain_layers;
@@ -47,6 +48,7 @@ impl Plugin for RenderPlugin {
             graphics,
             trees::TreesPlugin,
             launch_site::LaunchSitePlugin,
+            space_centre::SpaceCentrePlugin,
             vessel_render::VesselRenderPlugin,
             part_pictures::PartPicturesPlugin,
             navball::NavballPlugin,

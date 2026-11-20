@@ -9,8 +9,8 @@
 //! one showing, and `menu.back` or Esc goes back: from `pause` that resumes, from `title` it does
 //! nothing. So a new screen is a new file and a row that opens it.
 //!
-//! `game.new` goes to the editor (see `editor`) to choose what to launch: nothing is lost until the
-//! first launch from there, and going back drops it. `game.exit` leaves the game for the title
+//! `game.new` goes to the space centre (`space_centre`), and from there to the editor to build what
+//! to launch: nothing is lost until the first launch, and going back drops it. `game.exit` leaves the game for the title
 //! screen. Saves are in `saves`, asking before anything is lost in `dialog`, and going back to the
 //! last launch in `editor`.
 
@@ -29,6 +29,7 @@ use crate::{
     editing::{EditorStatus, LastLaunch},
     saves::{SaveEntry, Saves, ago, now},
     sim::{DEFAULT_SCENARIO, Sim, SimRestarted, TimeWarp, WorldData},
+    space_centre::SpaceCentre,
     tree_screen::TreeScreen,
     ui_data::format_date,
 };
@@ -159,7 +160,7 @@ fn show_screen(menu: Res<Menu>, docs: Res<UiDocuments>, mut ui: ResMut<LayoutVis
 }
 
 /// What a vessel in the list says about where it is.
-fn whereabouts(vessel: &Vessel, sim: &Sim) -> String {
+pub(crate) fn whereabouts(vessel: &Vessel, sim: &Sim) -> String {
     let system = &sim.universe.system;
     let body = &system.body(vessel.parent()).name;
     match vessel.situation(system, sim.render_time) {
@@ -177,10 +178,14 @@ fn vessel_list(sim: &Sim, menu: &Menu, world: &WorldData) -> Vec<UiRecord> {
     if !menu.playing {
         return Vec::new();
     }
-    (sim.universe.vessels.iter())
+    let flown = sim
+        .universe
+        .on_show()
+        .map_or(sim.universe.focus, |(_, behind)| behind);
+    (sim.universe.in_game())
         .filter(|vessel| !vessel.is_debris())
         .map(|vessel| {
-            let flying = vessel.id() == sim.active_id();
+            let flying = Some(vessel.id()) == flown;
             let recover = sim.universe.recoverable(vessel.id(), &world.sites);
             record([
                 ("id", vessel.id().0.into()),
@@ -295,12 +300,16 @@ fn publish_menu(
         data.set("menu.new_game", menu.new_game);
         data.set("menu.career", menu.career);
         let vessels = vessel_list(&sim, &menu, &world);
-        let flown = sim.active_vessel();
+        // At the space centre, the vessel the game was on, not the one the view is from.
+        let flown = match sim.universe.on_show() {
+            Some((_, behind)) => behind.and_then(|id| sim.universe.vessel(id)),
+            None => Some(sim.active_vessel()),
+        };
         let recover = menu.playing
             && sim.universe.tutorial.is_none()
-            && sim.universe.recoverable(flown.id(), &world.sites);
+            && flown.is_some_and(|v| sim.universe.recoverable(v.id(), &world.sites));
         data.set("menu.can_recover", recover);
-        data.set("menu.flown_name", flown.name.as_str());
+        data.set("menu.flown_name", flown.map_or("", |v| v.name.as_str()));
         let line = match vessels.len() {
             1 => "1 vessel".to_owned(),
             count => format!("{count} vessels"),
@@ -393,7 +402,7 @@ pub fn menu_actions(
     mut saves: ResMut<Saves>,
     mut last_launch: ResMut<LastLaunch>,
     editor: Res<EditorStatus>,
-    (dialog, tree): (Res<Dialog>, Res<TreeScreen>),
+    (dialog, tree, mut centre): (Res<Dialog>, Res<TreeScreen>, ResMut<SpaceCentre>),
     mut restarted: MessageWriter<SimRestarted>,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -403,8 +412,35 @@ pub fn menu_actions(
             "game.menu" | "menu.back" if dialog.is_open() => {}
             // The tech tree over the menu closes first (`tree_screen`).
             "game.menu" | "menu.back" if tree.is_open() => {}
-            // The editor sees to Esc and Back while it is open.
+            // The editor sees to Esc and Back while it is open, and the space centre while it is
+            // open with nothing over it.
             "game.menu" | "menu.back" if editor.is_open() => {}
+            // At the space centre with nothing over it: the pause menu over it in a game; with no
+            // game, only a new one still to start, the title screen.
+            "game.menu" | "menu.back" if centre.is_open() && !menu.open => {
+                saves.notice.clear();
+                // Out of a building's screen first, back to the buildings.
+                if centre.leave_building(&mut sim, &mut rig) {
+                    continue;
+                }
+                if menu.playing {
+                    menu.back_to_root();
+                    menu.show(true, &mut sim, &mut ui);
+                    continue;
+                }
+                centre.close(&mut sim, &mut rig, &mut ui);
+                go_to_title(
+                    &mut menu,
+                    &mut sim,
+                    &mut warp,
+                    &mut rig,
+                    &mut ui,
+                    &mut saves,
+                    &mut last_launch,
+                    &content,
+                    &mut restarted,
+                );
+            }
             // Esc closes what is open over the view before it opens the menu.
             "game.menu" if !menu.open && ui.dismiss_popups(&docs) => {}
             "game.menu" if !menu.open => {

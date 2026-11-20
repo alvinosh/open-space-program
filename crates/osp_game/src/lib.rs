@@ -36,6 +36,7 @@ pub mod saves;
 pub mod settings;
 pub mod sim;
 pub mod smoke_test;
+pub mod space_centre;
 pub mod tree_screen;
 mod sound;
 mod targeting;
@@ -106,6 +107,7 @@ impl Plugin for GamePlugin {
                 windows::WindowsPlugin,
                 mission::MissionPlugin,
                 tutorial::TutorialPlugin,
+                space_centre::SpaceCentrePlugin,
             ),
         ))
         // Map view and flight planning.

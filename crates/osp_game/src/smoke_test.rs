@@ -51,6 +51,7 @@ use crate::{
     orbit_lines::{Prediction, ScriptedPointer, project},
     saves::Saves,
     sim::{Sim, TimeWarp},
+    space_centre::SpaceCentre,
 };
 
 /// Size of the captured image; `OSP_CAPTURE_SIZE=<w>x<h>` overrides it (checking the UI
@@ -384,6 +385,8 @@ pub enum Action {
     /// Stop the capture with a failure unless the game holds this many vessels, debris left out,
     /// and the one being flown is called this.
     ExpectGame(usize, &'static str),
+    /// Stop with a failure unless the space centre's view is open (`true`) or not.
+    ExpectCentre(bool),
     /// Stop the capture with a failure unless the active vessel's sequences number this many.
     ExpectSequenceCount(usize),
     /// Stop the capture with a failure unless the menu is open on this screen, or closed for "".
@@ -560,8 +563,9 @@ const SATURN_V_SEQUENCES: usize = 11;
 const SOUNDER_SEQUENCES: usize = 2;
 
 /// `OSP_CAPTURE_PLAY=1` (with `OSP_USER_DIR=<empty folder>`, for the saves): from the menu to flying
-/// and back. New game goes to an empty hangar, which has nothing to launch. A vessel is chosen there,
-/// its staging changed, another looked at instead; Back leaves the game as it was. Then one launches
+/// and back. New game goes to the space centre and its Vehicle Assembly to an empty hangar, which has
+/// nothing to launch. A vessel is chosen there, its staging changed, another looked at instead; Back
+/// goes back to the space centre with the game as it was. Then one launches
 /// from the pad with its staging, which saves the game. A second vessel goes in from the editor to
 /// orbit, the first is flown again, and the save brings back the game as it was with one vessel in
 /// it.
@@ -571,6 +575,8 @@ const PLAY_SCRIPT: &[(f64, Action)] = &[
     (1.6, Action::Capture("play_start.png")),
     (1.65, Action::ExpectScreen("pause")),
     (1.7, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.75, Action::Ui("editor.open:pad")),
     (2.5, Action::Capture("editor_empty.png")),
     (2.55, Action::ExpectEditor(Some(""))),
     (2.56, Action::ExpectScreen("")),
@@ -597,10 +603,13 @@ const PLAY_SCRIPT: &[(f64, Action)] = &[
     (10.06, Action::ExpectList(false)),
     (10.1, Action::Ui("menu.back")),
     (10.6, Action::Capture("editor_back.png")),
-    (10.65, Action::ExpectScreen("pause")),
+    // Back at the space centre, the game it is the view of as it was.
+    (10.65, Action::ExpectCentre(true)),
     (10.66, Action::ExpectEditor(None)),
     (10.7, Action::ExpectGame(1, "Pathfinder")),
     (10.8, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (10.85, Action::Ui("editor.open:pad")),
     (10.9, Action::Ui("editor.show:saturn_v")),
     (12.5, Action::Ui("staging.add")),
     (12.7, Action::Ui("editor.place:pad")),
@@ -623,8 +632,9 @@ const PLAY_SCRIPT: &[(f64, Action)] = &[
     (26.2, Action::Ui("game.menu")),
     (26.3, Action::Ui("menu.open:vessels")),
     (27.0, Action::Capture("play_two_vessels.png")),
-    // Every look in the hangar took a number: the scenario was 0, the first launch number 6.
-    (27.1, Action::Ui("vessel.fly:6")),
+    // Every look in the hangar, and every visit to the space centre, took a number: the scenario
+    // was 0, the first launch number 9.
+    (27.1, Action::Ui("vessel.fly:9")),
     (31.0, Action::Capture("flying_first_again.png")),
     (31.1, Action::ExpectGame(2, "Saturn V")),
     (31.2, Action::Ui("game.menu")),
@@ -642,6 +652,8 @@ const PLAY_SCRIPT: &[(f64, Action)] = &[
 const EDITOR_VIEW_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.show:sounder")),
     (3.0, Action::Capture("sounder_start.png")),
     (3.1, Action::EditorLook(0.0, 0.0, -100.0)),
@@ -671,6 +683,8 @@ const EDITOR_VIEW_SCRIPT: &[(f64, Action)] = &[
 const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.new")),
     (2.2, Action::Capture("build_new.png")),
     (2.3, Action::ExpectPartCount(0)),
@@ -767,9 +781,10 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
     (22.0, Action::Ui("editor.pick:")),
     (22.1, Action::ExpectData("editor.rail == parts")),
     (22.2, Action::Capture("build_rocket.png")),
+    // Removing one of four fins put on with symmetry takes all four (T228).
     (22.3, Action::Ui("editor.pick:fin")),
     (22.4, Action::Ui("editor.remove")),
-    (23.0, Action::ExpectPartCount(7)),
+    (23.0, Action::ExpectPartCount(4)),
     (23.1, Action::Ui("editor.undo")),
     (23.7, Action::ExpectPartCount(8)),
     (23.8, Action::Ui("editor.pick:")),
@@ -807,6 +822,8 @@ const EDITOR_BUILD_SCRIPT: &[(f64, Action)] = &[
 const EDITOR_CRAFT_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.new")),
     (2.0, Action::Unlock),
     (2.1, Action::Ui("editor.group:tanks")),
@@ -982,6 +999,8 @@ const EDITOR_CRAFT_SCRIPT: &[(f64, Action)] = &[
 const EDITOR_PARTS_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.new")),
     (2.0, Action::Unlock),
     (2.1, Action::ExpectData("editor.rail == parts")),
@@ -1031,6 +1050,8 @@ const EDITOR_PARTS_SCRIPT: &[(f64, Action)] = &[
 const EDITOR_MOVE_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.new")),
     (2.0, Action::Unlock),
     (2.1, Action::Ui("editor.group:tanks")),
@@ -1124,6 +1145,8 @@ const EDITOR_MOVE_SCRIPT: &[(f64, Action)] = &[
 const EDITOR_SHAPE_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.show:saturn_v")),
     (5.0, Action::EditorLook(0.0, 0.0, 4.0)),
     (5.1, Action::Unlock),
@@ -1200,7 +1223,7 @@ const EDITOR_SHAPE_SCRIPT: &[(f64, Action)] = &[
 
 /// `OSP_CAPTURE_CLEAR=1`: the pad is taken, so a launch is refused until it is cleared; then the
 /// Vessels screen destroying one that is not being flown, then the one that is, and then the last,
-/// which leaves the hangar and from there the title screen.
+/// which leaves the space centre, and Esc there the pause menu.
 const CLEAR_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.menu")),
@@ -1252,15 +1275,16 @@ const CLEAR_SCRIPT: &[(f64, Action)] = &[
     (16.1, Action::Ui("ask.destroy:9")),
     (16.3, Action::Ui("dialog.answer:0")),
     (16.8, Action::ExpectGame(1, "Kestrel")),
-    // The last: only the hangar is left, and back from there the title screen.
+    // The last: the space centre is what is left, to build the next, and Esc there the pause menu.
     (16.9, Action::Ui("ask.destroy:6")),
     (17.1, Action::Ui("dialog.answer:0")),
     (18.0, Action::Capture("nothing_left.png")),
-    (18.1, Action::ExpectEditor(Some(""))),
+    (18.1, Action::ExpectCentre(true)),
+    (18.15, Action::ExpectGame(0, "")),
     (18.2, Action::Ui("menu.back")),
     (19.2, Action::ExpectEditor(None)),
-    (19.3, Action::ExpectScreen("title")),
-    (19.4, Action::Capture("title_after_the_last.png")),
+    (19.3, Action::ExpectScreen("pause")),
+    (19.4, Action::Capture("pause_after_the_last.png")),
     (19.8, Action::Exit),
 ];
 
@@ -1411,6 +1435,9 @@ const LEAVING_SCRIPT: &[(f64, Action)] = &[
     // Continue brings it back, and time passes, so there is something to lose again.
     (4.0, Action::Ui("game.continue")),
     (4.5, Action::ExpectScreen("")),
+    // It carries on at the space centre; flying again, time passes.
+    (4.55, Action::ExpectCentre(true)),
+    (4.6, Action::Ui("centre.fly")),
     (5.0, Action::Ui("game.menu")),
     (5.1, Action::Ui("ask.leave:game.exit")),
     (5.2, Action::ExpectDialog("Save this game first?")),
@@ -1432,6 +1459,7 @@ const LEAVING_SCRIPT: &[(f64, Action)] = &[
     (7.9, Action::Ui("menu.back")),
     (8.0, Action::Ui("ask.leave:game.new")),
     (8.2, Action::ExpectDialog("")),
+    (8.3, Action::Ui("editor.open:pad")),
     (8.5, Action::ExpectEditor(Some(""))),
     (8.6, Action::Ui("editor.show:sounder")),
     (10.0, Action::Ui("editor.launch")),
@@ -1443,10 +1471,14 @@ const LEAVING_SCRIPT: &[(f64, Action)] = &[
     (11.6, Action::Ui("ask.leave:game.new")),
     (11.7, Action::ExpectDialog("Save this game first?")),
     (11.8, Action::Ui("dialog.answer:1")),
+    (12.0, Action::Ui("editor.open:pad")),
     (12.3, Action::ExpectEditor(Some(""))),
     (12.4, Action::Ui("menu.back")),
     (12.9, Action::ExpectEditor(None)),
     (13.0, Action::ExpectGame(1, "Sounder")),
+    // The space centre: Esc for its pause menu, which drops the new game.
+    (13.02, Action::ExpectCentre(true)),
+    (13.05, Action::Ui("game.menu")),
     // Deleting a save asks, through the dialog, over the screen it was asked on.
     (13.1, Action::Ui("menu.open:load")),
     (13.2, Action::Ui("ask.delete_save:game_1")),
@@ -1478,14 +1510,17 @@ const LEAVING_SCRIPT: &[(f64, Action)] = &[
 /// `OSP_CAPTURE_REVERT=1` (with `OSP_USER_DIR=<empty folder>`, for the saves): a game with nothing
 /// launched has nothing to revert to. A launch and a flight, then a revert that is cancelled, one to
 /// the launch, and one to the hangar with the staging it left with and the pad clear to launch again,
-/// over the same save. A second vessel goes back to the first when the hangar is left; with nothing
-/// else in the game the hangar goes to the title screen, and a game loaded from a save cannot revert.
+/// over the same save. A second vessel goes back to the first when the hangar is left, to the space
+/// centre; a new game's first vessel taken back to the hangar leaves nothing to fly there, and a game
+/// loaded from a save cannot revert.
 const REVERT_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.menu")),
     (1.1, Action::ExpectRevert(None)),
     (1.2, Action::Capture("revert_none.png")),
     (1.3, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.35, Action::Ui("editor.open:pad")),
     (1.8, Action::ExpectEditor(Some(""))),
     (1.9, Action::Ui("editor.show:sounder")),
     (3.0, Action::Unlock),
@@ -1547,10 +1582,12 @@ const REVERT_SCRIPT: &[(f64, Action)] = &[
     (18.8, Action::ExpectEditor(Some("glider"))),
     (18.9, Action::Ui("menu.back")),
     (19.5, Action::ExpectEditor(None)),
-    (19.6, Action::ExpectScreen("pause")),
+    (19.6, Action::ExpectCentre(true)),
     (19.7, Action::ExpectGame(1, "Sounder")),
     // Going back to the launch of a new game's first vessel leaves nothing to go back to.
     (19.8, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (19.85, Action::Ui("editor.open:pad")),
     (20.3, Action::Ui("editor.show:sounder")),
     (21.5, Action::Ui("editor.launch")),
     (22.3, Action::ExpectSaves(2)),
@@ -1560,8 +1597,9 @@ const REVERT_SCRIPT: &[(f64, Action)] = &[
     (23.3, Action::ExpectEditor(Some("sounder"))),
     (23.4, Action::Ui("menu.back")),
     (24.0, Action::ExpectEditor(None)),
-    (24.1, Action::ExpectScreen("title")),
-    (24.2, Action::ExpectRevert(None)),
+    (24.1, Action::ExpectCentre(true)),
+    (24.15, Action::ExpectGame(0, "")),
+    (24.2, Action::ExpectRevert(Some("Sounder"))),
     (24.3, Action::ExpectSaves(2)),
     // Loaded from a save there is no launch to go back to.
     (24.4, Action::Ui("game.continue")),
@@ -1577,9 +1615,11 @@ const MENUS_SCRIPT: &[(f64, Action)] = &[
     (1.0, Action::Ui("game.menu")),
     (1.5, Action::Capture("menu_pause.png")),
     (1.55, Action::ExpectScreen("pause")),
-    (1.6, Action::Ui("editor.open")),
-    (2.1, Action::Capture("menu_editor.png")),
-    (2.15, Action::ExpectEditor(Some(""))),
+    (1.6, Action::Ui("centre.open")),
+    (2.1, Action::Capture("menu_space_centre.png")),
+    (2.15, Action::ExpectCentre(true)),
+    (2.17, Action::ExpectScreen("")),
+    // Esc there opens the pause menu over it, and the menu's screens are walked from there.
     (2.2, Action::Ui("game.menu")),
     (2.3, Action::ExpectScreen("pause")),
     (2.35, Action::ExpectEditor(None)),
@@ -1633,12 +1673,20 @@ const MENUS_SCRIPT: &[(f64, Action)] = &[
     (10.8, Action::Ui("game.menu")),
     (10.9, Action::ExpectScreen("title")),
     (11.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (11.05, Action::Ui("editor.open:pad")),
     (11.1, Action::ExpectEditor(Some(""))),
+    // Back to the space centre, and back from there to the title screen: nothing has started.
     (11.2, Action::Ui("menu.back")),
+    (11.25, Action::ExpectCentre(true)),
+    (11.27, Action::Ui("menu.back")),
     (11.3, Action::ExpectScreen("title")),
     (11.35, Action::ExpectEditor(None)),
+    (11.37, Action::ExpectCentre(false)),
     // From the title screen to flying, by way of the editor.
     (11.4, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (11.45, Action::Ui("editor.open:pad")),
     (11.5, Action::Ui("editor.show:sounder")),
     (12.5, Action::Capture("menu_editor_list.png")),
     (12.6, Action::Ui("editor.launch")),
@@ -1674,6 +1722,8 @@ const MENU_SCRIPT: &[(f64, Action)] = &[
     (1.0, Action::Ui("game.menu")),
     (1.6, Action::Capture("menu.png")),
     (1.7, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.75, Action::Ui("editor.open:pad")),
     (1.8, Action::Ui("editor.show:comet")),
     (2.4, Action::Ui("editor.place:runway")),
     (2.5, Action::Capture("menu_runway.png")),
@@ -1713,6 +1763,8 @@ const MODS_SCRIPT: &[(f64, Action)] = &[
     (5.0, Action::UiPointAt("ask.leave:game.new")),
     (5.1, Action::UiPress(PointerButton::Primary)),
     (5.2, Action::UiRelease(PointerButton::Primary)),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (5.7, Action::Ui("editor.open:pad")),
     (10.0, Action::ExpectEditor(Some(""))),
     (10.1, Action::ExpectData("mods.count == 1")),
     (10.2, Action::Capture("new_game_casual_editor.png")),
@@ -1723,6 +1775,8 @@ const MODS_SCRIPT: &[(f64, Action)] = &[
     (11.3, Action::ExpectData("!mods.custom")),
     (11.8, Action::Capture("new_game_realistic.png")),
     (11.9, Action::Ui("ask.leave:game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (12.4, Action::Ui("editor.open:pad")),
     (16.0, Action::ExpectData("mods.count == 7")),
     (16.1, Action::Ui("editor.show:saturn_v")),
     (20.0, Action::ExpectEditor(Some("saturn_v"))),
@@ -1747,6 +1801,8 @@ const CAREER_SCRIPT: &[(f64, Action)] = &[
     (2.8, Action::ExpectData("menu.career")),
     (3.2, Action::Capture("career_new_game.png")),
     (3.3, Action::Ui("ask.leave:game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (3.8, Action::Ui("editor.open:pad")),
     (8.0, Action::ExpectEditor(Some(""))),
     (8.1, Action::Ui("editor.new")),
     (8.5, Action::Unlock),
@@ -1773,15 +1829,13 @@ const CAREER_SCRIPT: &[(f64, Action)] = &[
     (18.9, Action::ExpectField("tank", "diameter", "2")),
     (19.0, Action::ExpectData("editor.part.problem")),
     (19.5, Action::Capture("career_tank_too_wide.png")),
-    // The tech tree from the editor bar: a node picked on it, science for it, unlocked, and its
-    // parts in the list after Esc.
+    // The tech tree (the space centre's Research opens it; here over the editor): a node picked on
+    // it, science for it, unlocked, and its parts in the list after Esc.
     (
         19.55,
         Action::ExpectData("editor.locked == 36 parts are still locked in the tech tree"),
     ),
-    (19.6, Action::UiPointAt("tree.open")),
-    (19.7, Action::UiPress(PointerButton::Primary)),
-    (19.75, Action::UiRelease(PointerButton::Primary)),
+    (19.6, Action::Ui("tree.open")),
     (20.6, Action::ExpectData("tree.node.picked")),
     (20.7, Action::Capture("career_tree.png")),
     (20.8, Action::UiPointAt("tree.pick:basic_rocketry")),
@@ -1816,6 +1870,8 @@ const CAREER_SCRIPT: &[(f64, Action)] = &[
 const SCIENCE_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.new")),
     (2.0, Action::Unlock),
     (2.1, Action::Ui("editor.group:pods")),
@@ -1867,7 +1923,7 @@ const SCIENCE_SCRIPT: &[(f64, Action)] = &[
     // With no radio aboard, it waits there to be brought home.
     (35.5, Action::Ui("ui.toggle:comms_info")),
     (36.4, Action::Capture("science_comms.png")),
-    // Down on the Earth: recovered from the pause menu, asked first, and the hangar opens.
+    // Down on the Earth: recovered from the pause menu, asked first, and the space centre opens.
     (36.5, Action::Ui("ui.toggle:comms_info")),
     // Esc closes the part windows first, then opens the menu.
     (36.6, Action::Ui("game.menu")),
@@ -1878,7 +1934,7 @@ const SCIENCE_SCRIPT: &[(f64, Action)] = &[
     (37.7, Action::Ui("ask.recover")),
     (38.4, Action::Capture("science_recover_asked.png")),
     (38.5, Action::Ui("dialog.answer:0")),
-    (39.9, Action::ExpectEditor(Some(""))),
+    (39.9, Action::ExpectCentre(true)),
     (40.0, Action::Capture("science_recovered.png")),
     (40.6, Action::Exit),
 ];
@@ -1899,6 +1955,8 @@ const FACILITIES_SCRIPT: &[(f64, Action)] = &[
     (2.65, Action::UiRelease(PointerButton::Primary)),
     (2.8, Action::ExpectData("menu.career")),
     (3.3, Action::Ui("ask.leave:game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (3.8, Action::Ui("editor.open:pad")),
     (8.0, Action::ExpectEditor(Some(""))),
     (8.5, Action::Capture("facilities_hangar.png")),
     (8.6, Action::Ui("editor.new")),
@@ -1937,6 +1995,8 @@ const CONTRACTS_SCRIPT: &[(f64, Action)] = &[
     (2.65, Action::UiRelease(PointerButton::Primary)),
     (2.8, Action::ExpectData("menu.career")),
     (3.3, Action::Ui("ask.leave:game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (3.8, Action::Ui("editor.open:pad")),
     (8.0, Action::ExpectEditor(Some(""))),
     (8.1, Action::Ui("ui.toggle:contracts")),
     (8.2, Action::ExpectData("career.has_offers")),
@@ -1990,6 +2050,8 @@ const CONTRACTS_SCRIPT: &[(f64, Action)] = &[
 const CLUSTER_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.new")),
     (2.0, Action::Unlock),
     (2.1, Action::Ui("editor.group:pods")),
@@ -2046,6 +2108,8 @@ const CLUSTER_SCRIPT: &[(f64, Action)] = &[
 const EDITOR_FIT_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.new")),
     (2.0, Action::Unlock),
     (2.1, Action::Ui("editor.group:engines")),
@@ -2104,6 +2168,8 @@ const EDITOR_FIT_SCRIPT: &[(f64, Action)] = &[
 const EDITOR_LOOSE_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.new")),
     (2.0, Action::Unlock),
     (2.1, Action::Ui("editor.group:pods")),
@@ -2192,6 +2258,8 @@ const CAREER_REALISTIC_SCRIPT: &[(f64, Action)] = &[
     (2.65, Action::UiRelease(PointerButton::Primary)),
     (2.8, Action::ExpectData("menu.career")),
     (3.3, Action::Ui("ask.leave:game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (3.8, Action::Ui("editor.open:pad")),
     (12.0, Action::ExpectEditor(Some(""))),
     (12.1, Action::Ui("editor.new")),
     (12.5, Action::Unlock),
@@ -2235,6 +2303,8 @@ const SAVE_MODS_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.menu")),
     (1.1, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.15, Action::Ui("editor.open:pad")),
     (1.3, Action::Ui("editor.show:saturn_v")),
     (6.0, Action::ExpectEditor(Some("saturn_v"))),
     (6.1, Action::Ui("editor.place:pad")),
@@ -2255,12 +2325,16 @@ const SAVE_MODS_SCRIPT: &[(f64, Action)] = &[
     (20.1, Action::Capture("save_mods_loaded.png")),
     (20.2, Action::Ui("game.menu")),
     (20.3, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (20.35, Action::Ui("editor.open:pad")),
     (25.0, Action::ExpectData("mods.count == 5")),
     (25.1, Action::Capture("save_mods_new_game_editor.png")),
     (25.2, Action::Ui("menu.back")),
     (30.0, Action::ExpectData("mods.count == 6")),
-    (30.05, Action::ExpectScreen("pause")),
+    (30.05, Action::ExpectCentre(true)),
     (30.1, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (30.15, Action::Ui("editor.open:pad")),
     (34.0, Action::ExpectData("mods.count == 5")),
     (34.1, Action::Ui("editor.show:sounder")),
     (37.0, Action::Ui("editor.place:pad")),
@@ -2288,6 +2362,8 @@ const BASE_ENGINES_SCRIPT: &[(f64, Action)] = &[
     (2.9, Action::Ui("menu.back")),
     (7.0, Action::ExpectData("mods.count == 1")),
     (7.1, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (7.15, Action::Ui("editor.open:pad")),
     (7.3, Action::Ui("editor.show:pathfinder")),
     (11.0, Action::ExpectEditor(Some("pathfinder"))),
     (11.1, Action::Ui("editor.place:pad")),
@@ -2318,6 +2394,8 @@ const NO_POD_SCRIPT: &[(f64, Action)] = &[
     (2.1, Action::Ui("menu.open:new_game")),
     (2.2, Action::Ui("mods.mode:casual")),
     (2.4, Action::Ui("ask.leave:game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (2.9, Action::Ui("editor.open:pad")),
     (7.0, Action::ExpectData("mods.count == 1")),
     (7.1, Action::Ui("editor.new")),
     (7.6, Action::Unlock),
@@ -2344,6 +2422,8 @@ const NO_POD_SCRIPT: &[(f64, Action)] = &[
 const EDITOR_DRAG_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.new")),
     (2.0, Action::Unlock),
     (2.2, Action::Ui("editor.group:tanks")),
@@ -2388,6 +2468,8 @@ const EDITOR_DRAG_SCRIPT: &[(f64, Action)] = &[
 const FUEL_LINE_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.new")),
     (2.0, Action::Unlock),
     (2.2, Action::Ui("editor.add:tank")),
@@ -2419,6 +2501,8 @@ const FUEL_LINE_SCRIPT: &[(f64, Action)] = &[
 const PROBE_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.new")),
     (2.0, Action::Unlock),
     (2.2, Action::Ui("editor.group:systems")),
@@ -2799,6 +2883,8 @@ const FALLING_SCRIPT: &[(f64, Action)] = &[
 const POWER_SCRIPT: &[(f64, Action)] = &[
     (0.5, Action::MapView(false)),
     (1.0, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.05, Action::Ui("editor.open:pad")),
     (1.5, Action::Ui("editor.show:lunar_module")),
     (4.0, Action::Ui("editor.launch")),
     (6.0, Action::Ui("ui.show:resources")),
@@ -2838,6 +2924,8 @@ const WINDOWS_SCRIPT: &[(f64, Action)] = &[
     (1.3, Action::ExpectRemembered("flight_info", true)),
     (1.4, Action::Ui("game.menu")),
     (1.5, Action::Ui("game.new")),
+    // New game lands at the space centre; rockets are built in the Vehicle Assembly.
+    (1.55, Action::Ui("editor.open:pad")),
     (2.2, Action::ExpectEditor(Some(""))),
     (2.3, Action::ExpectOpen("staging", false)),
     (2.6, Action::Ui("editor.show:sounder")),
@@ -3512,7 +3600,7 @@ fn run_script(
     mut locked: ResMut<InputLocked>,
     (menu, dialog, saves, last_launch): (Res<Menu>, Res<Dialog>, Res<Saves>, Res<LastLaunch>),
     mut editor_steps: MessageWriter<EditorStep>,
-    shown: Res<LayoutVisibility>,
+    (shown, centre): (Res<LayoutVisibility>, Res<SpaceCentre>),
 ) {
     let Some(&(at, action)) = script.actions.get(script.step) else {
         return;
@@ -3604,11 +3692,23 @@ fn run_script(
             ui.write(UiAction(show));
         }
         Action::ExpectGame(count, flying) => {
-            let vessels = sim.universe.vessels.iter();
+            // The game's own: not what the space centre's view stands in, but the one behind it.
+            let vessels = sim.universe.in_game();
             let found = vessels.filter(|v| !v.is_debris()).count();
-            let name = &sim.active_vessel().name;
+            let flown = match sim.universe.on_show() {
+                Some((_, behind)) => behind.and_then(|id| sim.universe.vessel(id)),
+                None => Some(sim.active_vessel()),
+            };
+            let name = flown.map_or("", |v| v.name.as_str());
             if found != count || name != flying {
                 error!("smoke test: {found} vessels, flying {name}: wanted {count}, {flying}");
+                exit.write(AppExit::error());
+            }
+        }
+        Action::ExpectCentre(wanted) => {
+            if centre.is_open() != wanted {
+                let open = if centre.is_open() { "open" } else { "closed" };
+                error!("smoke test: the space centre is {open}, wanted otherwise");
                 exit.write(AppExit::error());
             }
         }

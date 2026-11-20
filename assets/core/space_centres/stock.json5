@@ -1,0 +1,69 @@
+// Space centres. A game opens on a view of the first one, and the player goes into a building to
+// build a rocket (`opens: "rockets"`, for the pad), a plane (`"planes"`, for the runway), to research
+// (`"research"`), for missions (`"missions"`) or to see what is in flight (`"tracking"`).
+//
+// Layout coordinates are metres from the centre's middle, [right, forward], where forward points
+// along `heading` (degrees clockwise from north), as a launch site's are. A building's `size` is
+// [length along its own forward axis, width across it, height]; `turn` turns it clockwise from the
+// layout's forward axis, its front (its doors) facing forward. Each stands on a level concrete
+// apron, and the roads are paved: both are built into the terrain, as a launch site's pad is.
+// `levels` gives its model and the box round it at each level of its `facility` (a career's level, a
+// sandbox's top one); `size` is the biggest, which its apron is made for. The models are made by
+// `tools/blender/space_centre.py`.
+[
+  {
+    id: "cape",
+    name: "Cape Canaveral",
+    body: "Earth",
+    // The Vehicle Assembly Building. LC-39A is 4.6 km to the north-east, the landing strip's south
+    // end 3.5 km to the north-west; the other buildings are closer in than the real ones, so that
+    // the view takes them all in.
+    latitude: 28.5864,
+    longitude: -80.6508,
+    heading: 0,
+    buildings: [
+      {
+        id: "vehicle_assembly", name: "Vehicle Assembly", opens: "rockets", at: [0, 0], size: [160, 220, 167],
+        // A taller, wider building at each level of the builder, as tall rockets as it lets be built.
+        facility: "builder",
+        levels: [
+          { model: "models/space_centre/vehicle_assembly_1.glb", size: [62, 72, 52] },
+          { model: "models/space_centre/vehicle_assembly_2.glb", size: [87, 107, 77] },
+          { model: "models/space_centre/vehicle_assembly_3.glb", size: [122, 152, 114] },
+          { model: "models/space_centre/vehicle_assembly_4.glb", size: [160, 220, 167] },
+        ],
+      },
+      {
+        id: "hangar", name: "Hangar", opens: "planes", at: [-360, 260], size: [91, 131, 32], turn: -60,
+        facility: "builder",
+        levels: [
+          { model: "models/space_centre/hangar_1.glb", size: [37, 41, 14] },
+          { model: "models/space_centre/hangar_2.glb", size: [51, 61, 20] },
+          { model: "models/space_centre/hangar_3.glb", size: [71, 81, 26] },
+          { model: "models/space_centre/hangar_4.glb", size: [91, 131, 32] },
+        ],
+      },
+      {
+        id: "research", name: "Research", opens: "research", at: [-280, -230], size: [71, 96, 27], turn: 20,
+        levels: [{ model: "models/space_centre/research.glb", size: [71, 96, 27] }],
+      },
+      {
+        id: "mission_control", name: "Mission Control", opens: "missions", at: [220, -170], size: [60, 110, 24],
+        levels: [{ model: "models/space_centre/mission_control.glb", size: [60, 110, 24] }],
+      },
+      {
+        id: "tracking", name: "Tracking Station", opens: "tracking", at: [340, 190], size: [45, 46, 25], turn: 45,
+        levels: [{ model: "models/space_centre/tracking.glb", size: [45, 46, 25] }],
+      },
+    ],
+    roads: [
+      // To the pad, meeting its road 1.5 km west of it, along the crawlerway.
+      { points: [[0, 110], [600, 500], [1800, 1100], [3059, 1635]], width: 12 },
+      // To the landing strip's south-east end.
+      { points: [[-390, 300], [-1400, 700], [-2400, 1050], [-3100, 1300]], width: 9 },
+      // Between the buildings.
+      { points: [[-330, 230], [-150, 140], [0, 110], [200, 140], [320, 180]], width: 8 },
+      { points: [[-260, -200], [-120, -125], [0, -110], [200, -130]], width: 8 },
+    ],
+  },
+]

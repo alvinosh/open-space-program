@@ -12,7 +12,7 @@
     description: "A one-seat capsule and a parachute to bring it home, tanks, a small engine to cluster under them, the parts that hold a rocket together, and the first instruments with a telemetry unit to send what they read.",
     cost: 0,
     position: [0, 2],
-    parts: ["pod:C-1 Capsule", "parachute", "tank", "nose_cone", "decoupler", "fin", "engine:K-0", "engine:S-1", "instrument:thermometer", "instrument:barometer", "telemetry"],
+    parts: ["pod:C-1 Capsule", "parachute", "tank", "nose_cone", "decoupler", "fin", "engine:K-0", "engine:S-1", "solid_booster", "instrument:thermometer", "instrument:barometer", "telemetry"],
     sizes: { diameter: 2 },
   },
   // Tier 1.

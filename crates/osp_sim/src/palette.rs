@@ -308,6 +308,51 @@ fn about(info: &CatalogInfo) -> String {
     said.join(". ")
 }
 
+/// The tank type a solid booster's case is built as, and what it holds.
+pub const BOOSTER_CASE: &str = "Booster Case";
+
+/// A solid booster as the parts list gives it: a case 1.25 m across and 7.5 m long full of the
+/// grain its tank type holds (Solid Fuel, or a realistic one), lit once with 400 kN in a vacuum,
+/// burning evenly for about a minute and a half. None if no tank type can hold its grain.
+fn solid_booster(catalog: &PartCatalog) -> Option<Entry> {
+    use crate::component::{BOOSTER_ISP, BOOSTER_NOZZLE_MASS};
+    let case = catalog.tank_types.iter().find(|t| t.id == BOOSTER_CASE)?;
+    let grain = case.propellants.as_ref()?.first()?.clone();
+    let thrust = 400e3;
+    let [isp_vac, isp_sl] = BOOSTER_ISP[0];
+    let value = json!({
+        "id": "", "name": "Solid booster",
+        // Skirts to its domes' tips, a cylinder outside; the nozzle hangs under its base.
+        "shape": { "cylinder_tank": {
+            "diameter": 1.25, "length": 7.5,
+            "aft_skirt": 0.625 * FRAC_1_SQRT_2, "forward_skirt": 0.625 * FRAC_1_SQRT_2,
+        } },
+        "components": [
+            { "storage": { "type": BOOSTER_CASE, "contents": { grain.clone(): 1.0 } } },
+            { "solid_motor": {
+                "thrust": thrust, "isp_vac": isp_vac, "isp_sl": isp_sl,
+                "mass": BOOSTER_NOZZLE_MASS * thrust, "propellant": grain, "booster": true,
+            } },
+        ],
+        "paint": { "color": WHITE, "trim": true },
+    });
+    Some(Entry {
+        id: "solid_booster".into(),
+        name: "Solid booster".into(),
+        group: Group::Engines,
+        detail: String::new(),
+        about:
+            "A case of solid propellant and its nozzle in one part, sized as a tank is. Lit once, \
+                it burns until it is empty: nothing stops it"
+                .into(),
+        width: None,
+        propellant: Some(Propellant::Solid),
+        part: part(value),
+        surface: None,
+        stem: "solid_booster".into(),
+    })
+}
+
 /// The paint of a new procedural part: white, as most rockets are.
 const WHITE: [f64; 3] = [0.85, 0.85, 0.83];
 const GREY: [f64; 3] = [0.55, 0.57, 0.6];
@@ -973,67 +1018,75 @@ pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
             stem: "pod".into(),
         })
         .collect();
+    // A solid booster, a case of grain and its nozzle in one part sized as a tank is: procedural,
+    // so listed first in the engines, before the records in their order.
+    out.extend(solid_booster(catalog).map(|mut entry| {
+        entry.detail = built_figures(&entry.part, "1.25 m × 7.5 m", catalog);
+        entry
+    }));
     // One entry an engine, and one a family of configurations of one engine, as its first: the
     // part settings pick the others (`properties`).
-    let mut engines: Vec<Entry> = (catalog.engines.iter())
-        .filter(|engine| {
-            (catalog.first_configuration(&engine.id)).is_none_or(|first| first.id == engine.id)
-        })
-        .map(|engine| {
-            // Not a title still waiting to be translated (`#roBE3UTitle`).
-            let untranslated = |t: &String| !t.starts_with('#');
-            let family = catalog.family_of(&engine.id);
-            let title = (family.and_then(|f| f.catalog.title.clone()))
-                .filter(untranslated)
-                .or_else(|| engine.catalog.title.clone().filter(untranslated));
-            let name = title.unwrap_or_else(|| engine.id.clone());
-            let configs = catalog.configurations(&engine.id);
-            let burns = engine.propellants.keys().map(String::as_str);
-            let propellant = Propellant::of(engine.kind.as_deref(), burns);
-            let mut detail = vec![
-                force(engine.thrust_vac),
-                format!(
-                    "Isp {:.0} s, {:.0} s at sea level",
-                    engine.isp_vac, engine.isp_sl
-                ),
-                propellant.name().to_owned(),
-            ];
-            if engine.exit_diameter > 0.0 {
-                detail.push(metres(engine.exit_diameter));
-            }
-            detail.push(mass(engine.mass));
-            let mut about = about(family.map_or(&engine.catalog, |f| &f.catalog));
-            if configs.len() > 1 {
-                detail.push(format!("{} configurations", configs.len()));
-                let names: Vec<String> = (configs.iter())
-                    .map(|c| {
-                        c.catalog
-                            .title
-                            .clone()
-                            .filter(untranslated)
-                            .unwrap_or(c.id.clone())
-                    })
-                    .collect();
-                about = [about, format!("Configurations: {}", names.join(", "))]
-                    .into_iter()
-                    .filter(|s| !s.is_empty())
-                    .collect::<Vec<_>>()
-                    .join(". ");
-            }
-            Entry {
-                id: format!("engine:{}", engine.id),
-                detail: detail.join(" · "),
-                about,
-                width: (engine.exit_diameter > 0.0).then_some(engine.exit_diameter),
-                propellant: Some(propellant),
-                part: template(&engine.id, &name),
-                name,
-                group: Group::Engines,
-                surface: None,
-                stem: "engine".into(),
-            }
-        })
-        .collect();
+    let mut engines: Vec<Entry> = Vec::new();
+    engines.extend(
+        (catalog.engines.iter())
+            .filter(|engine| {
+                (catalog.first_configuration(&engine.id)).is_none_or(|first| first.id == engine.id)
+            })
+            .map(|engine| {
+                // Not a title still waiting to be translated (`#roBE3UTitle`).
+                let untranslated = |t: &String| !t.starts_with('#');
+                let family = catalog.family_of(&engine.id);
+                let title = (family.and_then(|f| f.catalog.title.clone()))
+                    .filter(untranslated)
+                    .or_else(|| engine.catalog.title.clone().filter(untranslated));
+                let name = title.unwrap_or_else(|| engine.id.clone());
+                let configs = catalog.configurations(&engine.id);
+                let burns = engine.propellants.keys().map(String::as_str);
+                let propellant = Propellant::of(engine.kind.as_deref(), burns);
+                let mut detail = vec![
+                    force(engine.thrust_vac),
+                    format!(
+                        "Isp {:.0} s, {:.0} s at sea level",
+                        engine.isp_vac, engine.isp_sl
+                    ),
+                    propellant.name().to_owned(),
+                ];
+                if engine.exit_diameter > 0.0 {
+                    detail.push(metres(engine.exit_diameter));
+                }
+                detail.push(mass(engine.mass));
+                let mut about = about(family.map_or(&engine.catalog, |f| &f.catalog));
+                if configs.len() > 1 {
+                    detail.push(format!("{} configurations", configs.len()));
+                    let names: Vec<String> = (configs.iter())
+                        .map(|c| {
+                            c.catalog
+                                .title
+                                .clone()
+                                .filter(untranslated)
+                                .unwrap_or(c.id.clone())
+                        })
+                        .collect();
+                    about = [about, format!("Configurations: {}", names.join(", "))]
+                        .into_iter()
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(". ");
+                }
+                Entry {
+                    id: format!("engine:{}", engine.id),
+                    detail: detail.join(" · "),
+                    about,
+                    width: (engine.exit_diameter > 0.0).then_some(engine.exit_diameter),
+                    propellant: Some(propellant),
+                    part: template(&engine.id, &name),
+                    name,
+                    group: Group::Engines,
+                    surface: None,
+                    stem: "engine".into(),
+                }
+            }),
+    );
     // RCS blocks stand with +Y towards the nose: turned a quarter about the joint from how a
     // surface holds them.
     let mut control: Vec<Entry> = (catalog.rcs.iter())

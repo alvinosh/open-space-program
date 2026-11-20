@@ -325,6 +325,23 @@ fn facing(z: DVec3, along: &[DVec3]) -> DQuat {
     DQuat::from_mat3(&DMat3::from_cols(x, z.cross(x), z))
 }
 
+/// How far the frame of a node facing `direction` turns about it, radians, once the part is
+/// reflected across its YZ plane (X to −X, the node too), beyond the mirror image of the frame it
+/// had: none for most, but a half turn for a node along ±X (a wing's root, a part held by its
+/// side), whose frame is set by +Y, which the reflection leaves where it was. A mirror image held
+/// by such a node turns this much further about its joint to be the reflection of the original.
+pub fn mirror_twist(direction: DVec3) -> f64 {
+    let Some(d) = direction.try_normalize() else {
+        return 0.0;
+    };
+    let flip = |v: DVec3| DVec3::new(-v.x, v.y, v.z);
+    let before = facing(d, &[]);
+    // The reflection of the frame before, kept right-handed by turning its +X round.
+    let (image_x, image_y) = (-flip(before * DVec3::X), flip(before * DVec3::Y));
+    let x = facing(flip(d), &[]) * DVec3::X;
+    x.dot(image_y).atan2(x.dot(image_x))
+}
+
 /// Parts joined into a tree, from a root.
 #[derive(Debug, Clone)]
 pub struct Assembly {

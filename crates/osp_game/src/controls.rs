@@ -45,6 +45,7 @@ use crate::{
     editing::EditorStatus,
     menu::Menu,
     sim::{Sim, TimeWarp},
+    space_centre::SpaceCentre,
 };
 
 /// Throttle change per second while a throttle key is held.
@@ -114,11 +115,12 @@ fn apply_actions(
     mut rig: ResMut<CameraRig>,
     locked: Res<InputLocked>,
     menu: Res<Menu>,
-    editor: Res<EditorStatus>,
+    (editor, centre): (Res<EditorStatus>, Res<SpaceCentre>),
     mut edits: ResMut<SequenceEdits>,
     mut layouts: ResMut<LayoutVisibility>,
 ) {
-    if locked.0 || menu.open {
+    // At the space centre there is nothing to fly.
+    if locked.0 || menu.open || centre.is_open() {
         actions.read().for_each(drop);
         return;
     }

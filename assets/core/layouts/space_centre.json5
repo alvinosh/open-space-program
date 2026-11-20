@@ -1,0 +1,131 @@
+// The space centre (see `osp_game::space_centre`): a game's home, a view of the Cape with its
+// buildings. `centre.name` is the centre's, and `centre.buildings` its buildings, each `id`, `name`,
+// `meta` (what going in does, or why it cannot yet) and `pointed` (the pointer is on it in the view);
+// `centre.enter:<id>` goes in, as a click on the building does. `centre.pointed` names the one
+// pointed at. `centre.fly` goes back to flying the vessel the game was on, `centre.flown_name`, while
+// `centre.can_fly`. `centre.notice` says what just could not be done. In a career the career's funds
+// and science show (`career.*`, see `tech_tree.json5`), and its facilities with their upgrades
+// (`career.facilities`, `career.upgrade:<id>`, see `osp_game::career`).
+//
+// `centre.inside` names the building whose screen shows in place of the buildings: `missions`, Mission
+// Control, with the contracts taken on (`career.taken`) and offered (`career.offers`), see
+// `contracts.json5`; or `tracking`, the Tracking Station, with the map beside it: every vessel in the
+// game (`centre.vessels`, each `id`, `name`, `where`, `debris`, `tracked`; debris only with
+// `centre.debris`, which `centre.debris` turns on and off), `centre.track:<id>` showing one on the map
+// (`centre.tracked`, `centre.tracked_name`, `centre.has_tracked`), `vessel.fly:<id>` flying it and
+// `ask.recover:<id>` bringing it home while `centre.can_recover`. Back and Esc go back to the buildings from it; from the buildings they open the
+// pause menu in a game, or go back to the title screen before a new game's first launch.
+{
+  id: "space_centre",
+  visible: false,
+  root: {
+    widget: "dock",
+    class: "centre_root",
+    children: [
+      {
+        widget: "screen",
+        shade: false,
+        visible: "!centre.inside",
+        title: "{centre.name}",
+        subtitle: "Click a building to go in. Drag to look around, wheel to zoom.",
+        children: [
+          {
+            widget: "column",
+            visible: "career.active",
+            children: [
+              { widget: "setting_row", label: "Funds", children: [{ widget: "label", class: "menu_row_value", text: "{career.funds}" }] },
+              { widget: "setting_row", label: "Science", children: [{ widget: "label", class: "menu_row_value", text: "{career.science}" }] },
+              { widget: "menu_divider" },
+            ],
+          },
+          {
+            widget: "column",
+            repeat: "centre.buildings",
+            children: [
+              { widget: "menu_row", text: "{item.name}", meta: "{item.meta}", active: "item.pointed", action: "centre.enter:{item.id}" },
+            ],
+          },
+          { widget: "menu_divider", visible: "centre.can_fly" },
+          { widget: "menu_row", text: "Fly {centre.flown_name}", meta: "Back to flying", action: "centre.fly", visible: "centre.can_fly" },
+          { widget: "label", class: "menu_hint", text: "{centre.notice}", visible: "centre.notice" },
+          // A career's facilities, each with its level, what it allows, and its next level for funds.
+          {
+            widget: "column",
+            visible: "career.active",
+            children: [
+              { widget: "label", class: "menu_section", text: "Upgrades" },
+              {
+                widget: "column",
+                repeat: "career.facilities",
+                children: [
+                  { widget: "setting_row", label: "{item.name}", children: [{ widget: "label", class: "menu_row_value", text: "{item.level}" }] },
+                  { widget: "label", class: "menu_hint", text: "{item.limits}" },
+                  { widget: "button", class: "btn btn_wide", visible: "item.has_next", text: "Upgrade for {item.price}: {item.next}", action: "career.upgrade:{item.id}" },
+                ],
+              },
+              { widget: "label", class: "menu_hint", visible: "career.notice", text: "{career.notice}" },
+            ],
+          },
+        ],
+      },
+      // Mission Control: the contracts, each with what it pays and how long there is to do it.
+      {
+        widget: "screen",
+        shade: false,
+        visible: "centre.inside == missions",
+        title: "Mission Control",
+        subtitle: "Contracts pay funds when what they ask is done.",
+        children: [
+          { widget: "setting_row", label: "Funds", children: [{ widget: "label", class: "menu_row_value", text: "{career.funds}" }] },
+          { widget: "label", class: "menu_section", text: "Taken on", visible: "career.has_taken" },
+          {
+            widget: "column",
+            repeat: "career.taken",
+            children: [
+              { widget: "menu_row", text: "{item.title}", meta: "{item.reward} funds", detail: "{item.description}" },
+              { widget: "label", class: "menu_hint", visible: "item.has_deadline", text: "{item.left|duration} left" },
+              { widget: "button", class: "btn", text: "Drop", action: "career.drop:{item.id}" },
+            ],
+          },
+          { widget: "label", class: "menu_section", text: "Offered" },
+          { widget: "label", class: "menu_text", visible: "!career.has_offers", text: "Nothing more on offer until what is taken on is done." },
+          {
+            widget: "column",
+            repeat: "career.offers",
+            children: [
+              { widget: "menu_row", text: "{item.title}", meta: "{item.reward} funds", detail: "{item.description}" },
+              { widget: "label", class: "menu_hint", visible: "item.has_deadline", text: "{item.days} days to do it" },
+              { widget: "button", class: "btn", text: "Take on", action: "career.accept:{item.id}" },
+            ],
+          },
+          { widget: "label", class: "menu_hint", visible: "career.contract_notice", text: "{career.contract_notice}" },
+        ],
+      },
+      // The Tracking Station: every vessel in the game, the one picked shown on the map beside it.
+      {
+        widget: "screen",
+        shade: false,
+        visible: "centre.inside == tracking",
+        title: "Tracking Station",
+        subtitle: "Pick a vessel to see it on the map. Drag to turn the map, wheel to zoom.",
+        children: [
+          { widget: "label", class: "menu_text", text: "Nothing in flight yet.", visible: "!centre.has_vessels" },
+          {
+            widget: "column",
+            repeat: "centre.vessels",
+            children: [
+              { widget: "menu_row", text: "{item.name}", meta: "{item.where}", active: "item.tracked", action: "centre.track:{item.id}" },
+            ],
+          },
+          { widget: "menu_divider" },
+          { widget: "menu_row", text: "Show debris", action: "centre.debris", visible: "!centre.debris" },
+          { widget: "menu_row", text: "Hide debris", action: "centre.debris", visible: "centre.debris" },
+        ],
+        footer: [
+          { widget: "button", class: "btn btn_primary btn_large btn_wide", text: "Fly {centre.tracked_name}", action: "vessel.fly:{centre.tracked}", visible: "centre.has_tracked" },
+          { widget: "button", class: "btn btn_wide", text: "Recover {centre.tracked_name}", action: "ask.recover:{centre.tracked}", visible: "centre.can_recover" },
+        ],
+      },
+    ],
+  },
+}

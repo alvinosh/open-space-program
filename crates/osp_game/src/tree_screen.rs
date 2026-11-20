@@ -9,7 +9,7 @@
 //! actions like any other: `tree.pick:<node>`. It is drawn again when what is unlocked or the zoom
 //! changes; moving it only moves it.
 //!
-//! Actions: `tree.open` (from the editor bar and the pause menu, in a career), `tree.close` (Back,
+//! Actions: `tree.open` (from the space centre's Research and the pause menu, in a career), `tree.close` (Back,
 //! Esc), `tree.pick:<node>`, `tree.unlock` (the picked node), `tree.zoom:<in|out|fit>` (the buttons
 //! in the corner), and `debug.science:<amount>`, which
 //! gives the career science to try the tree with. Data: `career.active`, `career.science`,

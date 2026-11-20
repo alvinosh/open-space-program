@@ -74,7 +74,7 @@ fn the_casual_tree_has_every_casual_part_once_and_rises() {
     // Written to rise, tier by tier.
     assert_eq!(check(&tree, true), Vec::<String>::new());
     let entries = palette::entries(&catalog);
-    assert_eq!(entries.len(), 47);
+    assert_eq!(entries.len(), 48);
     assert!(entries.iter().all(|e| tree.node_of(&e.id).is_some()));
     // Seven tiers, a first rocket in the first.
     let start = tree.roots();

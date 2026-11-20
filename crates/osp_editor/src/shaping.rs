@@ -27,6 +27,7 @@ use bevy::{
     window::{CursorIcon, PrimaryWindow, SystemCursorIcon},
 };
 use osp_sim::{
+    builder,
     data::{CraftDef, PartCatalog},
     parts::{PartId, PartTree},
     propulsion::Propulsion,
@@ -577,6 +578,9 @@ pub(crate) fn shape_parts(
                     .try_for_each(|p| shaping::resize(part, p.size.name, p.value));
                 match resized {
                     Ok(()) => {
+                        // Its copies by symmetry grow with it, as the builder will have them.
+                        let id = craft.parts[drag.part].id.clone();
+                        builder::copies_follow(&drag.start, &mut craft, &id);
                         let (made, catalog) = (craft.clone(), shared.clone());
                         let task = std::thread::spawn(move || {
                             Propulsion::from_craft(&made, &catalog).map_err(|e| e.to_string())

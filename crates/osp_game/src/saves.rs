@@ -36,6 +36,7 @@ use crate::{
     editing::{EditorStatus, LastLaunch},
     menu::Menu,
     sim::{Sim, SimRestarted, TimeWarp},
+    space_centre::SpaceCentre,
 };
 
 const EXTENSION: &str = "save";
@@ -456,6 +457,7 @@ struct Carry<'w> {
     last_launch: ResMut<'w, LastLaunch>,
     restarted: MessageWriter<'w, SimRestarted>,
     mods: ModSwitch<'w>,
+    centre: ResMut<'w, SpaceCentre>,
 }
 
 impl Carry<'_> {
@@ -481,9 +483,20 @@ impl Carry<'_> {
         self.rig.frame(sim.active_vessel().propulsion.length());
         self.restarted.write(SimRestarted);
         self.menu.playing = true;
+        self.menu.new_game = false;
         self.menu.back_to_root();
         self.menu.show(false, sim, &mut self.ui);
+        // What was on show went with the game it was in.
+        self.centre.close(sim, &mut self.rig, &mut self.ui);
         Ok(())
+    }
+
+    /// Go on from the game just loaded at the space centre.
+    fn open_space_centre(&mut self, sim: &mut Sim) {
+        let (rig, ui) = (&mut *self.rig, &mut *self.ui);
+        if let Err(e) = self.centre.open(sim, rig, ui, self.mods.content()) {
+            error!("cannot open the space centre: {e}");
+        }
     }
 }
 
@@ -534,10 +547,20 @@ impl Hold {
     }
 }
 
+/// Whether save `file` is one of a game's quicksaves (`<save>/quicksave_<n>`).
+fn is_quicksave(file: &str) -> bool {
+    (file.rsplit('/').next()).is_some_and(|name| name.starts_with(QUICK_FILE))
+}
+
 /// Why quicksaves cannot be made or loaded now, if they cannot: only in flight, in a game.
-fn not_quick(menu: &Menu, editor: &EditorStatus, sim: &Sim) -> Option<&'static str> {
+fn not_quick(
+    menu: &Menu,
+    editor: &EditorStatus,
+    centre: &SpaceCentre,
+    sim: &Sim,
+) -> Option<&'static str> {
     let tutorial = (sim.universe.tutorial.as_ref()).is_some_and(|tutorial| tutorial.is_running());
-    if !menu.playing || menu.open || editor.is_open() {
+    if !menu.playing || menu.open || editor.is_open() || centre.is_open() {
         Some("")
     } else if tutorial {
         Some("in a tutorial")
@@ -578,11 +601,14 @@ fn save_actions(
                     _ => saves.newest().map(|entry| entry.file.clone()),
                 };
                 let Some(file) = file else { continue };
-                if let Err(e) = carry.load(&mut saves, &file, &mut sim) {
-                    saves.notice = format!("Cannot load it: {e}");
+                match carry.load(&mut saves, &file, &mut sim) {
+                    // A game carries on at the space centre; a quicksave, a moment in flight, flying.
+                    Ok(()) if !is_quicksave(&file) => carry.open_space_centre(&mut sim),
+                    Ok(()) => {}
+                    Err(e) => saves.notice = format!("Cannot load it: {e}"),
                 }
             }
-            "game.quicksave" => match not_quick(&carry.menu, &editor, &sim) {
+            "game.quicksave" => match not_quick(&carry.menu, &editor, &carry.centre, &sim) {
                 Some("") => {}
                 Some(why) => saves.flash(format!("Cannot quicksave {why}"), now),
                 None => {
@@ -609,7 +635,7 @@ fn save_actions(
 
     match hold.step(keys.held("game.quickload"), now) {
         HoldStep::Nothing => {}
-        HoldStep::Began => match not_quick(&carry.menu, &editor, &sim) {
+        HoldStep::Began => match not_quick(&carry.menu, &editor, &carry.centre, &sim) {
             Some("") => {}
             Some(why) => saves.flash(format!("Cannot quickload {why}"), now),
             None => {
@@ -627,7 +653,7 @@ fn save_actions(
 
 /// Carry on from the newest quicksave of the game in progress, saying so over the flight.
 fn quickload(saves: &mut Saves, carry: &mut Carry, editor: &EditorStatus, sim: &mut Sim, now: f64) {
-    match not_quick(&carry.menu, editor, sim) {
+    match not_quick(&carry.menu, editor, &carry.centre, sim) {
         Some("") => return,
         Some(why) => return saves.flash(format!("Cannot quickload {why}"), now),
         None => {}

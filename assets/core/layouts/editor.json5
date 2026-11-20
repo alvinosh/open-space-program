@@ -1,5 +1,6 @@
 // The editor (see `osp_editor::hangar`): where a vessel is chosen, built, looked over and launched.
-// New game (`game.new`) and Fly a new vessel (`editor.open`) come here with the hangar empty. The
+// The space centre's Vehicle Assembly and Hangar (`editor.open:pad`, `editor.open:runway`) come here
+// with the hangar empty. The
 // list is `editor.vessels`, by mod: `name`, then in `craft` each one's `id`, `name`, `parts` and
 // `selected`; `editor.show:<id>` puts one on show and puts the list away, and `editor.list` shows
 // and hides it (`editor.list_open`). The staging window docks at the left once a vessel is on show,
@@ -12,7 +13,7 @@
 // `editor.place:<pad|runway|orbit>` picks where it goes from (`editor.place` is the one picked,
 // `editor.place_name` says which site or orbit that is, and `editor.pad`, `editor.runway` and
 // `editor.orbit` are empty when there is none), `editor.launch` launches it, and Back or Esc goes
-// back to the menu. Showing another, `editor.new`, Back and Esc ask first while the craft on show
+// back to the space centre. Showing another, `editor.new`, Back and Esc ask first while the craft on show
 // has changes (`editor.ask_discard`, `editor.discard`). `editor.can_launch` says whether it can
 // go: not with nothing on show, nor from a pad or runway with a vessel on it.
 // `editor.occupied` says what is there and `editor.clear`
@@ -322,15 +323,6 @@
             widget: "button", class: "btn editor_icon_btn", action: "editor.parts", active: "editor.rail == parts", visible: "editor.has_vessel", tooltip: "Parts: the list to build from",
             children: [{ widget: "image", class: "editor_bar_icon", image: "icons/editor/parts.svg", active: "editor.rail == parts" }],
           },
-          // A career's tech tree (osp_game::tree_screen) and its contracts (osp_game::career).
-          {
-            widget: "button", class: "btn editor_icon_btn", action: "tree.open", visible: "career.active", tooltip: "Tech tree: unlock parts with science",
-            children: [{ widget: "image", class: "editor_bar_icon", image: "icons/editor/tree.svg" }],
-          },
-          {
-            widget: "button", class: "btn editor_icon_btn", action: "ui.toggle:contracts", active: "ui.shown.contracts", visible: "career.active", tooltip: "Contracts: goals that pay",
-            children: [{ widget: "image", class: "editor_bar_icon", image: "icons/goal.svg", active: "ui.shown.contracts" }],
-          },
           // What the pointer does to a picked part (osp_editor::moving).
           {
             widget: "row",
@@ -391,24 +383,20 @@
         widget: "column",
         class: "editor_panel",
         children: [
-          // A career's money and science (osp_game::tree_screen), and its facilities, each with its
-          // level, what it allows and the next level's upgrade (osp_game::career).
+          // A career's facilities (osp_game::career), each with its level and what it allows, which
+          // the craft is held to. They are upgraded at the space centre.
           {
             widget: "column",
             visible: "career.active",
             children: [
-              { widget: "setting_row", class: "editor_stat", label: "Funds", children: [{ widget: "label", class: "menu_row_value", text: "{career.funds}" }] },
-              { widget: "setting_row", class: "editor_stat", label: "Science", children: [{ widget: "label", class: "menu_row_value", text: "{career.science}" }] },
               {
                 widget: "column",
                 repeat: "career.facilities",
                 children: [
                   { widget: "setting_row", class: "editor_stat", label: "{item.name}", children: [{ widget: "label", class: "menu_row_value", text: "{item.level}" }] },
                   { widget: "label", class: "menu_subtitle", text: "{item.limits}" },
-                  { widget: "button", class: "btn btn_wide", visible: "item.has_next", text: "Upgrade for {item.price}: {item.next}", action: "career.upgrade:{item.id}" },
                 ],
               },
-              { widget: "label", class: "menu_subtitle", visible: "career.notice", text: "{career.notice}" },
               { widget: "menu_divider" },
             ],
           },

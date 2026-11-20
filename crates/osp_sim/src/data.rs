@@ -264,6 +264,10 @@ pub struct RulesDef {
     /// Without this, all of a vessel's data goes at once whenever it has a link.
     #[serde(default)]
     pub data_rates: bool,
+    /// A solid booster's thrust curve, the shape its grain is cast in, can be set in the editor (the
+    /// Realistic Engines mod). Without this, boosters burn evenly.
+    #[serde(default)]
+    pub shaped_solids: bool,
 }
 
 impl Default for RulesDef {
@@ -275,6 +279,7 @@ impl Default for RulesDef {
             radiation: Some("realistic".to_owned()),
             tech_tree: Some("rp1".to_owned()),
             data_rates: true,
+            shaped_solids: true,
         }
     }
 }
@@ -1824,6 +1829,108 @@ impl LaunchSiteDef {
         } else {
             &self.name
         }
+    }
+}
+
+/// A space centre (collection `space_centres`): the buildings a game is run from, near the launch
+/// sites it launches from. A game opens on a view of the first one, and goes into a building to
+/// build a rocket, a plane, and so on (see [`crate::space_centre`]). Each building stands on a
+/// level concrete apron and the roads are paved, both built into the terrain as a launch site's
+/// pad and roads are.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpaceCentreDef {
+    pub id: String,
+    /// Display name; defaults to the id.
+    #[serde(default)]
+    pub name: String,
+    pub body: String,
+    /// Degrees: the middle of its layout, which the view looks at first.
+    pub latitude: f64,
+    pub longitude: f64,
+    /// Direction of the layout's forward axis, degrees clockwise from north.
+    #[serde(default)]
+    pub heading: f64,
+    pub buildings: Vec<BuildingDef>,
+    /// Roads in its layout, `[right, forward]` metres from its middle.
+    #[serde(default)]
+    pub roads: Vec<RoadDef>,
+}
+
+impl SpaceCentreDef {
+    pub fn display_name(&self) -> &str {
+        if self.name.is_empty() {
+            &self.id
+        } else {
+            &self.name
+        }
+    }
+}
+
+/// What going into a building of a space centre does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildingUse {
+    /// Build rockets, for the pad.
+    Rockets,
+    /// Build planes, for the runway.
+    Planes,
+    /// The tech tree.
+    Research,
+    /// Contracts and the scenario's goal.
+    Missions,
+    /// The vessels in flight, to go to one.
+    Tracking,
+}
+
+/// A building of a space centre.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildingDef {
+    pub id: String,
+    /// Display name; defaults to the id.
+    #[serde(default)]
+    pub name: String,
+    /// What going in does.
+    pub opens: BuildingUse,
+    /// Where its middle stands: `[right, forward]` metres from the centre's middle, in its layout.
+    pub at: [f64; 2],
+    /// How big it is, m: its length along its own forward axis, its width across it, its height.
+    pub size: [f64; 3],
+    /// Degrees it is turned clockwise from the layout's forward axis. Its front, where its doors
+    /// are, faces forward.
+    #[serde(default)]
+    pub turn: f64,
+    /// The facility (`facilities` record) whose level picks which of `levels` stands: a career's
+    /// level, a sandbox's top one. Without one, the first stands.
+    #[serde(default)]
+    pub facility: Option<String>,
+    /// What it looks like at each level: a model, and the box round it. Without any it is a plain
+    /// block of `size`, which is also how big its apron is.
+    #[serde(default)]
+    pub levels: Vec<BuildingLevelDef>,
+}
+
+/// A building at one level of its facility.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildingLevelDef {
+    /// Its model (glTF), origin in the middle of its footprint on the ground, its front along -Z.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// The box round it, m: length along its front's axis, width across it, height.
+    pub size: [f64; 3],
+}
+
+impl BuildingDef {
+    pub fn display_name(&self) -> &str {
+        if self.name.is_empty() {
+            &self.id
+        } else {
+            &self.name
+        }
+    }
+
+    /// The box round it at `level` (an index into `levels`), m: its own `size` if it has none.
+    pub fn size_at(&self, level: usize) -> [f64; 3] {
+        (self.levels.get(level)).map_or(self.size, |l| l.size)
     }
 }
 

@@ -243,16 +243,21 @@ fn dialog_actions(
             }
             "ask.recover" => {
                 // No vessel named: the one being flown.
+                // At the space centre, the one the game was on.
+                let flown = match sim.universe.on_show() {
+                    Some((_, behind)) => behind,
+                    None => Some(sim.active_id()),
+                };
                 let id = match action.arg() {
                     Some(id) => id.parse().ok().map(VesselId),
-                    None => Some(sim.active_id()),
+                    None => flown,
                 };
                 let Some(vessel) = id.and_then(|id| sim.universe.vessel(id)) else {
                     warn!("no vessel to recover in `{}`", action.0);
                     continue;
                 };
-                let text = if vessel.id() == sim.active_id() {
-                    "It is brought home with what its drives hold, and the hangar opens for the next one."
+                let text = if Some(vessel.id()) == flown {
+                    "It is brought home with what its drives hold, and you go to the space centre."
                 } else {
                     "It is brought home with what its drives hold."
                 };

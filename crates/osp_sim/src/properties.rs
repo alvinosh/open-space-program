@@ -19,7 +19,10 @@ use std::collections::BTreeMap;
 use serde_json::{Value as Json, json};
 
 use crate::{
-    component::{ComponentDef, storage::StorageDef},
+    component::{
+        BOOSTER_ISP, BOOSTER_NOZZLE_MASS, CURVE_PRESETS, ComponentDef, SolidMotorDef,
+        storage::StorageDef,
+    },
     craft::Craft,
     data::{CraftDef, CraftPartDef, PartCatalog, ShellProfile},
     geometry::preset::{AirfoilDef, ConeTankDef, CylinderTankDef, ShapeDef, SphereDef},
@@ -36,6 +39,8 @@ pub enum Unit {
     G,
     /// A plain number, such as a dome's height over its radius.
     Ratio,
+    /// A thrust, kN.
+    Kilonewtons,
     /// What a sizer's field says it is in.
     Other(&'static str),
 }
@@ -50,6 +55,7 @@ impl Unit {
             Unit::Degrees => "°",
             Unit::G => "g",
             Unit::Ratio => "",
+            Unit::Kilonewtons => "kN",
             Unit::Other(unit) => unit,
         }
     }
@@ -549,6 +555,55 @@ pub fn fields(part: &CraftPartDef, mixes: &[Mix], catalog: &PartCatalog) -> Vec<
     if let Some(shape) = shape {
         shape_fields(shape, &mut out);
     }
+    // A solid booster's motor: how hard it pushes (and so how long it burns), its nozzle, and where
+    // the rules let it be set, the shape its grain is cast in.
+    if let Some(motor) = booster(part) {
+        out.push(field(
+            "motor_thrust",
+            "Thrust",
+            "Motor",
+            number(motor.thrust / 1000.0, 5.0, 20_000.0, Unit::Kilonewtons),
+        ));
+        out.push(field(
+            "motor_nozzle",
+            "Nozzle",
+            "Motor",
+            choice(
+                if motor.vacuum { "vacuum" } else { "sea_level" },
+                &[("sea_level", "For sea level"), ("vacuum", "For a vacuum")],
+            ),
+        ));
+        if catalog.rules.shaped_solids {
+            let mut options: Vec<(&str, &str)> = (CURVE_PRESETS.iter())
+                .map(|(id, label, _)| (*id, *label))
+                .collect();
+            let preset = motor.curve_preset().unwrap_or(CUSTOM);
+            if preset == CUSTOM {
+                options.push((CUSTOM, "Your own"));
+            }
+            out.push(field(
+                "motor_curve",
+                "Burn",
+                "Motor",
+                choice(preset, &options),
+            ));
+            let labels = [
+                "Thrust at first",
+                "A quarter burnt",
+                "Half burnt",
+                "Three quarters",
+                "At the end",
+            ];
+            for (k, (label, share)) in labels.iter().zip(motor.curve_points()).enumerate() {
+                out.push(field(
+                    &format!("motor_curve_{k}"),
+                    label,
+                    "Motor",
+                    number(100.0 * share, 0.0, 150.0, Unit::Percent),
+                ));
+            }
+        }
+    }
     // What it holds, and how its tank is built.
     if shape.is_some_and(holds_things) || storage(part).is_some() {
         let mut options: Vec<(String, String)> = (mixes.iter())
@@ -979,7 +1034,39 @@ fn set_on(
             part.structure.thickness = Some(number() / 1000.0);
             return Ok(());
         }
+        // A booster's motor: its nozzle grows and weighs with its thrust.
+        "motor_thrust" => {
+            if let Some(motor) = booster_mut(part) {
+                motor.thrust = 1000.0 * number();
+                motor.mass = BOOSTER_NOZZLE_MASS * motor.thrust;
+            }
+            return Ok(());
+        }
+        "motor_nozzle" => {
+            if let Some(motor) = booster_mut(part) {
+                motor.vacuum = text == "vacuum";
+                [motor.isp_vac, motor.isp_sl] = BOOSTER_ISP[usize::from(motor.vacuum)];
+            }
+            return Ok(());
+        }
+        "motor_curve" => {
+            let preset = CURVE_PRESETS.iter().find(|(id, ..)| *id == text);
+            if let (Some((_, _, points)), Some(motor)) = (preset, booster_mut(part)) {
+                motor.set_curve(*points);
+            }
+            return Ok(());
+        }
         _ => {}
+    }
+    if let Some(k) = (id.strip_prefix("motor_curve_")).and_then(|k| k.parse::<usize>().ok())
+        && let Some(motor) = booster_mut(part)
+    {
+        let mut points = motor.curve_points();
+        if let Some(point) = points.get_mut(k) {
+            *point = number() / 100.0;
+        }
+        motor.set_curve(points);
+        return Ok(());
     }
     let Some(shape) = part.shape.as_mut() else {
         return Err(format!("`{}` has no shape", part.id));
@@ -1195,7 +1282,37 @@ pub fn readouts(part: &CraftPartDef, catalog: &PartCatalog) -> Vec<(String, Stri
     if held > 0.0 {
         out.push(("Full mass".into(), tonnes(built.mass.mass + held)));
     }
+    // A booster: how long its grain lasts at its thrust, and what it pushes with in the thick air
+    // of the pad.
+    if let Some(motor) = booster(part) {
+        let curve = motor.thrust_curve.as_deref();
+        let mean = curve.map_or(1.0, crate::propulsion::mean_share);
+        let flow = motor.thrust / (motor.isp_vac * crate::constants::G0) * mean;
+        if flow > 0.0 {
+            out.push(("Burns for".into(), format!("{:.0} s", held / flow)));
+        }
+        let at_pad = motor.thrust * motor.isp_sl / motor.isp_vac;
+        out.push((
+            "Thrust at sea level".into(),
+            format!("{:.0} kN", at_pad / 1000.0),
+        ));
+    }
     out
+}
+
+/// `part`'s solid booster motor, if it has one.
+fn booster(part: &CraftPartDef) -> Option<&SolidMotorDef> {
+    part.components.iter().find_map(|c| match c {
+        ComponentDef::SolidMotor(motor) if motor.booster => Some(motor),
+        _ => None,
+    })
+}
+
+fn booster_mut(part: &mut CraftPartDef) -> Option<&mut SolidMotorDef> {
+    part.components.iter_mut().find_map(|c| match c {
+        ComponentDef::SolidMotor(motor) if motor.booster => Some(motor),
+        _ => None,
+    })
 }
 
 fn tonnes(kg: f64) -> String {

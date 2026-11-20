@@ -49,14 +49,18 @@ pub struct Header {
 impl Header {
     /// `name`'s header for `universe` as it is now.
     pub fn new(name: &str, saved_at: u64, universe: &Universe) -> Self {
-        let flying = universe.focus.and_then(|id| universe.vessel(id));
+        // What is only on show (the space centre's view) is not part of the game.
+        let focus = universe
+            .on_show()
+            .map_or(universe.focus, |(_, behind)| behind);
+        let flying = focus.and_then(|id| universe.vessel(id));
         Self {
             format: FORMAT,
             name: name.to_owned(),
             saved_at,
             time: universe.time(),
             flying: flying.map_or(String::new(), |v| v.name.clone()),
-            vessels: universe.vessels.iter().filter(|v| !v.is_debris()).count(),
+            vessels: universe.in_game().filter(|v| !v.is_debris()).count(),
             mods: None,
         }
     }

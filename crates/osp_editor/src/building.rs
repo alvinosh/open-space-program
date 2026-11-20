@@ -193,6 +193,45 @@ enum Spot {
     },
 }
 
+impl Spot {
+    /// Whether this is `was`, but for where the pointer met a surface moving less than
+    /// [`SPOT_SLOP`]: rounding as the craft is drawn again, not a hand moving.
+    fn barely_moved_from(&self, was: &Spot) -> bool {
+        match (self, was) {
+            (
+                Spot::Surface {
+                    part,
+                    surface,
+                    at,
+                    width,
+                    end,
+                },
+                Spot::Surface {
+                    part: was_part,
+                    surface: was_surface,
+                    at: was_at,
+                    width: was_width,
+                    end: was_end,
+                },
+            ) => {
+                let round = (at.u - was_at.u).abs();
+                part == was_part
+                    && surface == was_surface
+                    && at.side == was_at.side
+                    && end.is_some() == was_end.is_some()
+                    && round.min(1.0 - round) < SPOT_SLOP
+                    && (at.v - was_at.v).abs() < SPOT_SLOP
+                    && (width - was_width).abs() < SPOT_SLOP * width.abs().max(1.0)
+            }
+            _ => false,
+        }
+    }
+}
+
+/// How far round or along a surface (a share of it) where the pointer meets it may move and still
+/// be the same spot: a tenth of a millimetre on a 4 m tank.
+const SPOT_SLOP: f64 = 2.5e-5;
+
 /// What putting what is in hand somewhere does: the parts it puts on (the one in hand first, then
 /// what it holds), each place they go (and whether as their mirror image), and the parts they
 /// replace (what was picked up, and its copies).
@@ -816,7 +855,7 @@ impl Making<'_> {
         };
         let mut place = place;
         place.roll = wrapped(place.roll + self.roll);
-        let places = self.symmetric(place, holder);
+        let places = self.symmetric(&part, place, holder);
         let (parts, replacing) = match held {
             Held::New(_) => (vec![part], BTreeSet::new()),
             Held::Loose(_) => {
@@ -848,11 +887,20 @@ impl Making<'_> {
         })
     }
 
-    /// `place` on the part at `holder` in the built craft, and the places of its copies by
-    /// symmetry, each with whether it is a mirror image.
-    fn symmetric(&self, place: Place, holder: usize) -> Vec<(Place, bool)> {
+    /// `part` put at `place` on the part at `holder` in the built craft, and the places of its
+    /// copies by symmetry, each with whether it is a mirror image.
+    fn symmetric(&self, part: &CraftPartDef, place: Place, holder: usize) -> Vec<(Place, bool)> {
         let Some((holder_id, connector)) = place.on.split_once('.') else {
             return vec![(place, false)];
+        };
+        // How the mirror image of `part` put at `place` is turned about its joint.
+        let image_roll = |place: &Place| {
+            let mut placed = part.clone();
+            (placed.on, placed.by) = (Some(place.on.clone()), place.by.clone());
+            (placed.at, placed.roll) = (place.at, place.roll);
+            let on = place.on.split_once('.').map(|(on, _)| on);
+            let holder = on.and_then(|on| self.draft.parts.iter().find(|p| p.id == on));
+            builder::mirrored_roll(&placed, holder)
         };
         // On the part it goes on, and on each put on with that by symmetry.
         let mut holders = vec![(holder_id.to_owned(), false)];
@@ -862,7 +910,7 @@ impl Making<'_> {
             let mut here = place.clone();
             here.on = format!("{on}.{connector}");
             if mirrored {
-                here.roll = wrapped(-here.roll);
+                here.roll = image_roll(&here);
                 if let Some(at) = &mut here.at {
                     at.u = (-at.u).rem_euclid(1.0);
                 }
@@ -882,7 +930,7 @@ impl Making<'_> {
                 let across = index.and_then(|i| builder::mirrored_u(self.built, i, surface, at));
                 if let Some(u) = across {
                     let mut image = here.clone();
-                    image.roll = wrapped(-here.roll);
+                    image.roll = image_roll(&here);
                     image.at = Some(SurfaceAtDef { u, ..at });
                     places.push((image, !mirrored));
                 }
@@ -1548,7 +1596,14 @@ pub(crate) fn place_parts(
             })
         })
     };
-    // Worked out again only when where it would go, or how, changes.
+    // Worked out again only when where it would go, or how, changes. A spot on a surface the
+    // pointer has not moved off is the one already asked about: the craft redrawn with what is in
+    // hand on it puts the surface a rounding error away from where it was, and each new answer
+    // would be drawn and asked about again, for ever.
+    let spot = match (spot, &placing.asked) {
+        (Some(now), Some((was, ..))) if now.barely_moved_from(was) => Some(was.clone()),
+        (spot, _) => spot,
+    };
     let asked = spot
         .clone()
         .map(|s| (s, placing.symmetry, placing.mirror, placing.roll));

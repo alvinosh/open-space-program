@@ -874,8 +874,8 @@ pub struct DockingPortDef {
     pub crossfeed: bool,
 }
 
-/// A small solid motor's nozzle and case: burns what the part's own grain holds, at full thrust
-/// until it is gone.
+/// A solid motor's nozzle and case: burns what the part's own grain holds, lit once, at full thrust
+/// (or as its thrust curve says) until it is gone; it cannot be stopped or throttled.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SolidMotorDef {
@@ -884,10 +884,78 @@ pub struct SolidMotorDef {
     /// s, in a vacuum and at sea level.
     pub isp_vac: f64,
     pub isp_sl: f64,
-    /// Its case, kg.
+    /// Its nozzle and what is not the part's own walls, kg.
     pub mass: f64,
     /// What it burns.
     pub propellant: String,
+    /// A booster: it lights with its sequence as any engine does, its nozzle drawn under the part's
+    /// base, as wide as its thrust needs. Without, a small separation motor, which fires with the
+    /// decoupler it is beside.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub booster: bool,
+    /// Its nozzle is made for a vacuum: wider, more impulse up high and less at sea level.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub vacuum: bool,
+    /// Thrust and mass flow as shares of full against the share of its grain left, from full (1)
+    /// to empty (0): the shape its grain is cast in. An even burn without.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thrust_curve: Option<Vec<[f64; 2]>>,
+}
+
+/// How much thrust a booster's nozzle exit makes per square metre of it, N/m²: about a sea-level
+/// one's (the Shuttle's boosters, 12.5 MN from 11 m²) and a vacuum one's, which is far wider.
+const BOOSTER_EXIT_LOAD: [f64; 2] = [1.1e6, 0.3e6];
+
+/// A booster's specific impulse in a vacuum and at sea level, s, with a nozzle for sea level and
+/// with one for a vacuum.
+pub const BOOSTER_ISP: [[f64; 2]; 2] = [[265.0, 238.0], [290.0, 190.0]];
+/// What a booster's nozzle and its fittings weigh for each newton of thrust, kg/N.
+pub const BOOSTER_NOZZLE_MASS: f64 = 1.0e-3;
+/// Where a booster's thrust curve is set: the grain left at each point, from full to empty.
+pub const CURVE_POINTS: [f64; 5] = [1.0, 0.75, 0.5, 0.25, 0.0];
+/// The shapes a grain is cast in, each its thrust at [`CURVE_POINTS`] as a share of its rating, the
+/// same on average, so that a booster burns as long whichever it has: an even burn; one that rises
+/// as the bore opens; one that falls; and one with a dip for the thickest air, as the Shuttle's had.
+pub const CURVE_PRESETS: &[(&str, &str, [f64; 5])] = &[
+    ("even", "Even", [1.0, 1.0, 1.0, 1.0, 1.0]),
+    ("rising", "Rising", [0.75, 0.88, 1.0, 1.12, 1.25]),
+    ("falling", "Falling", [1.25, 1.12, 1.0, 0.88, 0.75]),
+    ("max_q", "Dip for max-Q", [1.2, 0.75, 1.05, 1.1, 0.9]),
+];
+
+impl SolidMotorDef {
+    /// Its nozzle's exit diameter, m, from its thrust: what a booster's is drawn with.
+    pub fn exit_diameter(&self) -> f64 {
+        let load = BOOSTER_EXIT_LOAD[usize::from(self.vacuum)];
+        2.0 * (self.thrust / load / std::f64::consts::PI).sqrt()
+    }
+
+    /// Its thrust at each of [`CURVE_POINTS`], as a share of its rating.
+    pub fn curve_points(&self) -> [f64; 5] {
+        let curve = self.thrust_curve.as_deref().unwrap_or_default();
+        CURVE_POINTS.map(|left| {
+            (curve.iter())
+                .find(|[at, _]| (at - left).abs() < 1e-6)
+                .map_or(1.0, |[_, share]| *share)
+        })
+    }
+
+    /// The preset its curve is, if it is one.
+    pub fn curve_preset(&self) -> Option<&'static str> {
+        let now = self.curve_points();
+        (CURVE_PRESETS.iter())
+            .find(|(_, _, points)| points.iter().zip(now).all(|(a, b)| (a - b).abs() < 1e-6))
+            .map(|(id, ..)| *id)
+    }
+
+    /// Set its thrust at each of [`CURVE_POINTS`]: no curve at all for an even burn.
+    pub fn set_curve(&mut self, points: [f64; 5]) {
+        self.thrust_curve = (points.iter().any(|share| (share - 1.0).abs() > 1e-9)).then(|| {
+            (CURVE_POINTS.iter().zip(points))
+                .map(|(&left, share)| [left, share])
+                .collect()
+        });
+    }
 }
 
 /// A wing, fin or tail surface: the part's loft is its planform and airfoil.
@@ -1358,6 +1426,16 @@ impl PartDef {
                     if !fair {
                         return Err(bad("a solid motor has some thrust and impulse".into()));
                     }
+                    let curve = def.thrust_curve.as_deref().unwrap_or_default();
+                    if curve.iter().any(|[left, share]| {
+                        !(0.0..=1.0).contains(left) || !(0.0..=2.0).contains(share)
+                    }) {
+                        return Err(bad(
+                            "a thrust curve's points are a share of grain left (0 to 1) and of \
+                             thrust (0 to 2)"
+                                .into(),
+                        ));
+                    }
                     let mut engine = EngineDef {
                         id: format!("{} solid motor", self.name),
                         mass: def.mass,
@@ -1370,16 +1448,25 @@ impl PartDef {
                         requires_ullage: false,
                         gimbal_range: 0.0,
                         propellants: [(def.propellant.clone(), 1.0)].into_iter().collect(),
-                        thrust_curve: None,
-                        length: 0.0,
-                        exit_diameter: 0.0,
+                        thrust_curve: def.thrust_curve.clone(),
+                        // A booster's nozzle is drawn: a cone as long as it is wide.
+                        length: if def.booster {
+                            def.exit_diameter()
+                        } else {
+                            0.0
+                        },
+                        exit_diameter: if def.booster {
+                            def.exit_diameter()
+                        } else {
+                            0.0
+                        },
                         model: None,
                         model_scale: 1.0,
                         nodes: Vec::new(),
                         exit_pressure: None,
                         plume: None,
                         turbine_exhaust: None,
-                        family: Some(crate::propulsion::SEPARATION_MOTOR.into()),
+                        family: (!def.booster).then(|| crate::propulsion::SEPARATION_MOTOR.into()),
                         kind: Some("solid".into()),
                         pressure_fed: false,
                         electric_power: None,

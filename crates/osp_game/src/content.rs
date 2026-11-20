@@ -13,8 +13,9 @@ use osp_sim::{
         AirBreathingEngineDef, AvionicsDef, BatteryDef, BodyDef, CraftDef, EngineDef,
         EngineFamilyDef, GroundStationDef, LaunchSiteDef, LifeSupportProfileDef, LiveryDef,
         MaterialDef, PartCatalog, PodDef, ProcessDef, RcsDef, ReactionWheelDef, ResourceDef,
-        ScenarioDef, SolarPanelDef, SystemDef, TankTypeDef, TechNodeDef,
+        ScenarioDef, SolarPanelDef, SpaceCentreDef, SystemDef, TankTypeDef, TechNodeDef,
     },
+    space_centre,
     tech::{TechTree, calendar_year},
     terrain::HeightSource,
     time::SimTime,
@@ -155,6 +156,11 @@ pub struct ModSwitch<'w> {
 }
 
 impl ModSwitch<'_> {
+    /// The content as it is now.
+    pub fn content(&self) -> &GameContent {
+        &self.content
+    }
+
     /// Reload every mod from disk and rebuild the UI. Physics data already in use (bodies, parts in
     /// flight) is not swapped mid-flight.
     fn reload(&mut self, choices: &ModChoices) {
@@ -353,8 +359,22 @@ pub fn new_game(content: &Content, scenario: &str) -> Result<NewGame, String> {
         })
         .collect();
     let craft_of = |id: &str| craft(registry, id);
-    let mut universe = Universe::new_game(&system, heights, &sites, &catalog, craft_of, &scenario)
-        .map_err(|e| e.to_string())?;
+    // The ground under the space centres' buildings and their roads is laid out as a launch site's
+    // pad and roads are; nothing launches from it.
+    let mut grounds = sites.clone();
+    for centre in registry.all::<SpaceCentreDef>("space_centres", &mut diagnostics) {
+        match system.bodies.iter().find(|b| b.id == centre.body) {
+            Some(body) => grounds.extend(space_centre::grounds(&centre, body.radius)),
+            None => diagnostics.push(Diagnostic::error(
+                None,
+                None,
+                format!("space centre `{}`: no body `{}`", centre.id, centre.body),
+            )),
+        }
+    }
+    let mut universe =
+        Universe::new_game(&system, heights, &grounds, &catalog, craft_of, &scenario)
+            .map_err(|e| e.to_string())?;
     let stations = registry.all::<GroundStationDef>("ground_stations", &mut diagnostics);
     universe.set_stations(&stations);
     universe.data_rates = catalog.rules.data_rates;

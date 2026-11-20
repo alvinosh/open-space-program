@@ -90,6 +90,7 @@ pub mod science;
 pub mod search;
 pub mod shaping;
 pub mod shell;
+pub mod space_centre;
 pub mod sizing;
 mod skip;
 pub mod staged;

@@ -8,7 +8,8 @@
 // Realistic Radiation mod sets it. `tech_tree`: the record of `tech_trees` a science game unlocks
 // parts on; the Realism mod sets RP-1's. `data_rates`: experiments' data goes home at the rate a
 // link carries, slower further away and shared through relays (the Realistic Communications mod);
-// off, all of a vessel's data goes at once whenever it has a link.
+// off, all of a vessel's data goes at once whenever it has a link. `shaped_solids`: a solid booster's
+// thrust curve can be set in the editor (the Realistic Engines mod); off, boosters burn evenly.
 [
-  { id: "game", avionics: false, life_support: "casual", radiation: null, tech_tree: "casual", data_rates: false },
+  { id: "game", avionics: false, life_support: "casual", radiation: null, tech_tree: "casual", data_rates: false, shaped_solids: false },
 ]
