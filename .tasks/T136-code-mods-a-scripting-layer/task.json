@@ -6,9 +6,7 @@
   "area": "modding",
   "size": "XL",
   "parent": "T070",
-  "depends_on": [
-    "T075"
-  ],
+  "depends_on": [],
   "refs": [
     "Early feature checklist (since removed), Phase 11"
   ],

@@ -7,8 +7,7 @@
   "size": "M",
   "parent": "T012",
   "depends_on": [
-    "T030",
-    "T032"
+    "T030"
   ],
   "refs": [
     "docs/systems-plan.md (palette table)"

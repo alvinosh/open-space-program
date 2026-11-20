@@ -6,9 +6,7 @@
   "area": "power",
   "size": "M",
   "parent": "T064",
-  "depends_on": [
-    "T035"
-  ],
+  "depends_on": [],
   "refs": [
     "Early feature checklist (since removed), Phase 5"
   ],

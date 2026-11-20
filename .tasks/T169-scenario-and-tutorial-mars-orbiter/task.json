@@ -6,13 +6,7 @@
   "area": "content",
   "size": "M",
   "parent": null,
-  "depends_on": [
-    "T166",
-    "T035",
-    "T036",
-    "T037",
-    "T038"
-  ],
+  "depends_on": [],
   "refs": [
     "crates/osp_sim/src/transfer.rs",
     "crates/osp_game/src/transfer_planner.rs"

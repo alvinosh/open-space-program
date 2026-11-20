@@ -6,9 +6,7 @@
   "area": "content",
   "size": "M",
   "parent": "T002",
-  "depends_on": [
-    "T016"
-  ],
+  "depends_on": [],
   "refs": [
     "docs/build-editor-plan.md (E5)"
   ],

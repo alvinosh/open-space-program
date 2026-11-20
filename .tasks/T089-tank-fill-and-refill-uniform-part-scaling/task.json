@@ -6,10 +6,7 @@
   "area": "editor",
   "size": "M",
   "parent": "T062",
-  "depends_on": [
-    "T019",
-    "T032"
-  ],
+  "depends_on": [],
   "refs": [
     "Early feature checklist (since removed), Phase 3"
   ],

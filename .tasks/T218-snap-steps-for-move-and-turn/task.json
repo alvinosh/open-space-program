@@ -6,9 +6,7 @@
   "area": "editor",
   "size": "S",
   "parent": "T002",
-  "depends_on": [
-    "T206"
-  ],
+  "depends_on": [],
   "refs": [
     "crates/osp_editor/src/moving.rs",
     "crates/osp_editor/src/building.rs"

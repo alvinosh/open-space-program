@@ -6,9 +6,7 @@
   "area": "test",
   "size": "M",
   "parent": null,
-  "depends_on": [
-    "T316"
-  ],
+  "depends_on": [],
   "refs": [
     "crates/osp_game/src/playtest/plays.rs",
     "T291",

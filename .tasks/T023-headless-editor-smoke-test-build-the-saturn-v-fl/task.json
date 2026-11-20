@@ -7,8 +7,7 @@
   "size": "M",
   "parent": "T002",
   "depends_on": [
-    "T022",
-    "T016"
+    "T022"
   ],
   "refs": [
     "docs/build-editor-plan.md (E11)",

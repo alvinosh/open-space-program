@@ -6,9 +6,7 @@
   "area": "audio",
   "size": "M",
   "parent": "T068",
-  "depends_on": [
-    "T125"
-  ],
+  "depends_on": [],
   "refs": [
     "Early feature checklist (since removed), Phase 9"
   ],

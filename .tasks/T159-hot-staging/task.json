@@ -6,9 +6,7 @@
   "area": "sequences",
   "size": "M",
   "parent": "T152",
-  "depends_on": [
-    "T155"
-  ],
+  "depends_on": [],
   "refs": [
     "crates/osp_sim/src/staging.rs (Sequences::pop_next: the order is the listed one)",
     "crates/osp_sim/src/propulsion.rs (clear, vented)",

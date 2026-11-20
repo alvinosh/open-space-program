@@ -6,9 +6,7 @@
   "area": "landing",
   "size": "M",
   "parent": "T008",
-  "depends_on": [
-    "T014"
-  ],
+  "depends_on": [],
   "refs": [
     "docs/systems-plan.md (step 17)"
   ],

@@ -8,9 +8,7 @@
   "parent": null,
   "depends_on": [
     "T169",
-    "T048",
-    "T110",
-    "T043"
+    "T110"
   ],
   "refs": [
     "assets/core/bodies/solar_system.json5"

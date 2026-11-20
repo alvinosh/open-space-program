@@ -6,9 +6,7 @@
   "area": "propulsion",
   "size": "L",
   "parent": "T064",
-  "depends_on": [
-    "T032"
-  ],
+  "depends_on": [],
   "refs": [
     "Early feature checklist (since removed), Phase 5"
   ],

@@ -9,6 +9,8 @@
     python3 .tasks/tasks.py next [N]         the N (default 10) ready tasks with the lowest `priority`
     python3 .tasks/tasks.py plan [M3]        every milestone (or one) with its open tasks in priority order
     python3 .tasks/tasks.py serve [PORT]     the task viewer in the browser (default port 8765)
+    python3 .tasks/tasks.py new-id           the id a new task takes (never one used before)
+    python3 .tasks/tasks.py prune            remove done and dropped tasks; listed in removed.txt
 
 See .tasks/README.md for the format.
 """
@@ -42,8 +44,26 @@ def load():
     return tasks
 
 
+REMOVED = os.path.join(HERE, "removed.txt")
+
+
+def load_removed():
+    """Finished tasks whose folders were pruned: id -> (status, done date, title)."""
+    removed = {}
+    if os.path.isfile(REMOVED):
+        with open(REMOVED) as f:
+            for line in f:
+                if line.startswith("T"):
+                    parts = line.rstrip("\n").split(None, 3)
+                    removed[parts[0]] = tuple(parts[1:] + [""] * (4 - len(parts)))
+    return removed
+
+
 def check(tasks):
     errors, warnings = [], []
+    removed = load_removed()
+    for id in sorted(set(tasks) & set(removed)):
+        errors.append("%s: in removed.txt but still has a folder" % tasks[id]["_folder"])
     for id, t in tasks.items():
         where = t["_folder"]
         for key in REQUIRED:
@@ -61,11 +81,15 @@ def check(tasks):
             errors.append("%s: no README.md" % where)
         parent = t.get("parent")
         if parent is not None:
-            if parent not in tasks:
+            if parent in removed:
+                errors.append("%s: parent `%s` is finished and removed" % (where, parent))
+            elif parent not in tasks:
                 errors.append("%s: parent `%s` does not exist" % (where, parent))
             elif tasks[parent]["kind"] != "epic":
                 errors.append("%s: parent `%s` is not an epic" % (where, parent))
         for d in t.get("depends_on", []):
+            if d in removed:
+                continue  # finished and pruned: satisfied
             if d not in tasks:
                 errors.append("%s: depends on `%s`, which does not exist" % (where, d))
             elif d == id:
@@ -139,7 +163,8 @@ def cmd_list(tasks, args):
 
 
 def finished(tasks, d):
-    return tasks[d]["status"] in ("done", "dropped")
+    # a dependency with no folder was pruned once finished (removed.txt)
+    return d not in tasks or tasks[d]["status"] in ("done", "dropped")
 
 
 def cmd_ready(tasks):
@@ -207,6 +232,46 @@ def cmd_set(tasks, args):
         json.dump(t, f, indent=2, ensure_ascii=False)
         f.write("\n")
     print("%s is now %s" % (args[0], args[1]))
+
+
+def cmd_new_id(tasks):
+    used = [int(i[1:]) for i in list(tasks) + list(load_removed()) if i[1:].isdigit()]
+    print("T%03d" % (max(used, default=0) + 1))
+
+
+def cmd_prune(tasks):
+    """Removes the folders of done and dropped tasks, lists them in removed.txt, and takes them
+    out of the remaining tasks' `depends_on` (a finished dependency is satisfied)."""
+    import shutil
+    gone = sorted(i for i, t in tasks.items() if t["status"] in ("done", "dropped"))
+    for i, t in tasks.items():
+        if i not in gone and t.get("parent") in gone:
+            sys.exit("%s's parent %s is finished but %s is not; finish or re-parent it first"
+                     % (i, t["parent"], i))
+    if not gone:
+        print("nothing to prune")
+        return
+    new = not os.path.isfile(REMOVED)
+    with open(REMOVED, "a") as f:
+        if new:
+            f.write("# Finished tasks whose folders were removed. Their ids are never reused;\n"
+                    "# git history has their READMEs. id, status, date finished, title.\n")
+        for i in gone:
+            t = tasks[i]
+            f.write("%s %s %s %s\n" % (i, t["status"], t.get("done") or t.get("updated") or "-", t["title"]))
+    for i, t in tasks.items():
+        if i in gone:
+            continue
+        kept = [d for d in t["depends_on"] if d not in gone]
+        if kept != t["depends_on"]:
+            t["depends_on"] = kept
+            data = {k: v for k, v in t.items() if k != "_folder"}
+            with open(os.path.join(HERE, t["_folder"], "task.json"), "w") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+    for i in gone:
+        shutil.rmtree(os.path.join(HERE, tasks[i]["_folder"]))
+    print("removed %d finished tasks (listed in removed.txt)" % len(gone))
 
 
 def viewer_data(tasks):
@@ -302,6 +367,10 @@ def main():
         cmd_set(tasks, args[1:])
     elif cmd == "serve":
         cmd_serve([a for a in args[1:] if not a.startswith("--")])
+    elif cmd == "new-id":
+        cmd_new_id(tasks)
+    elif cmd == "prune":
+        cmd_prune(tasks)
     else:
         print(__doc__)
 

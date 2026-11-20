@@ -6,9 +6,7 @@
   "area": "ui",
   "size": "S",
   "parent": "T002",
-  "depends_on": [
-    "T207"
-  ],
+  "depends_on": [],
   "refs": [
     "assets/core/layouts/editor.json5",
     "assets/core/layouts/editor_part.json5"

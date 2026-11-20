@@ -18,6 +18,9 @@ Brought forward from M6 because docking could not work without it, and redone on
 
 ## Still open
 
+T093 (vehicle-terrain and vehicle-vehicle collision) was merged here on 2026-11-20: the vessel
+half is built above, the ground is the second item below.
+
 - Nothing breaks off: a hit marks the whole vessel as broken up or none of it, and it stays in one piece. Next.
 - The ground. Vessels still meet it with gear legs and the old hard points (`HardPoints` in `vessel.rs`), rings of the aero outline and wing tips. They should use these pieces, and a touch should be a contact and not always a crash.
 - Moving parts: legs collide at full extension, and a control surface or a hinged panel as built.

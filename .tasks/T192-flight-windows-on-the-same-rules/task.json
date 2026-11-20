@@ -6,10 +6,7 @@
   "area": "ui",
   "size": "M",
   "parent": "T185",
-  "depends_on": [
-    "T189",
-    "T190"
-  ],
+  "depends_on": [],
   "refs": [
     "T185",
     "assets/core/layouts/toolbar.json5",

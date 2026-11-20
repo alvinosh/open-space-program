@@ -7,8 +7,7 @@
   "size": "M",
   "parent": null,
   "depends_on": [
-    "T170",
-    "T044"
+    "T170"
   ],
   "refs": [
     "assets/core/craft/colossus.json5"

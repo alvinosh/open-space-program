@@ -1,0 +1,156 @@
+# Finished tasks whose folders were removed. Their ids are never reused;
+# git history has their READMEs. id, status, date finished, title.
+T001 done 2026-11-20 Honest numbers: fix what the smoke test measured
+T004 done 2026-11-20 Shared systems pieces
+T005 done 2026-11-20 Power and avionics
+T006 done 2026-11-20 Communications
+T007 done 2026-11-20 Docking
+T009 done 2026-11-20 The return: heat, entry and recovery
+T010 done 2026-11-10 Crew and life support
+T013 done 2026-10-30 Build smoke tests, first version (placement matrix)
+T014 done 2026-11-02 Physics on any part at any pose
+T016 dropped 2026-11-20 Editor session, headless
+T018 done 2026-11-20 Editor scene in the game
+T019 dropped 2026-11-20 Editor UI
+T021 done 2026-11-20 Thumbnails and tooltips
+T026 done 2026-11-02 A sequence can cut an engine and set a throttle limit
+T027 done 2026-11-02 The burn executor counts its RCS ullage push
+T028 done 2026-11-02 Open components with state
+T029 done 2026-11-02 Actions and sequences, generic
+T031 done 2026-11-02 Surface layers
+T032 done 2026-11-02 Sizers: requirement in, design out
+T033 done 2026-11-02 Environment: sun, eclipse, albedo, occultation
+T034 done 2026-11-02 Networks: power and data over joints
+T035 done 2026-11-02 Electrical power
+T036 done 2026-11-02 Avionics and guidance
+T037 done 2026-11-02 Ground stations and communication links
+T038 done 2026-11-02 Command and data policy
+T039 done 2026-11-02 Join: merge two vessels
+T040 done 2026-11-04 Docking ports
+T041 done 2026-11-04 Nested holds and hinged panels (the LM in the adapter)
+T043 done 2026-11-04 Procedural legs and foot contact
+T044 done 2026-11-04 The lunar module from procedural parts, and the descent tool
+T045 done 2026-11-04 Thermal model
+T046 done 2026-11-04 The heat shield
+T047 done 2026-11-04 Capsule entry that trims and steers
+T048 done 2026-11-04 Parachutes and the sea
+T049 done 2026-11-04 Crew and life support
+T059 done 2026-11-04 Launch escape system
+T060 done 2026-11-02 Staging window leftovers
+T072 done 2026-11-20 Decisions to make
+T074 done 2026-11-02 Decide the contact solver
+T075 done 2026-11-04 Decide the scripting runtime for code mods
+T076 done 2026-11-04 Decide: the real Solar System only, or also a fictional one
+T080 done 2026-11-06 Warp to any point on the orbit; warp up to 100 years per second
+T083 done 2026-11-20 Rendezvous panel and target autopilot modes
+T086 dropped 2026-11-20 Propellant flow rules, drain order and crossfeed
+T087 done 2026-11-02 Control-module requirement and 'control from here'
+T090 done 2026-11-03 Game save and load
+T093 dropped 2026-11-20 Vehicle-terrain and vehicle-vehicle collision
+T117 done 2026-11-03 Volumetric clouds with shadows and god rays; 2D cloud layers
+T125 done 2026-11-04 Engine sounds, wind, layered sounds
+T128 done 2026-11-02 Settings: audio, input, UI and HUD scale; alerts
+T139 dropped 2026-11-12 Science and career
+T150 done 2026-11-02 Saturn IB: the S-IVB's sequences and ullage motors
+T151 dropped 2026-11-01 Trees glitch near the ground
+T153 done 2026-10-30 Plumes for every engine
+T154 done 2026-11-02 Solid boosters that look and burn like solids
+T155 done 2026-10-30 Staging window you can read
+T156 done 2026-10-30 Flight HUD smaller and quieter
+T157 done 2026-11-01 Highlight the parts of a stage on the rocket
+T158 done 2026-11-04 Reordering stages by hand works and shows where it lands
+T160 done 2026-10-30 Compact staging window
+T161 done 2026-11-02 Staging as ordered part actions
+T162 done 2026-11-02 Colour-marked part windows: the part is tinted, the window wears the colour
+T163 done 2026-11-02 Glider rockets off the runway
+T165 done 2026-11-01 Missions: goals, a checker and a results screen
+T166 done 2026-11-01 Tutorial layer: guided steps over a mission
+T175 done 2026-11-02 Procedural decoupler and separation motors
+T177 done 2026-11-01 Licences: add licence files and audit what ships
+T178 done 2026-11-02 Decouplers are parts of every craft
+T179 done 2026-11-02 The lunar module flies by itself: lands on the Moon and lifts off
+T180 done 2026-11-04 Gate: Apollo 11 from the pad to the Moon and back to splashdown
+T181 done 2026-11-02 The Apollo CSM's RCS is about 8.7 times too strong
+T182 done 2026-11-03 Sky and haze from each body's air, with multiple scattering
+T184 done 2026-11-03 Eclipses and the sun's glare
+T186 done 2026-11-04 Theme tokens, type scale and one set of controls
+T187 done 2026-11-04 Menu shell: screen stack, Back and Esc, Title and Pause
+T188 done 2026-11-04 Leaving a game: one dialog, exit to main menu, Continue
+T189 done 2026-11-06 Vessels, Save, Load, Tutorials and Settings screens
+T190 done 2026-11-04 Choose the vessel in the editor
+T191 done 2026-11-04 Boxes around vessels: click to target or switch
+T193 done 2026-11-04 A launch needs a clear pad or runway; vessels can be destroyed from the menu
+T195 done 2026-11-05 Launch times in the transfer planner
+T196 done 2026-11-05 The empty hangar saved the staging window as closed
+T197 done 2026-11-05 City lights from up close
+T198 done 2026-11-05 Wind effects on a rocket
+T199 done 2026-11-05 Charge in the Resources window
+T200 done 2026-11-06 Alarm clock
+T201 done 2026-11-06 Nothing runs down on the pad
+T202 done 2026-11-06 Quicksave and quickload
+T203 done 2026-11-20 Part menu: shape, sizes and profiles on a click
+T206 done 2026-11-20 Move and turn tools: slide and turn a placed part
+T207 done 2026-11-20 Part settings in the left panel, not a popup
+T208 done 2026-11-20 Parts list: filters by function, size and propellant
+T209 done 2026-11-20 Tank contents follow the engines on the craft, at their ratio
+T211 done 2026-11-06 The editor in a crate of its own (osp_editor)
+T215 done 2026-11-20 Parts list as a grid of pictures
+T216 done 2026-11-20 Grab a placed part and put it on anywhere
+T217 done 2026-11-20 Symmetry modes: radial count and mirror
+T222 done 2026-11-20 Ask before throwing away an edited craft
+T228 done 2026-11-16 Every edit reaches the symmetry copies
+T231 done 2026-11-20 Turning the view does not grab parts
+T241 dropped 2026-11-20 Undo and redo buttons
+T242 done 2026-11-13 Drag a placed part off the craft
+T244 done 2026-11-09 Turn mods on and off on a Mods screen
+T245 done 2026-11-09 Each save remembers its mods
+T246 done 2026-11-09 New game asks: Casual, Realistic or Custom
+T247 done 2026-11-09 Liquid fuel and oxidiser in the base game, a Realistic Fuels mod
+T248 done 2026-11-09 A Realistic Engines mod: ullage, ignitions, throttle floors, start-up
+T250 done 2026-11-10 Decide which ship systems are optional, and how a mod switches one
+T252 done 2026-11-09 A part in hand is drawn at the pointer
+T253 done 2026-11-10 Ship systems made robust: fuel, power, comms, heat, life support
+T254 done 2026-11-09 Fuel lines and asparagus staging
+T255 done 2026-11-09 Batteries, solar panels, antennas, fuel cells and life support in the parts list
+T256 done 2026-11-09 Antenna types and relays for unmanned probes
+T257 done 2026-11-09 Aerodynamic heating that takes parts off, by material
+T258 done 2026-11-10 Life support: realistic and casual
+T259 done 2026-11-09 Detail on the resizable parts: tanks, fins, nose cones, structural
+T261 done 2026-11-10 The rules each ship system reads, set by Casual and Realistic
+T262 done 2026-11-10 Processes, and one resource solver per vessel
+T263 done 2026-11-10 Crew who are people: a name each, and health that goes by stages
+T264 done 2026-11-12 Cabins: volume, pressure, air and leaks
+T267 done 2026-11-12 Radiation: belts, cosmic rays, shielding and dose
+T271 done 2026-11-10 Decide what science is for
+T272 done 2026-11-12 Experiments that run over time
+T273 done 2026-11-13 Data drives and samples
+T274 done 2026-11-13 Sending data: rates, relays and a queue
+T284 done 2026-11-13 Science buys the tech tree
+T285 done 2026-11-10 Engine families: one part each, with its configuration picked in the part settings
+T288 done 2026-11-12 Two tech trees laid out: Casual for the base game's parts, Realistic from RP-1's
+T289 done 2026-11-12 Career games: science and unlocked nodes kept per save, the parts list shows what is unlocked
+T290 done 2026-11-12 The tech tree screen
+T292 done 2026-11-12 Tank sizes and tank types unlocked by the tree
+T293 done 2026-11-13 Career money: funds earned from missions and contracts, kept per save
+T294 done 2026-11-13 Facilities: launch pad and builder levels, upgraded with money
+T295 done 2026-11-13 Contracts: goals offered for money in a career
+T296 done 2026-11-12 New game screen: a real Start button and a clear Sandbox or Career choice
+T297 done 2026-11-13 Parts taken off the craft stay in the hangar, see-through, until put back or thrown away
+T299 done 2026-11-13 A part in hand snaps when its node comes near a free node, not the pointer
+T300 done 2026-11-13 Several engines under one tank
+T302 done 2026-11-12 Time warp above physics warp holds still on the pad
+T304 done 2026-11-13 Recover the vessel being flown once it is down
+T305 done 2026-11-13 A career's first flights can bring their science home
+T306 done 2026-11-13 A new part takes its size from what it goes on
+T308 done 2026-11-16 The view keeps a growing craft in sight
+T309 done 2026-11-16 More guesses while building: a tank's length for its stage, adapters between widths
+T311 done 2026-11-16 The space centre screen: the Cape in 3D, buildings to go into
+T314 done 2026-11-17 Research and Mission control: the tech tree and contracts, out of the editor
+T315 done 2026-11-17 The tracking station: vessels in flight, go to one
+T316 done 2026-11-16 Playtests: the game played as a person, measured for ease of use and payoff
+T317 done 2026-11-16 Nothing goes under an engine, so stages cannot be stacked
+T318 done 2026-11-16 A first rocket flips over within 20 s with SAS on
+T319 done 2026-11-16 A first game starts in Realistic mode
+T324 done 2026-11-16 Prune the unit tests that playtests cover
+T328 done 2026-11-17 Solid boosters as one part: the grain and its motor, lit once; a thrust curve to shape in Realistic
+T329 done 2026-11-16 A part held still over a surface rebuilt its preview for ever

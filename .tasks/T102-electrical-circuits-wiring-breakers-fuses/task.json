@@ -6,10 +6,7 @@
   "area": "power",
   "size": "L",
   "parent": "T064",
-  "depends_on": [
-    "T034",
-    "T035"
-  ],
+  "depends_on": [],
   "refs": [
     "Early feature checklist (since removed), Phase 5",
     "docs/systems-plan.md (Choices made)"

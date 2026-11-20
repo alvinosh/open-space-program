@@ -7,7 +7,6 @@
   "size": "L",
   "parent": "T260",
   "depends_on": [
-    "T262",
     "T276"
   ],
   "refs": [

@@ -6,9 +6,7 @@
   "area": "editor",
   "size": "M",
   "parent": "T221",
-  "depends_on": [
-    "T207"
-  ],
+  "depends_on": [],
   "refs": [
     "assets/core/layouts/editor.json5",
     "crates/osp_editor/src/part_settings.rs"

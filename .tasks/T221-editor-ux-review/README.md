@@ -22,7 +22,7 @@ Each finding is a task under this epic, numbered as in the review:
 17. T238 Keys on the buttons, and a controls overlay
 18. T239 What a rocket needs, said by the editor
 19. T240 Feedback in one place
-20. T241 Undo and redo buttons
+20. T241 Undo and redo buttons (merged into T322)
 
 The order of work suggested in the review: stop losing work (T222, T223, T224), symmetry on every
 edit (T228, T229), say whether it will fly (T235, T236), refuse while dragging (T232, T233). The

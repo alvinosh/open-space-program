@@ -7,10 +7,7 @@
   "size": "L",
   "parent": "T260",
   "depends_on": [
-    "T258",
-    "T267",
-    "T050",
-    "T274"
+    "T050"
   ],
   "refs": [
     ".tasks/T260-ships-that-live/spec.md §12"

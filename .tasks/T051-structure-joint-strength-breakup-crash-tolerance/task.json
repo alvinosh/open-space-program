@@ -6,9 +6,7 @@
   "area": "structure",
   "size": "M",
   "parent": "T011",
-  "depends_on": [
-    "T014"
-  ],
+  "depends_on": [],
   "refs": [
     "docs/systems-plan.md (step 26)"
   ],

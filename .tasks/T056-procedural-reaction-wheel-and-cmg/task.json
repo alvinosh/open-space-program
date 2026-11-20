@@ -6,9 +6,7 @@
   "area": "content",
   "size": "M",
   "parent": "T012",
-  "depends_on": [
-    "T032"
-  ],
+  "depends_on": [],
   "refs": [
     "docs/systems-plan.md (palette table)"
   ],

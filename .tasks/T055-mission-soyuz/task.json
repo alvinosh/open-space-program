@@ -7,9 +7,7 @@
   "size": "XL",
   "parent": "T011",
   "depends_on": [
-    "T052",
-    "T040",
-    "T048"
+    "T052"
   ],
   "refs": [
     "docs/systems-plan.md (step 28)"

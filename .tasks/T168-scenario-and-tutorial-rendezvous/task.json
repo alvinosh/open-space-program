@@ -6,9 +6,7 @@
   "area": "content",
   "size": "M",
   "parent": null,
-  "depends_on": [
-    "T166"
-  ],
+  "depends_on": [],
   "refs": [
     "assets/core/scenarios/stock.json5 (`rendezvous`)",
     "crates/osp_sim/src/rendezvous.rs"

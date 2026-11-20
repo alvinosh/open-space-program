@@ -1,0 +1,21 @@
+{
+  "id": "T330",
+  "title": "Editor leftovers from finished tasks",
+  "kind": "chore",
+  "status": "todo",
+  "area": "editor",
+  "size": "M",
+  "parent": "T002",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/hangar.rs",
+    "crates/osp_editor/src/shaping.rs",
+    "crates/osp_editor/src/parts_list.rs",
+    "crates/osp_sim/src/properties.rs"
+  ],
+  "created": "2026-11-20",
+  "updated": "2026-11-20",
+  "done": null,
+  "milestone": "M3",
+  "priority": 63.5
+}

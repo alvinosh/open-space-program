@@ -6,9 +6,7 @@
   "area": "ui",
   "size": "L",
   "parent": "T260",
-  "depends_on": [
-    "T258"
-  ],
+  "depends_on": [],
   "refs": [
     "crates/osp_sim/src/alarm.rs",
     "T199",

@@ -6,12 +6,7 @@
   "area": "content",
   "size": "M",
   "parent": null,
-  "depends_on": [
-    "T166",
-    "T035",
-    "T037",
-    "T049"
-  ],
+  "depends_on": [],
   "refs": [
     "docs/systems-plan.md (the palette of procedural parts)"
   ],

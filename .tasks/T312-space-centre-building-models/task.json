@@ -6,9 +6,7 @@
   "area": "ui",
   "size": "L",
   "parent": "T310",
-  "depends_on": [
-    "T311"
-  ],
+  "depends_on": [],
   "refs": [
     "tools/blender",
     "assets/core/models"

@@ -6,9 +6,7 @@
   "area": "crew",
   "size": "M",
   "parent": "T260",
-  "depends_on": [
-    "T264"
-  ],
+  "depends_on": [],
   "refs": [
     "crates/osp_sim/src/systems/cabin.rs",
     "crates/osp_sim/src/systems.rs (Systems::share_air, board)",

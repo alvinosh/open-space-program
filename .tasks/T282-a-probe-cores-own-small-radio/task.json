@@ -6,9 +6,7 @@
   "area": "comms",
   "size": "S",
   "parent": "T260",
-  "depends_on": [
-    "T261"
-  ],
+  "depends_on": [],
   "refs": [
     "crates/osp_sim/src/comms.rs",
     "crates/osp_sim/src/vessel.rs (commandable)",

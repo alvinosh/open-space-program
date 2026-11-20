@@ -6,9 +6,7 @@
   "area": "content",
   "size": "XL",
   "parent": "T071",
-  "depends_on": [
-    "T090"
-  ],
+  "depends_on": [],
   "refs": [
     "Early feature checklist (since removed), Backlog"
   ],

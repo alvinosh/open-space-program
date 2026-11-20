@@ -7,8 +7,7 @@
   "size": "L",
   "parent": "T064",
   "depends_on": [
-    "T096",
-    "T019"
+    "T096"
   ],
   "refs": [
     "Early feature checklist (since removed), Phase 5"

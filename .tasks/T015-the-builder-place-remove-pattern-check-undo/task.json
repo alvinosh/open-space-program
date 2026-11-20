@@ -6,9 +6,7 @@
   "area": "builder",
   "size": "L",
   "parent": "T002",
-  "depends_on": [
-    "T014"
-  ],
+  "depends_on": [],
   "refs": [
     "docs/build-editor-plan.md (E3)"
   ],

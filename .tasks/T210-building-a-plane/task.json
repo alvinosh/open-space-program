@@ -7,9 +7,7 @@
   "size": "L",
   "parent": "T002",
   "depends_on": [
-    "T206",
-    "T205",
-    "T217"
+    "T205"
   ],
   "refs": [
     "assets/core/craft/glider.json5",

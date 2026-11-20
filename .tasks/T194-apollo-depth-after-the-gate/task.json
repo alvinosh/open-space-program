@@ -6,9 +6,7 @@
   "area": "environment",
   "size": "L",
   "parent": null,
-  "depends_on": [
-    "T180"
-  ],
+  "depends_on": [],
   "refs": [
     "T043",
     "T044",

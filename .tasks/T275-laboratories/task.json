@@ -6,10 +6,7 @@
   "area": "science",
   "size": "M",
   "parent": "T287",
-  "depends_on": [
-    "T273",
-    "T262"
-  ],
+  "depends_on": [],
   "refs": [
     ".tasks/T260-ships-that-live/spec.md §6.5"
   ],

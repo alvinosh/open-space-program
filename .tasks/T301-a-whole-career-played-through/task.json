@@ -7,12 +7,7 @@
   "size": "XL",
   "parent": "T287",
   "depends_on": [
-    "T291",
-    "T293",
-    "T294",
-    "T295",
-    "T284",
-    "T290"
+    "T291"
   ],
   "refs": [
     "crates/osp_smoke",

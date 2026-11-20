@@ -7,8 +7,6 @@
   "size": "L",
   "parent": "T243",
   "depends_on": [
-    "T247",
-    "T248",
     "T251"
   ],
   "refs": [

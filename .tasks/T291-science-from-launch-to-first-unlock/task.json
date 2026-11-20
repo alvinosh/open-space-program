@@ -6,12 +6,7 @@
   "area": "test",
   "size": "M",
   "parent": "T287",
-  "depends_on": [
-    "T284",
-    "T290",
-    "T294",
-    "T305"
-  ],
+  "depends_on": [],
   "refs": [
     "crates/osp_smoke"
   ],

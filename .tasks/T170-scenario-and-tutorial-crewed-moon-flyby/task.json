@@ -6,16 +6,7 @@
   "area": "content",
   "size": "M",
   "parent": null,
-  "depends_on": [
-    "T166",
-    "T035",
-    "T037",
-    "T045",
-    "T046",
-    "T047",
-    "T048",
-    "T049"
-  ],
+  "depends_on": [],
   "refs": [
     "assets/core/craft/colossus.json5",
     "assets/core/craft/lunar_upper.json5"

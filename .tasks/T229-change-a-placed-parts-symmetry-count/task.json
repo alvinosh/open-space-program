@@ -6,9 +6,7 @@
   "area": "editor",
   "size": "M",
   "parent": "T221",
-  "depends_on": [
-    "T228"
-  ],
+  "depends_on": [],
   "refs": [
     "crates/osp_sim/src/builder.rs (put_set, alike)",
     "memory: symmetry is build-time"
