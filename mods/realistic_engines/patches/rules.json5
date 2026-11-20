@@ -1,0 +1,5 @@
+// Realistic Engines lets a solid booster's thrust curve, the shape its grain is cast in, be set in the
+// editor.
+[
+  { op: "set", collection: "rules", target: "game", path: "shaped_solids", value: true, pass: "first" },
+]

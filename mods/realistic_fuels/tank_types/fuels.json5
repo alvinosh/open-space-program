@@ -35,4 +35,18 @@
     propellants: ["HTPB"],
     cast: true,
   },
+  {
+    // A solid booster's case: steel, a pressure vessel at the motor's chamber pressure, lined with
+    // insulation, the grain cast in it round a bore. Its walls are the booster's mass bar its nozzle.
+    id: "Booster Case",
+    material: "Stainless 301 Full Hard",
+    pressure: 4.0e6,
+    min_gauge: 0.003,
+    stiffening: 1.1,
+    insulation: 8.0,
+    utilization: 0.88,
+    safety_factor: 1.4,
+    propellants: ["HTPB"],
+    cast: true,
+  },
 ]

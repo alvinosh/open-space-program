@@ -22,6 +22,7 @@ check of the result. Other scenes are left alone.
 | `c4.py` | `models/pods/c4.glb` |
 | `cold_gas_quad.py` | `models/rcs/cold_gas_quad.glb` |
 | `hardware.py` | `models/control/`: `attitude_unit.glb`, `rw_1.glb`, `fuel_line.glb`; `models/gear/wheel.glb`; `models/systems/`: battery, solar panel, omni antenna, dish, RTG, fuel cell, probe core |
+| `space_centre.py` | `models/space_centre/`: the Vehicle Assembly and the Hangar at each of the builder's four levels (`vehicle_assembly_1..4.glb`, `hangar_1..4.glb`), `research.glb`, `mission_control.glb`, `tracking.glb` |
 | `saturn_v_parts.py` | `mods/realism/models/parts/`: service module, high gain antenna, escape tower, LM descent stage and foot pad, separation motor, instrument unit, S-IVB APS |
 
 `osp_common.py` has the shared helpers (lathe/sweep primitives, nozzle contours, materials, export,
@@ -57,7 +58,9 @@ evaluated objects and read back from the written `.glb`. Engines also print thei
   +Z is the rocket's nose, ±Y is around the hull.
 - Materials: Principled BSDF with solid values only (no textures). Names are
   `<Part>_<Component>_<Finish>`. Detail comes from geometry.
-- Budgets: engines ≤ 25k triangles, pods ≤ 20k, RCS block ≤ 2k.
+- Space centre buildings: origin = the middle of the footprint on the ground, X across, +Y to the
+  front (the doors), so the game's -Z; footprint and height as the building's `levels` sizes.
+- Budgets: engines ≤ 25k triangles, pods ≤ 20k, RCS block ≤ 2k, buildings ≤ 10k.
 - Geometry is generated in world space and every object keeps an identity transform.
 - Nozzle bells are lathed profiles (chamber, converging section, throat, Rao bell) made into
   open thin-walled shells with a live Solidify modifier. A short vertical lip keeps the exit plane
