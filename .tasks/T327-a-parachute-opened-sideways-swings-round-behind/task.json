@@ -1,0 +1,21 @@
+{
+  "id": "T327",
+  "title": "A parachute opened sideways swings round behind the craft instead of jumping there",
+  "kind": "bug",
+  "status": "todo",
+  "area": "recovery",
+  "size": "M",
+  "parent": null,
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/systems/parachute.rs",
+    "crates/osp_sim/src/vessel.rs (the chute's pull)",
+    "crates/osp_render/src/vessel_render.rs (update_canopies)",
+    "T048"
+  ],
+  "created": "2026-11-16",
+  "updated": "2026-11-16",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.24311
+}

@@ -2,7 +2,7 @@
   "id": "T312",
   "title": "Space centre building models, one per level",
   "kind": "feature",
-  "status": "todo",
+  "status": "in_progress",
   "area": "ui",
   "size": "L",
   "parent": "T310",
@@ -12,7 +12,7 @@
     "assets/core/models"
   ],
   "created": "2026-11-13",
-  "updated": "2026-11-13",
+  "updated": "2026-11-17",
   "done": null,
   "milestone": "M3",
   "priority": 61.2445

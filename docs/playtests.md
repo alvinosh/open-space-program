@@ -12,7 +12,7 @@ OSP_PLAYTEST=first_rocket OSP_USER_DIR=/tmp/empty cargo run -p osp   # one, in t
 ```
 
 Each runs in the game built for the tests, in an empty user folder (a first game: its settings,
-saves and windows live there, never the player's own), rendering offscreen at 1600 x 900. A run of all three takes under a minute.
+saves and windows live there, never the player's own), rendering offscreen at 1600 x 900. Each takes under a minute.
 
 ## What a playtest may do
 
@@ -21,7 +21,9 @@ Only what a player can (`Play` in `crates/osp_game/src/playtest.rs`):
 - `Click`, `Drag`, `Wheel` on a `Spot`: a control by its action (`Spot::Ui("editor.launch")`), or in
   the editor a ring, a part, a spot on a surface or a handle, as drawn. A control must be drawn, on
   screen, not scrolled out of sight and not covered (the pointer has to be over it as picking sees
-  it), or the player is stuck and the playtest fails there.
+  it), or the player is stuck and the playtest fails there. The pointer moves as a mouse does, so a
+  `Drag` from `Spot::Screen` (nothing there) turns the editor's view: a part hidden behind the craft
+  is reached that way, as a player would.
 - `Key`, `Chord` (Ctrl+Z), `Type`.
 - `Until` and `Expect`: conditions on the UI's data, the same as layouts use (`==`, `!=`, `!`) plus
   `<`, `>`, `<=`, `>=` on numbers. Nothing reads the game's insides.
