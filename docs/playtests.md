@@ -77,3 +77,19 @@ do (`about`), and the steps as they would go about it. Start with
 `Play::Until("menu.screen == title", 60.0)`. Take pictures where a person would look. Put a `Hope`
 wherever a player would be disappointed if it did not hold, and file what the report finds in
 `.tasks/`.
+
+## The stock craft are built by playtests
+
+Every craft the game ships (`assets/core/craft`) is built from nothing in the builder by a playtest,
+`rebuild_<id>` in `crates/osp_game/src/playtest/rebuilds.rs`, the way a player would build it from
+the parts list, and launched. The editor has no save yet, so the craft file is what it launched,
+named by a script:
+
+```sh
+OSP_PLAYTESTS=rebuild_pathfinder cargo playtest
+python3 tools/rebuilt_craft.py pathfinder "Pathfinder"
+```
+
+To change a stock craft, change its playtest and build it again; don't edit the file. A craft the
+builder can't make is a builder bug to file, not a file to write by hand. The `in_the_builder!`
+macro there opens the right building (`pad`, `orbit` or `runway`) and launches at the end.

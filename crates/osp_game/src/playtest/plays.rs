@@ -2,7 +2,7 @@
 
 use bevy::input::keyboard::KeyCode;
 
-use super::{Play, Playtest, Spot};
+use super::{Play, Playtest, Spot, rebuilds};
 
 pub const PLAYS: &[Playtest] = &[
     SPACE_CENTRE,
@@ -13,6 +13,20 @@ pub const PLAYS: &[Playtest] = &[
     MIRRORED_WINGS,
     SOLID_BOOSTER,
     BOOSTER_CURVE,
+    rebuilds::SOUNDER,
+    rebuilds::SPARROW,
+    rebuilds::TITAN,
+    rebuilds::TALON,
+    rebuilds::PATHFINDER,
+    rebuilds::HERON,
+    rebuilds::KESTREL,
+    rebuilds::COLOSSUS,
+    rebuilds::PATHFINDER_CREW,
+    rebuilds::UPPER_STAGE,
+    rebuilds::LUNAR_UPPER,
+    rebuilds::SATELLITE,
+    rebuilds::COMET,
+    rebuilds::GLIDER,
 ];
 
 /// A new player's first rocket. From the title screen they start a sandbox, start a rocket, take a
