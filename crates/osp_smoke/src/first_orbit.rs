@@ -39,8 +39,6 @@ const PLAN: &[PhaseSpec] = &[
 /// Orbit altitude flown for, m, and the periapsis at which the engine is cut.
 const ORBIT_ALTITUDE: f64 = 200_000.0;
 const CUTOFF_PERIAPSIS: f64 = 195_000.0;
-/// Above this the fairing is let go, m.
-const FAIRING_ALTITUDE: f64 = 110_000.0;
 
 fn fly(w: &mut World) -> Flight {
     w.phase("ascent");
@@ -97,15 +95,12 @@ fn fly(w: &mut World) -> Flight {
         "",
     )?;
 
-    // The fairing goes once the air is gone, and the throttle is cut when the orbit clears it.
-    let (mut shed, mut cut) = (false, false);
+    // The throttle is cut when the orbit clears the air. The Pathfinder is built in the builder,
+    // which has no fairings yet (T338): its payload rides under a nose cone that stays on.
+    let mut cut = false;
     w.fly(900.0, |w| {
         ascent.steer(w);
-        let (altitude, periapsis) = altitude_and_periapsis(w);
-        if !shed && altitude > FAIRING_ALTITUDE {
-            w.stage();
-            shed = true;
-        }
+        let (_, periapsis) = altitude_and_periapsis(w);
         if periapsis >= CUTOFF_PERIAPSIS {
             w.vessel_mut().set_throttle(0.0);
             cut = true;

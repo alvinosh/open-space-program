@@ -1,0 +1,16 @@
+// What guides the stock craft in a Realistic game. They are built in the builder in Casual, where
+// any probe core flies anything; here a probe core flies only what its avionics are rated for, so
+// each is rated for its whole craft (T353 is for craft built in one mode to fly in the other).
+[
+  { op: "set", collection: "craft", target: "colossus", path: "parts[id=probe_core].components.0.avionics.controlled_mass", value: 3000000 },
+  { op: "set", collection: "craft", target: "heron", path: "parts[id=probe_core].components.0.avionics.controlled_mass", value: 320000 },
+  { op: "set", collection: "craft", target: "kestrel", path: "parts[id=probe_core].components.0.avionics.controlled_mass", value: 1200000 },
+  { op: "set", collection: "craft", target: "lunar_upper", path: "parts[id=probe_core].components.0.avionics.controlled_mass", value: 150000 },
+  { op: "set", collection: "craft", target: "pathfinder", path: "parts[id=probe_core].components.0.avionics.controlled_mass", value: 650000 },
+  { op: "set", collection: "craft", target: "pathfinder_crew", path: "parts[id=probe_core].components.0.avionics.controlled_mass", value: 650000 },
+  { op: "set", collection: "craft", target: "sounder", path: "parts[id=probe_core].components.0.avionics.controlled_mass", value: 45000 },
+  { op: "set", collection: "craft", target: "sparrow", path: "parts[id=probe_core].components.0.avionics.controlled_mass", value: 25000 },
+  { op: "set", collection: "craft", target: "talon", path: "parts[id=probe_core].components.0.avionics.controlled_mass", value: 170000 },
+  { op: "set", collection: "craft", target: "titan", path: "parts[id=probe_core].components.0.avionics.controlled_mass", value: 200000 },
+  { op: "set", collection: "craft", target: "upper_stage", path: "parts[id=probe_core].components.0.avionics.controlled_mass", value: 150000 },
+]

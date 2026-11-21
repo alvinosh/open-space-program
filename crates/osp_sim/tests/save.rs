@@ -8,7 +8,7 @@ use osp_mods::Content;
 use osp_sim::{
     DVec3,
     attitude::SasMode,
-    data::{BodyDef, CraftDef, LaunchSiteDef, ScenarioDef, StartDef, SystemDef},
+    data::{BodyDef, CraftDef, GroundStationDef, LaunchSiteDef, ScenarioDef, StartDef, SystemDef},
     plan::Burn,
     save::{self, Header},
     time::SimTime,
@@ -45,6 +45,8 @@ fn among(content: &Content, id: &str, bodies: Vec<BodyDef>) -> Universe {
     };
     let mut universe =
         Universe::new_game(&system, Vec::new(), &sites, &catalog, craft_of, &scenario).unwrap();
+    // As the game does: a probe core is flown by radio, through the ground stations.
+    universe.set_stations(&registry.all::<GroundStationDef>("ground_stations", &mut Vec::new()));
     universe
         .colliders
         .set_files(Arc::new(content.file_reader()));
@@ -112,7 +114,16 @@ fn stages_that_fell_away_and_fly_on_as_debris() {
         .position(|v| Some(v.id()) == universe.focus)
         .unwrap();
     universe.vessels[index].set_throttle(1.0);
-    for _ in 0..4 {
+    // A moment on the pad for its probe core's link to the ground to come up, then lit, and
+    // well up before its stages fall away, so they are still in the air.
+    for _ in 0..50 {
+        universe.step_physics();
+    }
+    universe.activate_next_stage(index);
+    for _ in 0..750 {
+        universe.step_physics();
+    }
+    for _ in 0..3 {
         universe.activate_next_stage(index);
         for _ in 0..200 {
             universe.step_physics();

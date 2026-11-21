@@ -1,466 +1,595 @@
-// A sailplane that rockets off a runway: a slim tail boom carrying the tailplane and fin,
-// tapering up into the cabin, which carries the wing. It takes off from a dolly of three
-// wheels (nose and main) and two solid rocket boosters either side of the tail boom, and
-// lets all three go: Space lights the boosters (they burn about eleven seconds, enough
-// for 70 m/s), the next press drops them, the one after drops the dolly. Dropped, it glides
-// hands off at about 38 m/s. Stick: pitch (elevator), yaw (rudder) and roll (ailerons); B
-// holds the brakes. Built by hand.
+// A rocket glider: a C-1 cabin, a boom tapering to the tail, long wings, a tailplane and fin, three wheels, and two small solid boosters on decouplers; rolled down the runway on them.
+// Built in the builder by the playtest rebuild_glider
+// (crates/osp_game/src/playtest/rebuilds.rs) and written by tools/rebuilt_craft.py: change
+// the playtest and build it again rather than this file.
 {
-  id: "glider",
-  name: "Kestrel",
-  parts: [
+  "id": "glider",
+  "name": "Glider",
+  "parts": [
     {
-      id: "cabin",
-      name: "Cabin",
-      shape: {
-        compound: [
-          {
-            name: "skin",
-            shape: {
-              revolved: {
-                walls: [
-                  {
-                    name: "aft_skirt",
-                    curve: { start: [0.45, 0], segments: [{ line: [0.45, 3] }] },
-                  },
-                  {
-                    name: "floor",
-                    curve: { start: [0, 0], segments: [{ line: [0.45, 0] }] },
-                  },
-                ],
-              },
-            },
-          },
-          {
-            name: "equipment",
-            shape: { ring: { diameter: 0.9, height: 3, thickness: 0.45 } },
-            unseen: true,
-          },
+      "id": "pod",
+      "name": "C-1 Capsule",
+      "template": "C-1 Capsule"
+    },
+    {
+      "id": "structural",
+      "name": "Structural",
+      "on": "pod.bottom",
+      "by": "top",
+      "shape": {
+        "shell": {
+          "bottom_diameter": 1.9,
+          "sections": [
+            {
+              "length": 1.5,
+              "top_diameter": 1.9
+            }
+          ]
+        }
+      },
+      "structure": {
+        "material": "Al 2219-T87",
+        "thickness": 0.004
+      },
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
         ],
+        "trim": true
+      }
+    },
+    {
+      "id": "structural_2",
+      "name": "Structural",
+      "on": "structural.bottom",
+      "by": "top",
+      "shape": {
+        "shell": {
+          "bottom_diameter": 0.3,
+          "sections": [
+            {
+              "length": 1.5,
+              "top_diameter": 1.9
+            }
+          ]
+        }
       },
-      // Pilot, seat, canopy, instruments and the fuselage around them.
-      structure: { thickness: 0, mass: 330 },
-      components: [{ avionics: { controlled_mass: 810, interplanetary: true } }, { container: {} }],
-      nodes: [
-        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.9 },
-        { name: "top", position: [0, 0, 3], direction: [0, 0, 1], size: 0.9 },
-        { name: "belly", position: [0, 0.45, 1.5], direction: [0, 1, 0], size: 0.16 },
-        {
-          name: "wing_1",
-          position: [0.45, 0, 1.1],
-          direction: [0.999999061395, -0.000017909647, 0.001369995621],
-          size: 1,
-        },
-        {
-          name: "wing_1_left",
-          position: [-0.45, 0, 1.1],
-          direction: [-0.999999061395, -0.000017909647, 0.001369995621],
-          size: 1,
-        },
-      ],
-      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
-    },
-    // A tangent-ogive nose, 1.3 diameters long.
-    {
-      id: "cabin_shell_1",
-      name: "Nose cone",
-      on: "cabin.top",
-      shape: {
-        shell: {
-          bottom_diameter: 0.9,
-          sections: [{ length: 1.17, top_diameter: 0, profile: "ogive" }],
-        },
+      "structure": {
+        "material": "Al 2219-T87",
+        "thickness": 0.004
       },
-      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
-    },
-    {
-      id: "cabin_wing_1",
-      name: "Wing",
-      on: "cabin.wing_1",
-      by: "root",
-      roll: 1.497943834,
-      shape: {
-        wing: {
-          root_chord: 1,
-          tip_chord: 0.45,
-          span: 6.9904067432820165,
-          sweep: 0.15,
-          dihedral: 3,
-          airfoil: { naca: { thickness: 0.15 } },
-        },
-      },
-      structure: { mass: 80 },
-      components: [
-        {
-          lifting_surface: {
-            control: { axes: ["roll"], chord: 0.22, span: [0.55, 0.95], deflection: 15 },
-          },
-        },
-      ],
-      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
-    },
-    {
-      id: "cabin_wing_1_left",
-      name: "Wing",
-      on: "cabin.wing_1_left",
-      by: "root",
-      roll: -1.497943834,
-      shape: {
-        mirrored: {
-          wing: {
-            root_chord: 1,
-            tip_chord: 0.45,
-            span: 6.9904067432820165,
-            sweep: 0.15,
-            dihedral: 3,
-            airfoil: { naca: { thickness: 0.15 } },
-          },
-        },
-      },
-      structure: { mass: 80 },
-      components: [
-        {
-          lifting_surface: {
-            control: { axes: ["roll"], chord: 0.22, span: [0.55, 0.95], deflection: 15 },
-          },
-        },
-      ],
-      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
-    },
-    {
-      id: "tail_boom_decoupler",
-      name: "Decoupler",
-      on: "cabin.bottom",
-      by: "top",
-      shape: { ring: { diameter: 0.9, height: 0.036, thickness: 0.018 } },
-      structure: { mass: 2.47 },
-      components: [{ decoupler: { node: "top" } }],
-    },
-    {
-      id: "tail_boom",
-      name: "Tail boom",
-      on: "tail_boom_decoupler.bottom",
-      by: "top",
-      shape: {
-        compound: [
-          {
-            name: "skin",
-            shape: {
-              revolved: {
-                walls: [
-                  // Slim past the tail, then flaring out to the cabin.
-                  {
-                    name: "aft_skirt",
-                    curve: {
-                      start: [0.15, 0],
-                      segments: [{ line: [0.15, 1.2] }, { line: [0.45, 4.44] }],
-                    },
-                  },
-                  {
-                    name: "separation_ring",
-                    curve: { start: [0.45, 4.44], segments: [{ line: [0.45, 4.5] }] },
-                  },
-                  {
-                    name: "floor",
-                    curve: { start: [0, 0], segments: [{ line: [0.15, 0] }] },
-                  },
-                ],
-              },
-            },
-          },
-          {
-            name: "equipment",
-            shape: { ring: { diameter: 0.3, height: 4.5, thickness: 0.15 } },
-            unseen: true,
-          },
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
         ],
+        "trim": true
+      }
+    },
+    {
+      "id": "structural_3",
+      "name": "Structural",
+      "on": "structural_2.bottom",
+      "by": "top",
+      "shape": {
+        "shell": {
+          "bottom_diameter": 0.3,
+          "sections": [
+            {
+              "length": 3.0,
+              "top_diameter": 0.3
+            }
+          ]
+        }
       },
-      structure: { thickness: 0, mass: 42.53 },
-      components: [{ container: {} }],
-      nodes: [
-        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 0.3 },
-        { name: "top", position: [0, 0, 4.5], direction: [0, 0, 1], size: 0.9 },
-        { name: "wing_1", position: [0.15, 0, 0.9], direction: [1, 0, 0], size: 0.6 },
+      "structure": {
+        "material": "Al 2219-T87",
+        "thickness": 0.004
+      },
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
+        ],
+        "trim": true
+      }
+    },
+    {
+      "id": "wing",
+      "name": "Wing",
+      "on": "structural.wall",
+      "by": "root",
+      "at": {
+        "u": 9.985668711990984e-08,
+        "v": 0.5000019073486328
+      },
+      "shape": {
+        "wing": {
+          "root_chord": 1.0,
+          "tip_chord": 0.45,
+          "span": 7.0,
+          "sweep": 0.15
+        }
+      },
+      "structure": {
+        "material": "Al 2219-T87"
+      },
+      "components": [
         {
-          name: "wing_1_left",
-          position: [-0.15, 0, 0.9],
-          direction: [-1, 0, 0],
-          size: 0.6,
-        },
-        { name: "wing_2", position: [0, -0.15, 1.1], direction: [0, -1, 0], size: 0.9 },
-        { name: "booster_right", position: [0.46, 0, 3.85], direction: [1, 0, 0], size: 0.24 },
-        { name: "booster_left", position: [-0.46, 0, 3.85], direction: [-1, 0, 0], size: 0.24 },
+          "lifting_surface": {}
+        }
       ],
-      paint: {
-        color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995],
-        pieces: {
-          "skin/separation_ring": {
-            color: [0.550000011920929, 0.550000011920929, 0.5699999928474426],
-            finish: "metal",
-          },
-        },
-      },
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
+        ],
+        "trim": true
+      }
     },
     {
-      id: "tail_boom_wing_1",
-      name: "Tailplane",
-      on: "tail_boom.wing_1",
-      by: "root",
-      roll: -1.5,
-      shape: {
-        wing: {
-          root_chord: 0.6,
-          tip_chord: 0.4,
-          span: 1.3,
-          sweep: 0.15,
-          airfoil: { naca: { thickness: 0.1 } },
-        },
+      "id": "wing_2",
+      "name": "Wing",
+      "on": "structural.wall",
+      "by": "root",
+      "at": {
+        "u": 0.4999999,
+        "v": 0.5000019073486328
       },
-      structure: { mass: 6 },
-      components: [
+      "roll": 180.0,
+      "shape": {
+        "mirrored": {
+          "wing": {
+            "root_chord": 1.0,
+            "tip_chord": 0.45,
+            "span": 7.0,
+            "sweep": 0.15
+          }
+        }
+      },
+      "structure": {
+        "material": "Al 2219-T87"
+      },
+      "components": [
         {
-          lifting_surface: {
-            control: { axes: ["pitch"], chord: 0.3, span: [0, 1], deflection: 15 },
-          },
-        },
+          "lifting_surface": {}
+        }
       ],
-      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
+        ],
+        "trim": true
+      }
     },
     {
-      id: "tail_boom_wing_1_left",
-      name: "Tailplane",
-      on: "tail_boom.wing_1_left",
-      by: "root",
-      roll: 1.5,
-      shape: {
-        mirrored: {
-          wing: {
-            root_chord: 0.6,
-            tip_chord: 0.4,
-            span: 1.3,
-            sweep: 0.15,
-            airfoil: { naca: { thickness: 0.1 } },
-          },
-        },
+      "id": "decoupler",
+      "name": "Decoupler",
+      "on": "structural_3.wall",
+      "by": "top",
+      "at": {
+        "u": 0.999999241097813,
+        "v": 0.6999994913736979
       },
-      structure: { mass: 6 },
-      components: [
-        {
-          lifting_surface: {
-            control: { axes: ["pitch"], chord: 0.3, span: [0, 1], deflection: 15 },
-          },
-        },
-      ],
-      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
-    },
-    {
-      id: "tail_boom_wing_2",
-      name: "Fin",
-      on: "tail_boom.wing_2",
-      by: "root",
-      shape: {
-        wing: {
-          root_chord: 0.9,
-          tip_chord: 0.5,
-          span: 1.1,
-          sweep: 0.4,
-          airfoil: { naca: { thickness: 0.1 } },
-        },
+      "procedural": {
+        "decoupler": {
+          "diameter": 0.15,
+          "load": 1000000.0
+        }
       },
-      structure: { mass: 8 },
-      components: [
+      "paint": {
+        "color": [
+          0.035,
+          0.04,
+          0.05
+        ],
+        "trim": true
+      }
+    },
+    {
+      "id": "decoupler_2",
+      "name": "Decoupler",
+      "on": "structural_3.wall",
+      "by": "top",
+      "at": {
+        "u": 0.500000759,
+        "v": 0.6999994913736979
+      },
+      "procedural": {
+        "decoupler": {
+          "diameter": 0.15,
+          "load": 1000000.0
+        }
+      },
+      "paint": {
+        "color": [
+          0.035,
+          0.04,
+          0.05
+        ],
+        "trim": true
+      }
+    },
+    {
+      "id": "solid_booster",
+      "name": "Solid booster",
+      "on": "decoupler.bottom",
+      "by": "held_side",
+      "roll": 180.0,
+      "shape": {
+        "cylinder_tank": {
+          "diameter": 0.3,
+          "length": 1.0,
+          "aft_skirt": 0.10606601717798214,
+          "forward_skirt": 0.10606601717798214
+        }
+      },
+      "components": [
         {
-          lifting_surface: {
-            control: { axes: ["yaw"], chord: 0.35, span: [0, 1], deflection: 20 },
-          },
+          "storage": {
+            "type": "Booster Case",
+            "contents": {
+              "Solid Fuel": 1.0
+            }
+          }
         },
+        {
+          "solid_motor": {
+            "thrust": 13000.0,
+            "isp_vac": 265.0,
+            "isp_sl": 238.0,
+            "mass": 13.0,
+            "propellant": "Solid Fuel",
+            "booster": true
+          }
+        }
       ],
-      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
-    },
-    // A RATO bottle on the tail boom's right, its nozzle just behind the wing's trailing
-    // edge and level with the centre of mass, so its thrust does not pitch the nose.
-    {
-      id: "booster_right_decoupler",
-      name: "Decoupler",
-      on: "tail_boom.booster_right",
-      by: "top",
-      shape: { ring: { diameter: 0.24, height: 0.0096, thickness: 0.0048 } },
-      structure: { mass: 0.05 },
-      components: [{ decoupler: { node: "top" } }],
-    },
-    {
-      id: "booster_right",
-      name: "RATO booster",
-      on: "booster_right_decoupler.bottom",
-      by: "side",
-      shape: {
-        shell: {
-          bottom_diameter: 0.24,
-          sections: [
-            { length: 0.65 },
-            { length: 0.3, top_diameter: 0, profile: "ogive" },
+      "nodes": [
+        {
+          "name": "held_side",
+          "position": [
+            -0.15,
+            0.0,
+            0.441941738
           ],
-          cap_bottom: true,
-        },
-      },
-      structure: { mass: 3.95 },
-      components: [{ container: {} }],
-      nodes: [
-        { name: "side", position: [-0.12, 0, 0.5], direction: [-1, 0, 0], size: 0.24 },
-        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.1 },
-        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 0.24 },
+          "direction": [
+            -1.0,
+            0.0,
+            0.0
+          ]
+        }
       ],
-      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
-    },
-    { id: "booster_right_engine", on: "booster_right.engine", by: "top", template: "S-1" },
-    {
-      id: "booster_right_grain",
-      name: "Solid Grain",
-      on: "booster_right.tank",
-      shape: { cylinder_tank: { diameter: 0.2, length: 0.35 } },
-      components: [{ storage: { type: "Solid Grain", contents: { "Solid Fuel": 1 } } }],
-    },
-    // A RATO bottle on the tail boom's left, its nozzle just behind the wing's trailing
-    // edge and level with the centre of mass, so its thrust does not pitch the nose.
-    {
-      id: "booster_left_decoupler",
-      name: "Decoupler",
-      on: "tail_boom.booster_left",
-      by: "top",
-      shape: { ring: { diameter: 0.24, height: 0.0096, thickness: 0.0048 } },
-      structure: { mass: 0.05 },
-      components: [{ decoupler: { node: "top" } }],
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
+        ],
+        "trim": true
+      }
     },
     {
-      id: "booster_left",
-      name: "RATO booster",
-      on: "booster_left_decoupler.bottom",
-      by: "side",
-      shape: {
-        shell: {
-          bottom_diameter: 0.24,
-          sections: [
-            { length: 0.65 },
-            { length: 0.3, top_diameter: 0, profile: "ogive" },
+      "id": "solid_booster_2",
+      "name": "Solid booster",
+      "on": "decoupler_2.bottom",
+      "by": "held_side",
+      "roll": 180.0,
+      "shape": {
+        "cylinder_tank": {
+          "diameter": 0.3,
+          "length": 1.0,
+          "aft_skirt": 0.10606601717798214,
+          "forward_skirt": 0.10606601717798214
+        }
+      },
+      "components": [
+        {
+          "storage": {
+            "type": "Booster Case",
+            "contents": {
+              "Solid Fuel": 1.0
+            }
+          }
+        },
+        {
+          "solid_motor": {
+            "thrust": 13000.0,
+            "isp_vac": 265.0,
+            "isp_sl": 238.0,
+            "mass": 13.0,
+            "propellant": "Solid Fuel",
+            "booster": true
+          }
+        }
+      ],
+      "nodes": [
+        {
+          "name": "held_side",
+          "position": [
+            -0.15,
+            0.0,
+            0.441941738
           ],
-          cap_bottom: true,
-        },
-      },
-      structure: { mass: 3.95 },
-      components: [{ container: {} }],
-      nodes: [
-        { name: "side", position: [0.12, 0, 0.5], direction: [1, 0, 0], size: 0.24 },
-        { name: "engine", position: [0, 0, 0], direction: [0, 0, -1], size: 0.1 },
-        { name: "tank", position: [0, 0, 0], direction: [0, 0, 1], size: 0.24 },
+          "direction": [
+            -1.0,
+            0.0,
+            0.0
+          ]
+        }
       ],
-      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
-    },
-    { id: "booster_left_engine", on: "booster_left.engine", by: "top", template: "S-1" },
-    {
-      id: "booster_left_grain",
-      name: "Solid Grain",
-      on: "booster_left.tank",
-      shape: { cylinder_tank: { diameter: 0.2, length: 0.35 } },
-      components: [{ storage: { type: "Solid Grain", contents: { "Solid Fuel": 1 } } }],
-    },
-    // The dolly it rolls off the runway on, held to the cabin's belly: a slim beam with
-    // a nose wheel at its front and the main wheels, splayed to a 1.7 m track, just behind
-    // the centre of mass. Dropped once airborne, which leaves the cabin's belly to land on.
-    {
-      id: "dolly_decoupler",
-      name: "Decoupler",
-      on: "cabin.belly",
-      by: "top",
-      shape: { ring: { diameter: 0.16, height: 0.0064, thickness: 0.0032 } },
-      structure: { mass: 0.01 },
-      components: [{ decoupler: { node: "top" } }],
-    },
-    {
-      id: "dolly",
-      name: "Dolly",
-      on: "dolly_decoupler.bottom",
-      by: "side",
-      shape: {
-        shell: { bottom_diameter: 0.16, sections: [{ length: 3 }], cap_bottom: true },
-      },
-      structure: { mass: 11.99 },
-      components: [{ container: {} }],
-      nodes: [
-        { name: "side", position: [0, -0.08, 1.6], direction: [0, -1, 0], size: 0.16 },
-        { name: "nose_gear", position: [0, 0.08, 2.7], direction: [0, 1, 0], size: 0.06 },
-        {
-          name: "main_gear",
-          position: [0.061283555450, 0.051423008775, 0.2],
-          direction: [0.766044443119, 0.642787609687, 0],
-          size: 0.06,
-        },
-        {
-          name: "main_gear_left",
-          position: [-0.061283555450, 0.051423008775, 0.2],
-          direction: [-0.766044443119, 0.642787609687, 0],
-          size: 0.06,
-        },
-      ],
-      paint: { color: [0.2, 0.2, 0.21], finish: "metal" },
-    },
-    {
-      id: "nose_gear",
-      name: "Nose wheel",
-      on: "dolly.nose_gear",
-      shape: {
-        compound: [
-          {
-            shape: { beam: { length: 0.7, section: { circle: { diameter: 0.06 } } } },
-            rotation: [180, 0, 0],
-          },
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
         ],
-      },
-      components: [
-        {
-          gear: { length: 0.7, wheel_radius: 0.18, stroke: 0.15, load: 200, mass: 12, steering: 25 },
-        },
-      ],
+        "trim": true
+      }
     },
     {
-      id: "main_gear",
-      name: "Main wheel",
-      on: "dolly.main_gear",
-      shape: {
-        compound: [
-          {
-            shape: { beam: { length: 1.0, section: { circle: { diameter: 0.06 } } } },
-            rotation: [180, 0, 0],
-          },
-        ],
+      "id": "wing_3",
+      "name": "Wing",
+      "on": "structural_3.wall",
+      "by": "root",
+      "at": {
+        "u": 2.5297061429276304e-07,
+        "v": 0.050000508626302086
       },
-      components: [
+      "shape": {
+        "wing": {
+          "root_chord": 0.6,
+          "tip_chord": 0.4,
+          "span": 1.3,
+          "sweep": 0.15
+        }
+      },
+      "structure": {
+        "material": "Al 2219-T87"
+      },
+      "components": [
         {
-          gear: { length: 1.0, wheel_radius: 0.2, stroke: 0.2, load: 300, mass: 14, brakes: true },
-        },
+          "lifting_surface": {}
+        }
       ],
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
+        ],
+        "trim": true
+      }
     },
     {
-      id: "main_gear_left",
-      name: "Main wheel",
-      on: "dolly.main_gear_left",
-      shape: {
-        compound: [
-          {
-            shape: { beam: { length: 1.0, section: { circle: { diameter: 0.06 } } } },
-            rotation: [180, 0, 0],
-          },
-        ],
+      "id": "wing_4",
+      "name": "Wing",
+      "on": "structural_3.wall",
+      "by": "root",
+      "at": {
+        "u": 0.499999747,
+        "v": 0.050000508626302086
       },
-      components: [
+      "roll": 180.0,
+      "shape": {
+        "mirrored": {
+          "wing": {
+            "root_chord": 0.6,
+            "tip_chord": 0.4,
+            "span": 1.3,
+            "sweep": 0.15
+          }
+        }
+      },
+      "structure": {
+        "material": "Al 2219-T87"
+      },
+      "components": [
         {
-          gear: { length: 1.0, wheel_radius: 0.2, stroke: 0.2, load: 300, mass: 14, brakes: true },
-        },
+          "lifting_surface": {}
+        }
       ],
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
+        ],
+        "trim": true
+      }
     },
-  ],
-  sequences: [
-    ["engines:booster_right", "engines:booster_left"],
-    ["decoupler:booster_right", "decoupler:booster_left"],
-    ["decoupler:dolly"],
-  ],
+    {
+      "id": "wing_5",
+      "name": "Wing",
+      "on": "structural_3.wall",
+      "by": "root",
+      "at": {
+        "u": 0.7499939286956505,
+        "v": 0.050000667572021464
+      },
+      "shape": {
+        "wing": {
+          "root_chord": 0.9,
+          "tip_chord": 0.5,
+          "span": 1.1,
+          "sweep": 0.4
+        }
+      },
+      "structure": {
+        "material": "Al 2219-T87"
+      },
+      "components": [
+        {
+          "lifting_surface": {}
+        }
+      ],
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
+        ],
+        "trim": true
+      }
+    },
+    {
+      "id": "nose_wheel",
+      "name": "Nose wheel",
+      "on": "structural.wall",
+      "at": {
+        "u": 0.2500006390821559,
+        "v": 0.8500041564305625
+      },
+      "roll": 180.0,
+      "shape": {
+        "compound": [
+          {
+            "shape": {
+              "beam": {
+                "length": 1.2,
+                "section": {
+                  "circle": {
+                    "diameter": 0.1
+                  }
+                }
+              }
+            },
+            "rotation": [
+              180.0,
+              0.0,
+              0.0
+            ]
+          }
+        ]
+      },
+      "components": [
+        {
+          "gear": {
+            "length": 1.2,
+            "wheel_radius": 0.25,
+            "stroke": 0.25,
+            "load": 3000.0,
+            "mass": 40.0,
+            "steering": 25.0
+          }
+        }
+      ],
+      "paint": {
+        "color": [
+          0.55,
+          0.57,
+          0.6
+        ],
+        "finish": "metal"
+      }
+    },
+    {
+      "id": "wheel",
+      "name": "Wheel",
+      "on": "structural.wall",
+      "at": {
+        "u": 0.20025181982266754,
+        "v": 0.10117530822753913
+      },
+      "roll": 180.0,
+      "shape": {
+        "compound": [
+          {
+            "shape": {
+              "beam": {
+                "length": 1.2,
+                "section": {
+                  "circle": {
+                    "diameter": 0.1
+                  }
+                }
+              }
+            },
+            "rotation": [
+              180.0,
+              0.0,
+              0.0
+            ]
+          }
+        ]
+      },
+      "components": [
+        {
+          "gear": {
+            "length": 1.2,
+            "stroke": 0.25,
+            "load": 5000.0,
+            "mass": 60.0,
+            "brakes": true
+          }
+        }
+      ],
+      "paint": {
+        "color": [
+          0.55,
+          0.57,
+          0.6
+        ],
+        "finish": "metal"
+      }
+    },
+    {
+      "id": "wheel_2",
+      "name": "Wheel",
+      "on": "structural.wall",
+      "at": {
+        "u": 0.29974818,
+        "v": 0.10117530822753913
+      },
+      "roll": 180.0,
+      "shape": {
+        "mirrored": {
+          "compound": [
+            {
+              "shape": {
+                "beam": {
+                  "length": 1.2,
+                  "section": {
+                    "circle": {
+                      "diameter": 0.1
+                    }
+                  }
+                }
+              },
+              "rotation": [
+                180.0,
+                0.0,
+                0.0
+              ]
+            }
+          ]
+        }
+      },
+      "components": [
+        {
+          "gear": {
+            "length": 1.2,
+            "stroke": 0.25,
+            "load": 5000.0,
+            "mass": 60.0,
+            "brakes": true
+          }
+        }
+      ],
+      "paint": {
+        "color": [
+          0.55,
+          0.57,
+          0.6
+        ],
+        "finish": "metal"
+      }
+    }
+  ]
 }

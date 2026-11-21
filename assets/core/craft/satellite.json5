@@ -1,116 +1,295 @@
-// A small satellite: a cylindrical bus with a solar array out to each side, cold-gas RCS
-// around its top and the nitrogen for it in a bottle. With the arrays out, its three
-// moments of inertia all differ: smallest about pitch (the axis along the arrays), largest
-// about yaw, and in between about roll, the bus's long axis. Spun about that middle axis it
-// cannot keep spinning steadily (the Dzhanibekov effect; see the `dzhanibekov` scenario).
+// A small satellite: a 2 m bus, a probe core, cold gas RCS round its top, two solar arrays and a bottle for the RCS, put in orbit.
+// Built in the builder by the playtest rebuild_satellite
+// (crates/osp_game/src/playtest/rebuilds.rs) and written by tools/rebuilt_craft.py: change
+// the playtest and build it again rather than this file.
 {
-  id: "satellite",
-  name: "Satellite",
-  parts: [
+  "id": "satellite",
+  "name": "Satellite",
+  "parts": [
     {
-      id: "bus",
-      name: "Bus",
-      shape: {
-        compound: [
-          {
-            name: "skin",
-            shape: {
-              revolved: {
-                walls: [
-                  {
-                    name: "aft_skirt",
-                    curve: { start: [1, 0], segments: [{ line: [1, 4] }] },
-                  },
-                  { name: "floor", curve: { start: [0, 0], segments: [{ line: [1, 0] }] } },
-                  { name: "lid", curve: { start: [1, 4], segments: [{ line: [0, 4] }] } },
-                ],
-              },
+      "id": "tank",
+      "name": "Bus",
+      "shape": {
+        "cylinder_tank": {
+          "diameter": 2.0,
+          "length": 4.0,
+          "aft_skirt": 0.7071067811865476,
+          "forward_skirt": 0.7071067811865476
+        }
+      },
+      "components": [
+        {
+          "storage": {
+            "type": "Stiffened Al 2219",
+            "contents": {
+              "Liquid Fuel": 1.0,
+              "Oxidiser": 2.36
             },
-          },
-          {
-            name: "equipment",
-            shape: { ring: { diameter: 2, height: 4, thickness: 1 } },
-            unseen: true,
-          },
-        ],
-      },
-      // Structure, avionics, batteries and payload.
-      structure: { thickness: 0, mass: 550 },
-      components: [{ avionics: { controlled_mass: 1100, interplanetary: true } }, { container: {} }],
-      nodes: [
-        { name: "bottom", position: [0, 0, 0], direction: [0, 0, -1], size: 2 },
-        { name: "top", position: [0, 0, 4], direction: [0, 0, 1], size: 2 },
-        { name: "rcs_1", position: [1, 0, 4], direction: [1, 0, 0] },
-        { name: "rcs_2", position: [0, 1, 4], direction: [0, 1, 0] },
-        { name: "rcs_3", position: [-1, 0, 4], direction: [-1, 0, 0] },
-        { name: "rcs_4", position: [0, -1, 4], direction: [0, -1, 0] },
-        { name: "wing_1", position: [1, 0, 2.8], direction: [1, 0, 0], size: 1.6 },
-        { name: "wing_1_left", position: [-1, 0, 2.8], direction: [-1, 0, 0], size: 1.6 },
-        { name: "tank_1", position: [0, 0, 0], direction: [0, 0, 1], size: 0.8 },
+            "utilization": 0.04
+          }
+        }
       ],
-      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
+        ],
+        "trim": true
+      }
     },
-    { id: "bus_rcs_1", on: "bus.rcs_1", by: "mount", template: "Cold Gas Quad" },
     {
-      id: "bus_rcs_2",
-      on: "bus.rcs_2",
-      by: "mount",
-      roll: -180,
-      template: "Cold Gas Quad",
-    },
-    {
-      id: "bus_rcs_3",
-      on: "bus.rcs_3",
-      by: "mount",
-      roll: -180,
-      template: "Cold Gas Quad",
-    },
-    { id: "bus_rcs_4", on: "bus.rcs_4", by: "mount", template: "Cold Gas Quad" },
-    // Flat panels across the middle of the bus.
-    {
-      id: "bus_wing_1",
-      name: "Solar array",
-      on: "bus.wing_1",
-      by: "root",
-      shape: {
-        wing: {
-          root_chord: 1.6,
-          tip_chord: 1.6,
-          span: 6,
-          airfoil: { naca: { thickness: 0.02 } },
-        },
+      "id": "probe_core",
+      "name": "Probe core",
+      "on": "tank.top",
+      "shape": {
+        "ring": {
+          "diameter": 0.6,
+          "height": 0.2,
+          "thickness": 0.3
+        }
       },
-      structure: { mass: 60 },
-      components: [{ lifting_surface: {} }],
-      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
-    },
-    {
-      id: "bus_wing_1_left",
-      name: "Solar array",
-      on: "bus.wing_1_left",
-      by: "root",
-      shape: {
-        mirrored: {
-          wing: {
-            root_chord: 1.6,
-            tip_chord: 1.6,
-            span: 6,
-            airfoil: { naca: { thickness: 0.02 } },
-          },
-        },
+      "model": {
+        "path": "models/systems/probe_core.glb"
       },
-      structure: { mass: 60 },
-      components: [{ lifting_surface: {} }],
-      paint: { color: [0.8600000143051147, 0.8600000143051147, 0.8399999737739563] },
+      "structure": {
+        "mass": 30.0
+      },
+      "components": [
+        {
+          "avionics": {
+            "controlled_mass": 20000.0,
+            "interplanetary": true,
+            "needs_link": true
+          }
+        },
+        {
+          "drive": {
+            "data": 2000000.0,
+            "samples": 0.0
+          }
+        }
+      ]
     },
     {
-      id: "bus_tank_1",
-      name: "COPV",
-      on: "bus.tank_1",
-      shape: { sphere: { diameter: 0.8 } },
-      components: [{ storage: { type: "COPV", contents: { "Liquid Fuel": 1, Oxidiser: 2.36 } } }],
-      paint: { color: [0.8500000238418579, 0.8500000238418579, 0.8299999833106995] },
+      "id": "rcs",
+      "name": "Cold Gas Quad",
+      "on": "tank.barrel",
+      "by": "mount",
+      "at": {
+        "u": 0.6249999463369694,
+        "v": 0.9322773352285714
+      },
+      "roll": 90.0,
+      "template": "Cold Gas Quad"
     },
-  ],
-  sequences: [],
+    {
+      "id": "rcs_2",
+      "name": "Cold Gas Quad",
+      "on": "tank.barrel",
+      "by": "mount",
+      "at": {
+        "u": 0.874999946,
+        "v": 0.9322773352285714
+      },
+      "roll": 90.0,
+      "template": "Cold Gas Quad"
+    },
+    {
+      "id": "rcs_3",
+      "name": "Cold Gas Quad",
+      "on": "tank.barrel",
+      "by": "mount",
+      "at": {
+        "u": 0.124999946,
+        "v": 0.9322773352285714
+      },
+      "roll": 90.0,
+      "template": "Cold Gas Quad"
+    },
+    {
+      "id": "rcs_4",
+      "name": "Cold Gas Quad",
+      "on": "tank.barrel",
+      "by": "mount",
+      "at": {
+        "u": 0.374999946,
+        "v": 0.9322773352285714
+      },
+      "roll": 90.0,
+      "template": "Cold Gas Quad"
+    },
+    {
+      "id": "antenna",
+      "name": "Antenna",
+      "on": "tank.barrel",
+      "at": {
+        "u": 0.5198833779745982,
+        "v": 0.7387298177920246
+      },
+      "procedural": {
+        "antenna": {
+          "diameter": 0.0,
+          "power": 2.0,
+          "data_rate": 1000.0
+        }
+      },
+      "model": {
+        "path": "models/systems/antenna_omni.glb",
+        "fit": 0.1
+      },
+      "nodes": [
+        {
+          "name": "bottom",
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "direction": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "size": 0.1
+        }
+      ]
+    },
+    {
+      "id": "solar_panel",
+      "name": "Solar panel",
+      "on": "tank.barrel",
+      "by": "mount",
+      "at": {
+        "u": 0.7301164618201205,
+        "v": 0.5653719179778146
+      },
+      "procedural": {
+        "solar_array": {
+          "power": 200.0
+        }
+      },
+      "model": {
+        "path": "models/systems/solar_panel.glb",
+        "fit": 1.0
+      },
+      "nodes": [
+        {
+          "name": "mount",
+          "position": [
+            -0.01,
+            0.0,
+            0.0
+          ],
+          "direction": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "size": 0.2
+        }
+      ]
+    },
+    {
+      "id": "solar_panel_2",
+      "name": "Solar panel",
+      "on": "tank.barrel",
+      "by": "mount",
+      "at": {
+        "u": 0.230116462,
+        "v": 0.5653719179778146
+      },
+      "procedural": {
+        "solar_array": {
+          "power": 200.0
+        }
+      },
+      "model": {
+        "path": "models/systems/solar_panel.glb",
+        "fit": 1.0
+      },
+      "nodes": [
+        {
+          "name": "mount",
+          "position": [
+            -0.01,
+            0.0,
+            0.0
+          ],
+          "direction": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "size": 0.2
+        }
+      ]
+    },
+    {
+      "id": "battery",
+      "name": "Battery",
+      "on": "tank.barrel",
+      "by": "held_side",
+      "at": {
+        "u": 0.519883575688115,
+        "v": 0.3920140181636044
+      },
+      "procedural": {
+        "battery": {
+          "energy": 3600.0,
+          "technology": "Rechargeable battery",
+          "rechargeable": true
+        }
+      },
+      "model": {
+        "path": "models/systems/battery.glb",
+        "fit": 1.0
+      },
+      "nodes": [
+        {
+          "name": "held_side",
+          "position": [
+            -0.080953002,
+            0.0,
+            0.080953002
+          ],
+          "direction": [
+            -1.0,
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tank_2",
+      "name": "Tank",
+      "on": "tank.bottom",
+      "by": "top",
+      "shape": {
+        "sphere": {
+          "diameter": 0.8
+        }
+      },
+      "components": [
+        {
+          "storage": {
+            "type": "Stiffened Al 2219",
+            "contents": {
+              "Liquid Fuel": 1.0,
+              "Oxidiser": 2.36
+            }
+          }
+        }
+      ],
+      "paint": {
+        "color": [
+          0.85,
+          0.85,
+          0.83
+        ],
+        "trim": true
+      }
+    }
+  ]
 }

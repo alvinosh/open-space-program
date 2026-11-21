@@ -111,9 +111,10 @@ fn a_resize_says_what_it_changed_and_is_undone_and_done_again() {
 #[test]
 fn a_resize_that_runs_a_part_into_another_is_refused() {
     use osp_sim::builder::{Builder, Rule};
-    let (catalog, def) = shipped("pathfinder");
+    let (catalog, def) = shipped("comet");
     let mut builder = Builder::of(def.clone());
-    let refused = builder.resize(&catalog, "payload_payload_1", &[("height", 9.0)]);
+    // The Comet's wing, its root made long enough to run back into the tailplane.
+    let refused = builder.resize(&catalog, "wing", &[("root_chord", 4.0)]);
     assert_eq!(refused.map_err(|r| r.rule), Err(Rule::Overlap));
     assert!(builder.draft().parts == def.parts && !builder.can_undo());
 }

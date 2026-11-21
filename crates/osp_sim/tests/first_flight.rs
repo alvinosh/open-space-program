@@ -72,7 +72,7 @@ fn a_casual_first_capsule_comes_home_on_its_parachute_and_earns_a_node() {
     let scenario: ScenarioDef = registry.get("scenarios", "sounder").unwrap();
     let craft_of = |id: &str| -> Result<CraftDef, String> {
         let mut craft: CraftDef = registry.get("craft", id).map_err(|e| format!("{e:?}"))?;
-        let capsule = craft.parts.iter_mut().find(|p| p.id == "capsule").unwrap();
+        let capsule = craft.parts.iter_mut().find(|p| p.id == "pod").unwrap();
         capsule.components.extend(components(
             r#"[{ experiment: { experiment: "temperature" } },
                 { experiment: { experiment: "pressure" } }]"#,
@@ -83,7 +83,7 @@ fn a_casual_first_capsule_comes_home_on_its_parachute_and_earns_a_node() {
             .unwrap();
         let mut chute = chute.part;
         chute.id = "chute".into();
-        chute.on = Some("capsule.top".into());
+        chute.on = Some("pod.top".into());
         chute.by = "bottom".into();
         craft.parts.push(chute);
         Ok(craft)
