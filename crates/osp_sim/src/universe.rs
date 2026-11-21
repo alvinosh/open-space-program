@@ -1240,6 +1240,7 @@ impl Universe {
     fn send_data(&mut self, seconds: f64) {
         let sending = self.senders();
         if !sending.contains(&true) {
+            self.say_sent();
             return;
         }
         let links: Vec<Option<Link>> = self.vessels.iter().map(|v| v.link().cloned()).collect();
@@ -1272,6 +1273,7 @@ impl Universe {
         }
         let sending = self.senders();
         if !sending.contains(&true) || seconds <= 0.0 {
+            self.say_sent();
             return;
         }
         let span = (self.vessels.iter().zip(&sending))
@@ -1293,10 +1295,8 @@ impl Universe {
     }
 
     /// Take `bytes` of data off each vessel's drives, as far as they hold it: it has reached the
-    /// ground, and in a career earns its science. A vessel whose drives are clear says what its data
-    /// earned since they last were.
+    /// ground, and in a career earns its science.
     fn deliver(&mut self, bytes: &[f64]) {
-        let time = self.time;
         for (vessel, &bytes) in self.vessels.iter_mut().zip(bytes) {
             if bytes <= 0.0 {
                 continue;
@@ -1305,7 +1305,19 @@ impl Universe {
             if let Some(career) = &mut self.career {
                 vessel.sent_science += career.receive(&sent);
             }
-            if vessel.propulsion.systems.sendable() <= 0.0 && vessel.sent_science > 0.0 {
+        }
+        self.say_sent();
+    }
+
+    /// A vessel whose drives are clear says what its data earned since they last were: once the sets
+    /// it was collecting have gone, not as each step's share of one still being collected goes.
+    fn say_sent(&mut self) {
+        let time = self.time;
+        for vessel in self.vessels.iter_mut().filter(|v| v.sent_science > 0.0) {
+            let systems = &vessel.propulsion.systems;
+            let collecting =
+                (systems.all::<crate::systems::Experiment>()).any(|(_, e)| e.collecting());
+            if systems.sendable() <= 0.0 && !collecting {
                 let science = std::mem::take(&mut vessel.sent_science);
                 vessel.record(time, format!("Data sent home: {science:.1} science"));
             }

@@ -137,6 +137,11 @@ impl Experiment {
         self.wants_to_run() && (self.powered || !self.needs_power())
     }
 
+    /// It collected over the last step: a set is under way.
+    pub fn collecting(&self) -> bool {
+        self.running
+    }
+
     /// The whole sets it has, and the share of one it has in all, over every subject.
     pub fn sets(&self) -> (usize, f64) {
         let whole = self.collected.values().filter(|s| **s >= WHOLE).count();
