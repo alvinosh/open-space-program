@@ -5,6 +5,7 @@
 
 use bevy::{
     math::{DVec2, DVec3},
+    picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings},
     prelude::*,
 };
 use osp_game::{
@@ -12,6 +13,7 @@ use osp_game::{
     content::{GameContent, catalog},
     frame::RenderFrame,
     orbit_lines::ScriptedPointer,
+    part_info::ShowsPart,
     sim::Sim,
     smoke_test::{Action, CaptureSet, EditorStep, EditorStepFailed},
 };
@@ -62,6 +64,8 @@ fn take_steps(
     mut pointer: ResMut<ScriptedPointer>,
     mut failed: Option<ResMut<EditorStepFailed>>,
     mut exit: MessageWriter<AppExit>,
+    mut ray_cast: MeshRayCast,
+    (parts, parents): (Query<&ShowsPart>, Query<&ChildOf>),
 ) {
     for &EditorStep(action) in steps.read() {
         // The view turns before anything is looked at.
@@ -80,7 +84,38 @@ fn take_steps(
             content: &content,
         };
         match take(action, &looking) {
-            Ok(Some(at)) => pointer.0 = Some(at),
+            Ok(Some(at)) => {
+                // A part's middle can be empty (a ring, a tube): the pointer goes to a bit of it a
+                // click there would hit, as a player clicks the bit they can see.
+                let index = match action {
+                    Action::EditorPointAtPart(part) => (editor.builder())
+                        .and_then(|b| b.draft().parts.iter().position(|p| p.id == part)),
+                    _ => None,
+                };
+                let seen = index.zip(editor.vessel()).and_then(|(index, vessel)| {
+                    let hits = |ray_cast: &mut MeshRayCast, at: Vec2| {
+                        let (camera, transform) = *camera;
+                        let Ok(ray) =
+                            camera.viewport_to_world(&GlobalTransform::from(*transform), at)
+                        else {
+                            return false;
+                        };
+                        let tagged = |e: Entity| {
+                            std::iter::once(e)
+                                .chain(parents.iter_ancestors(e))
+                                .find_map(|a| parts.get(a).ok().filter(|s| s.vessel == vessel))
+                        };
+                        let filter = |e: Entity| tagged(e).is_some();
+                        let settings = MeshRayCastSettings::default().with_filter(&filter);
+                        let first = ray_cast.cast_ray(ray, &settings).first().map(|(e, _)| *e);
+                        first
+                            .and_then(tagged)
+                            .is_some_and(|s| s.part.0 as usize == index)
+                    };
+                    seen_point(at, |p| hits(&mut ray_cast, p))
+                });
+                pointer.0 = Some(seen.unwrap_or(at));
+            }
             Ok(None) => {}
             Err(e) => match failed.as_deref_mut() {
                 Some(failed) => failed.0 = Some(e),
@@ -91,6 +126,22 @@ fn take_steps(
             },
         }
     }
+}
+
+/// `at` if `hits` says a click there would hit the part, or else the nearest point round it that
+/// would, out to 240 px.
+fn seen_point(at: Vec2, mut hits: impl FnMut(Vec2) -> bool) -> Option<Vec2> {
+    if hits(at) {
+        return Some(at);
+    }
+    (1..=60).find_map(|ring| {
+        let radius = 4.0 * ring as f32;
+        (0..16).find_map(|k| {
+            let angle = k as f32 / 16.0 * std::f32::consts::TAU;
+            let p = at + radius * Vec2::new(angle.cos(), angle.sin());
+            hits(p).then_some(p)
+        })
+    })
 }
 
 /// Take `action`: where the pointer goes, if it moves, or why it failed.

@@ -18,6 +18,7 @@
 //! launched (to fly it again in a test of the simulation); `cargo playtest` runs them all.
 
 pub mod plays;
+pub mod rebuilds;
 pub mod report;
 
 use std::{collections::VecDeque, path::PathBuf};
@@ -51,8 +52,8 @@ use crate::{
     camera::ViewOutput,
     editing::{EditorStatus, LastLaunch},
     orbit_lines::ScriptedPointer,
-    space_centre::SpaceCentre,
     smoke_test::{Action, CaptureSet, EditorStep, EditorStepFailed, capture_size},
+    space_centre::SpaceCentre,
 };
 use report::{Report, StepRecord};
 
@@ -71,7 +72,7 @@ pub enum Spot {
     Part(&'static str),
     /// In the editor: the handle for this size of the part picked.
     Grip(&'static str),
-    /// This many px right and down of where the pointer is (where a drag goes to).
+    /// This many px right and down of where the drag began (where a drag goes to).
     By(f32, f32),
     /// This share of the screen across and down: somewhere with nothing on it.
     Screen(f32, f32),
@@ -191,6 +192,7 @@ impl Plugin for PlaytestPlugin {
             ops: VecDeque::new(),
             next: 0,
             mouse: Vec2::new(width as f32, height as f32) * 0.5,
+            pressed: None,
             aim: None,
             asked: false,
             on_mouse: true,
@@ -267,6 +269,8 @@ struct Runner {
     /// The next step to turn into ops.
     next: usize,
     mouse: Vec2,
+    /// Where the button went down, while it is held: what a drag's [`Spot::By`] counts from.
+    pressed: Option<Vec2>,
     aim: Option<Aim>,
     /// The editor has been asked where a spot is and answers by the next frame.
     asked: bool,
@@ -774,8 +778,10 @@ fn run(
                     (true, true)
                 }
                 Spot::By(x, y) => {
+                    // From where a drag began, however often it is looked for on the way.
+                    let from = runner.pressed.unwrap_or(runner.mouse);
                     runner.aim = Some(Aim {
-                        at: runner.mouse + Vec2::new(x, y),
+                        at: from + Vec2::new(x, y),
                         width: 30.0,
                         entity: None,
                     });
@@ -894,6 +900,7 @@ fn run(
             },
             Op::Press => {
                 let at = runner.mouse;
+                runner.pressed = Some(at);
                 input.buttons.press(MouseButton::Left);
                 let target = runner.target.clone();
                 input.pointer(&target, at, PointerAction::Press(PointerButton::Primary));
@@ -901,6 +908,7 @@ fn run(
             }
             Op::Release => {
                 let at = runner.mouse;
+                runner.pressed = None;
                 input.buttons.release(MouseButton::Left);
                 let target = runner.target.clone();
                 input.pointer(&target, at, PointerAction::Release(PointerButton::Primary));
