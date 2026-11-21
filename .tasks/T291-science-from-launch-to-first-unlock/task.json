@@ -2,7 +2,7 @@
   "id": "T291",
   "title": "Smoke: a career from the first launch to the first unlock and upgrade, Casual and Realistic",
   "kind": "test",
-  "status": "todo",
+  "status": "done",
   "area": "test",
   "size": "M",
   "parent": "T287",
@@ -11,8 +11,8 @@
     "crates/osp_smoke"
   ],
   "created": "2026-11-12",
-  "updated": "2026-11-12",
-  "done": null,
+  "updated": "2026-11-20",
+  "done": "2026-11-20",
   "milestone": "M3",
   "priority": 57.0737
 }

@@ -9,6 +9,24 @@ way, step by step, with the control each step names. `lunar_module` flies Eagle 
 orbit down to the Moon and back to orbit. `docking` flies Columbia to Eagle's ascent stage in lunar orbit as a player does, on/off translation keys and the docking window's numbers: too fast the first time, so it bumps and bounces off the real meshes, and then it catches, on soft capture. It flies the two as one on the service module's engine and lets Eagle go. Dragon on a Falcon 9, the Shuttle, Soyuz and the rest will be more missions in the same
 harness.
 
+`career_casual` and `career_realistic` play the first steps of a career in each game mode: a new
+career on the mode's tech tree takes on the contract it is offered, builds a first rocket in the
+builder from what the tree's roots unlock (each part sized for where it goes on, as the editor sizes
+it), launches it within its first facilities, and flies it. Its instruments' readings reach the
+ground by telemetry, the capsule (Casual) is recovered, and the science and money are spent on the
+cheapest node and the cheapest facility upgrade there is money for. The report gives every figure a
+player reads on the way: funds, science, the parts list, costs, limits.
+
+`career_casual_orbit` plays one Casual game from its first launch to its first orbit (T333): six
+flights, each for the contract it has taken on, with the career taking on what it is offered,
+unlocking and upgrading between flights in the order a player saving up would (`WANTS`), and every
+craft built from what is unlocked by then. Each flight's "The books" finding gives the craft, the
+tech nodes its parts come from, the science and money it earned, what was bought after it and the
+date. `career_casual_moon` carries the same game on towards the Moon (T334): so far a crew to
+orbit and home, and a crew round the Moon and home, launched at the transfer planner's launch time
+for the Moon and aimed home from inside the Moon's sphere of influence. The Realistic career is T335
+and T336.
+
 ```sh
 cargo smoke                    # every mission (Apollo 11 takes about 2 min)
 cargo smoke saturn_v           # one
@@ -49,7 +67,8 @@ Each finding has one result:
 
 ## How a mission flies
 
-It loads every mod and starts a scenario through `Universe::new_game`, as the game does. After
+It loads every mod, or the mods of one game mode (`Mission::mode`, as the New game screen
+offers them), and starts a scenario through `Universe::new_game`, as the game does. After
 that it only does what a player can: throttle, the stage key, SAS modes, RCS, targets, the transfer
 planner, planned burns and the burn executor, time warp. Nothing is placed, teleported or patched
 in. Steering uses the game's own SAS control law (`crates/osp_smoke/src/pilot.rs`), and the ascent is a
@@ -67,7 +86,8 @@ gate for flying the whole of Apollo 11.
 ## Adding a mission
 
 1. A new file in `crates/osp_smoke/src/` with a `pub static MISSION: Mission` (id, title,
-   summary, scenario id from the mods, the list of phases, and `fly`), listed in `MISSIONS` in
+   summary, scenario id from the mods, the game mode or `None` for every mod, the list of
+   phases, and `fly`), listed in `MISSIONS` in
    `lib.rs`, and a `#[test]` in `tests/smoke.rs` that runs it. Copy `saturn_v.rs`.
 2. Write the phases the real mission had, in order, each with what it did (`PhaseSpec::goal`).
    Phases the script cannot reach still show in the report as not reached.
@@ -79,8 +99,9 @@ gate for flying the whole of Apollo 11.
    and nothing here to `FUNCTIONS` in `audit.rs`.
 5. Keep the real figures and their source in the check, not in a comment.
 
-`world.rs` is the flight (ticks, rails, sampling, findings), `pilot.rs` the hands (pointing, the
-ascent), `planning.rs` the map (transfers, aiming, burns), `report.rs` and `report.html` the page,
+`world.rs` is the flight (ticks, rails, sampling, findings), `career.rs` a career's builder
+(`Hangar`: parts from the parts list, sized and put on as the editor does), `pilot.rs` the hands
+(pointing, the ascent), `planning.rs` the map (transfers, aiming, burns), `report.rs` and `report.html` the page,
 `watch.rs` the handing over to the game.
 
 ## Watching a mission

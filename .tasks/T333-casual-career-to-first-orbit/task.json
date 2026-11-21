@@ -1,0 +1,19 @@
+{
+  "id": "T333",
+  "title": "Smoke: a Casual career from the first launch to the first orbit",
+  "kind": "test",
+  "status": "done",
+  "area": "test",
+  "size": "L",
+  "parent": "T287",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_smoke/src/career.rs",
+    "T301"
+  ],
+  "created": "2026-11-20",
+  "updated": "2026-11-20",
+  "done": "2026-11-20",
+  "milestone": "M3",
+  "priority": 57.073712
+}

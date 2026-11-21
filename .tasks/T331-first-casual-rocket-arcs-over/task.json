@@ -1,0 +1,22 @@
+{
+  "id": "T331",
+  "title": "A new Casual career's first rocket, as the parts list sizes it, arcs over into a 3 km hop",
+  "kind": "bug",
+  "status": "done",
+  "area": "propulsion",
+  "size": "S",
+  "parent": "T287",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_smoke/src/career.rs (BOOSTER_THRUST)",
+    "crates/osp_sim/src/fitting.rs (BOOSTER_TWR)",
+    "crates/osp_sim/src/palette.rs (solid_booster)",
+    "assets/core/tech_nodes/casual.json5 (first_steps)",
+    "T309"
+  ],
+  "created": "2026-11-20",
+  "updated": "2026-11-20",
+  "done": "2026-11-20",
+  "milestone": "M3",
+  "priority": 57.07371
+}

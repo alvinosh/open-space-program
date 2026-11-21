@@ -7,14 +7,15 @@
   "size": "XL",
   "parent": "T287",
   "depends_on": [
-    "T291"
+    "T334",
+    "T336"
   ],
   "refs": [
     "crates/osp_smoke",
     "T291"
   ],
   "created": "2026-11-12",
-  "updated": "2026-11-12",
+  "updated": "2026-11-20",
   "done": null,
   "milestone": "M3",
   "priority": 57.07372

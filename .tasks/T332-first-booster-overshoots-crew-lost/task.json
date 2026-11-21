@@ -1,0 +1,23 @@
+{
+  "id": "T332",
+  "title": "The parts list's solid booster under a C-1 sends it 600 km up, and its crew die of 30 g coming down",
+  "kind": "bug",
+  "status": "done",
+  "area": "propulsion",
+  "size": "S",
+  "parent": "T287",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_smoke/src/career.rs (The crew come home alive)",
+    "crates/osp_sim/src/fitting.rs (ASPECT, BOOSTER_TWR)",
+    "crates/osp_sim/src/palette.rs (solid_booster)",
+    "crates/osp_sim/src/systems/crew.rs (g limit)",
+    "T331",
+    "T309"
+  ],
+  "created": "2026-11-20",
+  "updated": "2026-11-20",
+  "done": "2026-11-20",
+  "milestone": "M3",
+  "priority": 57.071715
+}

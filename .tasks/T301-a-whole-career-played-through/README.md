@@ -28,3 +28,9 @@ allow it: a crewed capsule should not be reachable without the probe stage of th
   date; and in total the flights and game time to the Moon in each mode.
 - The pacing is checked by the test: Realistic takes clearly more flights, more of them uncrewed,
   before the first crew.
+
+## Split (2026-11-20)
+
+Too big for one step: T333 (Casual to the first orbit, and the many-flight harness), T334 (Casual
+to the Moon and back), T335 (Realistic to uncrewed probes in orbit), T336 (Realistic crews to the
+Moon). This task is done when they are, run as one per mode, with the pacing check above.

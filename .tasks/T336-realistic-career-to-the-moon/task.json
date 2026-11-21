@@ -1,0 +1,21 @@
+{
+  "id": "T336",
+  "title": "Smoke: a Realistic career from the first crews to the Moon",
+  "kind": "test",
+  "status": "todo",
+  "area": "test",
+  "size": "L",
+  "parent": "T287",
+  "depends_on": [
+    "T335"
+  ],
+  "refs": [
+    "crates/osp_smoke/src/career.rs",
+    "T301"
+  ],
+  "created": "2026-11-20",
+  "updated": "2026-11-20",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.073718
+}

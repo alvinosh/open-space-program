@@ -1,0 +1,21 @@
+{
+  "id": "T334",
+  "title": "Smoke: a Casual career from orbit to a crew on the Moon and back",
+  "kind": "test",
+  "status": "in_progress",
+  "area": "test",
+  "size": "L",
+  "parent": "T287",
+  "depends_on": [
+    "T333"
+  ],
+  "refs": [
+    "crates/osp_smoke/src/career.rs",
+    "T301"
+  ],
+  "created": "2026-11-20",
+  "updated": "2026-11-20",
+  "done": null,
+  "milestone": "M3",
+  "priority": 57.073714
+}

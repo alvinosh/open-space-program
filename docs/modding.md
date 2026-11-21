@@ -88,7 +88,7 @@ parts of it instead.
 | `tank_types` | How procedural tanks are built | `material`, operating `pressure` (Pa), `min_gauge` (m), `stiffening`, `buckling_factor`, `insulation` (kg/m²), `min_temperature` (K), `utilization`, `safety_factor`, `design_load` (g), optional `propellants` allowlist, `cast` for a solid motor's grain; see [Procedural tanks and fins](#procedural-tanks-and-fins) |
 | `reaction_wheels` | Reaction wheels | `mass` (kg), `torque` (N·m about each axis) |
 | `rcs` | RCS blocks (four nozzles each) | `mass` (kg), `thrust` (N per nozzle, vacuum), `isp_vac`/`isp_sl` (s), `propellants: { Name: mass ratio }`, `model` |
-| `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), optional `top_diameter` (m, a third of `diameter` by default), `model`, `nodes` (see below), `supplies` (days of what its crew need, in its lockers, under the rules' life support), `drive` (`{ data, samples }`, bytes and kg of what experiments make it keeps; 2 MB and 5 kg a seat if not given) |
+| `pods` | Crew pods (capsules, cockpits) | `mass` (kg, with crew), `crew`, `diameter` and `height` (m), optional `top_diameter` (m, a third of `diameter` by default), `model`, `nodes` (see below), `supplies` (days of what its crew need, in its lockers, under the rules' life support), `drive` (`{ data, samples }`, bytes and kg of what experiments make it keeps; 2 MB and 5 kg a seat if not given), `torque` (N·m about each axis from a reaction wheel of its own, counted in `mass`; none if not given) |
 | `craft` | Vessels | `parts`, each a `template` or a `shape` with `components`, held `on` another; optional `sequences`; see [Craft](#craft) and [Staging](#staging) |
 | `ground_stations` | Dishes that talk to vessels | `body`, `latitude`, `longitude`, `dish` (m), `noise` (K). The Realism mod adds a small one at each historical range (White Sands, Peenemünde, Baikonur, Wallops, Vandenberg, Kourou) for sounding rockets' telemetry |
 | `launch_sites` | Launch sites | Position, `heading`, optional `pad`, `roads` and `runway`; see [Launch sites](#launch-sites) |
@@ -298,6 +298,9 @@ component works with any shape that has what it needs:
   a `cylinder_tank` with a `Booster Case` storage of the grain and a booster motor; its settings set
   the thrust (the nozzle's mass follows it), the nozzle, and under rules with `shaped_solids` the
   curve: a preset (even, rising, falling, a dip for max-Q, all burning as long) or its five points.
+  Put under a craft in the editor it is sized for what it lifts: grain for 2 km/s of the whole
+  craft (before the air and gravity take their share) and thrust for 2.5 times its weight, as wide
+  as the node or narrower if that would make it stubby (`osp_sim::fitting`).
 - `heat_shield`: `ablator` (kg), `faces` (the way it faces in the part's frame, `[0, 0, -1]`),
   `half_angle` (how far round from there it covers, degrees, 60), `heat_of_ablation` (J/kg, 3e7) and
   `trim_arm` (m per unit of the tangent of the angle the air comes at, 0.55: how far its push moves to
