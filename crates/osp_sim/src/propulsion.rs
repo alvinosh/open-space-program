@@ -456,6 +456,7 @@ impl Section {
                     }
                     PartKind::Pod(def) => {
                         section.structure_mass += def.mass;
+                        section.wheel_torque += def.torque;
                         section.pods.push(def.clone());
                     }
                     PartKind::Fins(fins) => section.fins = Some(fins.clone()),

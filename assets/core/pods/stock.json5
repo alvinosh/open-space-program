@@ -3,7 +3,9 @@
 // `top_diameter` the top (the air sees the pod as a frustum). `supplies`: days of what its crew
 // need, in its lockers, under whatever life support the game has. `drive`: room for what
 // experiments make, `{ data: <bytes>, samples: <kg> }`; 2 MB and 5 kg a seat if not given.
-// `electric_charge`: kJ in its batteries (Mercury flew on about 13.5 kWh, 48,600 kJ).
+// `electric_charge`: kJ in its batteries (Mercury flew on about 13.5 kWh, 48,600 kJ). `torque`: N·m
+// about each axis from a reaction wheel of its own, counted in its mass, so that SAS holds a first
+// rocket straight before anything that steers is unlocked (the Realistic Avionics mod takes it out).
 // Models are glTF, origin at the centre of the base, nose up.
 [
   {
@@ -16,6 +18,7 @@
     model: "models/pods/c1.glb",
     supplies: 14, // days
     electric_charge: 36000, // 10 kWh
+    torque: 5000,
   },
   {
     id: "C-4 Capsule", // four people, Dragon/Orion class

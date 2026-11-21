@@ -1,0 +1,4 @@
+// A capsule turns by its thrusters, as Mercury did: no reaction wheel inside the base game's pod.
+[
+  { op: "set", collection: "pods", target: "C-1 Capsule", path: "torque", value: 0 },
+]

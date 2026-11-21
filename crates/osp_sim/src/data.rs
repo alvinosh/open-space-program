@@ -1101,6 +1101,10 @@ pub struct PodDef {
     /// Stored electricity, kJ (counted in `mass` with its batteries).
     #[serde(default)]
     pub electric_charge: f64,
+    /// Torque its own reaction wheel gives about each axis, N·m (counted in `mass`): what lets SAS
+    /// hold a first rocket straight with nothing else to steer it. None if 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub torque: f64,
     /// Days of what its crew need that it carries in its lockers (counted in `mass`), under the
     /// rules' life support. None: it has no life support.
     #[serde(default)]
