@@ -15,6 +15,9 @@
 //! The report lands in `target/smoke/<mission>/index.html` (see `docs/smoke-tests.md`).
 
 mod audit;
+mod career;
+mod career_moon;
+mod career_orbit;
 mod docking;
 mod first_orbit;
 mod lunar_module;
@@ -43,6 +46,9 @@ pub struct Mission {
     pub summary: &'static str,
     /// The scenario (in the mods) the flight starts from.
     pub scenario: &'static str,
+    /// The game mode (`game_modes`) whose mods are loaded, as the New game screen offers it; every
+    /// mod if none.
+    pub mode: Option<&'static str>,
     pub plan: &'static [PhaseSpec],
     pub fly: fn(&mut World) -> Flight,
 }
@@ -54,6 +60,10 @@ pub const MISSIONS: &[&Mission] = &[
     &docking::MISSION,
     &first_orbit::MISSION,
     &saturn_ib::MISSION,
+    &career::CASUAL,
+    &career::REALISTIC,
+    &career_orbit::CASUAL_ORBIT,
+    &career_moon::CASUAL_MOON,
 ];
 
 /// The mission called `id`.
@@ -100,7 +110,7 @@ pub fn write_up(mission: &Mission, world: &mut World, stopped_early: bool) -> Wr
 
 /// Flies `mission` headless, writes its report and fails if a check did.
 pub fn run(mission: &Mission) {
-    let mut world = World::new(mission.scenario, mission.plan);
+    let mut world = World::in_mode(mission.scenario, mission.mode, mission.plan);
     let flight = (mission.fly)(&mut world);
     let done = write_up(mission, &mut world, flight.is_err());
     eprintln!("\n{}\nreport: {}\n", done.summary, done.page.display());

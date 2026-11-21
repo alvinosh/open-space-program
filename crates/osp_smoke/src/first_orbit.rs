@@ -16,6 +16,7 @@ pub static MISSION: Mission = Mission {
               lights the upper stage and settles into a circular orbit. The scenario's goals \
               (leave the pad, reach space, reach orbit) are met as it goes.",
     scenario: "pad",
+    mode: None,
     plan: PLAN,
     fly,
 };

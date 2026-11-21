@@ -3,6 +3,7 @@
 
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
+use osp_mods::Content;
 use osp_sim::{
     DVec3,
     attitude::SasMode,
@@ -42,6 +43,8 @@ pub enum Area {
     Docking,
     Landing,
     Crew,
+    Science,
+    Career,
 }
 
 impl Area {
@@ -62,6 +65,8 @@ impl Area {
             Area::Docking => "Docking",
             Area::Landing => "Landing",
             Area::Crew => "Crew & life support",
+            Area::Science => "Science",
+            Area::Career => "Career",
         }
     }
 }
@@ -216,13 +221,43 @@ pub struct World {
     /// Whoever watches the flight (the game's `--watch`, see [`crate::watch`]): the universe goes
     /// to them between steps, when their frame is due.
     pub(crate) pacer: Option<Pacer>,
+    /// The records the game was started from: the base game and the mods that are on.
+    pub content: Content,
+    /// How fast the vessel flown came down, m/s, when it last did: on the ground whole, or not.
+    pub touchdown: Option<(f64, bool)>,
+}
+
+/// Loads the base game with the mods of the game mode `mode` (a `game_modes` record, as the New
+/// game screen offers it), or every mod if none.
+pub fn load(mode: Option<&str>) -> Content {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let (core, mods) = (root.join("assets/core"), root.join("mods"));
+    let Some(mode) = mode else {
+        return osp_mods::load(&core, Some(&mods));
+    };
+    #[derive(serde::Deserialize)]
+    struct GameMode {
+        id: String,
+        #[serde(default)]
+        mods: Vec<String>,
+    }
+    let base = osp_mods::load(&core, None);
+    let modes: Vec<GameMode> = base.registry.all("game_modes", &mut Vec::new());
+    let mode = (modes.iter().find(|m| m.id == mode))
+        .unwrap_or_else(|| panic!("the base game has no game mode `{mode}`"));
+    let choices = osp_mods::exactly(&osp_mods::installed(&mods), &mode.mods);
+    osp_mods::load_chosen(&core, Some(&mods), &choices)
 }
 
 impl World {
     /// Loads every mod and starts `scenario` as the game does.
     pub fn new(scenario: &str, plan: &[PhaseSpec]) -> Self {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let content = osp_mods::load(&root.join("assets/core"), Some(&root.join("mods")));
+        Self::in_mode(scenario, None, plan)
+    }
+
+    /// Loads the mods of the game mode `mode` ([`load`]) and starts `scenario` as the game does.
+    pub fn in_mode(scenario: &str, mode: Option<&str>, plan: &[PhaseSpec]) -> Self {
+        let content = load(mode);
         let registry = &content.registry;
         let catalog = record::catalog(registry);
         let mut diagnostics = Vec::new();
@@ -283,9 +318,41 @@ impl World {
             phase_mark: (0.0, 0.0),
             last_trace: f64::NEG_INFINITY,
             pacer: None,
+            content,
+            touchdown: None,
         };
         world.sample();
         world
+    }
+
+    /// Nothing stands anywhere any more and nothing is flown: a new game at the space centre,
+    /// before its first launch. The scenario's goals go with it.
+    pub fn clear(&mut self) {
+        let ids: Vec<VesselId> = self.universe.vessels.iter().map(Vessel::id).collect();
+        for id in ids {
+            self.universe.remove_vessel(id);
+        }
+        self.universe.focus = None;
+        self.universe.mission = None;
+        self.samples.clear();
+        self.seen_log = None;
+    }
+
+    /// Fly `id`, just launched from `craft`, from now on: the clock of the flight starts again.
+    pub fn take_over(&mut self, id: VesselId, craft: CraftDef) {
+        self.focus = id;
+        self.craft = craft;
+        self.liftoff = None;
+        self.touchdown = None;
+        self.seen_log = None;
+        self.last_sample = f64::NEG_INFINITY;
+        self.after();
+    }
+
+    /// The vessel flown, if it is still in the game.
+    pub fn flown(&self) -> Option<&Vessel> {
+        let i = self.universe.find_vessel(self.focus)?;
+        Some(&self.universe.vessels[i])
     }
 
     // --- the vessel and the clock ---------------------------------------------------------
@@ -353,10 +420,9 @@ impl World {
     /// One physics tick for the whole universe.
     pub fn tick(&mut self) {
         let dt = PHYSICS_STEP.as_seconds();
-        let (thrust, mass) = {
-            let f = &self.vessel().flight;
-            (f.thrust, f.mass)
-        };
+        let (thrust, mass) = self
+            .flown()
+            .map_or((0.0, 0.0), |v| (v.flight.thrust, v.flight.mass));
         if thrust > 0.0 && mass > 0.0 {
             self.burn_time += dt;
             self.delta_v += thrust / mass * dt;
@@ -474,8 +540,14 @@ impl World {
             VesselEventKind::Descent { body } => {
                 format!("Descent towards {}", self.universe.system.body(body).name)
             }
-            VesselEventKind::Landed { speed } => format!("Landed at {speed:.1} m/s"),
-            VesselEventKind::Crashed { speed } => format!("Crashed at {speed:.0} m/s"),
+            VesselEventKind::Landed { speed } => {
+                self.touchdown = Some((speed, true));
+                format!("Landed at {speed:.1} m/s")
+            }
+            VesselEventKind::Crashed { speed } => {
+                self.touchdown = Some((speed, false));
+                format!("Crashed at {speed:.0} m/s")
+            }
             VesselEventKind::Destroyed => "Vessel destroyed".to_owned(),
             VesselEventKind::BurnDue => "Burn due".to_owned(),
             VesselEventKind::BurnEnded => return,
@@ -488,8 +560,11 @@ impl World {
 
     /// Writes down the vessel's own log lines since the last look, and samples when due.
     fn after(&mut self) {
+        let Some(flown) = self.flown() else {
+            return;
+        };
         let fresh: Vec<_> = {
-            let log = &self.vessel().log;
+            let log = &flown.log;
             let from = self
                 .seen_log
                 .as_ref()
@@ -534,6 +609,9 @@ impl World {
     }
 
     pub fn sample(&mut self) {
+        if self.flown().is_none() {
+            return;
+        }
         let sample = self.measure();
         self.last_sample = sample.t;
         let every = if sample.thrust > 0.0 || sample.altitude < 300_000.0 {
@@ -626,18 +704,19 @@ impl World {
             .position(|p| p.id == id)
             .unwrap_or_else(|| panic!("the plan has no phase `{id}`"));
         let t = self.t();
-        let mass = self.vessel().flight.mass;
+        let mass = self.flown().map_or(0.0, |v| v.flight.mass);
         let phase = &mut self.phases[i];
         phase.started = Some(t);
         phase.mass_start = mass;
         phase.outcome = Outcome::Passed;
         self.current = Some(i);
         self.phase_mark = (self.burn_time, self.delta_v);
-        let rcs = self.vessel().propulsion.rcs_propellant_mass();
-        self.event(format!(
-            "— {} — ({rcs:.0} kg of RCS propellant)",
-            self.phases[i].title
-        ));
+        let rcs = self.flown().map(|v| v.propulsion.rcs_propellant_mass());
+        let title = &self.phases[i].title;
+        self.event(match rcs {
+            Some(rcs) => format!("— {title} — ({rcs:.0} kg of RCS propellant)"),
+            None => format!("— {title} —"),
+        });
     }
 
     /// Time the engines have given thrust in the phase under way, s, and the speed it gave.
@@ -650,7 +729,7 @@ impl World {
 
     pub fn end_phase(&mut self) {
         let Some(i) = self.current.take() else { return };
-        let (t, mass) = (self.t(), self.vessel().flight.mass);
+        let (t, mass) = (self.t(), self.flown().map_or(0.0, |v| v.flight.mass));
         let (burn, dv) = (
             self.burn_time - self.phase_mark.0,
             self.delta_v - self.phase_mark.1,

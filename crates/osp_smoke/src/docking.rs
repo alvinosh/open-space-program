@@ -23,6 +23,7 @@ pub static MISSION: Mission = Mission {
               CSM round, flew the last metres on the RCS and caught Eagle's drogue on his probe. \
               Armstrong and Aldrin came through the tunnel, and Eagle was let go.",
     scenario: "apollo11_docking",
+    mode: None,
     plan: PLAN,
     fly,
 };

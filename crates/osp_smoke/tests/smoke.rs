@@ -32,6 +32,26 @@ fn saturn_ib() {
     run(mission("saturn_ib").unwrap());
 }
 
+#[test]
+fn career_casual() {
+    run(mission("career_casual").unwrap());
+}
+
+#[test]
+fn career_realistic() {
+    run(mission("career_realistic").unwrap());
+}
+
+#[test]
+fn career_casual_orbit() {
+    run(mission("career_casual_orbit").unwrap());
+}
+
+#[test]
+fn career_casual_moon() {
+    run(mission("career_casual_moon").unwrap());
+}
+
 /// A flight that is watched (`--watch`) is handed to whoever shows it and back many times a
 /// second, at whatever speed they ask; it must still be the very same flight as the headless one.
 #[test]

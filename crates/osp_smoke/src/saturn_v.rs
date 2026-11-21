@@ -32,6 +32,7 @@ pub static MISSION: Mission = Mission {
     summary: "Launch from LC-39A, a parking orbit, translunar injection, lunar orbit, the landing, \
               the return and the entry into the Pacific.",
     scenario: "apollo11",
+    mode: None,
     plan: PLAN,
     fly,
 };

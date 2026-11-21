@@ -17,6 +17,7 @@ pub static MISSION: Mission = Mission {
               and touched down at under a metre a second. 21 hours later the ascent engine \
               lifted the cabin off the descent stage and into orbit.",
     scenario: "apollo11_landing",
+    mode: None,
     plan: PLAN,
     fly,
 };

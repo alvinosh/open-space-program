@@ -130,7 +130,7 @@ const D = JSON.parse(document.getElementById("data").textContent);
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const STATUS = { pass: "Pass", fail: "Fail", known: "Known issue", gap: "Not modelled", bridged: "Bridged", info: "Info" };
-const AREAS = { build: "Build", structure: "Structure", propulsion: "Propulsion", staging: "Staging", control: "Guidance & control", aero: "Aerodynamics", orbit: "Orbits & navigation", power: "Electrical power", avionics: "Avionics", comms: "Communications", thermal: "Heating & entry", recovery: "Recovery", docking: "Docking", landing: "Landing", crew: "Crew & life support" };
+const AREAS = { build: "Build", structure: "Structure", propulsion: "Propulsion", staging: "Staging", control: "Guidance & control", aero: "Aerodynamics", orbit: "Orbits & navigation", power: "Electrical power", avionics: "Avionics", comms: "Communications", thermal: "Heating & entry", recovery: "Recovery", docking: "Docking", landing: "Landing", crew: "Crew & life support", science: "Science", career: "Career" };
 const OUTCOME = { passed: "Passed", failed: "Failed", partial: "Partial", not_reached: "Not reached" };
 
 function fmtMet(s) {

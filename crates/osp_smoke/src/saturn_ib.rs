@@ -14,6 +14,7 @@ pub static MISSION: Mission = Mission {
     summary: "The Saturn IB lifts off from LC-34 with the Apollo CSM, drops its S-IB, lights the \
               S-IVB on its ullage motors and reaches a low orbit, 231 by 285 km on the real day.",
     scenario: "apollo7",
+    mode: None,
     plan: PLAN,
     fly,
 };

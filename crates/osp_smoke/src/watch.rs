@@ -192,14 +192,15 @@ impl Watch {
 
 /// The script's thread: flies `mission` from start to finish, handing the universe over as it goes.
 fn fly(mission: &'static Mission, to_game: Sender<Handoff>, from_game: Receiver<Turn>) {
-    let mut world = match catch_unwind(|| World::new(mission.scenario, mission.plan)) {
-        Ok(world) => world,
-        Err(e) => {
-            let why = format!("cannot start `{}`: {}", mission.id, panic_text(&*e));
-            let _ = to_game.send(Handoff::Failed(why));
-            return;
-        }
-    };
+    let mut world =
+        match catch_unwind(|| World::in_mode(mission.scenario, mission.mode, mission.plan)) {
+            Ok(world) => world,
+            Err(e) => {
+                let why = format!("cannot start `{}`: {}", mission.id, panic_text(&*e));
+                let _ = to_game.send(Handoff::Failed(why));
+                return;
+            }
+        };
     let universe = &world.universe;
     let spare = Universe::new(universe.system.clone(), Vec::new(), universe.time());
     world.pacer = Some(Pacer {
