@@ -7,12 +7,14 @@
 //! vacuum, measured on the tank as built, filled with the engine's propellants. Under an engine's
 //! nozzle a part is as wide as the stack the engine hangs from, and a decoupler there gets an
 //! interstage up round the engine to that stack's base ([`below_engine`]): the next stage down
-//! hangs there, as under a KSP engine, and the body stays whole for the air. A part from a
-//! catalogue record (a pod, an engine) stays as it is, and so does a part being moved.
+//! hangs there, as under a KSP engine, and the body stays whole for the air. A solid booster put
+//! under a craft is sized for what it lifts ([`HOP_DELTA_V`], [`HOP_TWR`]), not as a tank: its grain
+//! gives the stack above a first hop's speed, and its thrust lifts it briskly off the pad. A part
+//! from a catalogue record (a pod, an engine) stays as it is, and so does a part being moved.
 
 use crate::{
     assembly::Mount,
-    component::{Component, ComponentDef},
+    component::{BOOSTER_NOZZLE_MASS, Component, ComponentDef, SolidMotorDef},
     constants::G0,
     craft::Craft,
     data::{CraftDef, CraftPartDef, EngineDef, PartCatalog},
@@ -37,6 +39,16 @@ const UPPER_TWR: f64 = 0.6;
 const ASPECT: f64 = 3.0;
 /// How wide a part put on a hull's side is, for the hull's width: a booster beside its core.
 const BESIDE: f64 = 0.5;
+/// The speed a solid booster put under a craft gives all of it, m/s, with no air or gravity to
+/// take their share, at the mean of its impulse at sea level and in a vacuum: a first sounding
+/// flight. Under a C-1 Capsule the air and gravity take three quarters of it (a light rocket with a
+/// blunt nose), and it goes some 20 km up and comes down at a few g; a heavier stack goes higher, and
+/// a longer booster, typed in, takes it to space.
+pub const HOP_DELTA_V: f64 = 2000.0;
+/// What a solid booster sized for what it lifts pushes for the weight of all of it at sea level.
+pub const HOP_TWR: f64 = 2.5;
+/// The narrowest a booster sized for what it lifts is made, m.
+const NARROWEST: f64 = 0.3;
 
 /// What a new part goes on, for [`fit`].
 #[derive(Debug, Clone, Copy)]
@@ -50,6 +62,8 @@ pub struct Against<'a> {
     pub engine: Option<&'a EngineDef>,
     /// It goes under an engine's nozzle ([`below_engine`]).
     pub under: Option<Stack>,
+    /// What it holds up, kg, if it goes under a craft ([`lifted`]): a solid booster is sized for it.
+    pub lifts: Option<f64>,
     /// The biggest the game lets a part be made.
     pub limits: Limits,
 }
@@ -62,6 +76,7 @@ impl<'a> Against<'a> {
             beside: false,
             engine: None,
             under: None,
+            lifts: None,
             limits: Limits::NONE,
         }
     }
@@ -181,6 +196,11 @@ pub fn fit(part: &mut CraftPartDef, against: &Against, catalog: &PartCatalog) {
     if part.template.is_some() || part.procedural.is_some() {
         return;
     }
+    if let Some(mass) = against.lifts.filter(|_| !against.beside)
+        && boost(part, width, mass, against.limits, catalog)
+    {
+        return;
+    }
     if let Some(engine) = against.engine
         && feed(
             part,
@@ -230,6 +250,134 @@ pub fn fit(part: &mut CraftPartDef, against: &Against, catalog: &PartCatalog) {
         // Sizes that a shape does not take are left as they are.
         let _ = shaping::resize(part, size, value);
     }
+}
+
+/// What `part`, about to go on `node` of the part at `holder` in `craft` (built from `draft`), holds
+/// up there: all of the craft, if it is a solid booster going under it, on a node facing down. None
+/// for any other part or place.
+pub fn lifted(
+    part: &CraftPartDef,
+    draft: &CraftDef,
+    craft: &Craft,
+    holder: usize,
+    node: &str,
+    catalog: &PartCatalog,
+) -> Option<f64> {
+    booster(part)?;
+    let node = craft.assembly.parts().get(holder)?.node(node)?;
+    if node.direction.z > -0.5 {
+        return None;
+    }
+    let mass = crate::propulsion::Propulsion::from_craft(draft, catalog)
+        .ok()?
+        .mass();
+    (mass > 0.0).then_some(mass)
+}
+
+fn booster(part: &CraftPartDef) -> Option<&SolidMotorDef> {
+    part.components.iter().find_map(|c| match c {
+        ComponentDef::SolidMotor(motor) if motor.booster => Some(motor),
+        _ => None,
+    })
+}
+
+/// Size `part`, a solid booster under `lifts` kg of craft on a node `width` across, for what it
+/// lifts: grain enough to give all of it [`HOP_DELTA_V`], and thrust for [`HOP_TWR`] at sea level.
+/// As wide as the node if that leaves it at least [`ASPECT`] times as long as it is wide, narrower
+/// if not; no bigger than `limits`. False, and `part` as it was, if it is no booster or cannot be.
+fn boost(
+    part: &mut CraftPartDef,
+    width: f64,
+    lifts: f64,
+    limits: Limits,
+    catalog: &PartCatalog,
+) -> bool {
+    let Some(motor) = booster(part).cloned() else {
+        return false;
+    };
+    if !matches!(&part.shape, Some(ShapeDef::CylinderTank(_))) || motor.isp_sl <= 0.0 {
+        return false;
+    }
+    let ratio = (HOP_DELTA_V / (G0 * 0.5 * (motor.isp_vac + motor.isp_sl))).exp();
+    // Its thrust is rated in a vacuum; at sea level it is less, as its impulse is.
+    let rating = motor.isp_vac / motor.isp_sl;
+    // Measured on the booster as built at width `d`: its own mass and its grain's are each so much
+    // with no length and so much a metre (its domes, walls and nozzle count). The nozzle weighs
+    // with the thrust.
+    let measure = |d: f64| -> Option<[f64; 4]> {
+        let at = |length: f64| -> Option<(f64, f64)> {
+            let mut probe = part.clone();
+            set_both(&mut probe, d, length).ok()?;
+            let built = properties::alone(&probe, catalog).ok()?;
+            let built = &built.parts[0].built;
+            let grain = (built.storages())
+                .flat_map(|s| s.contents.iter().map(|c| c.capacity))
+                .sum::<f64>();
+            Some((built.mass.mass, grain))
+        };
+        let (short, long) = (ASPECT * d, 2.0 * ASPECT * d);
+        let ((dry_1, grain_1), (dry_2, grain_2)) = (at(short)?, at(long)?);
+        let dry = (dry_2 - dry_1) / (long - short);
+        let grain = (grain_2 - grain_1) / (long - short);
+        Some([dry_1 - dry * short, dry, grain_1 - grain * short, grain])
+    };
+    // The length and thrust that give it all, at width `d`.
+    let solve = |d: f64| -> Option<(f64, f64)> {
+        let [dry_0, dry, grain_0, grain] = measure(d)?;
+        let (mut thrust, mut length) = (motor.thrust, 0.0);
+        for _ in 0..8 {
+            let nozzle = BOOSTER_NOZZLE_MASS * (thrust - motor.thrust);
+            // Full is `ratio` times empty: the grain is `ratio - 1` times all that is left.
+            let empty = lifts + dry_0 + nozzle;
+            length = ((ratio - 1.0) * empty - grain_0) / (grain - (ratio - 1.0) * dry);
+            let full = empty + (dry + grain) * length + grain_0;
+            thrust = HOP_TWR * G0 * full * rating;
+        }
+        (length.is_finite() && length > 0.0 && thrust.is_finite()).then_some((length, thrust))
+    };
+    // As wide as the node, or narrower until it is a rocket's shape: its grain goes as the cube of
+    // its width at that shape.
+    let mut d = width.min(limits.diameter);
+    let mut sized = None;
+    for _ in 0..8 {
+        let Some((length, thrust)) = solve(d) else {
+            break;
+        };
+        sized = Some((d, length, thrust));
+        if length >= 0.95 * ASPECT * d || d <= NARROWEST {
+            break;
+        }
+        d = (d * (length / (ASPECT * d)).cbrt()).max(NARROWEST);
+    }
+    let Some((d, ..)) = sized else {
+        return false;
+    };
+    // As a player would type them, and the length again for the width rounded.
+    let d = if d < width.min(limits.diameter) {
+        round_up(d, width_step(d)).min(width)
+    } else {
+        d
+    };
+    let Some((length, thrust)) = solve(d) else {
+        return false;
+    };
+    let length = round(length, length_step(length)).min(limits.length);
+    let step = if thrust < 100e3 { 1e3 } else { 5e3 };
+    let thrust = round_up(thrust, step);
+    let mut sized = part.clone();
+    if set_both(&mut sized, d, length).is_err() {
+        return false;
+    }
+    let Some(motor) = sized.components.iter_mut().find_map(|c| match c {
+        ComponentDef::SolidMotor(motor) if motor.booster => Some(motor),
+        _ => None,
+    }) else {
+        return false;
+    };
+    motor.thrust = thrust;
+    motor.mass = BOOSTER_NOZZLE_MASS * thrust;
+    *part = sized;
+    true
 }
 
 /// Whether `engine` is one that fires from the ground: its Isp at sea level not far below its
@@ -310,8 +458,8 @@ fn feed(
 /// parts list gave it where it is ([`as_given`]): built top down, a capsule, a tank and then an
 /// engine, the tank holds the engine's burn, or as much as leaves the engine lifting all the craft
 /// ([`BOOSTER_TWR`], [`UPPER_TWR`]). It keeps its width if something stands on it, and is no bigger
-/// than `limits`. A tank the player has sized stays as it is, and so does one that is already as
-/// heavy as the engine can lift. The ids of the tanks sized.
+/// than `limits`. A tank the parts list gave too heavy for the engine to lift is made smaller; one
+/// the player has sized stays as it is. The ids of the tanks sized.
 pub fn size_for_engines(
     craft: &mut CraftDef,
     catalog: &PartCatalog,
@@ -377,8 +525,8 @@ pub fn size_for_engines(
 }
 
 /// The most propellant the tank at `tank` in `craft` may hold for `engine` under it to lift all the
-/// craft at the least thrust to weight it is sized for, kg; none if it already holds that much or
-/// more (the engine cannot lift a bigger one).
+/// craft at the least thrust to weight it is sized for, kg, more or less than it holds now; none if
+/// the engine cannot lift the rest of the craft even with the tank empty.
 fn liftable(
     craft: &CraftDef,
     tank: usize,
@@ -421,7 +569,7 @@ fn liftable(
     // What the rest weighs, and how much the tank weighs for each kg it holds.
     let rest = all - tank_mass;
     let most = (thrust / (G0 * least) - rest) * held / tank_mass;
-    (most > held).then_some(most)
+    (most > 0.0).then_some(most)
 }
 
 /// Whether `tank` is still the size the parts list gave it where it is in `craft`: as [`fit`] makes

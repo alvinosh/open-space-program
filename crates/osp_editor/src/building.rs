@@ -748,9 +748,14 @@ impl Making<'_> {
                     let engine = holder.and_then(|h| fitting::feeding(self.built, h, node));
                     // Under an engine's nozzle: as wide as its stack, a decoupler an interstage.
                     let under = holder.and_then(|h| fitting::below_engine(self.built, h, node));
+                    // Under the craft, a solid booster sized for what it lifts.
+                    let lifts = holder.and_then(|h| {
+                        fitting::lifted(&part, self.draft, self.built, h, node, self.catalog)
+                    });
                     let against = Against {
                         engine,
                         under,
+                        lifts,
                         limits,
                         ..Against::node(*width)
                     };

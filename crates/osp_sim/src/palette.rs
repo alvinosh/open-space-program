@@ -342,7 +342,8 @@ fn solid_booster(catalog: &PartCatalog) -> Option<Entry> {
         group: Group::Engines,
         detail: String::new(),
         about:
-            "A case of solid propellant and its nozzle in one part, sized as a tank is. Lit once, \
+            "A case of solid propellant and its nozzle in one part. Put under a craft it is sized \
+                for what it lifts: a first hop's worth of grain and thrust to match. Lit once, \
                 it burns until it is empty: nothing stops it"
                 .into(),
         width: None,
@@ -1018,7 +1019,7 @@ pub fn entries(catalog: &PartCatalog) -> Vec<Entry> {
             stem: "pod".into(),
         })
         .collect();
-    // A solid booster, a case of grain and its nozzle in one part sized as a tank is: procedural,
+    // A solid booster, a case of grain and its nozzle in one part shaped as a tank is: procedural,
     // so listed first in the engines, before the records in their order.
     out.extend(solid_booster(catalog).map(|mut entry| {
         entry.detail = built_figures(&entry.part, "1.25 m × 7.5 m", catalog);
