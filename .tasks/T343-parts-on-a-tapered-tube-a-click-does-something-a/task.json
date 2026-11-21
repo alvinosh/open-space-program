@@ -1,0 +1,20 @@
+{
+  "id": "T343",
+  "title": "Parts on a tapered tube: a click does something, and the preview settles",
+  "kind": "bug",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/building.rs",
+    "T329",
+    "T307"
+  ],
+  "created": "2026-11-21",
+  "updated": "2026-11-21",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2406
+}

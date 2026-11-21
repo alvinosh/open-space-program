@@ -30,3 +30,8 @@ New, open, save, save as; the craft list with shipped and user craft; launch the
 ## Where it comes from
 
 - docs/build-editor-plan.md (E8)
+
+## 2026-11-21
+
+The stock craft are now built in the builder by playtests (`rebuild_*`); with no save, each is taken
+from what it launched (`craft.json`) by tools/rebuilt_craft.py, and named there (T347).

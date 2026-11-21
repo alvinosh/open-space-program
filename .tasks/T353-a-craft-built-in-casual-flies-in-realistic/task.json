@@ -1,0 +1,20 @@
+{
+  "id": "T353",
+  "title": "A craft built in Casual flies in Realistic",
+  "kind": "feature",
+  "status": "todo",
+  "area": "resources",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "mods/realistic_fuels/patches/fuels.json5 (What the stock craft carry)",
+    "T243",
+    "T209"
+  ],
+  "created": "2026-11-21",
+  "updated": "2026-11-21",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2416
+}

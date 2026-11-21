@@ -1,0 +1,18 @@
+{
+  "id": "T352",
+  "title": "Probe cores in the sizes of the stack, and long solar arrays",
+  "kind": "feature",
+  "status": "todo",
+  "area": "content",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/palette.rs (probe_core, solar_panel, avionics)"
+  ],
+  "created": "2026-11-21",
+  "updated": "2026-11-21",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2415
+}

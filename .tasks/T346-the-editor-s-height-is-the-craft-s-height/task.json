@@ -1,0 +1,18 @@
+{
+  "id": "T346",
+  "title": "The editor's height is the craft's height",
+  "kind": "bug",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/hangar.rs (editor.height)"
+  ],
+  "created": "2026-11-21",
+  "updated": "2026-11-21",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2409
+}

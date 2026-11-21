@@ -1,0 +1,18 @@
+{
+  "id": "T342",
+  "title": "A hollow tube can be picked by clicking it",
+  "kind": "bug",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/hangar.rs (picking)"
+  ],
+  "created": "2026-11-21",
+  "updated": "2026-11-21",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2405
+}

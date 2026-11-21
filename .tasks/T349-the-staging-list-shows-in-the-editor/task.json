@@ -1,0 +1,19 @@
+{
+  "id": "T349",
+  "title": "The staging list shows in the editor",
+  "kind": "bug",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/hangar.rs (STAGING)",
+    "assets/core/layouts/editor.json5"
+  ],
+  "created": "2026-11-21",
+  "updated": "2026-11-21",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2412
+}

@@ -29,3 +29,10 @@ edit (T228, T229), say whether it will fly (T235, T236), refuse while dragging (
 priorities follow that order.
 
 A separate review of how the editor looks (the same day) is not filed yet.
+
+## 2026-11-21: the stock craft rebuilt in the builder
+
+The user: "I still hate the builder, i cant even mirror fairings into a payload". Every stock craft
+was built again from nothing in the builder by a playtest (`rebuild_*`,
+crates/osp_game/src/playtest/rebuilds.rs). What got in the way became T338 to T352; T205, T235,
+T337 and T020 have notes.

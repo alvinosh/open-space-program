@@ -1,0 +1,19 @@
+{
+  "id": "T355",
+  "title": "A click on a hull puts the part on the hull, not on a free node near it",
+  "kind": "bug",
+  "status": "todo",
+  "area": "editor",
+  "size": "S",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_editor/src/building.rs",
+    "T299"
+  ],
+  "created": "2026-11-21",
+  "updated": "2026-11-21",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2418
+}

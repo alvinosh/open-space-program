@@ -1,0 +1,20 @@
+{
+  "id": "T338",
+  "title": "Fairings: a shell round a payload that comes off in pieces",
+  "kind": "feature",
+  "status": "todo",
+  "area": "builder",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/palette.rs",
+    "crates/osp_sim/src/properties.rs (shell span)",
+    "assets/core/craft/pathfinder.json5 (git history: the hand-made halves)"
+  ],
+  "created": "2026-11-21",
+  "updated": "2026-11-21",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2401
+}

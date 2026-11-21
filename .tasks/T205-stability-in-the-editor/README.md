@@ -13,3 +13,9 @@ pressure was near its centre of mass. The physics was right; the editor gave no 
 ## Done when
 
 - The rocket above shows its centres too close and a warning, and with longer fins the warning goes.
+
+## 2026-11-21
+
+Two more from the stock craft rebuild: the Comet's main wheels went on ahead of its heavy tank and it
+sat on its tail on the runway; the glider's boosters went on backwards (T345). Neither showed in the
+editor.

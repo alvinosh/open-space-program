@@ -17,3 +17,9 @@ the stage picked in the staging window.
 ## Where it comes from
 
 From the editor review of 2026-11-07: the user asked for everything wrong with the editor from a UX point of view, then for each finding to be filed as a task. The epic, T221, lists them all.
+
+## 2026-11-21
+
+Rebuilding the stock craft in the builder (`rebuild_*` playtests): the Titan, Talon, Heron and
+Colossus, built with the original stages' outer lengths typed into their tanks, sat on the pad at a
+thrust to weight of 0.95, 0.80, 0.71 and 0.69. Nothing in the editor said so before Launch.

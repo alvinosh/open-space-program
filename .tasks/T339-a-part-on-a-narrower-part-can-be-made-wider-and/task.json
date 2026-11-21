@@ -1,0 +1,19 @@
+{
+  "id": "T339",
+  "title": "A part on a narrower part can be made wider, and a size that is not taken says why",
+  "kind": "bug",
+  "status": "todo",
+  "area": "builder",
+  "size": "M",
+  "parent": "T221",
+  "depends_on": [],
+  "refs": [
+    "crates/osp_sim/src/shaping.rs",
+    "crates/osp_sim/src/builder.rs (check_nodes)"
+  ],
+  "created": "2026-11-21",
+  "updated": "2026-11-21",
+  "done": null,
+  "milestone": "M3",
+  "priority": 61.2402
+}

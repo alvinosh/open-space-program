@@ -12,3 +12,9 @@ the pad).
 
 - Engines put round a tank's end are summed and the tank sized for all of them, as for one on its
   node, and `career_casual_orbit` drops `LOWER_TANK`.
+
+## 2026-11-21
+
+The Sparrow rebuild: nine K-0s under a 1.3 m tank (one on its node, eight round its end) left the tank
+sized for the first, at a thrust to weight of 7.8 on the pad, and the eight round it hang outside the
+tank's edge (no engine plate, the tank does not widen).
