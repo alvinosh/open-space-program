@@ -1606,9 +1606,9 @@ mod tests {
         let sites = crate::vessel::tests::launch_sites();
         let craft_of = |id: &str| {
             let text = match id {
-                "pathfinder" => include_str!("../../../assets/core/craft/pathfinder.json5"),
-                "upper_stage" => include_str!("../../../assets/core/craft/upper_stage.json5"),
-                "comet" => include_str!("../../../assets/core/craft/comet.json5"),
+                "pathfinder" => include_str!("../tests/craft/pathfinder.json5"),
+                "upper_stage" => include_str!("../tests/craft/upper_stage.json5"),
+                "comet" => include_str!("../tests/craft/comet.json5"),
                 _ => return Err(format!("no craft `{id}`")),
             };
             Ok(crate::test_data::realistic(text, "craft").remove(0))

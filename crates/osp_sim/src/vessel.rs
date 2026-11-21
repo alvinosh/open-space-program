@@ -2849,7 +2849,7 @@ pub(crate) mod tests {
 
     pub fn pathfinder() -> CraftDef {
         crate::test_data::realistic(
-            include_str!("../../../assets/core/craft/pathfinder.json5"),
+            include_str!("../tests/craft/pathfinder.json5"),
             "craft",
         )
         .remove(0)
@@ -2917,7 +2917,7 @@ pub(crate) mod tests {
 
     pub fn upper_stage() -> CraftDef {
         crate::test_data::realistic(
-            include_str!("../../../assets/core/craft/upper_stage.json5"),
+            include_str!("../tests/craft/upper_stage.json5"),
             "craft",
         )
         .remove(0)
@@ -2925,7 +2925,7 @@ pub(crate) mod tests {
 
     pub fn lunar_upper() -> CraftDef {
         crate::test_data::realistic(
-            include_str!("../../../assets/core/craft/lunar_upper.json5"),
+            include_str!("../tests/craft/lunar_upper.json5"),
             "craft",
         )
         .remove(0)
@@ -3822,7 +3822,7 @@ pub(crate) mod tests {
     fn fins_tear_off_in_a_hard_turn_at_speed() {
         let system = rss();
         let craft: CraftDef = crate::test_data::realistic(
-            include_str!("../../../assets/core/craft/sounder.json5"),
+            include_str!("../tests/craft/sounder.json5"),
             "craft",
         )
         .remove(0);
@@ -3878,7 +3878,7 @@ pub(crate) mod tests {
         angle: f64,
     ) -> (Vessel, SimTime) {
         let mut craft: CraftDef = crate::test_data::realistic(
-            include_str!("../../../assets/core/craft/sounder.json5"),
+            include_str!("../tests/craft/sounder.json5"),
             "craft",
         )
         .remove(0);
@@ -3923,7 +3923,7 @@ pub(crate) mod tests {
 
     pub fn glider() -> CraftDef {
         crate::test_data::realistic(
-            include_str!("../../../assets/core/craft/glider.json5"),
+            include_str!("../tests/craft/glider.json5"),
             "craft",
         )
         .remove(0)
@@ -3971,7 +3971,7 @@ pub(crate) mod tests {
 
     pub fn comet() -> CraftDef {
         crate::test_data::realistic(
-            include_str!("../../../assets/core/craft/comet.json5"),
+            include_str!("../tests/craft/comet.json5"),
             "craft",
         )
         .remove(0)
@@ -4304,7 +4304,7 @@ pub(crate) mod tests {
             panic!("an orbit start")
         };
         let craft: CraftDef = crate::test_data::realistic(
-            include_str!("../../../assets/core/craft/satellite.json5"),
+            include_str!("../tests/craft/satellite.json5"),
             "craft",
         )
         .remove(0);

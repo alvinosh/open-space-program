@@ -133,6 +133,14 @@ pub(crate) mod test_data {
         patches.extend(records::<osp_mods::Patch>(include_str!(
             "../../../mods/realistic_fuels/patches/fuels.json5"
         )));
+        // The craft read here are the hand-made ones kept for the tests (tests/craft): what they carry
+        // in Realistic is in their own patches; the mod's are for the craft the game ships.
+        if collection == "craft" {
+            patches.retain(|p| p.collection != "craft");
+            patches.extend(records::<osp_mods::Patch>(include_str!(
+                "../tests/craft/realistic_fuels.json5"
+            )));
+        }
         for patch in patches.iter().filter(|p| p.collection == collection) {
             if let Some(item) = items.iter_mut().find(|e| e["id"] == patch.target) {
                 osp_mods::patch::apply_to_record(item, patch).unwrap();

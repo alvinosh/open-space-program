@@ -624,7 +624,7 @@ mod tests {
     #[test]
     fn fitting_a_craft_s_fairings_keeps_it_flying() {
         let mut craft: CraftDef = crate::test_data::realistic(
-            include_str!("../../../assets/core/craft/pathfinder.json5"),
+            include_str!("../tests/craft/pathfinder.json5"),
             "craft",
         )
         .remove(0);

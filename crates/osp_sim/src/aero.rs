@@ -1366,7 +1366,7 @@ mod tests {
 
     fn sounder() -> Propulsion {
         let craft: CraftDef =
-            crate::test_data::realistic(include_str!("../../../assets/core/craft/sounder.json5"), "craft").remove(0);
+            crate::test_data::realistic(include_str!("../tests/craft/sounder.json5"), "craft").remove(0);
         Propulsion::from_craft(&craft, &catalog()).unwrap()
     }
 

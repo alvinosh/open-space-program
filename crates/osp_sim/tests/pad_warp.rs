@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use osp_sim::{
-    data::{BodyDef, CraftDef, LaunchSiteDef, ScenarioDef, StartDef, SystemDef},
+    data::{BodyDef, CraftDef, GroundStationDef, LaunchSiteDef, ScenarioDef, StartDef, SystemDef},
     time::SimTime,
     universe::Universe,
 };
@@ -31,6 +31,8 @@ fn on_the_pad(id: &str) -> Universe {
     let system = SystemDef { bodies };
     let mut universe =
         Universe::new_game(&system, Vec::new(), &sites, &catalog, craft_of, &scenario).unwrap();
+    // As the game does: a probe core is flown by radio, through the ground stations.
+    universe.set_stations(&registry.all::<GroundStationDef>("ground_stations", &mut Vec::new()));
     let craft: CraftDef = registry.get("craft", id).unwrap();
     let start: StartDef = serde_json::from_value(serde_json::json!({
         "type": "LaunchSite", "site": "cape_canaveral",

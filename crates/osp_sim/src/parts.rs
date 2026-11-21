@@ -1088,13 +1088,13 @@ mod tests {
 
     fn stock_craft() -> Vec<CraftDef> {
         [
-            include_str!("../../../assets/core/craft/comet.json5"),
-            include_str!("../../../assets/core/craft/glider.json5"),
-            include_str!("../../../assets/core/craft/lunar_upper.json5"),
-            include_str!("../../../assets/core/craft/pathfinder.json5"),
-            include_str!("../../../assets/core/craft/pathfinder_crew.json5"),
-            include_str!("../../../assets/core/craft/sounder.json5"),
-            include_str!("../../../assets/core/craft/upper_stage.json5"),
+            include_str!("../tests/craft/comet.json5"),
+            include_str!("../tests/craft/glider.json5"),
+            include_str!("../tests/craft/lunar_upper.json5"),
+            include_str!("../tests/craft/pathfinder.json5"),
+            include_str!("../tests/craft/pathfinder_crew.json5"),
+            include_str!("../tests/craft/sounder.json5"),
+            include_str!("../tests/craft/upper_stage.json5"),
         ]
         .into_iter()
         .map(|text| crate::test_data::realistic(text, "craft").remove(0))

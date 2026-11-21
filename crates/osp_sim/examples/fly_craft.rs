@@ -13,7 +13,7 @@ use glam::DVec3;
 use osp_sim::{
     aero::Flow,
     attitude,
-    data::{BodyDef, CraftDef, LaunchSiteDef, ScenarioDef, SystemDef},
+    data::{BodyDef, CraftDef, GroundStationDef, LaunchSiteDef, ScenarioDef, SystemDef},
     universe::Universe,
 };
 
@@ -52,6 +52,9 @@ fn main() {
     let craft_of = |_: &str| -> Result<CraftDef, String> { Ok(craft.clone()) };
     let mut universe =
         Universe::new_game(&system, Vec::new(), &sites, &catalog, craft_of, &scenario).unwrap();
+    // As the game does: a probe core is flown by radio, through the ground stations.
+    universe.set_stations(&registry.all::<GroundStationDef>("ground_stations", &mut Vec::new()));
+    universe.step_physics();
     let id = universe.focus.unwrap();
     let index = universe.find_vessel(id).unwrap();
     let time = universe.time();

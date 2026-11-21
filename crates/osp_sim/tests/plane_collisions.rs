@@ -24,7 +24,21 @@ struct Game {
     sites: Vec<LaunchSiteDef>,
     catalog: PartCatalog,
     craft: Vec<CraftDef>,
+    /// The Comet as it was made by hand (tests/craft), as Realistic Fuels had it: the planes these
+    /// tests drive into each other, taxiing and coasting as they were written for.
+    comet: CraftDef,
     files: osp_sim::collision::ModelFiles,
+}
+
+/// The hand-made Comet kept in tests/craft, with what it carries in a Realistic game.
+fn hand_made_comet() -> CraftDef {
+    let mut comet: serde_json::Value = json5::from_str(include_str!("craft/comet.json5")).unwrap();
+    let patches: Vec<osp_mods::Patch> =
+        json5::from_str(include_str!("craft/realistic_fuels.json5")).unwrap();
+    for patch in patches.iter().filter(|p| p.target == "comet") {
+        osp_mods::patch::apply_to_record(&mut comet, patch).unwrap();
+    }
+    serde_json::from_value(comet).unwrap()
 }
 
 fn game() -> Game {
@@ -38,13 +52,14 @@ fn game() -> Game {
         sites: content.registry.all("launch_sites", &mut diagnostics),
         catalog: record::catalog(&content.registry),
         craft: content.registry.all("craft", &mut diagnostics),
+        comet: hand_made_comet(),
         files: Arc::new(content.file_reader()),
     }
 }
 
 impl Game {
     fn comet(&self) -> &CraftDef {
-        self.craft.iter().find(|c| c.id == "comet").unwrap()
+        &self.comet
     }
 
     /// The runway, its near end `back` metres further back than it really is.
